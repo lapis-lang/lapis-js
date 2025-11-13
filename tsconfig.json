@@ -1,0 +1,17 @@
+{
+    "include": [
+        "src/index.mts"
+    ],
+    "compilerOptions": {
+        "target": "ES2024",
+        "module": "NodeNext",
+        "moduleResolution": "nodenext",
+        "forceConsistentCasingInFileNames": true,
+        "strict": true,
+        "sourceMap": true,
+        "declaration": true,
+        "baseUrl": "./src",
+        "rootDir": "./src",
+        "outDir": "./dist",
+    }
+}

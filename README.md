@@ -1,2 +1,3 @@
-# lapis-js
-An embedded DSL for expirimentation of Lapis Semantics
+# Lapis JS
+
+An embedded DSL for experimentation of Lapis Semantics
