@@ -1,6 +1,6 @@
 {
     "include": [
-        "src/index.mts"
+        "src/**/*.mts"
     ],
     "compilerOptions": {
         "target": "ES2024",
@@ -12,6 +12,6 @@
         "declaration": true,
         "baseUrl": "./src",
         "rootDir": "./src",
-        "outDir": "./dist",
+        "outDir": "./dist"
     }
 }
