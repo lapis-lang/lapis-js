@@ -52,7 +52,7 @@ function deepFreeze<T extends object>(obj: T): T {
  * The value of each variants currently must be an empty object.
  * The resulting ADT is a frozen object with the variant names as properties.
  * 
- * @param definition 
+ * @param decl - The object defining the ADT variants, where each key is a variant name in PascalCase and each value is an empty object.
  * @example
  * ```ts
  * const Color = data({ Red: {}, Green: {}, Blue: {} });
