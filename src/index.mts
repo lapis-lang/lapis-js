@@ -50,7 +50,7 @@ function deepFreeze<T extends object>(obj: T): T {
  * Defines a new algebraic data type (ADT) with the given variants.
  * Each variant name must be in PascalCase (i.e., start with an uppercase letter).
  * The value of each variants currently must be an empty object.
- * The resuling ADT is a frozen object with the variant names as properties.
+ * The resulting ADT is a frozen object with the variant names as properties.
  * 
  * @param definition 
  * @example
