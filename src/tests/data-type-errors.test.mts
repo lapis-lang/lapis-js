@@ -23,33 +23,76 @@ describe('Data Type Errors', () => {
         void Status;
     });
 
-    test('non-empty object values should cause type error', () => {
-        // @ts-expect-error - 'Red' value is not empty object literal
-        const Color = data({ Red: { value: 1 }, Green: {}, Blue: {} });
-
-        void Color;
-    });
-
-    test('object with properties should cause type error', () => {
+    test('structured data with valid constructors is allowed', () => {
+        // This should NOT cause type errors - structured data is now supported
         const Shape = data({
-            // @ts-expect-error - 'Circle' value is not empty object literal
-            Circle: { radius: 10 },
-            // @ts-expect-error - 'Square' value is not empty object literal
-            Square: { side: 5 }
+            Circle: { radius: Number },
+            Square: { side: Number }
         });
 
         void Shape;
     });
 
-    test('multiple violations should cause multiple type errors', () => {
+    test('multiple PascalCase violations should cause type errors', () => {
         const Color = data({
             Red: {},
             // @ts-expect-error - 'yellow' is lowercase
             yellow: {},
-            // @ts-expect-error - 'Blue' has properties
-            Blue: { hex: '#0000FF' }
+            Blue: {}
         });
 
         void Color;
+    });
+
+    test('property names must be camelCase - PascalCase property should error', () => {
+        const Point = data({
+            // @ts-expect-error - 'X' property is PascalCase, should be camelCase
+            Point2D: { X: Number, Y: Number }
+        });
+
+        void Point;
+    });
+
+    test('property names must be camelCase - underscore prefix should error', () => {
+        const Point = data({
+            // @ts-expect-error - '_x' has underscore prefix
+            Point2D: { _x: Number, y: Number }
+        });
+
+        void Point;
+    });
+
+    test('property names must be camelCase - UPPERCASE should error', () => {
+        const Config = data({
+            // @ts-expect-error - 'HOST' is all uppercase
+            Settings: { HOST: String, port: Number }
+        });
+
+        void Config;
+    });
+
+    test('valid camelCase property names are allowed', () => {
+        // This should NOT cause type errors
+        const Point = data({
+            Point2D: { x: Number, y: Number },
+            Point3D: { x: Number, y: Number, z: Number }
+        });
+
+        void Point;
+    });
+
+    test('function values should cause type error', () => {
+        const Point = data({
+            Point2D: { x: Number, y: Number }
+        });
+
+        // TypeScript already rejects this because () => number is not assignable to number
+        // We verify the type error exists but don't execute (to avoid runtime error)
+        if (false as boolean) {
+            // @ts-expect-error - function type incompatible with number type
+            Point.Point2D({ x: ((a: number) => a + 1), y: 20 });
+        }
+
+        void Point;
     });
 });

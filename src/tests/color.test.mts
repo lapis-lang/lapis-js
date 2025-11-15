@@ -3,16 +3,6 @@ import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
 describe('Color Declaration', () => {
-    test('accepts valid PascalCase variant names with empty objects', () => {
-        const Color = data({ Red: {}, Green: {}, Blue: {} });
-        
-        assert.ok(Color, 'Color ADT should be created');
-        assert.ok(Object.isFrozen(Color), 'ADT should be frozen');
-        assert.deepStrictEqual(Color.Red, {});
-        assert.deepStrictEqual(Color.Green, {});
-        assert.deepStrictEqual(Color.Blue, {});
-    });
-
     test('ADT is immutable (frozen)', () => {
         const Color = data({ Red: {}, Green: {} });
         
@@ -38,8 +28,7 @@ describe('Color Declaration', () => {
     test('supports single variant', () => {
         const Single = data({ Only: {} });
         
-        assert.ok(Single.Only);
-        assert.deepStrictEqual(Single.Only, {});
+        assert.ok(Single.Only instanceof Single);
     });
 
     test('supports many variants', () => {
