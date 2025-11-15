@@ -95,4 +95,32 @@ describe('Data Type Errors', () => {
 
         void Point;
     });
+
+    test('missing required fields should cause type error', () => {
+        const Point = data({
+            Point2D: { x: Number, y: Number }
+        });
+
+        // TypeScript should reject missing fields
+        if (false as boolean) {
+            // @ts-expect-error - missing required field 'y'
+            Point.Point2D({ x: 10 });
+        }
+
+        void Point;
+    });
+
+    test('extra fields should cause type error', () => {
+        const Point = data({
+            Point2D: { x: Number, y: Number }
+        });
+
+        // TypeScript should reject extra fields
+        if (false as boolean) {
+            // @ts-expect-error - object literal may only specify known properties
+            Point.Point2D({ x: 10, y: 20, z: 30 });
+        }
+
+        void Point;
+    });
 });

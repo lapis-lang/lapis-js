@@ -63,45 +63,6 @@ describe('Structured Data', () => {
         assert.strictEqual(p3.constructor.name, 'Point3');
     });
 
-    test('throws error for wrong field type', () => {
-        const Point = data({
-            Point2D: { x: Number, y: Number }
-        });
-
-        assert.throws(
-            () => Point.Point2D({ x: 'hello', y: 20 } as any),
-            /Field 'x' must be a number/
-        );
-    });
-
-    test('validates String fields', () => {
-        const Person = data({
-            User: { name: String, email: String }
-        });
-
-        const user = Person.User({ name: 'Bob', email: 'bob@example.com' });
-        assert.strictEqual(user.name, 'Bob');
-
-        assert.throws(
-            () => Person.User({ name: 123, email: 'test@test.com' } as any),
-            /Field 'name' must be a string/
-        );
-    });
-
-    test('validates Boolean fields', () => {
-        const Config = data({
-            Settings: { enabled: Boolean, debug: Boolean }
-        });
-
-        const settings = Config.Settings({ enabled: true, debug: false });
-        assert.strictEqual(settings.enabled, true);
-
-        assert.throws(
-            () => Config.Settings({ enabled: 'yes', debug: false } as any),
-            /Field 'enabled' must be a boolean/
-        );
-    });
-
     test('validates nested ADT fields', () => {
         const Color = data({ Red: {}, Green: {}, Blue: {} });
 

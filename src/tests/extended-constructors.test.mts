@@ -11,11 +11,6 @@ describe('Extended Constructors', () => {
         const col = Collection.Items({ items: [1, 2, 3] });
         assert.ok(Array.isArray(col.items));
         assert.strictEqual(col.items.length, 3);
-
-        assert.throws(
-            () => Collection.Items({ items: 'not an array' } as any),
-            /Field 'items' must be an array/
-        );
     });
 
     test('supports Date fields', () => {
@@ -27,11 +22,6 @@ describe('Extended Constructors', () => {
         const event = Event.Scheduled({ name: 'Meeting', date: now });
         assert.strictEqual(event.name, 'Meeting');
         assert.strictEqual(event.date, now);
-
-        assert.throws(
-            () => Event.Scheduled({ name: 'Meeting', date: 'not a date' } as any),
-            /Field 'date' must be a Date/
-        );
     });
 
     test('supports RegExp fields', () => {
@@ -42,11 +32,6 @@ describe('Extended Constructors', () => {
         const regex = /test/i;
         const matcher = Pattern.Matcher({ pattern: regex, flags: 'i' });
         assert.strictEqual(matcher.pattern, regex);
-
-        assert.throws(
-            () => Pattern.Matcher({ pattern: 'not a regex', flags: 'i' } as any),
-            /Field 'pattern' must be a RegExp/
-        );
     });
 
     test('supports Symbol fields', () => {
@@ -57,11 +42,6 @@ describe('Extended Constructors', () => {
         const sym = Symbol('unique');
         const item = Tagged.Item({ id: sym, name: 'Test' });
         assert.strictEqual(item.id, sym);
-
-        assert.throws(
-            () => Tagged.Item({ id: 'not a symbol', name: 'Test' } as any),
-            /Field 'id' must be a symbol/
-        );
     });
 
     test('supports BigInt fields', () => {
@@ -72,11 +52,6 @@ describe('Extended Constructors', () => {
         const big = 9007199254740991n;
         const value = LargeNumber.Value({ amount: big });
         assert.strictEqual(value.amount, big);
-
-        assert.throws(
-            () => LargeNumber.Value({ amount: 123 } as any),
-            /Field 'amount' must be a bigint/
-        );
     });
 
     test('supports mixing extended constructors', () => {

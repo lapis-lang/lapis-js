@@ -85,17 +85,29 @@ console.log(p3 instanceof Point); // true
 
 **Supported field types:**
 
-- `Number` - validates the field is a number
-- `String` - validates the field is a string
-- `Boolean` - validates the field is a boolean
-- `Object` - validates the field is an object
+- `Number` - field type is `number`
+- `String` - field type is `string`
+- `Boolean` - field type is `boolean`
+- `Object` - field type is `object`
+- `Array` - field type is `unknown[]`
+- `Date` - field type is `Date`
+- `RegExp` - field type is `RegExp`
+- `Symbol` - field type is `symbol`
+- `BigInt` - field type is `bigint`
+- Other ADTs - field type is the ADT instance
+- Predicates - custom validation functions with runtime checks
+
+**Type validation:**
+
+- Built-in types (Number, String, etc.) are validated at **compile-time** by TypeScript
+- ADT instances are validated at **runtime** with `instanceof` checks
+- Predicates are validated at **runtime** with custom logic
 
 **Requirements:**
 
 - Variant names must be **PascalCase**
 - Property names must be **camelCase** (start with lowercase, no underscore prefix)
-- All specified fields are required
-- Extra fields are rejected
+- TypeScript enforces exact object shapes (all fields required, no extra fields allowed)
 
 ### Nested ADTs
 
@@ -116,7 +128,7 @@ console.log(p instanceof ColorPoint); // true
 
 ### Predicates
 
-Use custom validation functions (predicates) for fields:
+Use custom validation functions (predicates) for runtime field validation:
 
 ```ts
 const isEven = (x: unknown): x is number => 
@@ -134,7 +146,7 @@ EvenPoint.Point2({ x: 3, y: 4 }); // ✗ Throws TypeError
 // TypeError: Field 'x' failed predicate validation
 ```
 
-**Common predicate patterns:**
+**Predicates enable runtime validation that TypeScript cannot check at compile-time:**
 
 ```ts
 // Range validation

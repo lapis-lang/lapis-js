@@ -117,7 +117,7 @@ function isConstructable(fn: unknown): fn is new (...args: any[]) => any {
  * Checks if a value is a valid field specification
  */
 function isFieldSpec(value: unknown): value is FieldSpec {
-    return typeof value === 'function' || isConstructable(value);
+    return typeof value === 'function';
 }
 
 /**
@@ -132,49 +132,19 @@ function isStructDef(obj: object): obj is StructDef {
  * Validates a value against a field specification
  */
 function validateField(value: unknown, spec: FieldSpec, fieldName: string): void {
-    if (spec === Number) {
-        if (typeof value !== 'number') {
-            throw new TypeError(`Field '${fieldName}' must be a number`);
-        }
-    } else if (spec === String) {
-        if (typeof value !== 'string') {
-            throw new TypeError(`Field '${fieldName}' must be a string`);
-        }
-    } else if (spec === Boolean) {
-        if (typeof value !== 'boolean') {
-            throw new TypeError(`Field '${fieldName}' must be a boolean`);
-        }
-    } else if (spec === Object) {
-        if (typeof value !== 'object' || value === null) {
-            throw new TypeError(`Field '${fieldName}' must be an object`);
-        }
-    } else if (spec === Array) {
-        if (!Array.isArray(value)) {
-            throw new TypeError(`Field '${fieldName}' must be an array`);
-        }
-    } else if (spec === Date) {
-        if (!(value instanceof Date)) {
-            throw new TypeError(`Field '${fieldName}' must be a Date`);
-        }
-    } else if (spec === RegExp) {
-        if (!(value instanceof RegExp)) {
-            throw new TypeError(`Field '${fieldName}' must be a RegExp`);
-        }
-    } else if (spec === Symbol) {
-        if (typeof value !== 'symbol') {
-            throw new TypeError(`Field '${fieldName}' must be a symbol`);
-        }
-    } else if (spec === BigInt) {
-        if (typeof value !== 'bigint') {
-            throw new TypeError(`Field '${fieldName}' must be a bigint`);
-        }
-    } else if (isConstructable(spec)) {
+    // Skip validation for built-in constructors - TypeScript handles this at compile-time
+    if (spec === Number || spec === String || spec === Boolean || spec === Object ||
+        spec === Array || spec === Date || spec === RegExp || spec === Symbol || spec === BigInt) {
+        return;
+    }
+
+    if (isConstructable(spec)) {
         // ADT class - check instanceof
         if (!(value instanceof spec)) {
             throw new TypeError(`Field '${fieldName}' must be an instance of ${spec.name || 'ADT'}`);
         }
-    } else {
-        // Predicate function
+    } else if (typeof spec === 'function') {
+        // Predicate function (not a constructor)
         const predicateFn = spec as (value: unknown) => boolean;
         if (!predicateFn(value)) {
             throw new TypeError(`Field '${fieldName}' failed predicate validation`);
@@ -200,7 +170,7 @@ function validateField(value: unknown, spec: FieldSpec, fieldName: string): void
  *   Point3: { x: Number, y: Number, z: Number, color: Color }
  * })
  * 
- * const isEven = (x) => x % 2 == 0;
+ * const isEven = (x) => x % 2 === 0;
  * const EvenPoint = data({ Point2: { x: isEven, y: isEven }})
  * ```
  */
