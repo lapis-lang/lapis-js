@@ -217,6 +217,75 @@ function isColor(value: unknown): value is typeof Color.Red {
 }
 ```
 
+### Strict Equality (Object Pooling)
+
+Both singleton and structured variants support strict equality (`===`) comparisons. Variants with identical field values return the same instance through object pooling:
+
+```ts
+const Color = data({ Red: [], Green: [], Blue: [] });
+
+// Singletons always have strict equality
+const red = Color.Red;
+const red2 = Color.Red;
+console.log(red === red2); // true
+
+const Point = data({
+    Point2D: [{ x: Number }, { y: Number }],
+    Point3D: [{ x: Number }, { y: Number }, { z: Number }]
+});
+
+// Structured variants with same values are strictly equal
+const p1 = Point.Point2D(1, 2);
+const p2 = Point.Point2D(1, 2);
+console.log(p1 === p2); // true
+
+// Works with both named and positional arguments
+const p3 = Point.Point2D({ x: 1, y: 2 });
+console.log(p1 === p3); // true
+
+// Different values create different instances
+const p4 = Point.Point2D(3, 4);
+console.log(p1 === p4); // false
+```
+
+**Benefits:**
+
+- **Native Collections:** Variants work seamlessly with `Set`, `Map`, `Array` methods (`includes`, `indexOf`)
+- **Efficient Deduplication:** Use `Set` to remove duplicates based on structural equality
+- **Memory Efficiency:** Identical values share the same instance
+- **Predictable Behavior:** Consistent with how singleton variants work
+
+**Examples with collections:**
+
+```ts
+const Point = data({ Point2D: [{ x: Number }, { y: Number }] });
+
+// Works with Set for deduplication
+const points = new Set([
+    Point.Point2D(1, 2),
+    Point.Point2D(3, 4),
+    Point.Point2D(1, 2)  // Duplicate, automatically removed
+]);
+console.log(points.size); // 2
+
+// Works with Map as keys
+const pointMap = new Map();
+pointMap.set(Point.Point2D(1, 2), 'origin');
+console.log(pointMap.get(Point.Point2D(1, 2))); // 'origin'
+
+// Works with Array methods
+const arr = [Point.Point2D(1, 2), Point.Point2D(3, 4)];
+console.log(arr.includes(Point.Point2D(1, 2))); // true
+console.log(arr.indexOf(Point.Point2D(3, 4))); // 1
+```
+
+**Object pooling details:**
+
+- Uses `WeakMap` for object field values (enables garbage collection)
+- Uses `Map` for primitive field values (number, string, boolean, bigint, symbol)
+- Equality is based on field value identity for objects (same reference)
+- Equality is based on value equality for primitives
+
 ### Recursive ADTs
 
 Define recursive data structures using the callback form with `Family` to reference the ADT being defined:
