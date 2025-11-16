@@ -354,6 +354,115 @@ export function data<const D extends DataDecl>(
             constructor() {
                 // Allow subclasses to instantiate
             }
+
+            // Static extend method - inherited by all ADTs and extended ADTs
+            static extend<const E extends DataDecl>(
+                this: any,
+                extensionDeclOrFn: E | ((context: DataContext) => E)
+            ): DataDef<D & E> {
+                // eslint-disable-next-line @typescript-eslint/no-this-alias
+                const parentADT = this; // 'this' is the parent ADT class
+                const isExtensionCallback = typeof extensionDeclOrFn === 'function';
+
+                // Get the actual ADT class to extend from
+                // For callable Proxies, unwrap to get the base ADT
+                const parentADTClass = (parentADT as any)[BaseADTSymbol] || parentADT;
+
+                // Create extended ADT class that inherits from parent ADT class
+                abstract class ExtendedADT extends (parentADTClass as any) {
+                    constructor() {
+                        super();
+                    }
+                }
+
+                const extendedResult = ExtendedADT as any;
+
+                // Resolve the extension declaration
+                const extensionFamily = createFamily();
+                const extensionDecl = isExtensionCallback
+                    ? extensionDeclOrFn({ Family: extensionFamily, T, U, V, W, X, Y, Z })
+                    : extensionDeclOrFn;
+
+                // Check for variant name collisions
+                for (const variantName of Object.keys(extensionDecl)) {
+                    if (variantName in result) {
+                        throw new Error(
+                            `Variant name collision: '${variantName}' already exists in base ADT`
+                        );
+                    }
+                }
+
+                // Create new variants for the extension
+                for (const [variantName, value] of Object.entries(extensionDecl)) {
+                    if (isStructDef(value as object)) {
+                        // Structured variant
+                        const structDef = value as StructDef;
+
+                        class VariantClass extends ExtendedADT {
+                            constructor(data: Record<string, unknown>) {
+                                super();
+
+                                // Validate field types against specifications
+                                // Use root/result ADT for Family references
+                                for (const [fieldName, fieldSpec] of Object.entries(structDef)) {
+                                    validateField(data[fieldName], fieldSpec, fieldName, result);
+                                }
+
+                                // Assign fields to instance
+                                for (const [fieldName, fieldValue] of Object.entries(data)) {
+                                    Object.defineProperty(this, fieldName, {
+                                        value: fieldValue,
+                                        writable: false,
+                                        enumerable: true,
+                                        configurable: false
+                                    });
+                                }
+
+                                Object.freeze(this);
+                            }
+                        }
+
+                        // Set the class name for reflection
+                        Object.defineProperty(VariantClass, 'name', {
+                            value: variantName,
+                            writable: false,
+                            configurable: false
+                        });
+
+                        // Wrap in a Proxy to make it callable without 'new'
+                        extendedResult[variantName] = new Proxy(VariantClass, {
+                            apply(_target, _thisArg, argumentsList) {
+                                return new VariantClass(argumentsList[0]);
+                            }
+                        });
+                    } else {
+                        // Simple enumerated variant
+                        class VariantClass extends ExtendedADT {
+                            protected constructor() {
+                                super();
+                                Object.freeze(this);
+                            }
+
+                            private static _instance: VariantClass;
+                            static {
+                                this._instance = new VariantClass();
+                            }
+                        }
+
+                        // Set the class name for reflection
+                        Object.defineProperty(VariantClass, 'name', {
+                            value: variantName,
+                            writable: false,
+                            configurable: false
+                        });
+
+                        extendedResult[variantName] = (VariantClass as any)._instance;
+                    }
+                }
+
+                Object.freeze(extendedResult);
+                return extendedResult;
+            }
         }
 
         const result = ADT as any;
@@ -437,118 +546,6 @@ export function data<const D extends DataDecl>(
                 result[variantName] = (VariantClass as any)._instance;
             }
         }
-
-        // Add extend method to allow creating extended ADTs
-        // Use 'function' (not arrow) so we can reference 'this' as the parent ADT
-        (result as any).extend = function <const E extends DataDecl>(
-            this: any, // The parent ADT being extended (A, B, C, etc.)
-            extensionDeclOrFn: E | ((context: DataContext) => E)
-        ): DataDef<D & E> {
-            // eslint-disable-next-line @typescript-eslint/no-this-alias
-            const parentADT = this; // Capture 'this' for use in closures
-            const isExtensionCallback = typeof extensionDeclOrFn === 'function';
-
-            // Get the actual ADT class to extend from
-            // For callable Proxies, unwrap to get the base ADT
-            // For regular ADTs, parentADT is already the ADT class
-            const parentADTClass = (parentADT as any)[BaseADTSymbol] || parentADT;
-
-            // Create extended ADT class that inherits from parent ADT class
-            abstract class ExtendedADT extends (parentADTClass as any) {
-                constructor() {
-                    super();
-                }
-            }
-
-            const extendedResult = ExtendedADT as any;
-
-            // Resolve the extension declaration
-            const extensionFamily = createFamily();
-            const extensionDecl = isExtensionCallback
-                ? extensionDeclOrFn({ Family: extensionFamily, T, U, V, W, X, Y, Z })
-                : extensionDeclOrFn;
-
-            // Check for variant name collisions
-            for (const variantName of Object.keys(extensionDecl)) {
-                if (variantName in result) {
-                    throw new Error(
-                        `Variant name collision: '${variantName}' already exists in base ADT`
-                    );
-                }
-            }
-
-            // Create new variants for the extension
-            for (const [variantName, value] of Object.entries(extensionDecl)) {
-                if (isStructDef(value as object)) {
-                    // Structured variant
-                    const structDef = value as StructDef;
-
-                    class VariantClass extends ExtendedADT {
-                        constructor(data: Record<string, unknown>) {
-                            super();
-
-                            // Validate field types against specifications
-                            // Use root/result ADT for Family references - extended variants should accept
-                            // instances from any level of the hierarchy
-                            for (const [fieldName, fieldSpec] of Object.entries(structDef)) {
-                                validateField(data[fieldName], fieldSpec, fieldName, result);
-                            }
-
-                            // Assign fields to instance
-                            for (const [fieldName, fieldValue] of Object.entries(data)) {
-                                Object.defineProperty(this, fieldName, {
-                                    value: fieldValue,
-                                    writable: false,
-                                    enumerable: true,
-                                    configurable: false
-                                });
-                            }
-
-                            Object.freeze(this);
-                        }
-                    }
-
-                    // Set the class name for reflection
-                    Object.defineProperty(VariantClass, 'name', {
-                        value: variantName,
-                        writable: false,
-                        configurable: false
-                    });
-
-                    // Wrap in a Proxy to make it callable without 'new'
-                    extendedResult[variantName] = new Proxy(VariantClass, {
-                        apply(_target, _thisArg, argumentsList) {
-                            return new VariantClass(argumentsList[0]);
-                        }
-                    });
-                } else {
-                    // Simple enumerated variant
-                    class VariantClass extends ExtendedADT {
-                        protected constructor() {
-                            super();
-                            Object.freeze(this);
-                        }
-
-                        private static _instance: VariantClass;
-                        static {
-                            this._instance = new VariantClass();
-                        }
-                    }
-
-                    // Set the class name for reflection
-                    Object.defineProperty(VariantClass, 'name', {
-                        value: variantName,
-                        writable: false,
-                        configurable: false
-                    });
-
-                    extendedResult[variantName] = (VariantClass as any)._instance;
-                }
-            }
-
-            Object.freeze(extendedResult);
-            return extendedResult;
-        };
 
         Object.freeze(result);
         return result;
