@@ -210,6 +210,138 @@ function isColor(value: unknown): value is typeof Color.Red {
 }
 ```
 
+### Recursive ADTs
+
+Define recursive data structures using the callback form with `Family` to reference the ADT being defined:
+
+```ts
+// Peano numbers
+const Peano = data(({ Family }) => ({ 
+    Zero: {}, 
+    Succ: { pred: Family } 
+}));
+
+const zero = Peano.Zero;
+const one = Peano.Succ({ pred: zero });
+const two = Peano.Succ({ pred: one });
+console.log(two.pred.pred === zero); // true
+
+// Recursive list
+const List = data(({ Family }) => ({ 
+    Nil: {}, 
+    Cons: { head: Number, tail: Family } 
+}));
+
+const empty = List.Nil;
+const list = List.Cons({ head: 1, 
+    tail: List.Cons({ head: 2, 
+        tail: List.Cons({ head: 3, tail: empty }) 
+    }) 
+});
+console.log(list.head); // 1
+console.log(list.tail.head); // 2
+
+// Binary tree
+const Tree = data(({ Family }) => ({
+    Leaf: { value: Number },
+    Node: { left: Family, right: Family, value: Number }
+}));
+
+const leaf1 = Tree.Leaf({ value: 1 });
+const leaf2 = Tree.Leaf({ value: 2 });
+const tree = Tree.Node({ left: leaf1, right: leaf2, value: 10 });
+```
+
+**Key points:**
+
+- Use callback form: `data(({ Family }) => ({ ... }))`
+- `Family` represents a recursive reference to the ADT being defined
+- `Family` can also be called as `Family(T)` for documentation (both are equivalent)
+- Non-parameterized recursive ADTs can be used directly without instantiation
+
+### Parameterized ADTs
+
+Define generic data structures with type parameters using `T`, `U`, `V`, `W`, `X`, `Y`, or `Z` in the callback:
+
+```ts
+// Generic Maybe type
+const Maybe = data(({ T }) => ({
+    Nothing: {},
+    Just: { value: T }
+}));
+
+const justNum = Maybe.Just({ value: 42 });
+const justStr = Maybe.Just({ value: 'hello' });
+const nothing = Maybe.Nothing;
+
+// Generic Either type with two type parameters
+const Either = data(({ U, V }) => ({
+    Left: { value: U },
+    Right: { value: V }
+}));
+
+// Heterogeneous Pair with different types
+const Pair = data(({ T, U }) => ({
+    MakePair: { first: T, second: U }
+}));
+
+// Parameterized recursive list
+const List = data(({ Family, T }) => ({
+    Nil: {},
+    Cons: { head: T, tail: Family(T) }  // Family(T) or just Family
+}));
+
+const numList = List.Cons({ head: 1, 
+    tail: List.Cons({ head: 2, tail: List.Nil }) 
+});
+const strList = List.Cons({ head: 'a', 
+    tail: List.Cons({ head: 'b', tail: List.Nil }) 
+});
+```
+
+**Type instantiation:**
+
+For stricter type validation, instantiate parameterized ADTs with specific types:
+
+```ts
+const List = data(({ Family, T }) => ({
+    Nil: {},
+    Cons: { head: T, tail: Family(T) }
+}));
+
+// Instantiate with Number
+const NumList = List({ T: Number });
+const nums = NumList.Cons({ head: 10, 
+    tail: NumList.Cons({ head: 20, tail: NumList.Nil }) 
+});
+
+// Instantiate with String
+const StrList = List({ T: String });
+const strs = StrList.Cons({ head: 'hello', 
+    tail: StrList.Cons({ head: 'world', tail: StrList.Nil }) 
+});
+
+// Type validation enforced at compile-time by TypeScript
+NumList.Cons({ head: 'bad', tail: NumList.Nil }); 
+// ✗ TypeScript compile error: Type 'string' is not assignable to type 'number'
+
+// Multiple type parameters
+const Pair = data(({ T, U }) => ({
+    MakePair: { first: T, second: U }
+}));
+
+const NumStrPair = Pair({ T: Number, U: String });
+const pair = NumStrPair.MakePair({ first: 42, second: 'hello' });
+```
+
+**Key points:**
+
+- Available type parameters: `T`, `U`, `V`, `W`, `X`, `Y`, `Z` (7 parameters total)
+- Combine `Family` and type parameters for recursive parameterized types
+- Without instantiation, accepts any type for type parameters
+- With instantiation `ADT({ T: SomeType })`, validates types at compile-time by TypeScript
+- Use multiple parameters for heterogeneous data structures (e.g., `Pair` with different types)
+
 ### Immutability
 
 All ADT instances and the ADT itself are deeply frozen and immutable:

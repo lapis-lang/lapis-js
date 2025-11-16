@@ -34,9 +34,9 @@ describe('Data Type Errors', () => {
     });
 
     test('multiple PascalCase violations should cause type errors', () => {
+        // @ts-expect-error - 'yellow' is lowercase
         const Color = data({
             Red: {},
-            // @ts-expect-error - 'yellow' is lowercase
             yellow: {},
             Blue: {}
         });
@@ -122,5 +122,53 @@ describe('Data Type Errors', () => {
         }
 
         void Point;
+    });
+
+    test('type parameters enforce compile-time type safety with instantiation', () => {
+        const Pair = data(({ T }) => ({
+            MakePair: { first: T, second: T }
+        }));
+
+        // Instantiate with Number - both fields must be numbers
+        const NumPair = Pair({ T: Number });
+
+        // Valid: both are numbers
+        const valid = NumPair.MakePair({ first: 1, second: 2 });
+        void valid;
+
+        if (false as boolean) {
+            // @ts-expect-error - TypeScript catches this: string not assignable to number
+            NumPair.MakePair({ first: 1, second: 'bad' });
+
+            // @ts-expect-error - TypeScript catches this: string not assignable to number
+            NumPair.MakePair({ first: 'bad', second: 2 });
+        }
+
+        void NumPair;
+    });
+
+    test('heterogeneous Pair with T and U enforces different types', () => {
+        const Pair = data(({ T, U }) => ({
+            MakePair: { first: T, second: U }
+        }));
+
+        // Instantiate with Number and String - different types for each field
+        const NumStrPair = Pair({ T: Number, U: String });
+
+        // Valid: first is number, second is string
+        const valid = NumStrPair.MakePair({ first: 42, second: 'hello' });
+        // prevent unused variable warning
+        void valid;
+
+        if (false as boolean) {
+            // @ts-expect-error - TypeScript catches this: string not assignable to number in first
+            NumStrPair.MakePair({ first: 'bad', second: 'hello' });
+
+            // @ts-expect-error - TypeScript catches this: number not assignable to string in second
+            NumStrPair.MakePair({ first: 42, second: 123 });
+        }
+
+        // prevent unused variable warning
+        void NumStrPair;
     });
 });
