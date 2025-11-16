@@ -171,7 +171,7 @@ describe('Parameterized ADTs', () => {
     });
 
     test('supports heterogeneous Pair with different type parameters', () => {
-        // Pair with different types for left and right
+        // Pair with different types for first and second
         const Pair = data(({ T }) => ({
             MakePair: { first: T, second: T }
         }));
