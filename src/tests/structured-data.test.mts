@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 describe('Structured Data', () => {
     test('supports structured data with Number fields', () => {
         const Point = data({
-            Point2D: { x: Number, y: Number }
+            Point2D: [{ x: Number }, { y: Number }]
         });
 
         const p = Point.Point2D({ x: 10, y: 20 });
@@ -18,7 +18,7 @@ describe('Structured Data', () => {
 
     test('supports structured data with multiple field types', () => {
         const Person = data({
-            Employee: { name: String, age: Number, active: Boolean }
+            Employee: [{ name: String }, { age: Number }, { active: Boolean }]
         });
 
         const employee = Person.Employee({ name: 'Alice', age: 30, active: true });
@@ -29,10 +29,10 @@ describe('Structured Data', () => {
     });
 
     test('supports nested ADTs', () => {
-        const Color = data({ Red: {}, Green: {}, Blue: {} });
+        const Color = data({ Red: [], Green: [], Blue: [] });
 
         const ColorPoint = data({
-            Point2: { x: Number, y: Number, color: Color },
+            Point2: [{ x: Number }, { y: Number }, { color: Color }],
         });
 
         const point = ColorPoint.Point2({ x: 5, y: 10, color: Color.Red });
@@ -43,11 +43,11 @@ describe('Structured Data', () => {
     });
 
     test('supports multiple structured variants', () => {
-        const Color = data({ Red: {}, Green: {}, Blue: {} });
+        const Color = data({ Red: [], Green: [], Blue: [] });
 
         const ColorPoint = data({
-            Point2: { x: Number, y: Number, color: Color },
-            Point3: { x: Number, y: Number, z: Number, color: Color }
+            Point2: [{ x: Number }, { y: Number }, { color: Color }],
+            Point3: [{ x: Number }, { y: Number }, { z: Number }, { color: Color }]
         });
 
         const p2 = ColorPoint.Point2({ x: 1, y: 2, color: Color.Blue });
@@ -64,25 +64,25 @@ describe('Structured Data', () => {
     });
 
     test('validates nested ADT fields', () => {
-        const Color = data({ Red: {}, Green: {}, Blue: {} });
+        const Color = data({ Red: [], Green: [], Blue: [] });
 
         const ColorPoint = data({
-            Point: { x: Number, color: Color }
+            Point: [{ x: Number }, { color: Color }]
         });
 
         assert.throws(
-            () => ColorPoint.Point({ x: 10, color: {} } as any),
+            () => ColorPoint.Point({ x: 10, color: [] } as any),
             /Field 'color' must be an instance of/
         );
     });
 
     test('supports mixing simple and structured variants', () => {
-        const Color = data({ Red: {}, Green: {}, Blue: {} });
+        const Color = data({ Red: [], Green: [], Blue: [] });
 
         const Shape = data({
-            Circle: { radius: Number, color: Color },
-            Square: { side: Number, color: Color },
-            Unknown: {}
+            Circle: [{ radius: Number }, { color: Color }],
+            Square: [{ side: Number }, { color: Color }],
+            Unknown: []
         });
 
         const circle = Shape.Circle({ radius: 5, color: Color.Red });

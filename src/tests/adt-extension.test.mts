@@ -4,9 +4,9 @@ import assert from 'node:assert/strict';
 
 describe('ADT Extension', () => {
     test('basic extension with simple variants', () => {
-        const Color = data({ Red: {}, Green: {}, Blue: {} });
+        const Color = data({ Red: [], Green: [], Blue: [] });
         
-        const ExtendedColor = Color.extend({ Yellow: {}, Orange: {} });
+        const ExtendedColor = Color.extend({ Yellow: [], Orange: [] });
         
         // Extended ADT should have all variants accessible
         assert.ok(ExtendedColor.Red);
@@ -28,11 +28,11 @@ describe('ADT Extension', () => {
 
     test('extension with structured variants', () => {
         const Point = data({
-            Point2D: { x: Number, y: Number }
+            Point2D: [{ x: Number }, { y: Number }]
         });
         
         const Point3DExtended = Point.extend({
-            Point3D: { x: Number, y: Number, z: Number }
+            Point3D: [{ x: Number }, { y: Number }, { z: Number }]
         });
         
         // Create instances
@@ -61,13 +61,13 @@ describe('ADT Extension', () => {
 
     test('extension with callback style for recursive ADTs', () => {
         const IntAlgebra = data(({ Family }) => ({
-            Lit: { value: Number },
-            Add: { left: Family, right: Family }
+            Lit: [{ value: Number }],
+            Add: [{ left: Family }, { right: Family }]
         }));
         
         const IntBoolAlgebra = IntAlgebra.extend(({ Family }) => ({
-            BoolLit: { value: Boolean },
-            Iff: { cond: Family, thenBranch: Family, elseBranch: Family }
+            BoolLit: [{ value: Boolean }],
+            Iff: [{ cond: Family }, { thenBranch: Family }, { elseBranch: Family }]
         }));
         
         // Create instances using extended ADT constructors
@@ -109,13 +109,13 @@ describe('ADT Extension', () => {
 
     test('Family references in extended ADT resolve to extended type', () => {
         const Base = data(({ Family }) => ({
-            Base1: { value: Number },
-            Base2: { ref: Family }
+            Base1: [{ value: Number }],
+            Base2: [{ ref: Family }]
         }));
         
         const Extended = Base.extend(({ Family }) => ({
-            Extended1: { value: String },
-            Extended2: { ref: Family }
+            Extended1: [{ value: String }],
+            Extended2: [{ ref: Family }]
         }));
         
         const base1 = Extended.Base1({ value: 42 });
@@ -136,9 +136,9 @@ describe('ADT Extension', () => {
     });
 
     test('deep extension (multiple levels)', () => {
-        const A = data({ A1: {}, A2: {} });
-        const B = A.extend({ B1: {}, B2: {} });
-        const C = B.extend({ C1: {}, C2: {} });
+        const A = data({ A1: [], A2: [] });
+        const B = A.extend({ B1: [], B2: [] });
+        const C = B.extend({ C1: [], C2: [] });
         
         // C should have all variants accessible
         assert.ok(C.A1);
@@ -178,17 +178,17 @@ describe('ADT Extension', () => {
     });
 
     test('variant name collision throws error', () => {
-        const Color = data({ Red: {}, Green: {} });
+        const Color = data({ Red: [], Green: [] });
         
         assert.throws(
-            () => Color.extend({ Red: {}, Yellow: {} }),
+            () => Color.extend({ Red: [], Yellow: [] }),
             /Variant name collision: 'Red' already exists in base ADT/
         );
     });
 
     test('extension preserves immutability', () => {
-        const Color = data({ Red: {}, Green: {} });
-        const ExtendedColor = Color.extend({ Blue: {} });
+        const Color = data({ Red: [], Green: [] });
+        const ExtendedColor = Color.extend({ Blue: [] });
         
         // Extended ADT should be frozen
         assert.ok(Object.isFrozen(ExtendedColor));
@@ -205,12 +205,12 @@ describe('ADT Extension', () => {
 
     test('mixed simple and structured variants', () => {
         const Shape = data({
-            Circle: { radius: Number }
+            Circle: [{ radius: Number }]
         });
         
         const ExtendedShape = Shape.extend({
-            Square: { side: Number },
-            Unknown: {}
+            Square: [{ side: Number }],
+            Unknown: []
         });
         
         const square = ExtendedShape.Square({ side: 10 });
@@ -228,11 +228,11 @@ describe('ADT Extension', () => {
             typeof x === 'number' && x > 0;
         
         const Base = data({
-            Value: { amount: Number }
+            Value: [{ amount: Number }]
         });
         
         const Extended = Base.extend({
-            PositiveValue: { amount: isPositive }
+            PositiveValue: [{ amount: isPositive }]
         });
         
         const posValue = Extended.PositiveValue({ amount: 10 });
@@ -250,11 +250,11 @@ describe('ADT Extension', () => {
 
     test('callable without new for extended structured variants', () => {
         const Point = data({
-            Point2D: { x: Number, y: Number }
+            Point2D: [{ x: Number }, { y: Number }]
         });
         
         const Point3DExtended = Point.extend({
-            Point3D: { x: Number, y: Number, z: Number }
+            Point3D: [{ x: Number }, { y: Number }, { z: Number }]
         });
         
         // Should work without 'new'
@@ -268,12 +268,12 @@ describe('ADT Extension', () => {
 
     test('extension of parameterized ADT', () => {
         const Maybe = data(({ T }) => ({
-            Nothing: {},
-            Just: { value: T }
+            Nothing: [],
+            Just: [{ value: T }]
         }));
         
         const Result = Maybe.extend(({ T }) => ({
-            Error: { message: String, value: T }
+            Error: [{ message: String }, { value: T }]
         }));
         
         // Use without instantiation
@@ -295,22 +295,22 @@ describe('ADT Extension', () => {
     test('comprehensive example: expression language extension', () => {
         // Base expression language with integers
         const IntExpr = data(({ Family }) => ({
-            IntLit: { value: Number },
-            Add: { left: Family, right: Family },
-            Mul: { left: Family, right: Family }
+            IntLit: [{ value: Number }],
+            Add: [{ left: Family }, { right: Family }],
+            Mul: [{ left: Family }, { right: Family }]
         }));
         
         // Extend with boolean expressions
         const IntBoolExpr = IntExpr.extend(({ Family }) => ({
-            BoolLit: { value: Boolean },
-            LessThan: { left: Family, right: Family },
-            And: { left: Family, right: Family }
+            BoolLit: [{ value: Boolean }],
+            LessThan: [{ left: Family }, { right: Family }],
+            And: [{ left: Family }, { right: Family }]
         }));
         
         // Extend further with variables
         const FullExpr = IntBoolExpr.extend(({ Family }) => ({
-            Var: { name: String },
-            Let: { name: String, value: Family, body: Family }
+            Var: [{ name: String }],
+            Let: [{ name: String }, { value: Family }, { body: Family }]
         }));
         
         // Build a complex expression: let x = 5 in x < 10

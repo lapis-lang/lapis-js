@@ -53,8 +53,11 @@ export type ADTClass = Constructor
 
 // Use any to break circular reference for recursive types
 export type FieldSpec = Predicate | BuiltInConstructor | ADTClass | FamilyRef | TypeParam
-export type StructDef = Record<string, FieldSpec>
-export type DataDecl = Record<string, object>
+// Field definition: single-key object like { x: Number }
+export type FieldDef = Record<string, FieldSpec>
+// Variant value: empty array [] for singleton, array of FieldDef for structured
+export type VariantValue = [] | readonly FieldDef[]
+export type DataDecl = Record<string, VariantValue>
 export type DataDeclFn = (context: DataContext) => DataDecl
 
 // Extract the first character of a string
@@ -75,27 +78,72 @@ type InvalidPropertyKeys<T> = {
     : never
 }[keyof T]
 
+// Check if an object has exactly one key
+// Uses union to tuple conversion to count keys
+type UnionToTuple<T> = (
+    (T extends any ? (t: T) => T : never) extends infer U
+    ? (U extends any ? (u: U) => any : never) extends (v: infer V) => any
+    ? V
+    : never
+    : never
+) extends (_: any) => infer W
+    ? [...UnionToTuple<Exclude<T, W>>, W]
+    : [];
+
+type HasSingleKey<T> = UnionToTuple<keyof T>['length'] extends 1 ? true : false
+
 // Check that all variant keys are PascalCase (start with uppercase letter)
 type CheckVariantKeys<D> = InvalidVariantKeys<D> extends never
     ? unknown
     : { [K in InvalidVariantKeys<D>]: `Variant '${K & string}' must be PascalCase` }
 
-// Check that all property keys in a struct are camelCase
-type CheckPropertyKeys<T> = InvalidPropertyKeys<T> extends never
-    ? T
-    : InvalidPropertyKeys<T>
+// Check each element in a tuple of field defs for invalid property names or multiple keys
+// Returns never if all valid, otherwise returns union of invalid property names or error strings
+type CheckFieldDefTuple<T extends readonly any[]> = T extends readonly []
+    ? never  // Empty tuple is valid
+    : {
+        [K in keyof T]: T[K] extends Record<string, any>
+        ? HasSingleKey<T[K]> extends false
+        ? 'FieldDefMustHaveExactlyOneKey'
+        : InvalidPropertyKeys<T[K]>
+        : never
+    }[number]  // This creates a union of all invalid keys (or never if all valid)
 
-// Check all structs in the declaration have valid property names
+// Check all variants' field def arrays (treating them as tuples)
+// Returns never if all valid, otherwise returns union of all invalid property names
 type CheckAllPropertyKeys<D> = {
-    [K in keyof D]: IsEmptyObject<D[K]> extends true
-    ? D[K]
-    : D[K] extends Record<string, any>
-    ? CheckPropertyKeys<D[K]>
-    : D[K]
+    [K in keyof D]: D[K] extends readonly any[]
+    ? CheckFieldDefTuple<D[K]>
+    : never
+}[keyof D]
+
+// Check if array is empty []
+type IsEmptyArray<T> = T extends readonly [] ? true : false
+
+// Extract field name from single-key object
+type FieldName<F> = F extends Record<string, any> ? keyof F : never
+
+// Extract field spec from single-key object  
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+type FieldSpecFromDef<F> = F extends Record<infer _K, infer V> ? V : never
+
+// Convert array of field defs to object type { x: number, y: number }
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+type FieldDefsToObject<Defs extends readonly FieldDef[], Self = any, TypeArgMap = {}> = {
+    readonly [K in Defs[number]as FieldName<K>]: FieldSpecFromDef<K> extends FieldSpec
+    ? InferFieldType<FieldSpecFromDef<K>, Self, TypeArgMap>
+    : never
 }
 
-// Check if an object is an empty object literal
-type IsEmptyObject<T> = keyof T extends never ? true : false
+// Convert array of field defs to tuple type [number, number]
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+type FieldDefsToTuple<Defs extends readonly FieldDef[], Self = any, TypeArgMap = {}> = {
+    [K in keyof Defs]: Defs[K] extends FieldDef
+    ? FieldSpecFromDef<Defs[K]> extends FieldSpec
+    ? InferFieldType<FieldSpecFromDef<Defs[K]>, Self, TypeArgMap>
+    : never
+    : never
+} extends infer T extends readonly any[] ? T : never
 
 // Infer the TypeScript type from a field specification
 
@@ -139,10 +187,10 @@ type InferTypeFromSpec<S> =
 // Helper to get variant instance types with type argument substitution
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 type VariantInstance<D, K extends keyof D, Self = any, TypeArgMap = {}> =
-    IsEmptyObject<D[K]> extends true
+    IsEmptyArray<D[K]> extends true
     ? { readonly constructor: { readonly name: K } }
-    : D[K] extends Record<string, any>
-    ? { readonly [F in keyof D[K]]: InferFieldType<D[K][F], Self, TypeArgMap> } & { readonly constructor: { readonly name: K } }
+    : D[K] extends readonly FieldDef[]
+    ? FieldDefsToObject<D[K], Self, TypeArgMap> & { readonly constructor: { readonly name: K } }
     : never
 
 // Union of all variant instances with type argument substitution
@@ -152,20 +200,43 @@ type VariantUnion<D, TypeArgMap = {}> = {
 }[keyof D]
 
 // Definition of the DataDef type with type argument substitution
+// Supports both named and positional arguments with full type safety
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export type DataDef<D extends DataDecl, TypeArgMap = {}> = (abstract new (...args: any[]) => VariantUnion<D, TypeArgMap>) & {
-    readonly [K in keyof D]: IsEmptyObject<D[K]> extends true
+    readonly [K in keyof D]: IsEmptyArray<D[K]> extends true
     ? VariantInstance<D, K, any, TypeArgMap>
-    : D[K] extends Record<string, any>
-    ? ((data: { [F in keyof D[K]]: InferFieldType<D[K][F], any, TypeArgMap> }) => VariantInstance<D, K, any, TypeArgMap>) & { new(data: { [F in keyof D[K]]: InferFieldType<D[K][F], any, TypeArgMap> }): VariantInstance<D, K, any, TypeArgMap> }
+    : D[K] extends readonly FieldDef[]
+    ? ((
+        // Named argument form: Point2D({ x: 3, y: 2 })
+        data: FieldDefsToObject<D[K], any, TypeArgMap>
+    ) => VariantInstance<D, K, any, TypeArgMap>) & ((
+        // Positional argument form: Point2D(3, 2)
+        ...args: FieldDefsToTuple<D[K], any, TypeArgMap>
+    ) => VariantInstance<D, K, any, TypeArgMap>) & {
+        new(data: FieldDefsToObject<D[K], any, TypeArgMap>): VariantInstance<D, K, any, TypeArgMap>
+        new(...args: FieldDefsToTuple<D[K], any, TypeArgMap>): VariantInstance<D, K, any, TypeArgMap>
+    }
     : never
 } & {
     extend<const E extends DataDecl>(
-        decl: E & CheckVariantKeys<E> & CheckAllPropertyKeys<E>
+        decl: unknown extends CheckVariantKeys<E>
+            ? (CheckAllPropertyKeys<E> extends never ? E : never)
+            : never
     ): DataDef<D & E, TypeArgMap>;
     extend<const E extends DataDecl>(
-        fn: (context: DataContext) => E & CheckVariantKeys<E> & CheckAllPropertyKeys<E>
+        fn: (context: DataContext) => (unknown extends CheckVariantKeys<E>
+            ? (CheckAllPropertyKeys<E> extends never ? E : never)
+            : never)
     ): DataDef<D & E, TypeArgMap>;
+}
+
+/**
+ * Checks if the value is an object literal.
+ * @param value The value to check.
+ * @returns Returns true if the value is an object literal, else false.
+ */
+function isObjectLiteral(value: unknown): value is Record<string, unknown> {
+    return value !== null && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype;
 }
 
 /**
@@ -196,6 +267,39 @@ function isTypeParam(value: unknown): value is TypeParam {
 }
 
 /**
+ * Helper to create a variant instance from either named or positional arguments
+ */
+function createVariantInstance<T>(
+    VariantClass: new (data: Record<string, unknown>) => T,
+    fieldNames: string[],
+    argumentsList: unknown[],
+    variantName: string,
+    prefix = ''
+): T {
+    // Detect argument style: named (object literal) vs positional
+    if (argumentsList.length === 1 && isObjectLiteral(argumentsList[0])) {
+        // Named argument form: Point2D({ x: 3, y: 2 })
+        return new VariantClass(argumentsList[0]);
+    } else {
+        // Positional argument form: Point2D(3, 2)
+        // Validate arity
+        if (argumentsList.length !== fieldNames.length) {
+            throw new TypeError(
+                `Wrong number of arguments. Expected: ${prefix}${variantName}(${fieldNames.join(', ')}), got: ${prefix}${variantName}(${argumentsList.map((_, i) => `arg${i}`).join(', ')})`
+            );
+        }
+
+        // Convert positional args to named object
+        const namedArgs: Record<string, unknown> = {};
+        fieldNames.forEach((fieldName, index) => {
+            namedArgs[fieldName] = argumentsList[index];
+        });
+
+        return new VariantClass(namedArgs);
+    }
+}
+
+/**
  * Creates a Family reference for recursive ADTs
  * Can be used directly as a field spec (Family) or called with type param (Family(T))
  */
@@ -221,11 +325,23 @@ function isFieldSpec(value: unknown): value is FieldSpec {
 }
 
 /**
- * Checks if an object is a struct definition (all values are field specs)
+ * Checks if a value is a field definition (single-key object with FieldSpec value)
  */
-function isStructDef(obj: object): obj is StructDef {
-    if (Object.keys(obj).length === 0) return false;
-    return Object.values(obj).every(isFieldSpec);
+function isFieldDef(value: unknown): value is FieldDef {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+    const keys = Object.keys(value);
+    if (keys.length !== 1) return false;
+    const fieldSpec = (value as Record<string, unknown>)[keys[0]];
+    return isFieldSpec(fieldSpec);
+}
+
+/**
+ * Checks if a variant value is structured (non-empty array of field defs)
+ */
+function isStructuredVariant(value: unknown): value is readonly FieldDef[] {
+    if (!Array.isArray(value)) return false;
+    if (value.length === 0) return false;  // Empty array [] = singleton
+    return value.every(isFieldDef);
 }
 
 /**
@@ -304,42 +420,67 @@ function validateField(value: unknown, spec: FieldSpec, fieldName: string, adtCl
  * Defines a new algebraic data type (ADT) with the given variants.
  * Each variant name must be in PascalCase (i.e., start with an uppercase letter).
  * The value of each variant can be:
- * - An empty object {} for simple enumerated types
- * - A struct definition with fields mapped to constructors, predicates, or other ADTs
+ * - An empty array [] for simple enumerated types (singletons)
+ * - An array of field definitions [{field: Type}, ...] for structured variants
  * Returns an abstract base class with variant classes/instances as static properties.
+ * 
+ * Structured variants support both named and positional arguments:
+ * - Named: Point2D({ x: 3, y: 2 })
+ * - Positional: Point2D(3, 2)
  * 
  * @param declOrFn - Either an object defining the ADT variants, or a function that receives a context and returns the variants. Use the function form for recursive ADTs.
  * @example
  * ```ts
- * const Color = data({ Red: {}, Green: {}, Blue: {} });
+ * const Color = data({ Red: [], Green: [], Blue: [] });
+ * 
+ * const Point = data({ 
+ *   Point2D: [{ x: Number }, { y: Number }],
+ *   Point3D: [{ x: Number }, { y: Number }, { z: Number }]
+ * });
+ * 
+ * const p1 = Point.Point2D(3, 2);              // Positional
+ * const p2 = Point.Point2D({ x: 3, y: 2 });    // Named
  * 
  * const ColorPoint = data({ 
- *   Point2: { x: Number, y: Number, color: Color },
- *   Point3: { x: Number, y: Number, z: Number, color: Color }
- * })
+ *   Point2: [{ x: Number }, { y: Number }, { color: Color }]
+ * });
  * 
- * const isEven = (x) => x % 2 === 0;
- * const EvenPoint = data({ Point2: { x: isEven, y: isEven }})
+ * const isEven = (x: unknown): x is number => typeof x === 'number' && x % 2 === 0;
+ * const EvenPoint = data({ Point2D: [{ x: isEven }, { y: isEven }] });
  * 
- * // Recursive ADT (non-parameterized) - can pass empty object or nothing
- * const Peano = data(({ Family }) => ({ Zero: {}, Succ: { pred: Family } }))
- * const zero = Peano.Zero  // Works if Peano doesn't use T
- * // OR: const Peano = data(({ Family }) => ...)({})  // Also works
+ * // Recursive ADT (non-parameterized)
+ * const Peano = data(({ Family }) => ({ 
+ *   Zero: [], 
+ *   Succ: [{ pred: Family }] 
+ * }));
+ * const two = Peano.Succ(Peano.Succ(Peano.Zero));  // Positional is much cleaner!
  * 
- * // Parameterized ADT - must instantiate with type arguments
- * // Both `tail: Family` and `tail: Family(T)` work - Family(T) is more explicit
- * const List = data(({ Family, T }) => ({ Nil: {}, Cons: { head: T, tail: Family(T) } }))
- * const NumList = List({ T: Number })
+ * // Parameterized ADT
+ * const List = data(({ Family, T }) => ({ 
+ *   Nil: [], 
+ *   Cons: [{ head: T }, { tail: Family }] 
+ * }));
+ * const NumList = List({ T: Number });
+ * const nums = NumList.Cons(1, NumList.Cons(2, NumList.Nil));
  * ```
  */
 export function data<const D extends DataDecl>(
-    decl: D & CheckVariantKeys<D> & CheckAllPropertyKeys<D>
+    decl: unknown extends CheckVariantKeys<D>
+        ? (CheckAllPropertyKeys<D> extends never ? D : never)
+        : never
 ): DataDef<D>;
 export function data<const D extends DataDecl>(
-    fn: (context: DataContext) => D & CheckVariantKeys<D> & CheckAllPropertyKeys<D>
+    fn: (context: DataContext) => (unknown extends CheckVariantKeys<D>
+        ? (CheckAllPropertyKeys<D> extends never ? D : never)
+        : never)
 ): DataDef<D> & (<TArgs extends TypeArgs>(typeArgs: TArgs) => DataDef<D, TArgs>);
 export function data<const D extends DataDecl>(
-    declOrFn: (D & CheckVariantKeys<D> & CheckAllPropertyKeys<D>) | ((context: DataContext) => D & CheckVariantKeys<D> & CheckAllPropertyKeys<D>)
+    declOrFn: (unknown extends CheckVariantKeys<D>
+        ? (CheckAllPropertyKeys<D> extends never ? D : never)
+        : never)
+        | ((context: DataContext) => (unknown extends CheckVariantKeys<D>
+            ? (CheckAllPropertyKeys<D> extends never ? D : never)
+            : never))
 ): DataDef<D> | (DataDef<D> & (<TArgs extends TypeArgs>(typeArgs: TArgs) => DataDef<D, TArgs>)) {
     const isCallbackStyle = typeof declOrFn === 'function';
 
@@ -394,9 +535,15 @@ export function data<const D extends DataDecl>(
 
                 // Create new variants for the extension
                 for (const [variantName, value] of Object.entries(extensionDecl)) {
-                    if (isStructDef(value as object)) {
-                        // Structured variant
-                        const structDef = value as StructDef;
+                    if (isStructuredVariant(value)) {
+                        // Structured variant with field definitions
+                        const fieldDefs = value as readonly FieldDef[];
+
+                        // Extract field names and specs from array of single-key objects
+                        const fields: Array<{ name: string; spec: FieldSpec }> = fieldDefs.map(fieldDef => {
+                            const [name, spec] = Object.entries(fieldDef)[0];
+                            return { name, spec: spec as FieldSpec };
+                        });
 
                         class VariantClass extends ExtendedADT {
                             constructor(data: Record<string, unknown>) {
@@ -404,14 +551,14 @@ export function data<const D extends DataDecl>(
 
                                 // Validate field types against specifications
                                 // Use root/result ADT for Family references
-                                for (const [fieldName, fieldSpec] of Object.entries(structDef)) {
-                                    validateField(data[fieldName], fieldSpec, fieldName, result);
+                                for (const { name, spec } of fields) {
+                                    validateField(data[name], spec, name, result);
                                 }
 
                                 // Assign fields to instance
-                                for (const [fieldName, fieldValue] of Object.entries(data)) {
-                                    Object.defineProperty(this, fieldName, {
-                                        value: fieldValue,
+                                for (const { name } of fields) {
+                                    Object.defineProperty(this, name, {
+                                        value: data[name],
                                         writable: false,
                                         enumerable: true,
                                         configurable: false
@@ -430,13 +577,17 @@ export function data<const D extends DataDecl>(
                         });
 
                         // Wrap in a Proxy to make it callable without 'new'
+                        const fieldNames = fields.map(f => f.name);
                         extendedResult[variantName] = new Proxy(VariantClass, {
                             apply(_target, _thisArg, argumentsList) {
-                                return new VariantClass(argumentsList[0]);
+                                return createVariantInstance(VariantClass, fieldNames, argumentsList, variantName);
+                            },
+                            construct(_target, argumentsList) {
+                                return createVariantInstance(VariantClass, fieldNames, argumentsList, variantName, 'new ');
                             }
                         });
                     } else {
-                        // Simple enumerated variant
+                        // Simple enumerated variant (empty array [])
                         class VariantClass extends ExtendedADT {
                             protected constructor() {
                                 super();
@@ -482,23 +633,29 @@ export function data<const D extends DataDecl>(
             : declOrFn;
 
         for (const [variantName, value] of Object.entries(decl)) {
-            if (isStructDef(value as object)) {
-                // Structured variant - create a constructable class
-                const structDef = value as StructDef;
+            if (isStructuredVariant(value)) {
+                // Structured variant with field definitions
+                const fieldDefs = value as readonly FieldDef[];
+
+                // Extract field names and specs from array of single-key objects
+                const fields: Array<{ name: string; spec: FieldSpec }> = fieldDefs.map(fieldDef => {
+                    const [name, spec] = Object.entries(fieldDef)[0];
+                    return { name, spec: spec as FieldSpec };
+                });
 
                 class VariantClass extends ADT {
                     constructor(data: Record<string, unknown>) {
                         super();
 
                         // Validate field types against specifications
-                        for (const [fieldName, fieldSpec] of Object.entries(structDef)) {
-                            validateField(data[fieldName], fieldSpec, fieldName, ADT);
+                        for (const { name, spec } of fields) {
+                            validateField(data[name], spec, name, ADT);
                         }
 
                         // Assign fields to instance
-                        for (const [fieldName, fieldValue] of Object.entries(data)) {
-                            Object.defineProperty(this, fieldName, {
-                                value: fieldValue,
+                        for (const { name } of fields) {
+                            Object.defineProperty(this, name, {
+                                value: data[name],
                                 writable: false,
                                 enumerable: true,
                                 configurable: false
@@ -517,13 +674,17 @@ export function data<const D extends DataDecl>(
                 });
 
                 // Wrap in a Proxy to make it callable without 'new'
+                const fieldNames = fields.map(f => f.name);
                 result[variantName] = new Proxy(VariantClass, {
                     apply(_target, _thisArg, argumentsList) {
-                        return new VariantClass(argumentsList[0]);
+                        return createVariantInstance(VariantClass, fieldNames, argumentsList, variantName);
+                    },
+                    construct(_target, argumentsList) {
+                        return createVariantInstance(VariantClass, fieldNames, argumentsList, variantName, 'new ');
                     }
                 });
             } else {
-                // Simple enumerated variant - create singleton instance
+                // Simple enumerated variant (empty array [])
                 class VariantClass extends ADT {
                     protected constructor() {
                         super();
