@@ -35,7 +35,7 @@ console.log(typeof data); // "function"
 
 ## Usage
 
-Lapis JS provides a powerful `data` function for defining algebraic data types (ADTs) using a class-based enumeration pattern. ADTs support simple enumerated types, structured data with fields, and predicate-based validation.
+Lapis JS provides a powerful `data` function for defining algebraic data types (ADTs) using a class-based enumeration pattern. ADTs support simple enumerated types, structured data with fields, subtyping, and predicate-based validation.
 
 ### Simple Enumerated Types
 
@@ -44,7 +44,7 @@ Define ADTs with simple variants (no data). Each variant is a singleton instance
 ```ts
 import { data } from '@lapis-lang/lapis-js';
 
-const Color = data({ Red: {}, Green: {}, Blue: {} });
+const Color = data({ Red: [], Green: [], Blue: [] });
 
 // Each variant is an instance
 console.log(Color.Red instanceof Color); // true
@@ -59,28 +59,35 @@ if (Color.Red instanceof Color) {
 **Requirements:**
 
 - Variant names must be **PascalCase** (start with uppercase letter)
-- Values must be empty objects `{}`
+- Values must be empty arrays `[]`
 
 ### Structured Data
 
-Define variants with typed fields. Structured variants are callable constructors (no `new` keyword needed):
+Define variants with typed fields using an array of single-key objects. Each object maps a field name to its type. Structured variants are callable constructors (no `new` keyword needed):
 
 ```ts
 const Point = data({
-    Point2D: { x: Number, y: Number },
-    Point3D: { x: Number, y: Number, z: Number }
+    Point2D: [{ x: Number }, { y: Number }],
+    Point3D: [{ x: Number }, { y: Number }, { z: Number }]
 });
 
-// Callable without 'new'
-const p2 = Point.Point2D({ x: 10, y: 20 });
+// Named arguments (object form)
+const p1 = Point.Point2D({ x: 10, y: 20 });
+console.log(p1.x); // 10
+console.log(p1.y); // 20
+
+// Positional arguments (tuple form)
+const p2 = Point.Point2D(10, 20);
 console.log(p2.x); // 10
 console.log(p2.y); // 20
-console.log(p2 instanceof Point.Point2D); // true
-console.log(p2 instanceof Point); // true
 
-// Also works with 'new' keyword if preferred
+// Both forms work with 'new' keyword if preferred
 const p3 = new Point.Point3D({ x: 1, y: 2, z: 3 });
-console.log(p3 instanceof Point); // true
+const p4 = new Point.Point3D(1, 2, 3);
+
+// All instances have proper type checking
+console.log(p1 instanceof Point.Point2D); // true
+console.log(p2 instanceof Point); // true
 ```
 
 **Supported field types:**
@@ -114,11 +121,11 @@ console.log(p3 instanceof Point); // true
 Fields can reference other ADTs with full type checking:
 
 ```ts
-const Color = data({ Red: {}, Green: {}, Blue: {} });
+const Color = data({ Red: [], Green: [], Blue: [] });
 
 const ColorPoint = data({ 
-    Point2: { x: Number, y: Number, color: Color },
-    Point3: { x: Number, y: Number, z: Number, color: Color }
+    Point2: [{ x: Number }, { y: Number }, { color: Color }],
+    Point3: [{ x: Number }, { y: Number }, { z: Number }, { color: Color }]
 });
 
 const p = ColorPoint.Point2({ x: 5, y: 10, color: Color.Red });
@@ -135,7 +142,7 @@ const isEven = (x: unknown): x is number =>
     typeof x === 'number' && x % 2 === 0;
 
 const EvenPoint = data({ 
-    Point2: { x: isEven, y: isEven }
+    Point2: [{ x: isEven }, { y: isEven }]
 });
 
 const p = EvenPoint.Point2({ x: 2, y: 4 }); // ✓ Valid
@@ -155,7 +162,7 @@ const inRange = (min: number, max: number) =>
         typeof x === 'number' && x >= min && x <= max;
 
 const Percentage = data({
-    Value: { amount: inRange(0, 100) }
+    Value: [{ amount: inRange(0, 100) }]
 });
 
 // String validation
@@ -163,7 +170,7 @@ const isEmail = (s: unknown): s is string =>
     typeof s === 'string' && s.includes('@');
 
 const User = data({
-    RegisteredUser: { email: isEmail, username: String }
+    RegisteredUser: [{ email: isEmail }, { username: String }]
 });
 ```
 
@@ -173,9 +180,9 @@ Combine simple and structured variants in the same ADT:
 
 ```ts
 const Shape = data({
-    Circle: { radius: Number },
-    Square: { side: Number },
-    Unknown: {}  // Simple variant (singleton)
+    Circle: [{ radius: Number }],
+    Square: [{ side: Number }],
+    Unknown: []  // Simple variant (singleton)
 });
 
 const circle = Shape.Circle({ radius: 5 });
@@ -190,9 +197,9 @@ console.log(unknown instanceof Shape); // true
 The class-based pattern enables powerful runtime type checking:
 
 ```ts
-const Color = data({ Red: {}, Green: {}, Blue: {} });
+const Color = data({ Red: [], Green: [], Blue: [] });
 const Point = data({ 
-    Point2D: { x: Number, y: Number }
+    Point2D: [{ x: Number }, { y: Number }]
 });
 
 // Check against the ADT base class
@@ -217,8 +224,8 @@ Define recursive data structures using the callback form with `Family` to refere
 ```ts
 // Peano numbers
 const Peano = data(({ Family }) => ({ 
-    Zero: {}, 
-    Succ: { pred: Family } 
+    Zero: [], 
+    Succ: [{ pred: Family }] 
 }));
 
 const zero = Peano.Zero;
@@ -228,8 +235,8 @@ console.log(two.pred.pred === zero); // true
 
 // Recursive list
 const List = data(({ Family }) => ({ 
-    Nil: {}, 
-    Cons: { head: Number, tail: Family } 
+    Nil: [], 
+    Cons: [{ head: Number }, { tail: Family }] 
 }));
 
 const empty = List.Nil;
@@ -243,8 +250,8 @@ console.log(list.tail.head); // 2
 
 // Binary tree
 const Tree = data(({ Family }) => ({
-    Leaf: { value: Number },
-    Node: { left: Family, right: Family, value: Number }
+    Leaf: [{ value: Number }],
+    Node: [{ left: Family }, { right: Family }, { value: Number }]
 }));
 
 const leaf1 = Tree.Leaf({ value: 1 });
@@ -266,8 +273,8 @@ Define generic data structures with type parameters using `T`, `U`, `V`, `W`, `X
 ```ts
 // Generic Maybe type
 const Maybe = data(({ T }) => ({
-    Nothing: {},
-    Just: { value: T }
+    Nothing: [],
+    Just: [{ value: T }]
 }));
 
 const justNum = Maybe.Just({ value: 42 });
@@ -276,19 +283,19 @@ const nothing = Maybe.Nothing;
 
 // Generic Either type with two type parameters
 const Either = data(({ U, V }) => ({
-    Left: { value: U },
-    Right: { value: V }
+    Left: [{ value: U }],
+    Right: [{ value: V }]
 }));
 
 // Heterogeneous Pair with different types
 const Pair = data(({ T, U }) => ({
-    MakePair: { first: T, second: U }
+    MakePair: [{ first: T }, { second: U }]
 }));
 
 // Parameterized recursive list
 const List = data(({ Family, T }) => ({
-    Nil: {},
-    Cons: { head: T, tail: Family(T) }  // Family(T) or just Family
+    Nil: [],
+    Cons: [{ head: T }, { tail: Family(T) }]  // Family(T) or just Family
 }));
 
 const numList = List.Cons({ head: 1, 
@@ -305,8 +312,8 @@ For stricter type validation, instantiate parameterized ADTs with specific types
 
 ```ts
 const List = data(({ Family, T }) => ({
-    Nil: {},
-    Cons: { head: T, tail: Family(T) }
+    Nil: [],
+    Cons: [{ head: T }, { tail: Family(T) }]
 }));
 
 // Instantiate with Number
@@ -327,7 +334,7 @@ NumList.Cons({ head: 'bad', tail: NumList.Nil });
 
 // Multiple type parameters
 const Pair = data(({ T, U }) => ({
-    MakePair: { first: T, second: U }
+    MakePair: [{ first: T }, { second: U }]
 }));
 
 const NumStrPair = Pair({ T: Number, U: String });
@@ -347,12 +354,12 @@ const pair = NumStrPair.MakePair({ first: 42, second: 'hello' });
 All ADT instances and the ADT itself are deeply frozen and immutable:
 
 ```ts
-const Color = data({ Red: {}, Green: {}, Blue: {} });
+const Color = data({ Red: [], Green: [], Blue: [] });
 
-Color.Red = {}; // ✗ Throws Error (cannot modify)
-Color.Yellow = {}; // ✗ Throws Error (cannot add properties)
+Color.Red = []; // ✗ Throws Error (cannot modify)
+Color.Yellow = []; // ✗ Throws Error (cannot add properties)
 
-const Point = data({ Point2D: { x: Number, y: Number } });
+const Point = data({ Point2D: [{ x: Number }, { y: Number }] });
 const p = Point.Point2D({ x: 10, y: 20 });
 p.x = 30; // ✗ Throws Error (instance is frozen)
 ```
@@ -363,10 +370,10 @@ Extend existing ADTs with new variants using the `.extend()` method. This enable
 
 ```ts
 // Base ADT
-const Color = data({ Red: {}, Green: {}, Blue: {} });
+const Color = data({ Red: [], Green: [], Blue: [] });
 
 // Extend with new variants
-const ExtendedColor = Color.extend({ Yellow: {}, Orange: {} });
+const ExtendedColor = Color.extend({ Yellow: [], Orange: [] });
 
 // All variants accessible on extended ADT
 console.log(ExtendedColor.Red);    // Inherited singleton
@@ -388,11 +395,11 @@ console.log(ExtendedColor.Red === Color.Red); // true
 
 ```ts
 const Point = data({
-    Point2D: { x: Number, y: Number }
+    Point2D: [{ x: Number }, { y: Number }]
 });
 
 const Point3D = Point.extend({
-    Point3D: { x: Number, y: Number, z: Number }
+    Point3D: [{ x: Number }, { y: Number }, { z: Number }]
 });
 
 // Create instances
@@ -419,20 +426,20 @@ Use the callback style with `Family` to extend recursive ADTs. The `Family` refe
 ```ts
 // Base expression language
 const IntExpr = data(({ Family }) => ({
-    IntLit: { value: Number },
-    Add: { left: Family, right: Family }
+    IntLit: [{ value: Number }],
+    Add: [{ left: Family }, { right: Family }]
 }));
 
 // Extend with boolean operations
 const IntBoolExpr = IntExpr.extend(({ Family }) => ({
-    BoolLit: { value: Boolean },
-    LessThan: { left: Family, right: Family }
+    BoolLit: [{ value: Boolean }],
+    LessThan: [{ left: Family }, { right: Family }]
 }));
 
 // Extend further with variables
 const FullExpr = IntBoolExpr.extend(({ Family }) => ({
-    Var: { name: String },
-    Let: { name: String, value: Family, body: Family }
+    Var: [{ name: String }],
+    Let: [{ name: String }, { value: Family }, { body: Family }]
 }));
 
 // Build complex expressions

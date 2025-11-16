@@ -5,8 +5,8 @@ import assert from 'node:assert/strict';
 describe('Parameterized ADTs', () => {
     test('List must be instantiated with type arguments', () => {
         const List = data(({ Family, T }) => ({ 
-            Nil: {}, 
-            Cons: { head: T, tail: Family(T) } 
+            Nil: [], 
+            Cons: [{ head: T }, { tail: Family(T) }] 
         }));
 
         // List itself should be a function
@@ -30,8 +30,8 @@ describe('Parameterized ADTs', () => {
 
     test('different type instantiations are separate', () => {
         const List = data(({ Family, T }) => ({ 
-            Nil: {}, 
-            Cons: { head: T, tail: Family(T) } 
+            Nil: [], 
+            Cons: [{ head: T }, { tail: Family(T) }] 
         }));
 
         const NumList = List({ T: Number });
@@ -55,8 +55,8 @@ describe('Parameterized ADTs', () => {
 
     test('supports Maybe with type parameter', () => {
         const Maybe = data(({ T }) => ({
-            Nothing: {},
-            Just: { value: T }
+            Nothing: [],
+            Just: [{ value: T }]
         }));
 
         const NumMaybe = Maybe({ T: Number });
@@ -78,8 +78,8 @@ describe('Parameterized ADTs', () => {
 
     test('supports Either with type parameter', () => {
         const Either = data(({ T }) => ({
-            Left: { value: T },
-            Right: { value: T }
+            Left: [{ value: T }],
+            Right: [{ value: T }]
         }));
 
         const StrEither = Either({ T: String });
@@ -94,8 +94,8 @@ describe('Parameterized ADTs', () => {
 
     test('supports Tree with type parameter', () => {
         const Tree = data(({ Family, T }) => ({
-            Leaf: { value: T },
-            Node: { left: Family, right: Family, value: T }
+            Leaf: [{ value: T }],
+            Node: [{ left: Family }, { right: Family }, { value: T }]
         }));
 
         const NumTree = Tree({ T: Number });
@@ -116,13 +116,13 @@ describe('Parameterized ADTs', () => {
 
     test('supports nested ADTs with type parameters', () => {
         const Maybe = data(({ T }) => ({
-            Nothing: {},
-            Just: { value: T }
+            Nothing: [],
+            Just: [{ value: T }]
         }));
 
         const List = data(({ Family, T }) => ({
-            Nil: {},
-            Cons: { head: T, tail: Family }
+            Nil: [],
+            Cons: [{ head: T }, { tail: Family }]
         }));
 
         const MaybeNum = Maybe({ T: Number });
@@ -145,8 +145,8 @@ describe('Parameterized ADTs', () => {
         const isPositive = (x: unknown): x is number => typeof x === 'number' && x > 0;
 
         const PositiveList = data(({ Family }) => ({
-            Nil: {},
-            Cons: { head: isPositive, tail: Family }
+            Nil: [],
+            Cons: [{ head: isPositive }, { tail: Family }]
         }));
 
         const list = PositiveList.Cons({ head: 5, tail: PositiveList.Nil });
@@ -160,8 +160,8 @@ describe('Parameterized ADTs', () => {
 
     test('supports parameterized List', () => {
         const List = data(({ Family, T }) => ({ 
-            Nil: {}, 
-            Cons: { head: T, tail: Family } 
+            Nil: [], 
+            Cons: [{ head: T }, { tail: Family }] 
         }));
 
         const NumList = List({ T: Number });
@@ -173,7 +173,7 @@ describe('Parameterized ADTs', () => {
     test('supports heterogeneous Pair with different type parameters', () => {
         // Pair with different types for first and second
         const Pair = data(({ T }) => ({
-            MakePair: { first: T, second: T }
+            MakePair: [{ first: T }, { second: T }]
         }));
 
         // Create a Pair that holds a Number and a String
@@ -195,8 +195,8 @@ describe('Parameterized ADTs', () => {
 
     test('freezes variants with type parameters', () => {
         const Maybe = data(({ T }) => ({
-            Nothing: {},
-            Just: { value: T }
+            Nothing: [],
+            Just: [{ value: T }]
         }));
 
         const NumMaybe = Maybe({ T: Number });
@@ -208,8 +208,8 @@ describe('Parameterized ADTs', () => {
 
     test('instanceof works with parameterized types', () => {
         const List = data(({ Family, T }) => ({ 
-            Nil: {}, 
-            Cons: { head: T, tail: Family } 
+            Nil: [], 
+            Cons: [{ head: T }, { tail: Family }] 
         }));
 
         const NumList = List({ T: Number });
@@ -224,8 +224,8 @@ describe('Parameterized ADTs', () => {
     test('comprehensive demo: Maybe, Either, and instantiated types', () => {
         // Generic Maybe without instantiation
         const Maybe = data(({ T }) => ({
-            Nothing: {},
-            Just: { value: T }
+            Nothing: [],
+            Just: [{ value: T }]
         }));
 
         const nothing = Maybe.Nothing;
@@ -238,8 +238,8 @@ describe('Parameterized ADTs', () => {
 
         // Generic Either
         const Either = data(({ T }) => ({
-            Left: { value: T },
-            Right: { value: T }
+            Left: [{ value: T }],
+            Right: [{ value: T }]
         }));
 
         const left = Either.Left({ value: 'error: not found' });
@@ -249,8 +249,8 @@ describe('Parameterized ADTs', () => {
 
         // Parameterized List with instantiation
         const List = data(({ Family, T }) => ({
-            Nil: {},
-            Cons: { head: T, tail: Family(T) }
+            Nil: [],
+            Cons: [{ head: T }, { tail: Family(T) }]
         }));
 
         // Number list

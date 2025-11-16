@@ -10,7 +10,7 @@ import { describe, test } from 'node:test';
 describe('Data Type Errors', () => {
     test('lowercase variant names should cause type error', () => {
         // @ts-expect-error - 'yellow' should cause type error (not PascalCase)
-        const Color = data({ Red: {}, Green: {}, yellow: {} });
+        const Color = data({ Red: [], Green: [], yellow: [] });
 
         // Prevent unused variable warning
         void Color;
@@ -18,7 +18,7 @@ describe('Data Type Errors', () => {
 
     test('camelCase variant names should cause type error', () => {
         // @ts-expect-error - 'inProgress' should cause type error (not PascalCase)
-        const Status = data({ NotStarted: {}, inProgress: {} });
+        const Status = data({ NotStarted: [], inProgress: [] });
 
         void Status;
     });
@@ -26,8 +26,8 @@ describe('Data Type Errors', () => {
     test('structured data with valid constructors is allowed', () => {
         // This should NOT cause type errors - structured data is now supported
         const Shape = data({
-            Circle: { radius: Number },
-            Square: { side: Number }
+            Circle: [{ radius: Number }],
+            Square: [{ side: Number }]
         });
 
         void Shape;
@@ -36,36 +36,36 @@ describe('Data Type Errors', () => {
     test('multiple PascalCase violations should cause type errors', () => {
         // @ts-expect-error - 'yellow' is lowercase
         const Color = data({
-            Red: {},
-            yellow: {},
-            Blue: {}
+            Red: [],
+            yellow: [],
+            Blue: []
         });
 
         void Color;
     });
 
     test('property names must be camelCase - PascalCase property should error', () => {
+        // @ts-expect-error - 'X' property is PascalCase, should be camelCase
         const Point = data({
-            // @ts-expect-error - 'X' property is PascalCase, should be camelCase
-            Point2D: { X: Number, Y: Number }
+            Point2D: [{ X: Number }, { Y: Number }]
         });
 
         void Point;
     });
 
     test('property names must be camelCase - underscore prefix should error', () => {
+        // @ts-expect-error - '_x' has underscore prefix
         const Point = data({
-            // @ts-expect-error - '_x' has underscore prefix
-            Point2D: { _x: Number, y: Number }
+            Point2D: [{ _x: Number }, { y: Number }]
         });
 
         void Point;
     });
 
     test('property names must be camelCase - UPPERCASE should error', () => {
+        // @ts-expect-error - 'HOST' is all uppercase
         const Config = data({
-            // @ts-expect-error - 'HOST' is all uppercase
-            Settings: { HOST: String, port: Number }
+            Settings: [{ HOST: String }, { port: Number }]
         });
 
         void Config;
@@ -74,8 +74,17 @@ describe('Data Type Errors', () => {
     test('valid camelCase property names are allowed', () => {
         // This should NOT cause type errors
         const Point = data({
-            Point2D: { x: Number, y: Number },
-            Point3D: { x: Number, y: Number, z: Number }
+            Point2D: [{ x: Number }, { y: Number }],
+            Point3D: [{ x: Number }, { y: Number }, { z: Number }]
+        });
+
+        void Point;
+    });
+
+    test('field definitions must have exactly one key', () => {
+        // @ts-expect-error - field def has multiple keys
+        const Point = data({
+            Point2D: [{ x: Number }, { y: Number, foo: Number }]
         });
 
         void Point;
@@ -83,7 +92,7 @@ describe('Data Type Errors', () => {
 
     test('function values should cause type error', () => {
         const Point = data({
-            Point2D: { x: Number, y: Number }
+            Point2D: [{ x: Number }, { y: Number }]
         });
 
         // TypeScript already rejects this because () => number is not assignable to number
@@ -98,7 +107,7 @@ describe('Data Type Errors', () => {
 
     test('missing required fields should cause type error', () => {
         const Point = data({
-            Point2D: { x: Number, y: Number }
+            Point2D: [{ x: Number }, { y: Number }]
         });
 
         // TypeScript should reject missing fields
@@ -112,7 +121,7 @@ describe('Data Type Errors', () => {
 
     test('extra fields should cause type error', () => {
         const Point = data({
-            Point2D: { x: Number, y: Number }
+            Point2D: [{ x: Number }, { y: Number }]
         });
 
         // TypeScript should reject extra fields
@@ -126,7 +135,7 @@ describe('Data Type Errors', () => {
 
     test('type parameters enforce compile-time type safety with instantiation', () => {
         const Pair = data(({ T }) => ({
-            MakePair: { first: T, second: T }
+            MakePair: [{ first: T }, { second: T }]
         }));
 
         // Instantiate with Number - both fields must be numbers
@@ -149,7 +158,7 @@ describe('Data Type Errors', () => {
 
     test('heterogeneous Pair with T and U enforces different types', () => {
         const Pair = data(({ T, U }) => ({
-            MakePair: { first: T, second: U }
+            MakePair: [{ first: T }, { second: U }]
         }));
 
         // Instantiate with Number and String - different types for each field

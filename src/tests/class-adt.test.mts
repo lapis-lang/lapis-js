@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 
 describe('Class-based ADT', () => {
     test('simple enumerations are singleton instances', () => {
-        const Color = data({ Red: {}, Green: {}, Blue: {} });
+        const Color = data({ Red: [], Green: [], Blue: [] });
 
         assert.ok(Color.Red instanceof Color);
         assert.ok(Color.Green instanceof Color);
@@ -13,7 +13,7 @@ describe('Class-based ADT', () => {
 
     test('structured variants are callable without new', () => {
         const Point = data({
-            Point2D: { x: Number, y: Number }
+            Point2D: [{ x: Number }, { y: Number }]
         });
 
         const p = Point.Point2D({ x: 10, y: 20 });
@@ -25,7 +25,7 @@ describe('Class-based ADT', () => {
 
     test('structured variants also work with new keyword', () => {
         const Point = data({
-            Point2D: { x: Number, y: Number }
+            Point2D: [{ x: Number }, { y: Number }]
         });
 
         const p = new Point.Point2D({ x: 10, y: 20 });
@@ -36,7 +36,7 @@ describe('Class-based ADT', () => {
     });
 
     test('instanceof checks work across variants', () => {
-        const Color = data({ Red: {}, Green: {}, Blue: {} });
+        const Color = data({ Red: [], Green: [], Blue: [] });
 
         // All variants should be instances of the same base class
         assert.strictEqual(
@@ -46,10 +46,10 @@ describe('Class-based ADT', () => {
     });
 
     test('nested ADT with proper type inference', () => {
-        const Color = data({ Red: {}, Green: {}, Blue: {} });
+        const Color = data({ Red: [], Green: [], Blue: [] });
 
         const ColorPoint = data({
-            Point2: { x: Number, y: Number, color: Color },
+            Point2: [{ x: Number }, { y: Number }, { color: Color }],
         });
 
         const p = ColorPoint.Point2({ x: 5, y: 10, color: Color.Red });

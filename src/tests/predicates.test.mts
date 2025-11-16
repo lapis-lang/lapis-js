@@ -7,7 +7,7 @@ describe('Predicates', () => {
         const isEven = (x: unknown): x is number => typeof x === 'number' && x % 2 === 0;
         
         const EvenPoint = data({ 
-            Point2: { x: isEven, y: isEven }
+            Point2: [{ x: isEven }, { y: isEven }]
         });
         
         const p = EvenPoint.Point2({ x: 2, y: 4 });
@@ -20,7 +20,7 @@ describe('Predicates', () => {
         const isEven = (x: unknown): x is number => typeof x === 'number' && x % 2 === 0;
         
         const EvenPoint = data({ 
-            Point2: { x: isEven, y: isEven }
+            Point2: [{ x: isEven }, { y: isEven }]
         });
         
         assert.throws(
@@ -34,7 +34,7 @@ describe('Predicates', () => {
             typeof s === 'string' && s.includes('@');
         
         const User = data({
-            RegisteredUser: { email: isEmail, username: String }
+            RegisteredUser: [{ email: isEmail }, { username: String }]
         });
         
         const user = User.RegisteredUser({ email: 'test@example.com', username: 'testuser' });
@@ -51,7 +51,7 @@ describe('Predicates', () => {
             (x: unknown): x is number => typeof x === 'number' && x >= min && x <= max;
         
         const Percentage = data({
-            Value: { amount: inRange(0, 100) }
+            Value: [{ amount: inRange(0, 100) }]
         });
         
         const valid = Percentage.Value({ amount: 50 });
@@ -67,7 +67,7 @@ describe('Predicates', () => {
         const isPositive = (x: unknown): x is number => typeof x === 'number' && x > 0;
         
         const Product = data({
-            Item: { name: String, price: isPositive, quantity: isPositive }
+            Item: [{ name: String }, { price: isPositive }, { quantity: isPositive }]
         });
         
         const item = Product.Item({ name: 'Widget', price: 9.99, quantity: 5 });
@@ -81,11 +81,11 @@ describe('Predicates', () => {
     });
 
     test('supports predicates with ADT fields', () => {
-        const Color = data({ Red: {}, Green: {}, Blue: {} });
+        const Color = data({ Red: [], Green: [], Blue: [] });
         const isEven = (x: unknown): x is number => typeof x === 'number' && x % 2 === 0;
         
         const ColorPoint = data({
-            EvenPoint: { x: isEven, y: isEven, color: Color }
+            EvenPoint: [{ x: isEven }, { y: isEven }, { color: Color }]
         });
         
         const p = ColorPoint.EvenPoint({ x: 2, y: 4, color: Color.Blue });
@@ -109,7 +109,7 @@ describe('Predicates', () => {
         };
         
         const PrimeNumber = data({
-            Prime: { value: isPrime }
+            Prime: [{ value: isPrime }]
         });
         
         const prime = PrimeNumber.Prime({ value: 7 });
@@ -126,7 +126,7 @@ describe('Predicates', () => {
             Array.isArray(x) && x.length > 0;
         
         const Collection = data({
-            Items: { items: isNonEmptyArray }
+            Items: [{ items: isNonEmptyArray }]
         });
         
         const collection = Collection.Items({ items: [1, 2, 3] });
