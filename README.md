@@ -356,3 +356,119 @@ const Point = data({ Point2D: { x: Number, y: Number } });
 const p = Point.Point2D({ x: 10, y: 20 });
 p.x = 30; // ✗ Throws Error (instance is frozen)
 ```
+
+### ADT Extension (Subtyping)
+
+Extend existing ADTs with new variants using the `.extend()` method. This enables open ADTs that can be incrementally extended while maintaining proper subtyping relationships:
+
+```ts
+// Base ADT
+const Color = data({ Red: {}, Green: {}, Blue: {} });
+
+// Extend with new variants
+const ExtendedColor = Color.extend({ Yellow: {}, Orange: {} });
+
+// All variants accessible on extended ADT
+console.log(ExtendedColor.Red);    // Inherited singleton
+console.log(ExtendedColor.Yellow); // New singleton
+
+// Proper subtyping: extended variants are instanceof base
+console.log(ExtendedColor.Yellow instanceof Color); // true
+console.log(ExtendedColor.Yellow instanceof ExtendedColor); // true
+
+// But inherited variants maintain original type
+console.log(ExtendedColor.Red instanceof Color); // true
+console.log(ExtendedColor.Red instanceof ExtendedColor); // false
+
+// Singleton identity preserved
+console.log(ExtendedColor.Red === Color.Red); // true
+```
+
+**Extending structured variants:**
+
+```ts
+const Point = data({
+    Point2D: { x: Number, y: Number }
+});
+
+const Point3D = Point.extend({
+    Point3D: { x: Number, y: Number, z: Number }
+});
+
+// Create instances
+const p2 = Point3D.Point2D({ x: 10, y: 20 });
+const p3 = Point3D.Point3D({ x: 1, y: 2, z: 3 });
+
+// Proper subtyping relationships
+console.log(p3 instanceof Point3D); // true
+console.log(p3 instanceof Point);   // true
+
+// Constructor identity preserved
+console.log(Point3D.Point2D === Point.Point2D); // true
+
+// Base instances are not instanceof extended type
+const p2Base = Point.Point2D({ x: 5, y: 10 });
+console.log(p2Base instanceof Point);   // true
+console.log(p2Base instanceof Point3D); // false
+```
+
+**Extending recursive ADTs:**
+
+Use the callback style with `Family` to extend recursive ADTs. The `Family` reference in extended variants accepts instances from any level of the hierarchy:
+
+```ts
+// Base expression language
+const IntExpr = data(({ Family }) => ({
+    IntLit: { value: Number },
+    Add: { left: Family, right: Family }
+}));
+
+// Extend with boolean operations
+const IntBoolExpr = IntExpr.extend(({ Family }) => ({
+    BoolLit: { value: Boolean },
+    LessThan: { left: Family, right: Family }
+}));
+
+// Extend further with variables
+const FullExpr = IntBoolExpr.extend(({ Family }) => ({
+    Var: { name: String },
+    Let: { name: String, value: Family, body: Family }
+}));
+
+// Build complex expressions
+const five = FullExpr.IntLit({ value: 5 });
+const x = FullExpr.Var({ name: 'x' });
+const lessThan = FullExpr.LessThan({ left: x, right: five });
+
+// Family accepts instances from any level
+const letExpr = FullExpr.Let({ 
+    name: 'x', 
+    value: five,      // IntExpr variant
+    body: lessThan    // IntBoolExpr variant
+});
+
+// Proper subtyping hierarchy
+console.log(letExpr instanceof FullExpr);    // true
+console.log(letExpr instanceof IntBoolExpr); // true
+console.log(letExpr instanceof IntExpr);     // true
+
+console.log(lessThan instanceof IntBoolExpr); // true
+console.log(lessThan instanceof IntExpr);     // true
+console.log(lessThan instanceof FullExpr);    // false
+
+console.log(five instanceof IntExpr);     // true
+console.log(five instanceof IntBoolExpr); // false
+console.log(five instanceof FullExpr);    // false
+```
+
+**Key points about extension:**
+
+- Extended ADTs have access to all parent variants (inheritance)
+- New variants can be simple enumerations or structured
+- Proper subtyping: extended variant instances are `instanceof` both extended and base ADTs
+- Inherited variants maintain their original type (not `instanceof` extended ADT)
+- Constructor and singleton identity is preserved across hierarchy
+- `Family` references accept instances from any level of the hierarchy
+- Variant name collisions throw errors
+- Extended ADTs are also frozen and immutable
+- Supports deep extension hierarchies (A → B → C → ...)
