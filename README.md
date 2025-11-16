@@ -285,6 +285,17 @@ console.log(arr.indexOf(Point.Point2D(3, 4))); // 1
 - Uses `Map` for primitive field values (number, string, boolean, bigint, symbol)
 - Equality is based on field value identity for objects (same reference)
 - Equality is based on value equality for primitives
+- Each variant has its own pool (scoped to the variant constructor via closure)
+
+**Memory considerations:**
+
+The pool accumulates all unique instances created during the ADT's lifetime. While the ADT remains in scope, instances with primitive-valued fields are retained indefinitely (unlike object-valued instances which can be garbage collected via `WeakMap`). This is typically not a concern because:
+
+- Most ADTs have bounded domains (e.g., game coordinates, database IDs, configuration values)
+- When the ADT goes out of scope, the entire pool is garbage collected
+- The memory cost equals what you'd use if keeping references to instances anyway
+
+⚠️ **Caution for long-running processes:** If your ADT remains in scope indefinitely (e.g., global variable in a server) and creates unbounded unique primitive values (e.g., UUIDs, timestamps, streaming data), the pool will grow without bound. For high-cardinality scenarios, consider whether strict equality benefits outweigh memory growth.
 
 ### Recursive ADTs
 

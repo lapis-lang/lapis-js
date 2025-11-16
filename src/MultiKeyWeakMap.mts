@@ -2,47 +2,23 @@
  * A multi-key map that supports both object and primitive keys for object pooling.
  * Uses WeakMap for object keys (allows garbage collection) and Map for primitive keys.
  * Enables strict equality for structurally equivalent variant instances.
+ * 
+ * Implementation note: This uses a hybrid approach where objects use WeakMap (for GC)
+ * and primitives use regular Map. The Map structure is nested, so when the entire
+ * MultiKeyWeakMap becomes unreachable, all nested Maps are garbage collected together.
  */
 export class MultiKeyWeakMap {
-    #map = new WeakMap<object, any>();
-    #primitiveMap = new Map<any, any>();
-    #null = Object.create(null);
-    #undefined = Object.create(null);
+    // Root map - can be either WeakMap (for object keys) or Map (for primitive keys)
+    #root: WeakMap<object, any> | Map<any, any> = new Map();
 
     /**
-     * Boxes a primitive key to make it usable as a WeakMap key.
-     * Objects and functions are returned as-is.
+     * Determines if a key is a primitive (needs Map) or object (can use WeakMap)
      */
-    #objKey(key: any): object {
-        if (key === null) return this.#null;
-        if (key === undefined) return this.#undefined;
-        
+    #isPrimitive(key: any): boolean {
         const type = typeof key;
-        if (type === 'object' || type === 'function') return key;
-        
-        // Box primitives
-        if (type === 'number') {
-            return this.#primitiveMap.get(key) ?? 
-                this.#primitiveMap.set(key, new Number(key)).get(key)!;
-        }
-        if (type === 'string') {
-            return this.#primitiveMap.get(key) ?? 
-                this.#primitiveMap.set(key, new String(key)).get(key)!;
-        }
-        if (type === 'boolean') {
-            return this.#primitiveMap.get(key) ?? 
-                this.#primitiveMap.set(key, new Boolean(key)).get(key)!;
-        }
-        if (type === 'bigint') {
-            return this.#primitiveMap.get(key) ?? 
-                this.#primitiveMap.set(key, Object(key)).get(key)!;
-        }
-        if (type === 'symbol') {
-            return this.#primitiveMap.get(key) ?? 
-                this.#primitiveMap.set(key, Object(key)).get(key)!;
-        }
-        
-        return key;
+        return key === null || key === undefined || 
+               type === 'number' || type === 'string' || type === 'boolean' ||
+               type === 'bigint' || type === 'symbol';
     }
 
     /**
@@ -53,22 +29,21 @@ export class MultiKeyWeakMap {
     get(...keys: any[]): any | undefined {
         if (keys.length === 0) return undefined;
         
-        let current: any = this.#map;
+        let current: WeakMap<object, any> | Map<any, any> = this.#root;
         
         for (let i = 0; i < keys.length - 1; i++) {
-            const objKey = this.#objKey(keys[i]);
-            const next = current.get(objKey);
+            const next = current.get(keys[i]);
             if (next === undefined) return undefined;
             current = next;
         }
         
         // Last key retrieves the stored value
-        const lastKey = this.#objKey(keys[keys.length - 1]);
-        return current.get(lastKey);
+        return current.get(keys[keys.length - 1]);
     }
 
     /**
      * Stores a value in the map using multiple keys.
+     * Creates nested Maps/WeakMaps based on key types.
      * @param keys Array of keys followed by the value to store
      */
     set(...keys: any[]): void {
@@ -79,20 +54,24 @@ export class MultiKeyWeakMap {
         const value = keys[keys.length - 1];
         const keyPath = keys.slice(0, -1);
         
-        let current: any = this.#map;
+        let current: WeakMap<object, any> | Map<any, any> = this.#root;
         
         for (let i = 0; i < keyPath.length - 1; i++) {
-            const objKey = this.#objKey(keyPath[i]);
-            let next = current.get(objKey);
+            const key = keyPath[i];
+            let next = current.get(key);
+            
             if (next === undefined) {
-                next = new WeakMap();
-                current.set(objKey, next);
+                // Create Map or WeakMap based on the NEXT key's type
+                const nextKey = keyPath[i + 1];
+                next = this.#isPrimitive(nextKey) ? new Map() : new WeakMap();
+                current.set(key, next);
             }
+            
             current = next;
         }
         
         // Set the value at the last key
-        const lastKey = this.#objKey(keyPath[keyPath.length - 1]);
+        const lastKey = keyPath[keyPath.length - 1];
         current.set(lastKey, value);
     }
 }
