@@ -1,3 +1,5 @@
+import { MultiKeyWeakMap } from './MultiKeyWeakMap.mjs';
+
 export type Predicate<T = unknown> = (value: T) => boolean
 
 // Generic constructor type that maps to its instance type
@@ -274,14 +276,23 @@ function createVariantInstance<T>(
     fieldNames: string[],
     argumentsList: unknown[],
     variantName: string,
+    pool: MultiKeyWeakMap,
     prefix = ''
 ): T {
     // Detect argument style: named (object literal) vs positional
-    if (argumentsList.length === 1 && isObjectLiteral(argumentsList[0])) {
+    let namedArgs: Record<string, unknown>;
+    
+    // To distinguish named vs positional when length === 1:
+    // - Named: object literal with ALL expected field names as keys
+    // - Positional: anything else (including object literals that don't match field names)
+    const firstArg = argumentsList[0];
+    if (argumentsList.length === 1 && 
+        isObjectLiteral(firstArg) &&
+        fieldNames.every(name => name in firstArg)) {
         // Named argument form: Point2D({ x: 3, y: 2 })
-        return new VariantClass(argumentsList[0]);
+        namedArgs = firstArg;
     } else {
-        // Positional argument form: Point2D(3, 2)
+        // Positional argument form: Point2D(3, 2) or Point2D(someObject)
         // Validate arity
         if (argumentsList.length !== fieldNames.length) {
             throw new TypeError(
@@ -290,13 +301,28 @@ function createVariantInstance<T>(
         }
 
         // Convert positional args to named object
-        const namedArgs: Record<string, unknown> = {};
+        namedArgs = {};
         fieldNames.forEach((fieldName, index) => {
             namedArgs[fieldName] = argumentsList[index];
         });
-
-        return new VariantClass(namedArgs);
     }
+
+    // Extract field values in order for pooling lookup
+    const fieldValues = fieldNames.map(name => namedArgs[name]);
+    
+    // Check pool for existing instance with same values
+    const pooled = pool.get(...fieldValues);
+    if (pooled !== undefined) {
+        return pooled;
+    }
+
+    // Create new instance
+    const instance = new VariantClass(namedArgs);
+    
+    // Store in pool
+    pool.set(...fieldValues, instance);
+    
+    return instance;
 }
 
 /**
@@ -576,14 +602,17 @@ export function data<const D extends DataDecl>(
                             configurable: false
                         });
 
+                        // Create pool for this variant
+                        const variantPool = new MultiKeyWeakMap();
+
                         // Wrap in a Proxy to make it callable without 'new'
                         const fieldNames = fields.map(f => f.name);
                         extendedResult[variantName] = new Proxy(VariantClass, {
                             apply(_target, _thisArg, argumentsList) {
-                                return createVariantInstance(VariantClass, fieldNames, argumentsList, variantName);
+                                return createVariantInstance(VariantClass, fieldNames, argumentsList, variantName, variantPool);
                             },
                             construct(_target, argumentsList) {
-                                return createVariantInstance(VariantClass, fieldNames, argumentsList, variantName, 'new ');
+                                return createVariantInstance(VariantClass, fieldNames, argumentsList, variantName, variantPool, 'new ');
                             }
                         });
                     } else {
@@ -673,14 +702,17 @@ export function data<const D extends DataDecl>(
                     configurable: false
                 });
 
+                // Create pool for this variant
+                const variantPool = new MultiKeyWeakMap();
+
                 // Wrap in a Proxy to make it callable without 'new'
                 const fieldNames = fields.map(f => f.name);
                 result[variantName] = new Proxy(VariantClass, {
                     apply(_target, _thisArg, argumentsList) {
-                        return createVariantInstance(VariantClass, fieldNames, argumentsList, variantName);
+                        return createVariantInstance(VariantClass, fieldNames, argumentsList, variantName, variantPool);
                     },
                     construct(_target, argumentsList) {
-                        return createVariantInstance(VariantClass, fieldNames, argumentsList, variantName, 'new ');
+                        return createVariantInstance(VariantClass, fieldNames, argumentsList, variantName, variantPool, 'new ');
                     }
                 });
             } else {
