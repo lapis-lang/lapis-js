@@ -4,9 +4,9 @@ import assert from 'node:assert/strict';
 
 describe('Parameterized ADTs', () => {
     test('List must be instantiated with type arguments', () => {
-        const List = data(({ Family, T }) => ({ 
-            Nil: [], 
-            Cons: [{ head: T }, { tail: Family(T) }] 
+        const List = data(({ Family, T }) => ({
+            Nil: [],
+            Cons: [{ head: T }, { tail: Family(T) }]
         }));
 
         // List itself should be a function
@@ -14,7 +14,7 @@ describe('Parameterized ADTs', () => {
 
         // Instantiate with Number
         const NumList = List({ T: Number });
-        
+
         // Now we can use the variants
         const empty = NumList.Nil;
         assert.strictEqual(empty.constructor.name, 'Nil');
@@ -29,9 +29,9 @@ describe('Parameterized ADTs', () => {
     });
 
     test('different type instantiations are separate', () => {
-        const List = data(({ Family, T }) => ({ 
-            Nil: [], 
-            Cons: [{ head: T }, { tail: Family(T) }] 
+        const List = data(({ Family, T }) => ({
+            Nil: [],
+            Cons: [{ head: T }, { tail: Family(T) }]
         }));
 
         const NumList = List({ T: Number });
@@ -103,7 +103,7 @@ describe('Parameterized ADTs', () => {
 
         const leaf1 = NumTree.Leaf({ value: 1 });
         const leaf2 = NumTree.Leaf({ value: 2 });
-        
+
         const tree = NumTree.Node({ left: leaf1, right: leaf2, value: 10 });
         assert.strictEqual(tree.value, 10);
         assert.strictEqual(tree.left.value, 1);
@@ -159,9 +159,9 @@ describe('Parameterized ADTs', () => {
     });
 
     test('supports parameterized List', () => {
-        const List = data(({ Family, T }) => ({ 
-            Nil: [], 
-            Cons: [{ head: T }, { tail: Family }] 
+        const List = data(({ Family, T }) => ({
+            Nil: [],
+            Cons: [{ head: T }, { tail: Family }]
         }));
 
         const NumList = List({ T: Number });
@@ -207,15 +207,15 @@ describe('Parameterized ADTs', () => {
     });
 
     test('instanceof works with parameterized types', () => {
-        const List = data(({ Family, T }) => ({ 
-            Nil: [], 
-            Cons: [{ head: T }, { tail: Family }] 
+        const List = data(({ Family, T }) => ({
+            Nil: [],
+            Cons: [{ head: T }, { tail: Family }]
         }));
 
         const NumList = List({ T: Number });
 
         const list = NumList.Cons({ head: 1, tail: NumList.Nil });
-        
+
         assert.ok(list instanceof (NumList as any));
         assert.ok(NumList.Nil instanceof (NumList as any));
         assert.ok(list instanceof (NumList.Cons as any));
