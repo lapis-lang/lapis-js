@@ -185,19 +185,19 @@ type FieldSpecFromDef<F> = F extends Record<infer _K, infer V> ? V : never
 type IsFamilyRef<F> = F extends FamilyRef ? true : false
 
 // Check if any field in a variant contains a Family reference
-type HasFamilyInVariant<V extends VariantValue> = 
-    V extends readonly FieldDef[] 
-    ? { [K in keyof V]: IsFamilyRef<FieldSpecFromDef<V[K]>> }[number] extends false 
-        ? false 
-        : true
+type HasFamilyInVariant<V extends VariantValue> =
+    V extends readonly FieldDef[]
+    ? { [K in keyof V]: IsFamilyRef<FieldSpecFromDef<V[K]>> }[number] extends false
+    ? false
+    : true
     : false
 
 // Check if a DataDecl is recursive (contains Family in any variant)
 // Note: This only detects direct Family recursion within the same ADT.
 // Mutual recursion through other ADTs is not detected by this type-level check.
-type IsRecursive<D extends DataDecl> = 
-    { [K in keyof D]: HasFamilyInVariant<D[K]> }[keyof D] extends false 
-    ? false 
+type IsRecursive<D extends DataDecl> =
+    { [K in keyof D]: HasFamilyInVariant<D[K]> }[keyof D] extends false
+    ? false
     : true
 
 // Convert array of field defs to object type { x: number, y: number }
@@ -387,7 +387,7 @@ export type DataDef<D extends DataDecl, TypeArgMap = {}, Operations = {}, IsExte
         spec: { out: R },
         handlersFn: (Family: DataDef<D, TypeArgMap, Operations, IsExtended>) => FoldHandlers<D, InferType<R>, TypeArgMap, Operations>
     ): DataDef<D, TypeArgMap, Operations & Record<Name, () => InferType<R>>, IsExtended>;
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+    // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 } : {}) & (IsExtended extends true ? {
     extendMatch<Name extends string, R>(
         name: Name extends keyof Operations ? Name : never,
@@ -406,7 +406,7 @@ export type DataDef<D extends DataDecl, TypeArgMap = {}, Operations = {}, IsExte
         name: Name extends keyof Operations ? Name : never,
         handlersFn: (Family: DataDef<D, TypeArgMap, Operations, IsExtended>) => ExtendFoldHandlers<D, InferType<R>, TypeArgMap, Operations>
     ): DataDef<D, TypeArgMap, Operations & Record<Name, () => InferType<R>>, IsExtended>;
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+    // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 } : {}) : {})
 
 
@@ -634,62 +634,62 @@ function installOperationOnVariant(variant: any, opName: string, transformer: Tr
     VariantClass.prototype[opName] = function (this: any) {
         // Stack-safe fold implementation using explicit stack
         // This avoids deep recursion by using an iterative post-order traversal
-        
+
         // eslint-disable-next-line @typescript-eslint/no-this-alias
         const root = this;
         // Note: A new WeakMap is created for every fold operation invocation.
         // Memoization is only effective within a single operation call, not across multiple calls.
         // This is intentional to ensure fresh results and avoid memory leaks.
         const memoCache = new WeakMap<any, any>();
-        
+
         // Work stack for iterative traversal: [instance, isProcessed]
         const stack: Array<{ instance: any; processed: boolean }> = [];
         stack.push({ instance: root, processed: false });
-        
+
         while (stack.length > 0) {
             const frame = stack[stack.length - 1];
-            
+
             // If already memoized, skip
             if (memoCache.has(frame.instance)) {
                 stack.pop();
                 continue;
             }
-            
+
             // If already processed children, apply handler and memoize
             if (frame.processed) {
                 stack.pop();
-                
+
                 const ctorTransform = transformer.getCtorTransform?.(frame.instance.constructor);
                 if (!ctorTransform) {
                     throw new Error(
                         `No handler for variant '${frame.instance.constructor.name}' in operation '${opName}'`
                     );
                 }
-                
+
                 // Check if this is a wildcard handler
                 const handlers = (transformer as any)[HandlerMapSymbol];
                 const isWildcard = handlers && !handlers[frame.instance.constructor.name];
-                
+
                 if (isWildcard && handlers._) {
                     // Wildcard handler receives the full instance
                     const result = ctorTransform.call(frame.instance, frame.instance);
                     memoCache.set(frame.instance, result);
                     continue;
                 }
-                
+
                 // Check if this is a singleton or structured variant
                 const isSingleton = frame.instance.constructor[IsSingleton];
                 const fieldNames = frame.instance.constructor._fieldNames;
                 const fieldSpecs = frame.instance.constructor._fieldSpecs;
-                
+
                 if (!isSingleton && fieldNames && fieldNames.length > 0) {
                     // Structured variant - extract fields with memoized values for Family fields
                     const fields: Record<string, any> = {};
-                    
+
                     for (let i = 0; i < fieldNames.length; i++) {
                         const fieldName = fieldNames[i];
                         const fieldValue = frame.instance[fieldName];
-                        
+
                         // Check if this field is a Family reference (recursive field)
                         if (fieldSpecs && fieldSpecs[i] && isFamilyRef(fieldSpecs[i].spec)) {
                             // Recursive field - use memoized value
@@ -704,7 +704,7 @@ function installOperationOnVariant(variant: any, opName: string, transformer: Tr
                             fields[fieldName] = fieldValue;
                         }
                     }
-                    
+
                     const result = ctorTransform.call(frame.instance, fields);
                     memoCache.set(frame.instance, result);
                 } else {
@@ -714,20 +714,20 @@ function installOperationOnVariant(variant: any, opName: string, transformer: Tr
                 }
                 continue;
             }
-            
+
             // Mark as processed and push children onto stack
             frame.processed = true;
-            
+
             // Push Family field children onto stack (reverse order for correct processing)
             const isSingleton = frame.instance.constructor[IsSingleton];
             const fieldNames = frame.instance.constructor._fieldNames;
             const fieldSpecs = frame.instance.constructor._fieldSpecs;
-            
+
             if (!isSingleton && fieldNames && fieldNames.length > 0) {
                 // Push children in reverse order so they're processed in correct order
                 for (let i = fieldNames.length - 1; i >= 0; i--) {
                     const fieldValue = frame.instance[fieldNames[i]];
-                    
+
                     // Check if this field is a Family reference and has the operation
                     // Intentionally skips Family fields that do not have the operation defined.
                     // This allows for extended ADTs where not all variants/fields implement all operations.
@@ -739,7 +739,7 @@ function installOperationOnVariant(variant: any, opName: string, transformer: Tr
                 }
             }
         }
-        
+
         // Return the memoized result for the root
         return memoCache.get(root);
     };
@@ -754,13 +754,13 @@ function installOperationOnVariant(variant: any, opName: string, transformer: Tr
 function collectVariantTypes(adt: any): Map<string, 'singleton' | 'structured'> {
     const allVariants = collectVariantsFromChain(adt);
     const variantTypes = new Map<string, 'singleton' | 'structured'>();
-    
+
     for (const [variantName, variant] of allVariants) {
         const checkTarget = typeof variant === 'function' ? variant : variant.constructor;
         const isSingleton = (checkTarget as any)[IsSingleton] === true;
         variantTypes.set(variantName, isSingleton ? 'singleton' : 'structured');
     }
-    
+
     return variantTypes;
 }
 
@@ -863,13 +863,15 @@ function mergeHandlersWithParent(
  * @param parentHandlers - Handler map from parent transformer
  * @param handlersInput - New handlers from child
  * @param variantTypes - Map of variant names to their types
+ * @param shadowAll - If true, shadow ALL inherited variants (for polymorphic recursion in fold)
  * @returns Map of variant names to their shadow variants
  */
 function createShadowVariants(
     actualADT: any,
     parentHandlers: Record<string, any>,
     handlersInput: Record<string, any>,
-    variantTypes: Map<string, 'singleton' | 'structured'>
+    variantTypes: Map<string, 'singleton' | 'structured'>,
+    shadowAll = false
 ): Map<string, any> {
     let shadowMap = shadowedVariants.get(actualADT);
     if (!shadowMap) {
@@ -948,6 +950,80 @@ function createShadowVariants(
         }
     }
 
+    // If shadowAll is true, also shadow ALL other inherited variants (even those without overrides)
+    // This is needed for polymorphic recursion in fold operations
+    if (shadowAll) {
+        const allVariants = collectVariantsFromChain(actualADT);
+        for (const [variantName, variant] of allVariants) {
+            // Skip if already shadowed
+            if (shadowMap.has(variantName)) continue;
+
+            // Skip wildcard
+            if (variantName === '_') continue;
+
+            // Check if this is an inherited variant
+            const isInherited = !Object.prototype.hasOwnProperty.call(actualADT, variantName);
+            if (!isInherited) continue; // Not inherited, no need to shadow
+
+            const variantType = variantTypes.get(variantName);
+
+            if (variantType === 'singleton') {
+                // Copy singleton variant
+                const OriginalClass = variant.constructor;
+
+                class CopiedVariantClass extends OriginalClass {
+                    private static _instance: typeof variant;
+                    static {
+                        this._instance = new CopiedVariantClass() as any;
+                        Object.freeze(this._instance);
+                    }
+                }
+
+                Object.defineProperty(CopiedVariantClass, 'name', {
+                    value: variantName,
+                    writable: false,
+                    configurable: false
+                });
+
+                shadowMap.set(variantName, (CopiedVariantClass as any)._instance);
+            } else {
+                // Copy structured variant
+                const fieldNames = variant._fieldNames || [];
+                const fieldSpecs = variant._fieldSpecs || [];
+                const isSingleton = variant[IsSingleton] || false;
+                const OriginalClass = variant.prototype?.constructor;
+
+                class CopiedVariantClass extends OriginalClass {
+                    constructor(data: Record<string, unknown>) {
+                        super(data);
+                    }
+                }
+
+                Object.defineProperty(CopiedVariantClass, 'name', {
+                    value: variantName,
+                    writable: false,
+                    configurable: false
+                });
+
+                CopiedVariantClass._fieldNames = fieldNames;
+                CopiedVariantClass._fieldSpecs = fieldSpecs;
+                (CopiedVariantClass as any)[IsSingleton] = isSingleton;
+
+                const copiedProxy = new Proxy(CopiedVariantClass, {
+                    apply(_target, _thisArg, argumentsList) {
+                        return createVariantInstance(CopiedVariantClass, fieldNames, argumentsList, variantName);
+                    },
+                    construct(_target, argumentsList) {
+                        return createVariantInstance(CopiedVariantClass, fieldNames, argumentsList, variantName, 'new ');
+                    }
+                });
+
+                (copiedProxy as any)[Symbol.for('VariantClass')] = CopiedVariantClass;
+                shadowMap.set(variantName, copiedProxy);
+            }
+        }
+    }
+
     return shadowMap;
 }
 
@@ -969,18 +1045,17 @@ function installExtendedOperation(
 
     for (const [variantName, variant] of allVariants) {
         const shadowedVariant = shadowMap.get(variantName);
-        
+
         if (shadowedVariant) {
             // Overridden variant - install on shadow
             installOperationOnVariant(shadowedVariant, name, transformer, false);
         } else {
-            // Check if this is a new variant (defined on this ADT)
-            const isNewVariant = Object.prototype.hasOwnProperty.call(actualADT, variantName);
-            if (isNewVariant) {
-                // New variant - install operation
-                installOperationOnVariant(variant, name, transformer, false);
-            }
-            // else: inherited variant, not overridden - skip (already has parent's operation)
+            // For all other variants (both new and inherited non-overridden),
+            // install the extended operation to support polymorphic recursion.
+            // Inherited variants need the extended operation so that when they
+            // recursively call the operation on Family fields, they use the
+            // extended transformer (with overridden handlers), not the parent's.
+            installOperationOnVariant(variant, name, transformer, false);
         }
     }
 }
@@ -1431,7 +1506,8 @@ export function data<const D extends DataDecl>(
                 actualADT._registerTransformer(name, transformer, true);
 
                 // Create shadow variants for overridden inherited variants
-                const shadowMap = createShadowVariants(actualADT, parentHandlers, handlersInput, variantTypes);
+                // For fold operations, we shadow ALL inherited variants to support polymorphic recursion
+                const shadowMap = createShadowVariants(actualADT, parentHandlers, handlersInput, variantTypes, true);
 
                 // Install operation on variants
                 installExtendedOperation(actualADT, shadowMap, name, transformer);
