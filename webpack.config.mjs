@@ -24,10 +24,10 @@ export default {
     resolve: {
         extensions: ['.mts', '.mjs', '.js', '.ts', '.json'],
         extensionAlias: {
-            /* eslint-disable @typescript-eslint/naming-convention */
+             
             '.js': ['.js', '.ts'],
             '.mjs': ['.mjs', '.mts']
-            /* eslint-enable @typescript-eslint/naming-convention */
+             
         }
     },
     output: {
