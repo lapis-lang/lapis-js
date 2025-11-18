@@ -801,7 +801,6 @@ function collectVariantsFromChain(adt: any, accumulated: Map<string, any> = new 
  * @param parentHandlers - Handler map from parent transformer
  * @param handlersInput - New handlers from child (may override parent)
  * @param variantTypes - Map of variant names to their types
- * @param thisContext - The ADT instance (for binding 'this' in handlers)
  * @returns Merged handler map with parent callbacks injected
  */
 function mergeHandlersWithParent(
