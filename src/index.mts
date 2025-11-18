@@ -415,8 +415,9 @@ function createFamily(): FamilyRef {
  * @param variant - The variant (constructor or singleton instance)
  * @param opName - Name of the operation to install
  * @param transformer - The transformer containing the operation logic
+ * @param skipIfExists - If true, skip installation if method already exists (default: true)
  */
-function installOperationOnVariant(variant: any, opName: string, transformer: Transformer): void {
+function installOperationOnVariant(variant: any, opName: string, transformer: Transformer, skipIfExists = true): void {
     let VariantClass: any;
 
     if (typeof variant === 'function') {
@@ -429,8 +430,12 @@ function installOperationOnVariant(variant: any, opName: string, transformer: Tr
         return;
     }
 
-    // Install method on variant class prototype (skip if already present)
-    if (!VariantClass?.prototype || VariantClass.prototype[opName]) {
+    // Skip if no prototype or if method already exists and we should skip
+    if (!VariantClass?.prototype) {
+        return;
+    }
+    
+    if (skipIfExists && VariantClass.prototype[opName]) {
         return;
     }
 
@@ -734,60 +739,10 @@ export function data<const D extends DataDecl>(
                 actualADT._registerTransformer(name, transformer);
 
                 // Install operation method on all variant prototypes
-                // Iterate through all variants (including inherited ones from parent ADTs)
                 const allVariants = collectVariantsFromChain(actualADT);
 
-                // Install operation on all collected variants
                 for (const [, variant] of allVariants) {
-                    let VariantClass: any;
-
-                    // Get the variant class
-                    if (typeof variant === 'function') {
-                        // Structured variant - Proxy-wrapped, but target is the VariantClass
-                        // We can access prototype directly through the Proxy
-                        VariantClass = variant;
-                    } else if (variant && typeof variant === 'object') {
-                        // Singleton variant - get constructor
-                        VariantClass = variant.constructor;
-                    } else {
-                        continue;
-                    }
-
-                    // Install method on variant class prototype
-                    if (VariantClass && VariantClass.prototype) {
-                        VariantClass.prototype[name] = function (this: any): R {
-                            const ctorTransform = transformer.getCtorTransform?.(this.constructor);
-                            if (!ctorTransform) {
-                                throw new Error(
-                                    `No handler for variant '${this.constructor.name}' in match operation '${name}'`
-                                );
-                            }
-
-                            // Check if this is a wildcard handler (by checking if the handler is from the wildcard)
-                            const handlers = (transformer as any)[HandlerMapSymbol];
-                            const isWildcard = handlers && !handlers[this.constructor.name];
-
-                            if (isWildcard && handlers._) {
-                                // Wildcard handler receives the full instance
-                                return ctorTransform(this);
-                            }
-
-                            // Get field names if structured variant
-                            const fieldNames = (this.constructor as any)._fieldNames;
-
-                            if (fieldNames && fieldNames.length > 0) {
-                                // Structured variant - extract fields as object for named destructuring
-                                const fields: Record<string, any> = {};
-                                for (const fieldName of fieldNames) {
-                                    fields[fieldName] = this[fieldName];
-                                }
-                                return ctorTransform(fields);
-                            } else {
-                                // Singleton variant - no fields to pass
-                                return ctorTransform();
-                            }
-                        };
-                    }
+                    installOperationOnVariant(variant, name, transformer, false);
                 }
 
                 return this;
