@@ -783,7 +783,7 @@ console.log(ExtendedColor.Red.toHex()); // '#FF0000' (shadow constructor, uses p
 const ExtendedColor = Color.extend({ Yellow: [] })
     .extendMatch('toHex', {
         Yellow() { return '#FFFF00'; },
-        Red() { return '#EE0000'; } // Ignore parent parameter, replace completely
+        Red() { return '#EE0000'; } // Replace handler completely (no parent access)
     });
 ```
 
