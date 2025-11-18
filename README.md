@@ -220,85 +220,45 @@ function isColor(value: unknown): value is typeof Color.Red {
 }
 ```
 
-### Strict Equality (Object Pooling)
+### Instance Identity
 
-Both singleton and structured variants support strict equality (`===`) comparisons. Variants with identical field values return the same instance through object pooling:
+**Important:** Each call to a variant constructor creates a new instance. Standard JavaScript identity rules apply:
 
 ```ts
-const Color = data({ Red: [], Green: [], Blue: [] });
-
-// Singletons always have strict equality
-const red = Color.Red;
-const red2 = Color.Red;
-console.log(red === red2); // true
-
 const Point = data({
-    Point2D: [{ x: Number }, { y: Number }],
-    Point3D: [{ x: Number }, { y: Number }, { z: Number }]
+    Point2D: [{ x: Number }, { y: Number }]
 });
 
-// Structured variants with same values are strictly equal
 const p1 = Point.Point2D(1, 2);
 const p2 = Point.Point2D(1, 2);
-console.log(p1 === p2); // true
+console.log(p1 === p2); // false - different instances
 
-// Works with both named and positional arguments
-const p3 = Point.Point2D({ x: 1, y: 2 });
-console.log(p1 === p3); // true
-
-// Different values create different instances
-const p4 = Point.Point2D(3, 4);
-console.log(p1 === p4); // false
+// Singletons are always the same instance
+const Color = data({ Red: [], Green: [], Blue: [] });
+const red1 = Color.Red;
+const red2 = Color.Red;
+console.log(red1 === red2); // true - same singleton instance
 ```
 
-**Benefits:**
-
-- **Native Collections:** Variants work seamlessly with `Set`, `Map`, `Array` methods (`includes`, `indexOf`)
-- **Efficient Deduplication:** Use `Set` to remove duplicates based on structural equality
-- **Memory Efficiency:** Identical values share the same instance
-- **Predictable Behavior:** Consistent with how singleton variants work
-
-**Examples with collections:**
+**Working with collections:** Use custom comparison for value equality when needed:
 
 ```ts
-const Point = data({ Point2D: [{ x: Number }, { y: Number }] });
+const Point = data({
+    Point2D: [{ x: Number }, { y: Number }]
+});
 
-// Works with Set for deduplication
-const points = new Set([
+const points = [
     Point.Point2D(1, 2),
     Point.Point2D(3, 4),
-    Point.Point2D(1, 2)  // Duplicate, automatically removed
-]);
-console.log(points.size); // 2
+    Point.Point2D(1, 2)  // Duplicate values, but different instance
+];
 
-// Works with Map as keys
-const pointMap = new Map();
-pointMap.set(Point.Point2D(1, 2), 'origin');
-console.log(pointMap.get(Point.Point2D(1, 2))); // 'origin'
-
-// Works with Array methods
-const arr = [Point.Point2D(1, 2), Point.Point2D(3, 4)];
-console.log(arr.includes(Point.Point2D(1, 2))); // true
-console.log(arr.indexOf(Point.Point2D(3, 4))); // 1
+// For deduplication by value, use custom logic:
+const unique = points.filter((p, i, arr) => 
+    arr.findIndex(q => p.x === q.x && p.y === q.y) === i
+);
+console.log(unique.length); // 2
 ```
-
-**Object pooling details:**
-
-- Uses `WeakMap` for object field values (enables garbage collection)
-- Uses `Map` for primitive field values (number, string, boolean, bigint, symbol)
-- Equality is based on field value identity for objects (same reference)
-- Equality is based on value equality for primitives
-- Each variant has its own pool (scoped to the variant constructor via closure)
-
-**Memory considerations:**
-
-The pool accumulates all unique instances created during the ADT's lifetime. While the ADT remains in scope, instances with primitive-valued fields are retained indefinitely (unlike object-valued instances which can be garbage collected via `WeakMap`). This is typically not a concern because:
-
-- Most ADTs have bounded domains (e.g., game coordinates, database IDs, configuration values)
-- When the ADT goes out of scope, the entire pool is garbage collected
-- The memory cost equals what you'd use if keeping references to instances anyway
-
-⚠️ **Caution for long-running processes:** If your ADT remains in scope indefinitely (e.g., global variable in a server) and creates unbounded unique primitive values (e.g., UUIDs, timestamps, streaming data), the pool will grow without bound. For high-cardinality scenarios, consider whether strict equality benefits outweigh memory growth.
 
 ### Recursive ADTs
 
@@ -777,6 +737,99 @@ console.log(ExtendedColor.Red.isWarm()); // true (new operation)
 console.log(ExtendedColor.Yellow.isWarm()); // true
 ```
 
+### Extending Match Operations
+
+Use `.extendMatch()` to add handlers for new variants in extended ADTs while inheriting parent behavior:
+
+```ts
+const Color = data({ Red: [], Green: [], Blue: [] })
+    .match('toHex', { out: String }, {
+        Red() { return '#FF0000'; },
+        Green() { return '#00FF00'; },
+        Blue() { return '#0000FF'; }
+    });
+
+const ExtendedColor = Color.extend({ Yellow: [], Orange: [] })
+    .extendMatch('toHex', {
+        Yellow() { return '#FFFF00'; },
+        Orange() { return '#FFA500'; }
+    });
+
+// Inherited variants use parent handlers
+console.log(ExtendedColor.Red.toHex()); // '#FF0000'
+
+// New variants use extended handlers
+console.log(ExtendedColor.Yellow.toHex()); // '#FFFF00'
+```
+
+**Override parent handlers:**
+
+```ts
+const ExtendedColor = Color.extend({ Yellow: [] })
+    .extendMatch('toHex', {
+        Yellow() { return '#FFFF00'; },
+        Red(fields) { return fields[parent]!().replace('FF', 'EE'); } // Use parent
+    });
+
+// Note: Override only affects NEW instances created after extendMatch
+// Overriding breaks constructor identity: Color.Red uses the original handler, but ExtendedColor.Red is a new shadow constructor with the override.
+console.log(Color.Red.toHex()); // '#FF0000' (unchanged)
+console.log(ExtendedColor.Red.toHex()); // '#FF0000' (shadow constructor, uses parent)
+```
+
+**Replacing parent handlers (ignoring parent):**
+
+```ts
+const ExtendedColor = Color.extend({ Yellow: [] })
+    .extendMatch('toHex', {
+        Yellow() { return '#FFFF00'; },
+        Red() { return '#EE0000'; } // Replace handler completely (no parent access)
+    });
+```
+
+**Wildcard inheritance:**
+
+```ts
+const Color = data({ Red: [], Green: [] })
+    .match('toHex', { out: String }, {
+        Red() { return '#FF0000'; },
+        _(_instance) { return '#UNKNOWN'; } // Wildcard for undefined variants
+    });
+
+const ExtendedColor = Color.extend({ Blue: [] })
+    .extendMatch('toHex', {
+        // Blue not specified - inherits wildcard from parent
+    });
+
+console.log(ExtendedColor.Blue.toHex()); // '#UNKNOWN' (wildcard from parent)
+```
+
+**Overriding wildcard handler:**
+
+When you override a wildcard handler, it receives the `parent` parameter first (like any other override):
+
+```ts
+const ExtendedColor = Color.extend({ Blue: [] })
+    .extendMatch('toHex', {
+        _({ instance, [parent]: _parent }) {
+            return `#EXTENDED-${instance.constructor.name}`;
+        }
+    });
+
+console.log(ExtendedColor.Blue.toHex()); // '#EXTENDED-Blue'
+```
+
+**Key points about extendMatch:**
+
+- Automatically inherits all parent handlers
+- Only need to specify handlers for **new variants**
+- **Overriding parent handlers**: When you override an existing variant, the handler receives a `fields` object containing the optional `parent` symbol (accessed as `fields[parent]`)
+- You can ignore the `fields[parent]` property if you don't need it
+- Wildcard handlers are inherited from parent
+- **Only one extendMatch per operation per ADT level**: Calling `.extendMatch('foo', ...)` twice on the same operation throws an error. To override again, use `.extend()` to create a new ADT level first.
+- Overridden variants get new shadow constructors (constructor identity is broken)
+- Supports both object and callback form: `.extendMatch('op', handlers)` or `.extendMatch('op', (Family) => handlers)`
+
 ### Error Handling
 
 **Missing handler:**
@@ -815,3 +868,155 @@ Point.match('x', { out: Number }, {
 - New variants in extended ADTs inherit parent operations
 - Name collision detection prevents conflicts with variant fields
 - Chaining supported: `.match(...).match(...)` or `.extend(...).match(...)`
+
+### Extending Operations with `.extendMatch()`
+
+When extending an ADT, use `.extendMatch()` to add operations to new variants or override operations for inherited variants. This enables specialization and customization of behavior in extended ADTs.
+
+**Basic usage:**
+
+```ts
+import { data, parent } from '@lapis-lang/lapis-js';
+
+const Color = data({ Red: [], Green: [], Blue: [] })
+    .match('brightness', { out: Number }, {
+        Red() { return 100; },
+        Green() { return 150; },
+        Blue() { return 50; }
+    });
+
+// Extend with new variants
+const ExtendedColor = Color.extend({ Yellow: [], Orange: [] })
+    .extendMatch('brightness', {
+        Yellow() { return 200; },  // New variant handler
+        Orange() { return 180; }   // New variant handler
+    });
+
+console.log(ExtendedColor.Yellow.brightness()); // 200
+console.log(ExtendedColor.Red.brightness());    // 100 (inherited)
+```
+
+**Override with parent access:**
+
+Use the `parent` symbol to access the parent handler when overriding. The parent callback is provided in the `fields` object:
+
+```ts
+import { data, parent } from '@lapis-lang/lapis-js';
+
+const Color = data({ Red: [], Green: [], Blue: [] })
+    .match('brightness', { out: Number }, {
+        Red() { return 100; },
+        Green() { return 150; },
+        Blue() { return 50; }
+    });
+
+const ExtendedColor = Color.extend({ Yellow: [], Orange: [] })
+    .extendMatch('brightness', {
+        Yellow() { return 200; },
+        Orange() { return 180; },
+        // Override inherited variant
+        Red(fields) { 
+            const parentValue = fields[parent]!();
+            return parentValue * 1.5;  // 150 (brighter red)
+        }
+    });
+
+console.log(ExtendedColor.Red.brightness()); // 150 (overridden)
+console.log(Color.Red.brightness());         // 100 (original unchanged)
+```
+
+**Override structured variants:**
+
+For structured variants, the `parent` symbol is included alongside the field destructuring:
+
+```ts
+import { data, parent } from '@lapis-lang/lapis-js';
+
+const Point = data({
+    Point2D: [{ x: Number }, { y: Number }]
+})
+    .match('magnitude', { out: Number }, {
+        Point2D({ x, y }) { return Math.sqrt(x * x + y * y); }
+    });
+
+const Point3D = Point.extend({
+    Point3D: [{ x: Number }, { y: Number }, { z: Number }]
+})
+    .extendMatch('magnitude', {
+        Point3D({ x, y, z }) { 
+            return Math.sqrt(x * x + y * y + z * z); 
+        },
+        // Override with scaling
+        Point2D(fields) { 
+            const baseValue = fields[parent]!();
+            return baseValue * 10;  // Scale by 10
+        }
+    });
+
+const p2 = Point.Point2D({ x: 3, y: 4 });
+const p2Extended = Point3D.Point2D({ x: 3, y: 4 });
+
+console.log(p2.magnitude());         // 5 (base)
+console.log(p2Extended.magnitude()); // 50 (overridden and scaled)
+```
+
+**Key differences from `.match()`:**
+
+- **Import required:** Must import `parent` symbol: `import { data, parent } from '@lapis-lang/lapis-js'`
+- **Parent access:** Override handlers receive `fields[parent]` callback to invoke parent behavior
+- **Singleton handlers:** For singletons, `fields` is `{ [parent]: () => R }`
+- **Structured handlers:** For structured, `fields` includes both field destructuring and `[parent]`
+- **Constructor copying:** Overridden variants get new constructors (breaks constructor identity)
+- **Instance dispatch:** Extended ADT instances use override handlers; base ADT instances use original handlers
+
+**Override behavior:**
+
+When you override a variant, instances created from the extended ADT use the override:
+
+```ts
+// Base instances use base handlers
+const baseRed = Color.Red;
+console.log(baseRed.brightness()); // 100
+
+// Extended instances use overrides
+const extendedRed = ExtendedColor.Red;
+console.log(extendedRed.brightness()); // 150
+
+// Constructor identity broken for overridden variants
+console.log(ExtendedColor.Red === Color.Red); // false (overridden)
+console.log(ExtendedColor.Blue === Color.Blue); // true (not overridden)
+```
+
+**Mixing new and override handlers:**
+
+```ts
+const ExtendedColor = Color.extend({ Yellow: [], Orange: [] })
+    .extendMatch('brightness', {
+        Yellow() { return 200; },      // New variant
+        Orange() { return 180; },      // New variant
+        Red(fields) {                  // Override
+            return fields[parent]!() + 50;
+        }
+    });
+```
+
+### Key Points Summary
+
+**Pattern Matching:**
+
+- `.match()` performs **non-recursive** pattern matching (does not recurse into fields)
+- Handlers use **named form only** for clarity and partial destructuring
+- Operations are installed on **variant class prototypes** (callable on variant instances)
+- Wildcard handler `_` receives the full variant instance
+- Operations are inherited by extended ADTs
+- Name collision detection prevents conflicts with variant fields
+- Chaining supported: `.match(...).match(...)` or `.extend(...).match(...)`
+
+**Operation Extension:**
+
+- `.extendMatch()` adds operations to new variants and overrides operations for inherited variants
+- Override handlers access parent behavior via `fields[parent]!()`
+- Must import `parent` symbol: `import { data, parent } from '@lapis-lang/lapis-js'`
+- Overridden variants get new constructors (constructor identity broken)
+- Base ADT instances unaffected by overrides in extended ADTs
+

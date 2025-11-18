@@ -224,6 +224,24 @@ describe('Match Operation', () => {
                 /Operation name 'constructor' conflicts/
             );
         });
+
+        test('should throw error when defining same operation name twice', () => {
+            const Color = data({ Red: [], Green: [], Blue: [] })
+                .match('toHex', { out: String }, {
+                    Red() { return '#FF0000'; },
+                    Green() { return '#00FF00'; },
+                    Blue() { return '#0000FF'; }
+                });
+
+            assert.throws(
+                () => (Color as any).match('toHex', { out: String }, {
+                    Red() { return '#AAAAAA'; },
+                    Green() { return '#BBBBBB'; },
+                    Blue() { return '#CCCCCC'; }
+                }),
+                /Operation 'toHex' is already defined on this ADT/
+            );
+        });
     });
 
     describe('Recursive ADTs (non-recursive match)', () => {
@@ -300,6 +318,72 @@ describe('Match Operation', () => {
             const p = Point.Point2D({ x: 3, y: 4 });
             const mag: number = p.magnitude();
             assert.strictEqual(mag, 5);
+        });
+
+        test('handlers should have access to this context', () => {
+            const Color = data({ Red: [], Green: [], Blue: [] })
+                .match('getName', { out: String }, {
+                    Red() { return this.constructor.name; },
+                    Green() { return this.constructor.name; },
+                    Blue() { return this.constructor.name; }
+                });
+
+            assert.strictEqual(Color.Red.getName(), 'Red');
+            assert.strictEqual(Color.Green.getName(), 'Green');
+            assert.strictEqual(Color.Blue.getName(), 'Blue');
+        });
+
+        test('structured variant handlers should have access to this context', () => {
+            const Point = data({
+                Point2D: [{ x: Number }, { y: Number }]
+            }).match('describe', { out: String }, {
+                Point2D({ x, y }) {
+                    return `${this.constructor.name} at (${x}, ${y})`;
+                }
+            });
+
+            const p = Point.Point2D({ x: 3, y: 4 });
+            assert.strictEqual(p.describe(), 'Point2D at (3, 4)');
+        });
+
+        test('handlers can call other operations via this', () => {
+            const Color = data({ Red: [], Green: [], Blue: [] })
+                .match('toHex', { out: String }, {
+                    Red() { return '#FF0000'; },
+                    Green() { return '#00FF00'; },
+                    Blue() { return '#0000FF'; }
+                })
+                .match('toRGB', { out: String }, {
+                    Red() { return 'rgb(255, 0, 0)'; },
+                    Green() { return 'rgb(0, 255, 0)'; },
+                    Blue() { return 'rgb(0, 0, 255)'; }
+                })
+                .match('describe', { out: String }, {
+                    Red() { return `Red: ${this.toHex()} or ${this.toRGB()}`; },
+                    Green() { return `Green: ${this.toHex()}`; },
+                    Blue() { return `Blue: ${this.toRGB()}`; }
+                });
+
+            assert.strictEqual(Color.Red.describe(), 'Red: #FF0000 or rgb(255, 0, 0)');
+            assert.strictEqual(Color.Green.describe(), 'Green: #00FF00');
+            assert.strictEqual(Color.Blue.describe(), 'Blue: rgb(0, 0, 255)');
+        });
+
+        test('structured variant handlers can call other operations', () => {
+            const Point = data({
+                Point2D: [{ x: Number }, { y: Number }]
+            })
+                .match('magnitude', { out: Number }, {
+                    Point2D({ x, y }) { return Math.sqrt(x * x + y * y); }
+                })
+                .match('describe', { out: String }, {
+                    Point2D({ x, y }) {
+                        return `Point(${x}, ${y}) has magnitude ${this.magnitude()}`;
+                    }
+                });
+
+            const p = Point.Point2D({ x: 3, y: 4 });
+            assert.strictEqual(p.describe(), 'Point(3, 4) has magnitude 5');
         });
     });
 

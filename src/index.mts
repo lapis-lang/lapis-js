@@ -1,4 +1,3 @@
-import { MultiKeyWeakMap } from './MultiKeyWeakMap.mjs';
 import {
     type Transformer,
     adtTransformers,
@@ -8,6 +7,18 @@ import {
 
 export type { Transformer, TransformerConfig } from './Transformer.mjs';
 export { createTransformer, composeTransformers } from './Transformer.mjs';
+
+// Symbol for parent callback in extendMatch handlers
+export const parent = Symbol('parent');
+
+// Symbol to mark singleton variants (vs structured variants with fields)
+const IsSingleton = Symbol('IsSingleton');
+
+// WeakMap to track constructor copies for overridden variants
+const shadowedVariants = new WeakMap<any, Map<string, any>>();
+
+// WeakMap to track shadow proxies for ADTs with overridden variants
+const shadowProxies = new WeakMap<any, any>();
 
 export type Predicate<T = unknown> = (value: T) => boolean
 
@@ -248,12 +259,40 @@ type MatchHandlers<D, R, TypeArgMap = {}, Operations = {}> =
         [K in keyof D]: HandlerFn<D, K, R, TypeArgMap>
     } & {
         _?: never  // Wildcard not allowed when all cases are handled
-    })
+    } & ThisType<VariantUnion<D, TypeArgMap, Operations>>)
     | ({
         [K in keyof D]?: HandlerFn<D, K, R, TypeArgMap>
     } & {
         _: (instance: VariantUnion<D, TypeArgMap, Operations>) => R  // Wildcard required when cases are optional
-    })
+    } & ThisType<VariantUnion<D, TypeArgMap, Operations>>)
+
+
+// Handler for extendMatch - with parent parameter for overrides
+// Compute field type for a variant, with optional parent injected
+type VariantFieldType<D, K extends keyof D, TypeArgMap> =
+    HandlerParam<D, K, TypeArgMap> extends [infer P] ? P : never
+
+// Add parent symbol to fields for override handlers (optional, since it's only present for overrides)
+type FieldsWithOptionalParent<Fields, R> = Fields & { [K in typeof parent]?: () => R }
+
+// Handler for a specific variant in extendMatch
+// Singleton handlers: parameterless for new variants, fields object with parent for overrides
+// Structured handlers: always receive fields object with optional parent
+type VariantHandler<D, K extends keyof D, R, TypeArgMap> = 
+    IsEmptyArray<D[K]> extends true
+    ? (() => R) | ((fields: { [K in typeof parent]?: () => R }) => R)  // Singleton: both forms allowed
+    : (fields: FieldsWithOptionalParent<VariantFieldType<D, K, TypeArgMap>, R>) => R  // Structured: fields with optional parent
+
+// Handlers for extendMatch operation
+// Allows both overrides (with parent) for existing variants and new handlers for new variants
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+type ExtendMatchHandlers<D, R, TypeArgMap = {}, Operations = {}> = {
+    // Typed handlers for known variants
+    [K in keyof D]?: VariantHandler<D, K, R, TypeArgMap>
+} & {
+    // Wildcard handler receives object with optional parent callback and instance
+    _?: (fields: { instance: VariantUnion<D, TypeArgMap, Operations> } & { [K in typeof parent]?: () => R }) => R
+} & ThisType<VariantUnion<D, TypeArgMap, Operations>>
 
 
 // Definition of the DataDef type with type argument substitution
@@ -295,6 +334,14 @@ export type DataDef<D extends DataDecl, TypeArgMap = {}, Operations = {}> = (abs
         spec: { out: any },
         handlersFn: (Family: DataDef<D, TypeArgMap, Operations>) => MatchHandlers<D, R, TypeArgMap, Operations>
     ): DataDef<D, TypeArgMap, Operations & Record<Name, () => R>>;
+    extendMatch<Name extends string, R>(
+        name: Name extends keyof Operations ? Name : never,
+        handlers: ExtendMatchHandlers<D, R, TypeArgMap, Operations>
+    ): DataDef<D, TypeArgMap, Operations & Record<Name, () => R>>;
+    extendMatch<Name extends string, R>(
+        name: Name extends keyof Operations ? Name : never,
+        handlersFn: (Family: DataDef<D, TypeArgMap, Operations>) => ExtendMatchHandlers<D, R, TypeArgMap, Operations>
+    ): DataDef<D, TypeArgMap, Operations & Record<Name, () => R>>;
 }
 
 /**
@@ -334,6 +381,95 @@ function isTypeParam(value: unknown): value is TypeParam {
 }
 
 /**
+ * Helper to create a singleton variant class
+ */
+function createSingletonVariant(
+    BaseClass: any,
+    variantName: string
+): any {
+    class VariantClass extends BaseClass {
+        protected constructor() {
+            super();
+            Object.freeze(this);
+        }
+
+        private static _instance: VariantClass;
+        static {
+            this._instance = new VariantClass();
+        }
+    }
+
+    // Set the class name for reflection
+    Object.defineProperty(VariantClass, 'name', {
+        value: variantName,
+        writable: false,
+        configurable: false
+    });
+
+    // Mark as singleton variant
+    (VariantClass as any)[IsSingleton] = true;
+
+    return (VariantClass as any)._instance;
+}
+
+/**
+ * Helper to create a structured variant class with Proxy wrapper
+ */
+function createStructuredVariant(
+    BaseClass: any,
+    variantName: string,
+    fields: Array<{ name: string; spec: FieldSpec }>,
+    adtForValidation: any
+): any {
+    class VariantClass extends BaseClass {
+        constructor(data: Record<string, unknown>) {
+            super();
+
+            // Validate field types against specifications
+            for (const { name, spec } of fields) {
+                validateField(data[name], spec, name, adtForValidation);
+            }
+
+            // Assign fields to instance
+            for (const { name } of fields) {
+                Object.defineProperty(this, name, {
+                    value: data[name],
+                    writable: false,
+                    enumerable: true,
+                    configurable: false
+                });
+            }
+
+            Object.freeze(this);
+        }
+    }
+
+    // Set the class name for reflection
+    Object.defineProperty(VariantClass, 'name', {
+        value: variantName,
+        writable: false,
+        configurable: false
+    });
+
+    // Wrap in a Proxy to make it callable without 'new'
+    const fieldNames = fields.map(f => f.name);
+    const isSingleton = fieldNames.length === 0;
+    
+    // Store metadata on the VariantClass for later inspection
+    (VariantClass as any)._fieldNames = fieldNames;
+    (VariantClass as any)[IsSingleton] = isSingleton;
+    
+    return new Proxy(VariantClass, {
+        apply(_target, _thisArg, argumentsList) {
+            return createVariantInstance(VariantClass, fieldNames, argumentsList, variantName);
+        },
+        construct(_target, argumentsList) {
+            return createVariantInstance(VariantClass, fieldNames, argumentsList, variantName, 'new ');
+        }
+    });
+}
+
+/**
  * Helper to create a variant instance from either named or positional arguments
  */
 function createVariantInstance<T>(
@@ -341,7 +477,6 @@ function createVariantInstance<T>(
     fieldNames: string[],
     argumentsList: unknown[],
     variantName: string,
-    pool: MultiKeyWeakMap,
     prefix = ''
 ): T {
     // Detect argument style: named (object literal) vs positional
@@ -372,22 +507,8 @@ function createVariantInstance<T>(
         });
     }
 
-    // Extract field values in order for pooling lookup
-    const fieldValues = fieldNames.map(name => namedArgs[name]);
-
-    // Check pool for existing instance with same values
-    const pooled = pool.get(...fieldValues);
-    if (pooled !== undefined) {
-        return pooled;
-    }
-
-    // Create new instance
-    const instance = new VariantClass(namedArgs);
-
-    // Store in pool
-    pool.set(...fieldValues, instance);
-
-    return instance;
+    // Create and return new instance
+    return new VariantClass(namedArgs);
 }
 
 /**
@@ -434,7 +555,7 @@ function installOperationOnVariant(variant: any, opName: string, transformer: Tr
     if (!VariantClass?.prototype) {
         return;
     }
-    
+
     if (skipIfExists && VariantClass.prototype[opName]) {
         return;
     }
@@ -453,22 +574,23 @@ function installOperationOnVariant(variant: any, opName: string, transformer: Tr
 
         if (isWildcard && handlers._) {
             // Wildcard handler receives the full instance
-            return ctorTransform(this);
+            return ctorTransform.call(this, this);
         }
 
-        // Get field names if structured variant
+        // Check if this is a singleton or structured variant
+        const isSingleton = (this.constructor as any)[IsSingleton];
         const fieldNames = (this.constructor as any)._fieldNames;
 
-        if (fieldNames && fieldNames.length > 0) {
+        if (!isSingleton && fieldNames && fieldNames.length > 0) {
             // Structured variant - extract fields as object for named destructuring
             const fields: Record<string, any> = {};
             for (const fieldName of fieldNames) {
                 fields[fieldName] = this[fieldName];
             }
-            return ctorTransform(fields);
+            return ctorTransform.call(this, fields);
         } else {
             // Singleton variant - no fields to pass
-            return ctorTransform();
+            return ctorTransform.call(this);
         }
     };
 }
@@ -487,7 +609,7 @@ function collectVariantsFromChain(adt: any, accumulated: Map<string, any> = new 
     if (!adt || adt === Function.prototype || adt === Object.prototype) {
         return accumulated;
     }
-    
+
     // Collect variants from current level
     for (const key of Object.keys(adt)) {
         if (key === 'extend' || key === 'match' || key.startsWith('_')) {
@@ -498,7 +620,7 @@ function collectVariantsFromChain(adt: any, accumulated: Map<string, any> = new 
             accumulated.set(key, adt[key]);
         }
     }
-    
+
     // Recursive case: walk up the prototype chain
     return collectVariantsFromChain(Object.getPrototypeOf(adt), accumulated);
 }
@@ -641,35 +763,7 @@ export function data<const D extends DataDecl>(
              * Register a transformer for an operation.
              * @internal
              */
-            static _registerTransformer(this: any, name: string, transformer: Transformer): void {
-                // Check for name collision with variant fields
-                // Iterate through variant constructors/instances
-                for (const key of Object.keys(this)) {
-                    if (key === 'extend' || key.startsWith('_')) {
-                        continue;
-                    }
-
-                    const variant = this[key];
-
-                    // Check if this is a function (constructor) - could be Proxy or direct
-                    if (typeof variant === 'function') {
-                        // Check if it has _fieldNames (structured variant)
-                        if (variant._fieldNames && variant._fieldNames.includes(name)) {
-                            throw new Error(
-                                `Operation name '${name}' conflicts with field '${name}' in variant '${key}'`
-                            );
-                        }
-                    }
-                    // For singleton variants, check their properties directly
-                    else if (variant && typeof variant === 'object' && !Array.isArray(variant)) {
-                        if (name in variant) {
-                            throw new Error(
-                                `Operation name '${name}' conflicts with field '${name}' in variant '${key}'`
-                            );
-                        }
-                    }
-                }
-
+            static _registerTransformer(this: any, name: string, transformer: Transformer, skipCollisionCheck = false): void {
                 // Get or create the registry for this ADT class
                 let registry = adtTransformers.get(this);
                 if (!registry) {
@@ -677,6 +771,43 @@ export function data<const D extends DataDecl>(
                     const parentRegistry = adtTransformers.get(Object.getPrototypeOf(this));
                     registry = parentRegistry ? new Map(parentRegistry) : new Map();
                     adtTransformers.set(this, registry);
+                }
+
+                // Check if operation already exists on this ADT (not parent)
+                if (registry.has(name) && !skipCollisionCheck) {
+                    throw new Error(
+                        `Operation '${name}' is already defined on this ADT. Use '.extendMatch()' in a subtype to extend it with new handlers.`
+                    );
+                }
+
+                // Check for name collision with variant fields (unless skipped)
+                if (!skipCollisionCheck) {
+                    // Iterate through variant constructors/instances
+                    for (const key of Object.keys(this)) {
+                        if (key === 'extend' || key.startsWith('_')) {
+                            continue;
+                        }
+
+                        const variant = this[key];
+
+                        // Check if this is a function (constructor) - could be Proxy or direct
+                        if (typeof variant === 'function') {
+                            // Check if it's a structured variant with fields
+                            if (!variant[IsSingleton] && variant._fieldNames?.includes(name)) {
+                                throw new Error(
+                                    `Operation name '${name}' conflicts with field '${name}' in variant '${key}'`
+                                );
+                            }
+                        }
+                        // For singleton variants, check their properties directly
+                        else if (variant && typeof variant === 'object' && !Array.isArray(variant)) {
+                            if (name in variant) {
+                                throw new Error(
+                                    `Operation name '${name}' conflicts with field '${name}' in variant '${key}'`
+                                );
+                            }
+                        }
+                    }
                 }
 
                 registry.set(name, transformer);
@@ -748,6 +879,280 @@ export function data<const D extends DataDecl>(
                 return this;
             }
 
+            // Static extendMatch method - extend match operation in subtype
+            static extendMatch<R>(
+                this: any,
+                name: string,
+                handlersOrFn: Record<string, ((...args: any[]) => R) | ((fields: any) => R) | ((parent: () => R, fields?: any) => R)> |
+                    ((Family: any) => Record<string, ((...args: any[]) => R) | ((fields: any) => R) | ((parent: () => R, fields?: any) => R)>)
+            ): any {
+                // Unwrap Proxy to get actual ADT class
+                const actualADT = this[BaseADTSymbol] || this;
+
+                // Get parent ADT class
+                const parentADT = Object.getPrototypeOf(actualADT);
+
+                // Check if parent has this operation
+                if (!parentADT || !parentADT._getTransformer) {
+                    throw new Error(
+                        `Cannot extend match operation '${name}': parent ADT has no transformer registry`
+                    );
+                }
+
+                const parentTransformer = parentADT._getTransformer(name);
+                if (!parentTransformer) {
+                    throw new Error(
+                        `Cannot extend match operation '${name}': operation does not exist on parent ADT`
+                    );
+                }
+
+                // Get parent handlers from HandlerMapSymbol
+                const parentHandlers = (parentTransformer as any)[HandlerMapSymbol];
+                if (!parentHandlers) {
+                    throw new Error(
+                        `Cannot extend match operation '${name}': parent transformer has no handler map`
+                    );
+                }
+
+                // Resolve handlers - support callback form for consistency
+                const handlersInput = typeof handlersOrFn === 'function'
+                    ? handlersOrFn(this)
+                    : handlersOrFn;
+
+                // Merge parent handlers with new handlers
+                const mergedHandlers: Record<string, any> = { ...parentHandlers };
+
+                // Collect all variants to check which are singletons
+                const allVariantsForCheck = collectVariantsFromChain(actualADT);
+                const variantTypes = new Map<string, 'singleton' | 'structured'>();
+                for (const [variantName, variant] of allVariantsForCheck) {
+                    // Check if variant is singleton or structured using symbol
+                    // For singletons, variant is the instance, so check its constructor
+                    // For structured, variant is a Proxy wrapping the class
+                    const checkTarget = typeof variant === 'function' ? variant : variant.constructor;
+                    const isSingleton = (checkTarget as any)[IsSingleton] === true;
+                    const type = isSingleton ? 'singleton' : 'structured';
+                    variantTypes.set(variantName, type);
+                }
+
+                // Process each handler
+                for (const [variantName, handler] of Object.entries(handlersInput)) {
+                    const parentHandler = parentHandlers[variantName];
+
+                    // Special handling for wildcard
+                    if (variantName === '_') {
+                        if (parentHandler) {
+                            // Wildcard override - inject parent into fields object
+                            mergedHandlers['_'] = function (this: any, instance: any) {
+                                const boundParent = () => parentHandler.call(this, instance);
+                                return (handler as any).call(this, { instance, [parent]: boundParent });
+                            };
+                        } else {
+                            // New wildcard handler - wrap to provide instance in object
+                            mergedHandlers['_'] = function (this: any, instance: any) {
+                                return (handler as any).call(this, { instance });
+                            };
+                        }
+                        continue;
+                    }
+
+                    // If parent handler exists for this variant, it's an override
+                    if (parentHandler) {
+                        // Override - inject parent callback into fields object using symbol
+                        mergedHandlers[variantName] = function (this: any, fields: any) {
+                            // Create a bound version of parent handler that receives the same fields
+                            const boundParent = () => parentHandler.call(this, fields);
+
+                            // Inject parent into fields object
+                            const variantType = variantTypes.get(variantName);
+                            
+                            if (variantType === 'singleton') {
+                                // Parent is singleton - pass object with just parent symbol
+                                return (handler as any).call(this, { [parent]: boundParent });
+                            } else {
+                                // Parent is structured - add parent symbol to existing fields
+                                const fieldsWithParent = { ...fields, [parent]: boundParent };
+                                return (handler as any).call(this, fieldsWithParent);
+                            }
+                        };
+                    } else {
+                        // This is a new handler for a new variant (not an override)
+                        // Pass through as-is without wrapping - the type system ensures handlers
+                        // accept fields with optional parent: FieldsWithOptionalParent<Fields, R>
+                        // Since parent is optional, handlers work with plain fields objects.
+                        // installOperationOnVariant will pass fields directly, which satisfies
+                        // the handler signature (parent is absent but optional).
+                        mergedHandlers[variantName] = handler;
+                    }
+                }
+
+                // Create new transformer with merged handlers
+                const transformer = createMatchTransformer(name, mergedHandlers);
+
+                // Check if this operation was already extended at THIS ADT level
+                // We need to distinguish between:
+                // 1. Operation inherited from parent (allowed to extend)
+                // 2. Operation already extended at this level (not allowed - duplicate)
+                // 
+                // Strategy: Check if registry exists AND if the transformer for this operation
+                // is different from the parent's transformer. If they're the same object,
+                // it's inherited. If different, it was already extended here.
+                const currentRegistry = adtTransformers.get(actualADT);
+                const currentTransformer = currentRegistry?.get(name);
+                if (currentTransformer && currentTransformer !== parentTransformer) {
+                    throw new Error(
+                        `Operation '${name}' has already been extended on this ADT. Only one extendMatch per operation per ADT level is allowed.`
+                    );
+                }
+
+                // Register transformer (adds to child registry, shadowing parent)
+                actualADT._registerTransformer(name, transformer, true);
+
+                // Before installing operations, handle constructor copying for overridden inherited variants
+                // When we override an inherited variant, we need to create a new constructor in the sub-ADT
+                // so the override doesn't affect the parent ADT's instances
+                // We store these in a WeakMap since the ADT is frozen
+                let shadowMap = shadowedVariants.get(actualADT);
+                if (!shadowMap) {
+                    shadowMap = new Map();
+                    shadowedVariants.set(actualADT, shadowMap);
+                }
+                
+                for (const variantName of Object.keys(handlersInput)) {
+                    if (variantName === '_') continue; // Skip wildcard
+                    
+                    // Check if this is an override (parent handler exists)
+                    const parentHandler = parentHandlers[variantName];
+                    if (!parentHandler) continue; // Not an override
+                    
+                    // Check if this is an inherited variant (not defined directly on this ADT)
+                    const isInherited = !Object.prototype.hasOwnProperty.call(actualADT, variantName);
+                    if (!isInherited) continue; // Variant is defined on this ADT, no need to copy
+                    
+                    
+                    // Get the inherited variant
+                    const inheritedVariant = actualADT[variantName];
+                    
+                    // Determine if it's a singleton or structured variant
+                    const variantType = variantTypes.get(variantName);
+                    
+                    if (variantType === 'singleton') {
+                        // Copy singleton variant
+                        // The inherited variant is the singleton instance itself
+                        // We need to create a new instance with a new constructor
+                        const OriginalClass = inheritedVariant.constructor;
+                        
+                        class CopiedVariantClass extends OriginalClass {
+                            private static _instance: typeof inheritedVariant;
+                            static {
+                                this._instance = new CopiedVariantClass() as any;
+                                Object.freeze(this._instance);
+                            }
+                        }
+                        
+                        Object.defineProperty(CopiedVariantClass, 'name', {
+                            value: variantName,
+                            writable: false,
+                            configurable: false
+                        });
+                        
+                        // Store the copied instance in the shadow map
+                        shadowMap.set(variantName, (CopiedVariantClass as any)._instance);
+                    } else {
+                        // Copy structured variant
+                        // The inherited variant is typically a Proxy wrapping a class
+                        // Metadata like _fieldNames is stored on the wrapped class
+                        // and accessible through the Proxy
+                        
+                        const fieldNames = (inheritedVariant as any)._fieldNames || [];
+                        const isSingleton = (inheritedVariant as any)[IsSingleton] || false;
+                        
+                        // To extend, we need the actual class, not the Proxy
+                        // Access it via the prototype's constructor
+                        const OriginalClass = inheritedVariant.prototype?.constructor;
+                        
+                        // Create a new variant class that extends the original
+                        class CopiedVariantClass extends OriginalClass {
+                            constructor(data: Record<string, unknown>) {
+                                super(data);
+                            }
+                        }
+                        
+                        Object.defineProperty(CopiedVariantClass, 'name', {
+                            value: variantName,
+                            writable: false,
+                            configurable: false
+                        });
+                        
+                        // Store metadata on the copied class
+                        (CopiedVariantClass as any)._fieldNames = fieldNames;
+                        (CopiedVariantClass as any)[IsSingleton] = isSingleton;
+                        
+                        // Wrap in a Proxy to make it callable
+                        const copiedProxy = new Proxy(CopiedVariantClass, {
+                            apply(_target, _thisArg, argumentsList) {
+                                return createVariantInstance(CopiedVariantClass, fieldNames, argumentsList, variantName);
+                            },
+                            construct(_target, argumentsList) {
+                                return createVariantInstance(CopiedVariantClass, fieldNames, argumentsList, variantName, 'new ');
+                            }
+                        });
+                        
+                        // Store the class on the proxy for later reference
+                        (copiedProxy as any)[Symbol.for('VariantClass')] = CopiedVariantClass;
+                        
+                        // Store the copied proxy in the shadow map
+                        shadowMap.set(variantName, copiedProxy);
+                    }
+                }
+
+                // Install operation on ALL variants (both inherited and new)
+                // For overridden inherited variants, use the shadowed copy
+                const allVariants = collectVariantsFromChain(actualADT);
+
+                for (const [variantName, variant] of allVariants) {
+                    // Check if there's a shadowed version for this variant
+                    const shadowedVariant = shadowMap.get(variantName);
+                    const targetVariant = shadowedVariant || variant;
+                    
+                    // Don't skip if exists - we need to reinstall with new transformer
+                    installOperationOnVariant(targetVariant, name, transformer, false);
+                }
+
+                // If we created shadowed variants, wrap the ADT in a Proxy to expose them
+                if (shadowMap.size > 0) {
+                    // Check if already wrapped in a shadow proxy
+                    const existingProxy = shadowProxies.get(this);
+                    if (existingProxy) {
+                        // Already wrapped, return the existing proxy
+                        return existingProxy;
+                    }
+                    
+                    // Create a Proxy that intercepts property access to return shadowed variants
+                    const proxy = new Proxy(this, {
+                        get(target, prop, receiver) {
+                            // Return the actual ADT for BaseADTSymbol access
+                            if (prop === BaseADTSymbol) {
+                                return actualADT;
+                            }
+                            // First check if there's a shadowed variant for this property
+                            if (typeof prop === 'string' && shadowMap.has(prop)) {
+                                return shadowMap.get(prop);
+                            }
+                            // Otherwise, return the original property
+                            return Reflect.get(target, prop, receiver);
+                        }
+                    });
+                    
+                    // Store the proxy in the WeakMap for reuse
+                    shadowProxies.set(this, proxy);
+                    
+                    return proxy;
+                }
+
+                return this;
+            }
+
             // Static extend method - inherited by all ADTs and extended ADTs
             static extend<const E extends DataDecl>(
                 this: any,
@@ -797,72 +1202,15 @@ export function data<const D extends DataDecl>(
                             return { name, spec: spec as FieldSpec };
                         });
 
-                        class VariantClass extends ExtendedADT {
-                            constructor(data: Record<string, unknown>) {
-                                super();
-
-                                // Validate field types against specifications
-                                // Use root/result ADT for Family references
-                                for (const { name, spec } of fields) {
-                                    validateField(data[name], spec, name, result);
-                                }
-
-                                // Assign fields to instance
-                                for (const { name } of fields) {
-                                    Object.defineProperty(this, name, {
-                                        value: data[name],
-                                        writable: false,
-                                        enumerable: true,
-                                        configurable: false
-                                    });
-                                }
-
-                                Object.freeze(this);
-                            }
-                        }
-
-                        // Set the class name for reflection
-                        Object.defineProperty(VariantClass, 'name', {
-                            value: variantName,
-                            writable: false,
-                            configurable: false
-                        });
-
-                        // Create pool for this variant
-                        const variantPool = new MultiKeyWeakMap();
-
-                        // Wrap in a Proxy to make it callable without 'new'
-                        const fieldNames = fields.map(f => f.name);
-                        extendedResult[variantName] = new Proxy(VariantClass, {
-                            apply(_target, _thisArg, argumentsList) {
-                                return createVariantInstance(VariantClass, fieldNames, argumentsList, variantName, variantPool);
-                            },
-                            construct(_target, argumentsList) {
-                                return createVariantInstance(VariantClass, fieldNames, argumentsList, variantName, variantPool, 'new ');
-                            }
-                        });
+                        extendedResult[variantName] = createStructuredVariant(
+                            ExtendedADT,
+                            variantName,
+                            fields,
+                            result
+                        );
                     } else {
                         // Simple enumerated variant (empty array [])
-                        class VariantClass extends ExtendedADT {
-                            protected constructor() {
-                                super();
-                                Object.freeze(this);
-                            }
-
-                            private static _instance: VariantClass;
-                            static {
-                                this._instance = new VariantClass();
-                            }
-                        }
-
-                        // Set the class name for reflection
-                        Object.defineProperty(VariantClass, 'name', {
-                            value: variantName,
-                            writable: false,
-                            configurable: false
-                        });
-
-                        extendedResult[variantName] = (VariantClass as any)._instance;
+                        extendedResult[variantName] = createSingletonVariant(ExtendedADT, variantName);
                     }
                 }
 
@@ -909,75 +1257,16 @@ export function data<const D extends DataDecl>(
                     const [name, spec] = Object.entries(fieldDef)[0];
                     return { name, spec: spec as FieldSpec };
                 });
-                class VariantClass extends ADT {
-                    constructor(data: Record<string, unknown>) {
-                        super();
-
-                        // Validate field types against specifications
-                        for (const { name, spec } of fields) {
-                            validateField(data[name], spec, name, ADT);
-                        }
-
-                        // Assign fields to instance
-                        for (const { name } of fields) {
-                            Object.defineProperty(this, name, {
-                                value: data[name],
-                                writable: false,
-                                enumerable: true,
-                                configurable: false
-                            });
-                        }
-
-                        Object.freeze(this);
-                    }
-                }
-
-                // Set the class name for reflection
-                Object.defineProperty(VariantClass, 'name', {
-                    value: variantName,
-                    writable: false,
-                    configurable: false
-                });
-
-                // Create pool for this variant
-                const variantPool = new MultiKeyWeakMap();
-
-                // Wrap in a Proxy to make it callable without 'new'
-                const fieldNames = fields.map(f => f.name);
-
-                // Store field names on the VariantClass for later inspection
-                (VariantClass as any)._fieldNames = fieldNames;
-
-                result[variantName] = new Proxy(VariantClass, {
-                    apply(_target, _thisArg, argumentsList) {
-                        return createVariantInstance(VariantClass, fieldNames, argumentsList, variantName, variantPool);
-                    },
-                    construct(_target, argumentsList) {
-                        return createVariantInstance(VariantClass, fieldNames, argumentsList, variantName, variantPool, 'new ');
-                    }
-                });
+                
+                result[variantName] = createStructuredVariant(
+                    ADT,
+                    variantName,
+                    fields,
+                    ADT
+                );
             } else {
                 // Simple enumerated variant (empty array [])
-                class VariantClass extends ADT {
-                    protected constructor() {
-                        super();
-                        Object.freeze(this);
-                    }
-
-                    private static _instance: VariantClass;
-                    static {
-                        this._instance = new VariantClass();
-                    }
-                }
-
-                // Set the class name for reflection
-                Object.defineProperty(VariantClass, 'name', {
-                    value: variantName,
-                    writable: false,
-                    configurable: false
-                });
-
-                result[variantName] = (VariantClass as any)._instance;
+                result[variantName] = createSingletonVariant(ADT, variantName);
             }
         }
 
