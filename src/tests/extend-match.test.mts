@@ -463,23 +463,27 @@ describe('ExtendMatch Operation', () => {
             assert.strictEqual(ExtendedColor.Blue.toHex(), '#0000FF');
         });
 
-        test('should throw error if trying to extend on base ADT without parent', () => {
+        test('should prevent calling extendMatch on base ADT at compile time', () => {
             const Color = data({ Red: [], Green: [] })
                 .match('toHex', { out: String }, {
                     Red() { return '#FF0000'; },
                     Green() { return '#00FF00'; }
                 });
 
-            // Try to call extendMatch on base ADT (no parent)
-            assert.throws(
-                () => {
-                    // Blue variant doesn't exist, testing runtime error
-                    Color.extendMatch('toHex', {
-                        Blue() { return '#0000FF'; }
-                    } as any);
-                },
-                /parent ADT has no transformer registry/
-            );
+            // TypeScript should prevent extendMatch on base ADT
+            // We can't actually call it since it's a compile-time error
+            // This test just verifies the type system prevents it
+            // @ts-expect-error - Property 'extendMatch' does not exist on base ADT
+            const _preventCompile = Color.extendMatch;
+            void _preventCompile; // Suppress unused warning
+
+            // But it should work on extended ADTs
+            const ExtendedColor = Color.extend({ Blue: [] });
+            const result = ExtendedColor.extendMatch('toHex', {
+                Blue() { return '#0000FF'; }
+            });
+            
+            assert.strictEqual(result.Blue.toHex(), '#0000FF');
         });
 
         test('should throw error if calling extendMatch twice on same operation', () => {
