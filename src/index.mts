@@ -276,10 +276,11 @@ type VariantFieldType<D, K extends keyof D, TypeArgMap> =
 type FieldsWithOptionalParent<Fields, R> = Fields & { [K in typeof parent]?: () => R }
 
 // Handler for a specific variant in extendMatch
-// All handlers receive fields object with optional parent property
+// Singleton handlers: parameterless for new variants, fields object with parent for overrides
+// Structured handlers: always receive fields object with optional parent
 type VariantHandler<D, K extends keyof D, R, TypeArgMap> = 
     IsEmptyArray<D[K]> extends true
-    ? (fields: { [K in typeof parent]?: () => R }) => R  // Singleton: empty object with optional parent
+    ? (() => R) | ((fields: { [K in typeof parent]?: () => R }) => R)  // Singleton: both forms allowed
     : (fields: FieldsWithOptionalParent<VariantFieldType<D, K, TypeArgMap>, R>) => R  // Structured: fields with optional parent
 
 // Handlers for extendMatch operation
@@ -975,19 +976,13 @@ export function data<const D extends DataDecl>(
                             }
                         };
                     } else {
-                        // This is a new handler for a new variant
-                        // Check if this is for a singleton or structured variant
-                        const variantType = variantTypes.get(variantName);
-                        
-                        if (variantType === 'singleton') {
-                            // Singleton: wrap to pass empty object
-                            mergedHandlers[variantName] = function (this: any) {
-                                return (handler as any).call(this, {});
-                            };
-                        } else {
-                            // Structured or unknown: pass through as-is
-                            mergedHandlers[variantName] = handler;
-                        }
+                        // This is a new handler for a new variant (not an override)
+                        // Pass through as-is without wrapping - the type system ensures handlers
+                        // accept fields with optional parent: FieldsWithOptionalParent<Fields, R>
+                        // Since parent is optional, handlers work with plain fields objects.
+                        // installOperationOnVariant will pass fields directly, which satisfies
+                        // the handler signature (parent is absent but optional).
+                        mergedHandlers[variantName] = handler;
                     }
                 }
 
@@ -1136,6 +1131,10 @@ export function data<const D extends DataDecl>(
                     // Create a Proxy that intercepts property access to return shadowed variants
                     const proxy = new Proxy(this, {
                         get(target, prop, receiver) {
+                            // Return the actual ADT for BaseADTSymbol access
+                            if (prop === BaseADTSymbol) {
+                                return actualADT;
+                            }
                             // First check if there's a shadowed variant for this property
                             if (typeof prop === 'string' && shadowMap.has(prop)) {
                                 return shadowMap.get(prop);
