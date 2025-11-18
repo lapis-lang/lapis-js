@@ -445,7 +445,7 @@ describe('ExtendMatch Operation', () => {
             );
         });
 
-        test('should throw error if override references non-existent parent handler', () => {
+        test('should allow handlers for new variants even when parent operation exists', () => {
             const Color = data({ Red: [], Green: [] })
                 .match('toHex', { out: String }, {
                     Red() { return '#FF0000'; },
