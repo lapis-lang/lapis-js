@@ -823,8 +823,8 @@ console.log(ExtendedColor.Blue.toHex()); // '#EXTENDED-Blue'
 
 - Automatically inherits all parent handlers
 - Only need to specify handlers for **new variants**
-- **Overriding parent handlers**: When you override an existing variant, the first parameter is always `parent` (a function that calls the parent handler)
-- You can ignore the `parent` parameter if you don't need it
+- **Overriding parent handlers**: When you override an existing variant, the handler receives a `fields` object containing the optional `parent` symbol (accessed as `fields[parent]`)
+- You can ignore the `fields[parent]` property if you don't need it
 - Wildcard handlers are inherited from parent
 - **Only one extendMatch per operation per ADT level**: Calling `.extendMatch('foo', ...)` twice on the same operation throws an error. To override again, use `.extend()` to create a new ADT level first.
 - Due to constructor identity preservation, overrides only affect new instances
