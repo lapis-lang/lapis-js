@@ -12,8 +12,8 @@
     "scripts": {
         "prebuild": "npm run lint:fix",
         "build": "webpack",
-        "lint": "eslint src/ --ext .mts",
-        "lint:fix": "eslint src/ --ext .mts --fix",
+        "lint": "eslint .",
+        "lint:fix": "eslint . --fix",
         "pretest": "npm run build",
         "test": "globstar -- node --import tsx --test ./src/tests/*.test.mts"
     },
