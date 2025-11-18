@@ -231,7 +231,11 @@ export type FoldHandlers = Record<string, ((...args: any[]) => any)> & {
 
 /**
  * Create a fold transformer for structural recursion (catamorphism).
- * Similar to match but handles recursive fields automatically.
+ * 
+ * Note: This function is structurally identical to createMatchTransformer.
+ * They are kept separate for clarity of intent - fold is for recursive operations
+ * while match is for non-recursive pattern matching. The actual recursive behavior
+ * is implemented in the operation installation logic, not in the transformer itself.
  * 
  * @param name - Name of the fold operation
  * @param handlers - Map of variant names to handler functions, with optional wildcard '_'

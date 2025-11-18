@@ -27,8 +27,9 @@ export type Predicate<T = unknown> = (value: T) => boolean
 export type Constructor<T = any> = abstract new (...args: any[]) => T
 
 // Helper type to extract instance type from constructor or return the type as-is
-// Handles primitive constructors (returns primitives not wrappers), built-in constructors,
-// ADT classes, predicates, and generic constructors
+// This is a compile-time type mapping that tells TypeScript to infer primitives (number, string, etc.)
+// instead of wrapper types (Number, String, etc.) for built-in constructors.
+// Also handles ADT classes, predicates, and generic constructors
 type InferType<T> =
     T extends NumberConstructor ? number :
     T extends StringConstructor ? string :
@@ -192,6 +193,8 @@ type HasFamilyInVariant<V extends VariantValue> =
     : false
 
 // Check if a DataDecl is recursive (contains Family in any variant)
+// Note: This only detects direct Family recursion within the same ADT.
+// Mutual recursion through other ADTs is not detected by this type-level check.
 type IsRecursive<D extends DataDecl> = 
     { [K in keyof D]: HasFamilyInVariant<D[K]> }[keyof D] extends false 
     ? false 
@@ -278,6 +281,8 @@ type MatchHandlers<D, R, TypeArgMap = {}, Operations = {}> =
     } & ThisType<VariantUnion<D, TypeArgMap, Operations>>)
 
 // Handler map for fold operation - same structure as match but for catamorphisms
+// Semantic difference: FoldHandlers receive folded/processed values for Family fields,
+// while MatchHandlers receive raw field values.
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 type FoldHandlers<D, R, TypeArgMap = {}, Operations = {}> =
     | ({
@@ -496,7 +501,10 @@ function createStructuredVariant(
 
     // Store metadata on the VariantClass for later inspection
     (VariantClass as any)._fieldNames = fieldNames;
-    (VariantClass as any)._fieldSpecs = fields; // Store full field specs for fold
+    // Store full field specs for fold operations. Currently stored for all variants
+    // for simplicity, though only recursive ADTs use this. Could optimize to store
+    // only when variant contains Family fields.
+    (VariantClass as any)._fieldSpecs = fields;
     (VariantClass as any)[IsSingleton] = isSingleton;
 
     return new Proxy(VariantClass, {
@@ -607,6 +615,9 @@ function installOperationOnVariant(variant: any, opName: string, transformer: Tr
         
         // eslint-disable-next-line @typescript-eslint/no-this-alias
         const root = this;
+        // Note: A new WeakMap is created for every fold operation invocation.
+        // Memoization is only effective within a single operation call, not across multiple calls.
+        // This is intentional to ensure fresh results and avoid memory leaks.
         const memoCache = new WeakMap<any, any>();
         
         // Work stack for iterative traversal: [instance, isProcessed]
@@ -696,6 +707,8 @@ function installOperationOnVariant(variant: any, opName: string, transformer: Tr
                     const fieldValue = frame.instance[fieldNames[i]];
                     
                     // Check if this field is a Family reference and has the operation
+                    // Intentionally skips Family fields that do not have the operation defined.
+                    // This allows for extended ADTs where not all variants/fields implement all operations.
                     if (fieldSpecs && fieldSpecs[i] && isFamilyRef(fieldSpecs[i].spec)) {
                         if (fieldValue && typeof fieldValue[opName] !== 'undefined' && !memoCache.has(fieldValue)) {
                             stack.push({ instance: fieldValue, processed: false });

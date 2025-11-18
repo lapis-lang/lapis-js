@@ -22,7 +22,6 @@ describe('Stack Safety Investigation', () => {
 
             const result = list.sum();
             assert.strictEqual(result, 5050); // sum of 1..100
-            console.log('✓ Small list (100 elements) works fine');
         });
 
         test('medium list to check stack depth', () => {
@@ -43,7 +42,6 @@ describe('Stack Safety Investigation', () => {
 
             const result = list.length();
             assert.strictEqual(result, 1000);
-            console.log('✓ Medium list (1,000 elements) works');
         });
 
         test('large list - likely to cause stack overflow', () => {
@@ -67,10 +65,8 @@ describe('Stack Safety Investigation', () => {
             try {
                 const result = list.length();
                 assert.strictEqual(result, size);
-                console.log(`✓ Large list (${size} elements) works - NO STACK OVERFLOW`);
             } catch (error) {
                 if (error instanceof RangeError && error.message.includes('stack')) {
-                    console.log(`✗ Large list (${size} elements) caused stack overflow (expected with current implementation)`);
                     // This is expected with the current implementation
                     assert.ok(true, 'Stack overflow detected as expected');
                 } else {
@@ -99,10 +95,8 @@ describe('Stack Safety Investigation', () => {
             try {
                 const result = list.length();
                 assert.strictEqual(result, size);
-                console.log(`✓ Very large list (${size} elements) works - STACK SAFE!`);
             } catch (error) {
                 if (error instanceof RangeError && error.message.includes('stack')) {
-                    console.log(`✗ Very large list (${size} elements) caused stack overflow`);
                     assert.ok(true, 'Stack overflow detected');
                 } else {
                     throw error;
@@ -136,10 +130,8 @@ describe('Stack Safety Investigation', () => {
                 const result = tree.sum();
                 const expected = (1000 * 1001) / 2; // sum of 0..1000
                 assert.strictEqual(result, expected);
-                console.log('✓ Deep tree (1,000 levels) works - stack safe');
             } catch (error) {
                 if (error instanceof RangeError) {
-                    console.log('✗ Deep tree caused stack overflow');
                     assert.ok(true, 'Stack overflow detected');
                 } else {
                     throw error;
@@ -173,10 +165,8 @@ describe('Stack Safety Investigation', () => {
                     const end = performance.now();
                     
                     assert.strictEqual(result, size);
-                    console.log(`✓ Size ${size}: ${(end - start).toFixed(2)}ms`);
                 } catch (error) {
                     if (error instanceof RangeError) {
-                        console.log(`✗ Size ${size}: Stack overflow`);
                         break;
                     } else {
                         throw error;

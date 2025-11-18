@@ -1052,7 +1052,8 @@ const list = List.Cons({ head: 1,
 });
 
 console.log(list.sum()); // 6
-// Evaluation: 1 + (2 + (3 + 0)) - right-associative
+// Evaluation structure: 1 + (2 + (3 + 0)) - right-associative
+// Actual order (bottom-up from Nil): Nil→0, Cons(3,Nil)→3+0=3, Cons(2,...)→2+3=5, Cons(1,...)→1+5=6
 ```
 
 ### Fold on Trees
