@@ -827,7 +827,7 @@ console.log(ExtendedColor.Blue.toHex()); // '#EXTENDED-Blue'
 - You can ignore the `fields[parent]` property if you don't need it
 - Wildcard handlers are inherited from parent
 - **Only one extendMatch per operation per ADT level**: Calling `.extendMatch('foo', ...)` twice on the same operation throws an error. To override again, use `.extend()` to create a new ADT level first.
-- Due to constructor identity preservation, overrides only affect new instances
+- Overridden variants get new shadow constructors (constructor identity is broken)
 - Supports both object and callback form: `.extendMatch('op', handlers)` or `.extendMatch('op', (Family) => handlers)`
 
 ### Error Handling
