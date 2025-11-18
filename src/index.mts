@@ -1,4 +1,11 @@
 import { MultiKeyWeakMap } from './MultiKeyWeakMap.mjs';
+import { 
+    type Transformer, 
+    adtTransformers
+} from './Transformer.mjs';
+
+export type { Transformer, TransformerConfig } from './Transformer.mjs';
+export { createTransformer, composeTransformers } from './Transformer.mjs';
 
 export type Predicate<T = unknown> = (value: T) => boolean
 
@@ -522,6 +529,80 @@ export function data<const D extends DataDecl>(
                 // Allow subclasses to instantiate
             }
 
+            /**
+             * Register a transformer for an operation.
+             * @internal
+             */
+            static _registerTransformer(this: any, name: string, transformer: Transformer): void {
+                // Check for name collision with variant fields
+                // Iterate through variant constructors/instances
+                for (const key of Object.keys(this)) {
+                    if (key === 'extend' || key.startsWith('_')) {
+                        continue;
+                    }
+                    
+                    const variant = this[key];
+                    
+                    // Check if this is a function (constructor) - could be Proxy or direct
+                    if (typeof variant === 'function') {
+                        // Check if it has _fieldNames (structured variant)
+                        if (variant._fieldNames && variant._fieldNames.includes(name)) {
+                            throw new Error(
+                                `Operation name '${name}' conflicts with field '${name}' in variant '${key}'`
+                            );
+                        }
+                    }
+                    // For singleton variants, check their properties directly
+                    else if (variant && typeof variant === 'object' && !Array.isArray(variant)) {
+                        if (name in variant) {
+                            throw new Error(
+                                `Operation name '${name}' conflicts with field '${name}' in variant '${key}'`
+                            );
+                        }
+                    }
+                }
+
+                // Get or create the registry for this ADT class
+                let registry = adtTransformers.get(this);
+                if (!registry) {
+                    // If parent has a registry, copy it
+                    const parentRegistry = adtTransformers.get(Object.getPrototypeOf(this));
+                    registry = parentRegistry ? new Map(parentRegistry) : new Map();
+                    adtTransformers.set(this, registry);
+                }
+                
+                registry.set(name, transformer);
+            }
+
+            /**
+             * Get a registered transformer by name.
+             * Looks up the prototype chain to find inherited transformers.
+             * @internal
+             */
+            static _getTransformer(this: any, name: string): Transformer | undefined {
+                const registry = adtTransformers.get(this);
+                if (registry?.has(name)) {
+                    return registry.get(name);
+                }
+                
+                // Check parent class
+                const parent = Object.getPrototypeOf(this);
+                if (parent && parent._getTransformer) {
+                    return parent._getTransformer(name);
+                }
+                
+                return undefined;
+            }
+
+            /**
+             * Get all registered transformer names.
+             * @internal
+             */
+            static _getTransformerNames(this: any): string[] {
+                const registry = adtTransformers.get(this);
+                return registry ? Array.from(registry.keys()) : [];
+            }
+
             // Static extend method - inherited by all ADTs and extended ADTs
             static extend<const E extends DataDecl>(
                 this: any,
@@ -707,6 +788,10 @@ export function data<const D extends DataDecl>(
 
                 // Wrap in a Proxy to make it callable without 'new'
                 const fieldNames = fields.map(f => f.name);
+                
+                // Store field names on the VariantClass for later inspection
+                (VariantClass as any)._fieldNames = fieldNames;
+
                 result[variantName] = new Proxy(VariantClass, {
                     apply(_target, _thisArg, argumentsList) {
                         return createVariantInstance(VariantClass, fieldNames, argumentsList, variantName, variantPool);

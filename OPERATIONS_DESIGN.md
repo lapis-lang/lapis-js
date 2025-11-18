@@ -846,7 +846,7 @@ const Point = data({
 
 ### Q7: Single-argument operations - feature or limitation?
 
-**Observation**: Bird-Meertens Formalism gives us operations that are either zero-argument (fold, map, match) or single-argument (unfold, merged unfolds). There are no multi-argument operation calls in the core primitives.
+**Observation**: Bird-Meertens Formalism (BMF) gives us operations that are either zero-argument (fold, map, match) or single-argument (unfold, merged unfolds). There are no multi-argument operation calls in the core primitives.
 
 **Current signatures:**
 
@@ -858,7 +858,7 @@ const Point = data({
 
 **Question**: Is this simplicity a **welcome feature** (fewer concerns about argument forms) or an **insufficiency** (limits expressiveness)?
 
-**Current Thinking**: Defer to practical usage. If multi-argument operations are needed, we can address the named/positional question at that time. For now, the BFM primitives don't require it.
+**Current Thinking**: Defer to practical usage. If multi-argument operations are needed, we can address the named/positional question at that time. For now, the BMF primitives don't require it.
 
 ---
 
