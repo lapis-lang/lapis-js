@@ -811,7 +811,7 @@ When you override a wildcard handler, it receives the `parent` parameter first (
 ```ts
 const ExtendedColor = Color.extend({ Blue: [] })
     .extendMatch('toHex', {
-        _(_parent, instance) {
+        _({ instance, [parent]: _parent }) {
             return `#EXTENDED-${instance.constructor.name}`;
         }
     });
