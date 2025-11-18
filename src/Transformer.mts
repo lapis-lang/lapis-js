@@ -11,6 +11,12 @@
 import type { Constructor } from './index.mjs';
 
 /**
+ * Symbol for storing handler map on match transformers.
+ * Used internally to detect wildcard handlers.
+ */
+export const HandlerMapSymbol = Symbol('HandlerMap');
+
+/**
  * Transformer abstraction that enables composition of operations.
  * All operations (fold, unfold, map, match, merge) are represented as transformers.
  * 
@@ -163,4 +169,55 @@ export function composeTransformers(
             ? (ctor) => composeFunctions(t1.getAtomTransform!(ctor), t2.getAtomTransform!(ctor))
             : t1.getAtomTransform || t2.getAtomTransform
     });
+}
+
+/**
+ * Handler map for match operation.
+ * Maps variant names to their handler functions.
+ * Special key '_' is the wildcard handler for unknown variants.
+ */
+export type MatchHandlers = Record<string, ((...args: any[]) => any)> & {
+    _?: (instance: any) => any
+}
+
+/**
+ * Create a match transformer for non-recursive pattern matching.
+ * Dispatches on variant constructors without structural recursion.
+ * 
+ * @param name - Name of the match operation
+ * @param handlers - Map of variant names to handler functions, with optional wildcard '_'
+ * @returns A transformer that performs constructor dispatch
+ */
+export function createMatchTransformer(
+    name: string,
+    handlers: MatchHandlers
+): Transformer {
+    const transformer = createTransformer({
+        name,
+        getCtorTransform: (ctor: Constructor) => {
+            const variantName = ctor.name;
+            const handler = handlers[variantName];
+            
+            if (handler) {
+                return handler;
+            }
+            
+            // Try wildcard handler
+            if (handlers._) {
+                return handlers._;
+            }
+            
+            // No handler found - will throw error when invoked
+            return () => {
+                throw new Error(
+                    `No handler for variant '${variantName}' in match operation '${name}'`
+                );
+            };
+        }
+    }) as Transformer & { [HandlerMapSymbol]: MatchHandlers };
+
+    // Store handlers on transformer for wildcard detection
+    transformer[HandlerMapSymbol] = handlers;
+
+    return transformer;
 }

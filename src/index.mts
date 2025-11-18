@@ -1,7 +1,9 @@
 import { MultiKeyWeakMap } from './MultiKeyWeakMap.mjs';
-import { 
-    type Transformer, 
-    adtTransformers
+import {
+    type Transformer,
+    adtTransformers,
+    createMatchTransformer,
+    HandlerMapSymbol
 } from './Transformer.mjs';
 
 export type { Transformer, TransformerConfig } from './Transformer.mjs';
@@ -79,11 +81,24 @@ type InvalidVariantKeys<D> = {
     : never
 }[keyof D]
 
-// Extract property keys that are not camelCase (start with uppercase letter or underscore)
+// Reserved property names that cannot be used as field names
+type ReservedPropertyName =
+    | 'constructor'
+    | 'prototype'
+    | '__proto__'
+    | 'toString'
+    | 'valueOf'
+    | 'hasOwnProperty'
+    | 'isPrototypeOf'
+    | 'propertyIsEnumerable'
+    | 'toLocaleString'
+
+// Extract property keys that are not camelCase (start with uppercase letter or underscore) or are reserved
 type InvalidPropertyKeys<T> = {
     [K in keyof T]: K extends string
-    ? Uppercase<FirstChar<K>> extends FirstChar<K> ? K :
-    K extends `_${string}` ? K : never
+    ? K extends ReservedPropertyName ? K :  // Reserved name - invalid
+    Uppercase<FirstChar<K>> extends FirstChar<K> ? K :  // PascalCase - invalid
+    K extends `_${string}` ? K : never  // Underscore prefix - invalid
     : never
 }[keyof T]
 
@@ -195,35 +210,68 @@ type InferTypeFromSpec<S> =
 
 // Helper to get variant instance types with type argument substitution
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
-type VariantInstance<D, K extends keyof D, Self = any, TypeArgMap = {}> =
+type VariantInstance<D, K extends keyof D, Self = any, TypeArgMap = {}, Operations = {}> =
     IsEmptyArray<D[K]> extends true
-    ? { readonly constructor: { readonly name: K } }
+    ? { readonly constructor: { readonly name: K } } & Operations
     : D[K] extends readonly FieldDef[]
-    ? FieldDefsToObject<D[K], Self, TypeArgMap> & { readonly constructor: { readonly name: K } }
+    ? FieldDefsToObject<D[K], Self, TypeArgMap> & { readonly constructor: { readonly name: K } } & Operations
     : never
 
 // Union of all variant instances with type argument substitution
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
-type VariantUnion<D, TypeArgMap = {}> = {
-    [K in keyof D]: VariantInstance<D, K, any, TypeArgMap>
+type VariantUnion<D, TypeArgMap = {}, Operations = {}> = {
+    [K in keyof D]: VariantInstance<D, K, any, TypeArgMap, Operations>
 }[keyof D]
+
+// Helper to extract handler parameter type for a variant
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+type HandlerParam<D, K extends keyof D, TypeArgMap = {}> =
+    IsEmptyArray<D[K]> extends true
+    ? [] // Singleton variant - no parameters
+    : D[K] extends readonly FieldDef[]
+    ? [FieldDefsToObject<D[K], any, TypeArgMap>] // Structured variant - named fields
+    : never
+
+// Helper to create handler signature for a variant
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+type HandlerFn<D, K extends keyof D, R, TypeArgMap = {}> =
+    HandlerParam<D, K, TypeArgMap> extends []
+    ? () => R
+    : HandlerParam<D, K, TypeArgMap> extends [infer P]
+    ? (fields: P) => R
+    : never
+
+// Handler map for match operation - enforces exhaustiveness when no wildcard
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+type MatchHandlers<D, R, TypeArgMap = {}, Operations = {}> =
+    | ({
+        [K in keyof D]: HandlerFn<D, K, R, TypeArgMap>
+    } & {
+        _?: never  // Wildcard not allowed when all cases are handled
+    })
+    | ({
+        [K in keyof D]?: HandlerFn<D, K, R, TypeArgMap>
+    } & {
+        _: (instance: VariantUnion<D, TypeArgMap, Operations>) => R  // Wildcard required when cases are optional
+    })
+
 
 // Definition of the DataDef type with type argument substitution
 // Supports both named and positional arguments with full type safety
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
-export type DataDef<D extends DataDecl, TypeArgMap = {}> = (abstract new (...args: any[]) => VariantUnion<D, TypeArgMap>) & {
+export type DataDef<D extends DataDecl, TypeArgMap = {}, Operations = {}> = (abstract new (...args: any[]) => VariantUnion<D, TypeArgMap, Operations>) & {
     readonly [K in keyof D]: IsEmptyArray<D[K]> extends true
-    ? VariantInstance<D, K, any, TypeArgMap>
+    ? VariantInstance<D, K, any, TypeArgMap, Operations>
     : D[K] extends readonly FieldDef[]
     ? ((
         // Named argument form: Point2D({ x: 3, y: 2 })
         data: FieldDefsToObject<D[K], any, TypeArgMap>
-    ) => VariantInstance<D, K, any, TypeArgMap>) & ((
+    ) => VariantInstance<D, K, any, TypeArgMap, Operations>) & ((
         // Positional argument form: Point2D(3, 2)
         ...args: FieldDefsToTuple<D[K], any, TypeArgMap>
-    ) => VariantInstance<D, K, any, TypeArgMap>) & {
-        new(data: FieldDefsToObject<D[K], any, TypeArgMap>): VariantInstance<D, K, any, TypeArgMap>
-        new(...args: FieldDefsToTuple<D[K], any, TypeArgMap>): VariantInstance<D, K, any, TypeArgMap>
+    ) => VariantInstance<D, K, any, TypeArgMap, Operations>) & {
+        new(data: FieldDefsToObject<D[K], any, TypeArgMap>): VariantInstance<D, K, any, TypeArgMap, Operations>
+        new(...args: FieldDefsToTuple<D[K], any, TypeArgMap>): VariantInstance<D, K, any, TypeArgMap, Operations>
     }
     : never
 } & {
@@ -231,12 +279,22 @@ export type DataDef<D extends DataDecl, TypeArgMap = {}> = (abstract new (...arg
         decl: unknown extends CheckVariantKeys<E>
             ? (CheckAllPropertyKeys<E> extends never ? E : never)
             : never
-    ): DataDef<D & E, TypeArgMap>;
+    ): DataDef<D & E, TypeArgMap, Operations>;
     extend<const E extends DataDecl>(
         fn: (context: DataContext) => (unknown extends CheckVariantKeys<E>
             ? (CheckAllPropertyKeys<E> extends never ? E : never)
             : never)
-    ): DataDef<D & E, TypeArgMap>;
+    ): DataDef<D & E, TypeArgMap, Operations>;
+    match<Name extends string, R>(
+        name: Name,
+        spec: { out: any },
+        handlers: MatchHandlers<D, R, TypeArgMap, Operations>
+    ): DataDef<D, TypeArgMap, Operations & Record<Name, () => R>>;
+    match<Name extends string, R>(
+        name: Name,
+        spec: { out: any },
+        handlersFn: (Family: DataDef<D, TypeArgMap, Operations>) => MatchHandlers<D, R, TypeArgMap, Operations>
+    ): DataDef<D, TypeArgMap, Operations & Record<Name, () => R>>;
 }
 
 /**
@@ -288,12 +346,12 @@ function createVariantInstance<T>(
 ): T {
     // Detect argument style: named (object literal) vs positional
     let namedArgs: Record<string, unknown>;
-    
+
     // To distinguish named vs positional when length === 1:
     // - Named: object literal with ALL expected field names as keys
     // - Positional: anything else (including object literals that don't match field names)
     const firstArg = argumentsList[0];
-    if (argumentsList.length === 1 && 
+    if (argumentsList.length === 1 &&
         isObjectLiteral(firstArg) &&
         fieldNames.every(name => name in firstArg)) {
         // Named argument form: Point2D({ x: 3, y: 2 })
@@ -316,7 +374,7 @@ function createVariantInstance<T>(
 
     // Extract field values in order for pooling lookup
     const fieldValues = fieldNames.map(name => namedArgs[name]);
-    
+
     // Check pool for existing instance with same values
     const pooled = pool.get(...fieldValues);
     if (pooled !== undefined) {
@@ -325,10 +383,10 @@ function createVariantInstance<T>(
 
     // Create new instance
     const instance = new VariantClass(namedArgs);
-    
+
     // Store in pool
     pool.set(...fieldValues, instance);
-    
+
     return instance;
 }
 
@@ -348,6 +406,101 @@ function createFamily(): FamilyRef {
     (fn as any)[FamilyRefSymbol] = true;
 
     return fn as FamilyRef;
+}
+
+/**
+ * Installs an operation on a variant's prototype.
+ * Creates a method that extracts fields and calls the transformer's handler.
+ * 
+ * @param variant - The variant (constructor or singleton instance)
+ * @param opName - Name of the operation to install
+ * @param transformer - The transformer containing the operation logic
+ * @param skipIfExists - If true, skip installation if method already exists (default: true)
+ */
+function installOperationOnVariant(variant: any, opName: string, transformer: Transformer, skipIfExists = true): void {
+    let VariantClass: any;
+
+    if (typeof variant === 'function') {
+        // Structured variant - Proxy-wrapped constructor
+        VariantClass = variant;
+    } else if (variant && typeof variant === 'object') {
+        // Singleton variant - get constructor
+        VariantClass = variant.constructor;
+    } else {
+        return;
+    }
+
+    // Skip if no prototype or if method already exists and we should skip
+    if (!VariantClass?.prototype) {
+        return;
+    }
+    
+    if (skipIfExists && VariantClass.prototype[opName]) {
+        return;
+    }
+
+    VariantClass.prototype[opName] = function (this: any) {
+        const ctorTransform = transformer.getCtorTransform?.(this.constructor);
+        if (!ctorTransform) {
+            throw new Error(
+                `No handler for variant '${this.constructor.name}' in match operation '${opName}'`
+            );
+        }
+
+        // Check if this is a wildcard handler
+        const handlers = (transformer as any)[HandlerMapSymbol];
+        const isWildcard = handlers && !handlers[this.constructor.name];
+
+        if (isWildcard && handlers._) {
+            // Wildcard handler receives the full instance
+            return ctorTransform(this);
+        }
+
+        // Get field names if structured variant
+        const fieldNames = (this.constructor as any)._fieldNames;
+
+        if (fieldNames && fieldNames.length > 0) {
+            // Structured variant - extract fields as object for named destructuring
+            const fields: Record<string, any> = {};
+            for (const fieldName of fieldNames) {
+                fields[fieldName] = this[fieldName];
+            }
+            return ctorTransform(fields);
+        } else {
+            // Singleton variant - no fields to pass
+            return ctorTransform();
+        }
+    };
+}
+
+/**
+ * Collects all variants from an ADT and its prototype chain.
+ * Returns a map of variant names to variant values (constructors or singletons).
+ * Child variants override parent variants with the same name.
+ * 
+ * @param adt - The ADT class to collect variants from
+ * @param accumulated - Accumulated variants from child classes (for recursion)
+ * @returns Map of variant names to their values
+ */
+function collectVariantsFromChain(adt: any, accumulated: Map<string, any> = new Map()): Map<string, any> {
+    // Base case: reached top of prototype chain
+    if (!adt || adt === Function.prototype || adt === Object.prototype) {
+        return accumulated;
+    }
+    
+    // Collect variants from current level
+    for (const key of Object.keys(adt)) {
+        if (key === 'extend' || key === 'match' || key.startsWith('_')) {
+            continue;
+        }
+        // Only add if not already present (child overrides parent)
+        if (!accumulated.has(key)) {
+            accumulated.set(key, adt[key]);
+        }
+    }
+    
+    // Recursive case: walk up the prototype chain
+    return collectVariantsFromChain(Object.getPrototypeOf(adt), accumulated);
 }
 
 /**
@@ -451,51 +604,6 @@ function validateField(value: unknown, spec: FieldSpec, fieldName: string, adtCl
 
 /**
  * Defines a new algebraic data type (ADT) with the given variants.
- * Each variant name must be in PascalCase (i.e., start with an uppercase letter).
- * The value of each variant can be:
- * - An empty array [] for simple enumerated types (singletons)
- * - An array of field definitions [{field: Type}, ...] for structured variants
- * Returns an abstract base class with variant classes/instances as static properties.
- * 
- * Structured variants support both named and positional arguments:
- * - Named: Point2D({ x: 3, y: 2 })
- * - Positional: Point2D(3, 2)
- * 
- * @param declOrFn - Either an object defining the ADT variants, or a function that receives a context and returns the variants. Use the function form for recursive ADTs.
- * @example
- * ```ts
- * const Color = data({ Red: [], Green: [], Blue: [] });
- * 
- * const Point = data({ 
- *   Point2D: [{ x: Number }, { y: Number }],
- *   Point3D: [{ x: Number }, { y: Number }, { z: Number }]
- * });
- * 
- * const p1 = Point.Point2D(3, 2);              // Positional
- * const p2 = Point.Point2D({ x: 3, y: 2 });    // Named
- * 
- * const ColorPoint = data({ 
- *   Point2: [{ x: Number }, { y: Number }, { color: Color }]
- * });
- * 
- * const isEven = (x: unknown): x is number => typeof x === 'number' && x % 2 === 0;
- * const EvenPoint = data({ Point2D: [{ x: isEven }, { y: isEven }] });
- * 
- * // Recursive ADT (non-parameterized)
- * const Peano = data(({ Family }) => ({ 
- *   Zero: [], 
- *   Succ: [{ pred: Family }] 
- * }));
- * const two = Peano.Succ(Peano.Succ(Peano.Zero));  // Positional is much cleaner!
- * 
- * // Parameterized ADT
- * const List = data(({ Family, T }) => ({ 
- *   Nil: [], 
- *   Cons: [{ head: T }, { tail: Family }] 
- * }));
- * const NumList = List({ T: Number });
- * const nums = NumList.Cons(1, NumList.Cons(2, NumList.Nil));
- * ```
  */
 export function data<const D extends DataDecl>(
     decl: unknown extends CheckVariantKeys<D>
@@ -540,9 +648,9 @@ export function data<const D extends DataDecl>(
                     if (key === 'extend' || key.startsWith('_')) {
                         continue;
                     }
-                    
+
                     const variant = this[key];
-                    
+
                     // Check if this is a function (constructor) - could be Proxy or direct
                     if (typeof variant === 'function') {
                         // Check if it has _fieldNames (structured variant)
@@ -570,7 +678,7 @@ export function data<const D extends DataDecl>(
                     registry = parentRegistry ? new Map(parentRegistry) : new Map();
                     adtTransformers.set(this, registry);
                 }
-                
+
                 registry.set(name, transformer);
             }
 
@@ -584,13 +692,13 @@ export function data<const D extends DataDecl>(
                 if (registry?.has(name)) {
                     return registry.get(name);
                 }
-                
+
                 // Check parent class
                 const parent = Object.getPrototypeOf(this);
                 if (parent && parent._getTransformer) {
                     return parent._getTransformer(name);
                 }
-                
+
                 return undefined;
             }
 
@@ -601,6 +709,43 @@ export function data<const D extends DataDecl>(
             static _getTransformerNames(this: any): string[] {
                 const registry = adtTransformers.get(this);
                 return registry ? Array.from(registry.keys()) : [];
+            }
+
+            /**
+             * Define a match operation (non-recursive pattern matching).
+             * Dispatches on variant constructors without structural recursion.
+             * 
+             * @param name - Name of the operation (becomes instance method name)
+             * @param spec - Type specification { out: ReturnType }
+             * @param handlersOrFn - Handler map or callback returning handlers
+             * @returns The ADT with the match operation installed
+             */
+            static match<R>(
+                this: any,
+                name: string,
+                spec: { out: any },
+                handlersOrFn: Record<string, ((...args: any[]) => R) | ((fields: any) => R)> | ((Family: any) => Record<string, ((...args: any[]) => R) | ((fields: any) => R)>)
+            ): any {
+                // Unwrap Proxy to get actual ADT class for callback-style ADTs
+                const actualADT = this[BaseADTSymbol] || this;
+
+                // Resolve handlers - support callback form for consistency with fold/unfold
+                const handlers = typeof handlersOrFn === 'function'
+                    ? handlersOrFn(this)
+                    : handlersOrFn;
+
+                const transformer = createMatchTransformer(name, handlers);
+
+                actualADT._registerTransformer(name, transformer);
+
+                // Install operation method on all variant prototypes
+                const allVariants = collectVariantsFromChain(actualADT);
+
+                for (const [, variant] of allVariants) {
+                    installOperationOnVariant(variant, name, transformer, false);
+                }
+
+                return this;
             }
 
             // Static extend method - inherited by all ADTs and extended ADTs
@@ -721,6 +866,18 @@ export function data<const D extends DataDecl>(
                     }
                 }
 
+                // Install parent operations on new variants
+                const parentTransformerNames = parentADTClass._getTransformerNames?.() || [];
+                for (const opName of parentTransformerNames) {
+                    const transformer = parentADTClass._getTransformer?.(opName);
+                    if (!transformer) continue;
+
+                    // Install operation on each new variant
+                    for (const variantName of Object.keys(extensionDecl)) {
+                        installOperationOnVariant(extendedResult[variantName], opName, transformer);
+                    }
+                }
+
                 Object.freeze(extendedResult);
                 return extendedResult;
             }
@@ -752,7 +909,6 @@ export function data<const D extends DataDecl>(
                     const [name, spec] = Object.entries(fieldDef)[0];
                     return { name, spec: spec as FieldSpec };
                 });
-
                 class VariantClass extends ADT {
                     constructor(data: Record<string, unknown>) {
                         super();
@@ -788,7 +944,7 @@ export function data<const D extends DataDecl>(
 
                 // Wrap in a Proxy to make it callable without 'new'
                 const fieldNames = fields.map(f => f.name);
-                
+
                 // Store field names on the VariantClass for later inspection
                 (VariantClass as any)._fieldNames = fieldNames;
 
