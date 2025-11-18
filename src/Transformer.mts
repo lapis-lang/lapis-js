@@ -221,3 +221,56 @@ export function createMatchTransformer(
 
     return transformer;
 }
+
+/**
+ * Fold handlers type - similar to match handlers but for recursive operations.
+ */
+export type FoldHandlers = Record<string, ((...args: any[]) => any)> & {
+    _?: (instance: any) => any
+}
+
+/**
+ * Create a fold transformer for structural recursion (catamorphism).
+ * 
+ * Note: This function is structurally identical to createMatchTransformer.
+ * They are kept separate for clarity of intent - fold is for recursive operations
+ * while match is for non-recursive pattern matching. The actual recursive behavior
+ * is implemented in the operation installation logic, not in the transformer itself.
+ * 
+ * @param name - Name of the fold operation
+ * @param handlers - Map of variant names to handler functions, with optional wildcard '_'
+ * @returns A transformer that performs recursive consumption
+ */
+export function createFoldTransformer(
+    name: string,
+    handlers: FoldHandlers
+): Transformer {
+    const transformer = createTransformer({
+        name,
+        getCtorTransform: (ctor: Constructor) => {
+            const variantName = ctor.name;
+            const handler = handlers[variantName];
+            
+            if (handler) {
+                return handler;
+            }
+            
+            // Try wildcard handler
+            if (handlers._) {
+                return handlers._;
+            }
+            
+            // No handler found - will throw error when invoked
+            return () => {
+                throw new Error(
+                    `No handler for variant '${variantName}' in fold operation '${name}'`
+                );
+            };
+        }
+    }) as Transformer & { [HandlerMapSymbol]: FoldHandlers };
+
+    // Store handlers on transformer for wildcard detection and mark as fold
+    transformer[HandlerMapSymbol] = handlers;
+
+    return transformer;
+}

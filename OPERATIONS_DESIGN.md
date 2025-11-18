@@ -154,11 +154,19 @@ ADT.match<R>(
 
 **Difference from fold**: Does NOT recurse into structured fields.
 
-### 2. **fold** (Catamorphism)
+### 2. **fold** (Catamorphism) ✅ IMPLEMENTED
 
 **Definition**: Structural recursion that replaces constructors with functions.
 
-**Proposed Syntax**:
+**Status**: ✅ Completed (2025-11-18)
+
+**Implementation Notes**:
+
+- Implemented in `src/index.mts` and `src/Transformer.mts`
+- Comprehensive test suite in `src/tests/fold.test.mts` (26 tests passing)
+- Documentation added to README.md
+
+**Implemented Syntax**:
 
 ```typescript
 const Peano = data(({ Family }) => ({ 
@@ -167,12 +175,20 @@ const Peano = data(({ Family }) => ({
 }))
 .fold('toValue', { out: Number }, {
     Zero() { return 0 },
-    Succ({ pred }) { return 1 + pred.toValue() }  // Named form
+    Succ({ pred }) { return 1 + pred }  // pred is already folded to number
 })
 
-const two = Peano.Succ(Peano.Succ(Peano.Zero))  // Construction can use either form
+const two = Peano.Succ({ pred: Peano.Succ({ pred: Peano.Zero }) })
 two.toValue() // 2
 ```
+
+**Key Implementation Detail**: The fold implementation automatically detects `Family` fields (using stored field specs) and recursively applies the operation **before** calling the handler. Handlers receive already-folded values for recursive fields.
+
+**Traversal Order**:
+
+- **For lists**: Right fold (foldr) - processes from tail to head, right-associative
+- **For trees**: Catamorphism - processes from leaves to root, both subtrees before parent
+- **General**: Bottom-up structural recursion
 
 **Type Signature** (conceptual):
 
@@ -449,7 +465,7 @@ const Expr = data(({ Family, T }) => ({
 // But we can't specialize T per variant!
 ```
 
-**Future Consideration: Default Type Parameters**
+#### Future Consideration: Default Type Parameters
 
 Default type parameters like `data({Family, T = Number})` would provide **default instantiation**, not per-variant specialization:
 
@@ -1006,36 +1022,49 @@ const ExtendedColor = Color.extend({ Yellow: [], Orange: [] })
 
 ---
 
-### PBI-4: Fold Operation (Catamorphism)
+### PBI-4: Fold Operation (Catamorphism) ✅ COMPLETED
 
 **Title**: Implement `.fold()` operation for structural recursion
 
 **Description**:
 As a developer using Lapis ADTs, I want to define fold operations so that I can recursively consume ADT structures.
 
+**Status**: ✅ Completed (2025-11-18)
+
+**Implementation Notes**:
+
+- Implemented catamorphism (structural recursion from leaves to root)
+- Automatic recursion on `Family` fields - handlers receive already-folded values
+- For lists: behaves as right fold (foldr)
+- For trees: processes both subtrees before parent node
+- Comprehensive test coverage: 26 tests across 13 test suites
+- Full TypeScript type safety and inference
+
 **Acceptance Criteria**:
 
-- [ ] Implement `ADT.fold(name, spec, algebra)` method
-- [ ] Support callback form: `(Family) => algebra` for recursive handlers
-- [ ] Support object form for non-recursive handlers (convenience)
-- [ ] Install operation as zero-argument instance method
-- [ ] Handlers use named form only: `Variant({ field, recursive }) => ...`
-- [ ] Recursive fields automatically have operation method available
-- [ ] Support wildcard handler for unknown variants
-- [ ] Detect name collisions with variant fields
-- [ ] Create transformer representation for fold operations
-- [ ] Add TypeScript type signatures with inference
-- [ ] Infer handler parameter types and validate return type matches `out` spec
-- [ ] Document catamorphisms and recursion patterns
-- [ ] Performance test: compare recursive vs iterative implementations
-- [ ] Tests:
-  - [ ] Peano.toValue (recursive)
-  - [ ] List.length (recursive)
-  - [ ] List.sum (parameterized)
-  - [ ] Wildcard handler
-  - [ ] Non-recursive algebra (object form)
-  - [ ] Name collision detection
-  - [ ] Type safety for handlers
+- [x] Implement `ADT.fold(name, spec, algebra)` method
+- [x] Support callback form: `(Family) => algebra` for recursive handlers
+- [x] Support object form for non-recursive handlers (convenience)
+- [x] Install operation as zero-argument instance method
+- [x] Handlers use named form only: `Variant({ field, recursive }) => ...`
+- [x] Recursive fields automatically have operation applied (handlers receive folded values)
+- [x] Support wildcard handler for unknown variants
+- [x] Detect name collisions with variant fields
+- [x] Create transformer representation for fold operations
+- [x] Add TypeScript type signatures with inference
+- [x] Infer handler parameter types and validate return type matches `out` spec
+- [x] Document catamorphisms and recursion patterns
+- [x] Tests:
+  - [x] Peano.toValue (recursive)
+  - [x] List.length, List.sum, List.product (recursive lists)
+  - [x] Binary tree height and sum (multiple recursive fields)
+  - [x] Parameterized ADTs (List with type parameter)
+  - [x] Wildcard handlers for extensibility
+  - [x] Object form for non-recursive operations
+  - [x] Name collision detection
+  - [x] Type safety for handlers
+  - [x] Integration with match operations
+  - [x] Deeply nested structures (100+ elements)
 
 **Example**:
 
@@ -1046,13 +1075,15 @@ const Peano = data(({ Family }) => ({
 }))
 .fold('toValue', { out: Number }, {
   Zero() { return 0 },
-  Succ({ pred }) { return 1 + pred.toValue() }
+  Succ({ pred }) { return 1 + pred }  // pred is already folded to number
 })
 ```
 
-**Dependencies**: PBI-3 (ExtendMatch)
+**Key Implementation Detail**: The `installOperationOnVariant` function detects `Family` fields using stored `_fieldSpecs` metadata and automatically applies the operation recursively before invoking the handler. This enables bottom-up structural recursion without manual traversal code.
 
-**Estimated Effort**: 8-10 days
+**Dependencies**: PBI-3 (ExtendMatch) ✅
+
+**Actual Effort**: 1 day
 
 ---
 

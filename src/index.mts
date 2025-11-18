@@ -2,6 +2,7 @@ import {
     type Transformer,
     adtTransformers,
     createMatchTransformer,
+    createFoldTransformer,
     HandlerMapSymbol
 } from './Transformer.mjs';
 
@@ -24,6 +25,24 @@ export type Predicate<T = unknown> = (value: T) => boolean
 
 // Generic constructor type that maps to its instance type
 export type Constructor<T = any> = abstract new (...args: any[]) => T
+
+// Helper type to extract instance type from constructor or return the type as-is
+// This is a compile-time type mapping that tells TypeScript to infer primitives (number, string, etc.)
+// instead of wrapper types (Number, String, etc.) for built-in constructors.
+// Also handles ADT classes, predicates, and generic constructors
+type InferType<T> =
+    T extends NumberConstructor ? number :
+    T extends StringConstructor ? string :
+    T extends BooleanConstructor ? boolean :
+    T extends ObjectConstructor ? object :
+    T extends ArrayConstructor ? unknown[] :
+    T extends DateConstructor ? Date :
+    T extends RegExpConstructor ? RegExp :
+    T extends SymbolConstructor ? symbol :
+    T extends BigIntConstructor ? bigint :
+    T extends ADTClass ? InstanceType<T> :
+    T extends Predicate<infer U> ? U :
+    T extends abstract new (...args: any[]) => infer R ? R : T
 
 // Symbol to mark Family references for recursive ADTs
 const FamilyRefSymbol = Symbol('FamilyRef')
@@ -162,6 +181,25 @@ type FieldName<F> = F extends Record<string, any> ? keyof F : never
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 type FieldSpecFromDef<F> = F extends Record<infer _K, infer V> ? V : never
 
+// Check if a FieldSpec is a FamilyRef
+type IsFamilyRef<F> = F extends FamilyRef ? true : false
+
+// Check if any field in a variant contains a Family reference
+type HasFamilyInVariant<V extends VariantValue> = 
+    V extends readonly FieldDef[] 
+    ? { [K in keyof V]: IsFamilyRef<FieldSpecFromDef<V[K]>> }[number] extends false 
+        ? false 
+        : true
+    : false
+
+// Check if a DataDecl is recursive (contains Family in any variant)
+// Note: This only detects direct Family recursion within the same ADT.
+// Mutual recursion through other ADTs is not detected by this type-level check.
+type IsRecursive<D extends DataDecl> = 
+    { [K in keyof D]: HasFamilyInVariant<D[K]> }[keyof D] extends false 
+    ? false 
+    : true
+
 // Convert array of field defs to object type { x: number, y: number }
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 type FieldDefsToObject<Defs extends readonly FieldDef[], Self = any, TypeArgMap = {}> = {
@@ -181,8 +219,6 @@ type FieldDefsToTuple<Defs extends readonly FieldDef[], Self = any, TypeArgMap =
 } extends infer T extends readonly any[] ? T : never
 
 // Infer the TypeScript type from a field specification
-
-// Infer the TypeScript type from a field specification
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 type InferFieldType<F, Self = unknown, TypeArgMap = {}> =
     F extends FamilyRef ? Self :
@@ -191,33 +227,11 @@ type InferFieldType<F, Self = unknown, TypeArgMap = {}> =
         InferTypeFromSpec<TypeArgMap[ParamName]> :
         any
     ) :
-    F extends NumberConstructor ? number :
-    F extends StringConstructor ? string :
-    F extends BooleanConstructor ? boolean :
-    F extends ObjectConstructor ? object :
-    F extends ArrayConstructor ? unknown[] :
-    F extends DateConstructor ? Date :
-    F extends RegExpConstructor ? RegExp :
-    F extends SymbolConstructor ? symbol :
-    F extends BigIntConstructor ? bigint :
-    F extends ADTClass ? InstanceType<F> :
-    F extends Predicate<infer T> ? T :
-    unknown
+    InferType<F>
 
 // Infer TypeScript type from a type specification (Number -> number, etc.)
-type InferTypeFromSpec<S> =
-    S extends NumberConstructor ? number :
-    S extends StringConstructor ? string :
-    S extends BooleanConstructor ? boolean :
-    S extends ObjectConstructor ? object :
-    S extends ArrayConstructor ? unknown[] :
-    S extends DateConstructor ? Date :
-    S extends RegExpConstructor ? RegExp :
-    S extends SymbolConstructor ? symbol :
-    S extends BigIntConstructor ? bigint :
-    S extends ADTClass ? InstanceType<S> :
-    S extends Predicate<infer T> ? T :
-    unknown
+// Simply delegates to InferType for all constructor/predicate handling
+type InferTypeFromSpec<S> = InferType<S>
 
 // Helper to get variant instance types with type argument substitution
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
@@ -266,6 +280,21 @@ type MatchHandlers<D, R, TypeArgMap = {}, Operations = {}> =
         _: (instance: VariantUnion<D, TypeArgMap, Operations>) => R  // Wildcard required when cases are optional
     } & ThisType<VariantUnion<D, TypeArgMap, Operations>>)
 
+// Handler map for fold operation - same structure as match but for catamorphisms
+// Semantic difference: FoldHandlers receive folded/processed values for Family fields,
+// while MatchHandlers receive raw field values.
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+type FoldHandlers<D, R, TypeArgMap = {}, Operations = {}> =
+    | ({
+        [K in keyof D]: HandlerFn<D, K, R, TypeArgMap>
+    } & {
+        _?: never  // Wildcard not allowed when all cases are handled
+    } & ThisType<VariantUnion<D, TypeArgMap, Operations>>)
+    | ({
+        [K in keyof D]?: HandlerFn<D, K, R, TypeArgMap>
+    } & {
+        _: (instance: VariantUnion<D, TypeArgMap, Operations>) => R  // Wildcard required when cases are optional
+    } & ThisType<VariantUnion<D, TypeArgMap, Operations>>)
 
 // Handler for extendMatch - with parent parameter for overrides
 // Compute field type for a variant, with optional parent injected
@@ -278,7 +307,7 @@ type FieldsWithOptionalParent<Fields, R> = Fields & { [K in typeof parent]?: () 
 // Handler for a specific variant in extendMatch
 // Singleton handlers: parameterless for new variants, fields object with parent for overrides
 // Structured handlers: always receive fields object with optional parent
-type VariantHandler<D, K extends keyof D, R, TypeArgMap> = 
+type VariantHandler<D, K extends keyof D, R, TypeArgMap> =
     IsEmptyArray<D[K]> extends true
     ? (() => R) | ((fields: { [K in typeof parent]?: () => R }) => R)  // Singleton: both forms allowed
     : (fields: FieldsWithOptionalParent<VariantFieldType<D, K, TypeArgMap>, R>) => R  // Structured: fields with optional parent
@@ -294,11 +323,11 @@ type ExtendMatchHandlers<D, R, TypeArgMap = {}, Operations = {}> = {
     _?: (fields: { instance: VariantUnion<D, TypeArgMap, Operations> } & { [K in typeof parent]?: () => R }) => R
 } & ThisType<VariantUnion<D, TypeArgMap, Operations>>
 
-
 // Definition of the DataDef type with type argument substitution
 // Supports both named and positional arguments with full type safety
+// IsExtended tracks whether this ADT was created via .extend() (true) or is a base ADT (false)
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
-export type DataDef<D extends DataDecl, TypeArgMap = {}, Operations = {}> = (abstract new (...args: any[]) => VariantUnion<D, TypeArgMap, Operations>) & {
+export type DataDef<D extends DataDecl, TypeArgMap = {}, Operations = {}, IsExtended extends boolean = false> = (abstract new (...args: any[]) => VariantUnion<D, TypeArgMap, Operations>) & {
     readonly [K in keyof D]: IsEmptyArray<D[K]> extends true
     ? VariantInstance<D, K, any, TypeArgMap, Operations>
     : D[K] extends readonly FieldDef[]
@@ -318,31 +347,46 @@ export type DataDef<D extends DataDecl, TypeArgMap = {}, Operations = {}> = (abs
         decl: unknown extends CheckVariantKeys<E>
             ? (CheckAllPropertyKeys<E> extends never ? E : never)
             : never
-    ): DataDef<D & E, TypeArgMap, Operations>;
+    ): DataDef<D & E, TypeArgMap, Operations, true>;
     extend<const E extends DataDecl>(
         fn: (context: DataContext) => (unknown extends CheckVariantKeys<E>
             ? (CheckAllPropertyKeys<E> extends never ? E : never)
             : never)
-    ): DataDef<D & E, TypeArgMap, Operations>;
+    ): DataDef<D & E, TypeArgMap, Operations, true>;
     match<Name extends string, R>(
         name: Name,
-        spec: { out: any },
-        handlers: MatchHandlers<D, R, TypeArgMap, Operations>
-    ): DataDef<D, TypeArgMap, Operations & Record<Name, () => R>>;
+        spec: { out: R },
+        handlers: MatchHandlers<D, InferType<R>, TypeArgMap, Operations>
+    ): DataDef<D, TypeArgMap, Operations & Record<Name, () => InferType<R>>, IsExtended>;
     match<Name extends string, R>(
         name: Name,
-        spec: { out: any },
-        handlersFn: (Family: DataDef<D, TypeArgMap, Operations>) => MatchHandlers<D, R, TypeArgMap, Operations>
-    ): DataDef<D, TypeArgMap, Operations & Record<Name, () => R>>;
+        spec: { out: R },
+        handlersFn: (Family: DataDef<D, TypeArgMap, Operations, IsExtended>) => MatchHandlers<D, InferType<R>, TypeArgMap, Operations>
+    ): DataDef<D, TypeArgMap, Operations & Record<Name, () => InferType<R>>, IsExtended>;
+} & (IsRecursive<D> extends true ? {
+    fold<Name extends string, R>(
+        name: Name,
+        spec: { out: R },
+        handlers: FoldHandlers<D, InferType<R>, TypeArgMap, Operations>
+    ): DataDef<D, TypeArgMap, Operations & Record<Name, () => InferType<R>>, IsExtended>;
+    fold<Name extends string, R>(
+        name: Name,
+        spec: { out: R },
+        handlersFn: (Family: DataDef<D, TypeArgMap, Operations, IsExtended>) => FoldHandlers<D, InferType<R>, TypeArgMap, Operations>
+    ): DataDef<D, TypeArgMap, Operations & Record<Name, () => InferType<R>>, IsExtended>;
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+} : {}) & (IsExtended extends true ? {
     extendMatch<Name extends string, R>(
         name: Name extends keyof Operations ? Name : never,
-        handlers: ExtendMatchHandlers<D, R, TypeArgMap, Operations>
-    ): DataDef<D, TypeArgMap, Operations & Record<Name, () => R>>;
+        handlers: ExtendMatchHandlers<D, InferType<R>, TypeArgMap, Operations>
+    ): DataDef<D, TypeArgMap, Operations & Record<Name, () => InferType<R>>, IsExtended>;
     extendMatch<Name extends string, R>(
         name: Name extends keyof Operations ? Name : never,
-        handlersFn: (Family: DataDef<D, TypeArgMap, Operations>) => ExtendMatchHandlers<D, R, TypeArgMap, Operations>
-    ): DataDef<D, TypeArgMap, Operations & Record<Name, () => R>>;
-}
+        handlersFn: (Family: DataDef<D, TypeArgMap, Operations, IsExtended>) => ExtendMatchHandlers<D, InferType<R>, TypeArgMap, Operations>
+    ): DataDef<D, TypeArgMap, Operations & Record<Name, () => InferType<R>>, IsExtended>;
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+} : {})
+
 
 /**
  * Checks if the value is an object literal.
@@ -454,11 +498,15 @@ function createStructuredVariant(
     // Wrap in a Proxy to make it callable without 'new'
     const fieldNames = fields.map(f => f.name);
     const isSingleton = fieldNames.length === 0;
-    
+
     // Store metadata on the VariantClass for later inspection
     (VariantClass as any)._fieldNames = fieldNames;
+    // Store full field specs for fold operations. Currently stored for all variants
+    // for simplicity, though only recursive ADTs use this. Could optimize to store
+    // only when variant contains Family fields.
+    (VariantClass as any)._fieldSpecs = fields;
     (VariantClass as any)[IsSingleton] = isSingleton;
-    
+
     return new Proxy(VariantClass, {
         apply(_target, _thisArg, argumentsList) {
             return createVariantInstance(VariantClass, fieldNames, argumentsList, variantName);
@@ -532,6 +580,7 @@ function createFamily(): FamilyRef {
 /**
  * Installs an operation on a variant's prototype.
  * Creates a method that extracts fields and calls the transformer's handler.
+ * For fold operations, uses stack-safe iterative traversal instead of recursion.
  * 
  * @param variant - The variant (constructor or singleton instance)
  * @param opName - Name of the operation to install
@@ -561,37 +610,116 @@ function installOperationOnVariant(variant: any, opName: string, transformer: Tr
     }
 
     VariantClass.prototype[opName] = function (this: any) {
-        const ctorTransform = transformer.getCtorTransform?.(this.constructor);
-        if (!ctorTransform) {
-            throw new Error(
-                `No handler for variant '${this.constructor.name}' in match operation '${opName}'`
-            );
-        }
-
-        // Check if this is a wildcard handler
-        const handlers = (transformer as any)[HandlerMapSymbol];
-        const isWildcard = handlers && !handlers[this.constructor.name];
-
-        if (isWildcard && handlers._) {
-            // Wildcard handler receives the full instance
-            return ctorTransform.call(this, this);
-        }
-
-        // Check if this is a singleton or structured variant
-        const isSingleton = (this.constructor as any)[IsSingleton];
-        const fieldNames = (this.constructor as any)._fieldNames;
-
-        if (!isSingleton && fieldNames && fieldNames.length > 0) {
-            // Structured variant - extract fields as object for named destructuring
-            const fields: Record<string, any> = {};
-            for (const fieldName of fieldNames) {
-                fields[fieldName] = this[fieldName];
+        // Stack-safe fold implementation using explicit stack
+        // This avoids deep recursion by using an iterative post-order traversal
+        
+        // eslint-disable-next-line @typescript-eslint/no-this-alias
+        const root = this;
+        // Note: A new WeakMap is created for every fold operation invocation.
+        // Memoization is only effective within a single operation call, not across multiple calls.
+        // This is intentional to ensure fresh results and avoid memory leaks.
+        const memoCache = new WeakMap<any, any>();
+        
+        // Work stack for iterative traversal: [instance, isProcessed]
+        const stack: Array<{ instance: any; processed: boolean }> = [];
+        stack.push({ instance: root, processed: false });
+        
+        while (stack.length > 0) {
+            const frame = stack[stack.length - 1];
+            
+            // If already memoized, skip
+            if (memoCache.has(frame.instance)) {
+                stack.pop();
+                continue;
             }
-            return ctorTransform.call(this, fields);
-        } else {
-            // Singleton variant - no fields to pass
-            return ctorTransform.call(this);
+            
+            // If already processed children, apply handler and memoize
+            if (frame.processed) {
+                stack.pop();
+                
+                const ctorTransform = transformer.getCtorTransform?.(frame.instance.constructor);
+                if (!ctorTransform) {
+                    throw new Error(
+                        `No handler for variant '${frame.instance.constructor.name}' in operation '${opName}'`
+                    );
+                }
+                
+                // Check if this is a wildcard handler
+                const handlers = (transformer as any)[HandlerMapSymbol];
+                const isWildcard = handlers && !handlers[frame.instance.constructor.name];
+                
+                if (isWildcard && handlers._) {
+                    // Wildcard handler receives the full instance
+                    const result = ctorTransform.call(frame.instance, frame.instance);
+                    memoCache.set(frame.instance, result);
+                    continue;
+                }
+                
+                // Check if this is a singleton or structured variant
+                const isSingleton = frame.instance.constructor[IsSingleton];
+                const fieldNames = frame.instance.constructor._fieldNames;
+                const fieldSpecs = frame.instance.constructor._fieldSpecs;
+                
+                if (!isSingleton && fieldNames && fieldNames.length > 0) {
+                    // Structured variant - extract fields with memoized values for Family fields
+                    const fields: Record<string, any> = {};
+                    
+                    for (let i = 0; i < fieldNames.length; i++) {
+                        const fieldName = fieldNames[i];
+                        const fieldValue = frame.instance[fieldName];
+                        
+                        // Check if this field is a Family reference (recursive field)
+                        if (fieldSpecs && fieldSpecs[i] && isFamilyRef(fieldSpecs[i].spec)) {
+                            // Recursive field - use memoized value
+                            if (fieldValue && memoCache.has(fieldValue)) {
+                                fields[fieldName] = memoCache.get(fieldValue);
+                            } else {
+                                // Field doesn't have the operation or wasn't memoized - pass as-is
+                                fields[fieldName] = fieldValue;
+                            }
+                        } else {
+                            // Non-recursive field - pass as-is
+                            fields[fieldName] = fieldValue;
+                        }
+                    }
+                    
+                    const result = ctorTransform.call(frame.instance, fields);
+                    memoCache.set(frame.instance, result);
+                } else {
+                    // Singleton variant - no fields to pass
+                    const result = ctorTransform.call(frame.instance);
+                    memoCache.set(frame.instance, result);
+                }
+                continue;
+            }
+            
+            // Mark as processed and push children onto stack
+            frame.processed = true;
+            
+            // Push Family field children onto stack (reverse order for correct processing)
+            const isSingleton = frame.instance.constructor[IsSingleton];
+            const fieldNames = frame.instance.constructor._fieldNames;
+            const fieldSpecs = frame.instance.constructor._fieldSpecs;
+            
+            if (!isSingleton && fieldNames && fieldNames.length > 0) {
+                // Push children in reverse order so they're processed in correct order
+                for (let i = fieldNames.length - 1; i >= 0; i--) {
+                    const fieldValue = frame.instance[fieldNames[i]];
+                    
+                    // Check if this field is a Family reference and has the operation
+                    // Intentionally skips Family fields that do not have the operation defined.
+                    // This allows for extended ADTs where not all variants/fields implement all operations.
+                    if (fieldSpecs && fieldSpecs[i] && isFamilyRef(fieldSpecs[i].spec)) {
+                        if (fieldValue && typeof fieldValue[opName] !== 'undefined' && !memoCache.has(fieldValue)) {
+                            stack.push({ instance: fieldValue, processed: false });
+                        }
+                    }
+                }
+            }
         }
+        
+        // Return the memoized result for the root
+        return memoCache.get(root);
     };
 }
 
@@ -879,6 +1007,43 @@ export function data<const D extends DataDecl>(
                 return this;
             }
 
+            /**
+             * Define a fold operation (catamorphism - structural recursion).
+             * Recursively consumes ADT structures by replacing constructors with functions.
+             * 
+             * @param name - Name of the operation (becomes instance method name)
+             * @param spec - Type specification { out: ReturnType }
+             * @param handlersOrFn - Handler map or callback returning handlers
+             * @returns The ADT with the fold operation installed
+             */
+            static fold<R>(
+                this: any,
+                name: string,
+                spec: { out: any },
+                handlersOrFn: Record<string, ((...args: any[]) => R) | ((fields: any) => R)> | ((Family: any) => Record<string, ((...args: any[]) => R) | ((fields: any) => R)>)
+            ): any {
+                // Unwrap Proxy to get actual ADT class for callback-style ADTs
+                const actualADT = this[BaseADTSymbol] || this;
+
+                // Resolve handlers - support callback form (required for recursive ADTs)
+                const handlers = typeof handlersOrFn === 'function'
+                    ? handlersOrFn(this)
+                    : handlersOrFn;
+
+                const transformer = createFoldTransformer(name, handlers);
+
+                actualADT._registerTransformer(name, transformer);
+
+                // Install operation method on all variant prototypes
+                const allVariants = collectVariantsFromChain(actualADT);
+
+                for (const [, variant] of allVariants) {
+                    installOperationOnVariant(variant, name, transformer, false);
+                }
+
+                return this;
+            }
+
             // Static extendMatch method - extend match operation in subtype
             static extendMatch<R>(
                 this: any,
@@ -965,7 +1130,7 @@ export function data<const D extends DataDecl>(
 
                             // Inject parent into fields object
                             const variantType = variantTypes.get(variantName);
-                            
+
                             if (variantType === 'singleton') {
                                 // Parent is singleton - pass object with just parent symbol
                                 return (handler as any).call(this, { [parent]: boundParent });
@@ -1017,31 +1182,30 @@ export function data<const D extends DataDecl>(
                     shadowMap = new Map();
                     shadowedVariants.set(actualADT, shadowMap);
                 }
-                
+
                 for (const variantName of Object.keys(handlersInput)) {
                     if (variantName === '_') continue; // Skip wildcard
-                    
+
                     // Check if this is an override (parent handler exists)
                     const parentHandler = parentHandlers[variantName];
                     if (!parentHandler) continue; // Not an override
-                    
+
                     // Check if this is an inherited variant (not defined directly on this ADT)
                     const isInherited = !Object.prototype.hasOwnProperty.call(actualADT, variantName);
                     if (!isInherited) continue; // Variant is defined on this ADT, no need to copy
-                    
-                    
+
                     // Get the inherited variant
                     const inheritedVariant = actualADT[variantName];
-                    
+
                     // Determine if it's a singleton or structured variant
                     const variantType = variantTypes.get(variantName);
-                    
+
                     if (variantType === 'singleton') {
                         // Copy singleton variant
                         // The inherited variant is the singleton instance itself
                         // We need to create a new instance with a new constructor
                         const OriginalClass = inheritedVariant.constructor;
-                        
+
                         class CopiedVariantClass extends OriginalClass {
                             private static _instance: typeof inheritedVariant;
                             static {
@@ -1049,13 +1213,13 @@ export function data<const D extends DataDecl>(
                                 Object.freeze(this._instance);
                             }
                         }
-                        
+
                         Object.defineProperty(CopiedVariantClass, 'name', {
                             value: variantName,
                             writable: false,
                             configurable: false
                         });
-                        
+
                         // Store the copied instance in the shadow map
                         shadowMap.set(variantName, (CopiedVariantClass as any)._instance);
                     } else {
@@ -1063,31 +1227,31 @@ export function data<const D extends DataDecl>(
                         // The inherited variant is typically a Proxy wrapping a class
                         // Metadata like _fieldNames is stored on the wrapped class
                         // and accessible through the Proxy
-                        
-                        const fieldNames = (inheritedVariant as any)._fieldNames || [];
-                        const isSingleton = (inheritedVariant as any)[IsSingleton] || false;
-                        
+
+                        const fieldNames = inheritedVariant._fieldNames || [];
+                        const isSingleton = inheritedVariant[IsSingleton] || false;
+
                         // To extend, we need the actual class, not the Proxy
                         // Access it via the prototype's constructor
                         const OriginalClass = inheritedVariant.prototype?.constructor;
-                        
+
                         // Create a new variant class that extends the original
                         class CopiedVariantClass extends OriginalClass {
                             constructor(data: Record<string, unknown>) {
                                 super(data);
                             }
                         }
-                        
+
                         Object.defineProperty(CopiedVariantClass, 'name', {
                             value: variantName,
                             writable: false,
                             configurable: false
                         });
-                        
+
                         // Store metadata on the copied class
                         (CopiedVariantClass as any)._fieldNames = fieldNames;
                         (CopiedVariantClass as any)[IsSingleton] = isSingleton;
-                        
+
                         // Wrap in a Proxy to make it callable
                         const copiedProxy = new Proxy(CopiedVariantClass, {
                             apply(_target, _thisArg, argumentsList) {
@@ -1097,10 +1261,10 @@ export function data<const D extends DataDecl>(
                                 return createVariantInstance(CopiedVariantClass, fieldNames, argumentsList, variantName, 'new ');
                             }
                         });
-                        
+
                         // Store the class on the proxy for later reference
                         (copiedProxy as any)[Symbol.for('VariantClass')] = CopiedVariantClass;
-                        
+
                         // Store the copied proxy in the shadow map
                         shadowMap.set(variantName, copiedProxy);
                     }
@@ -1114,7 +1278,7 @@ export function data<const D extends DataDecl>(
                     // Check if there's a shadowed version for this variant
                     const shadowedVariant = shadowMap.get(variantName);
                     const targetVariant = shadowedVariant || variant;
-                    
+
                     // Don't skip if exists - we need to reinstall with new transformer
                     installOperationOnVariant(targetVariant, name, transformer, false);
                 }
@@ -1127,7 +1291,7 @@ export function data<const D extends DataDecl>(
                         // Already wrapped, return the existing proxy
                         return existingProxy;
                     }
-                    
+
                     // Create a Proxy that intercepts property access to return shadowed variants
                     const proxy = new Proxy(this, {
                         get(target, prop, receiver) {
@@ -1143,10 +1307,10 @@ export function data<const D extends DataDecl>(
                             return Reflect.get(target, prop, receiver);
                         }
                     });
-                    
+
                     // Store the proxy in the WeakMap for reuse
                     shadowProxies.set(this, proxy);
-                    
+
                     return proxy;
                 }
 
@@ -1257,7 +1421,7 @@ export function data<const D extends DataDecl>(
                     const [name, spec] = Object.entries(fieldDef)[0];
                     return { name, spec: spec as FieldSpec };
                 });
-                
+
                 result[variantName] = createStructuredVariant(
                     ADT,
                     variantName,

@@ -94,23 +94,26 @@ console.log(p2 instanceof Point); // true
 
 **Supported field types:**
 
-- `Number` - field type is `number`
-- `String` - field type is `string`
-- `Boolean` - field type is `boolean`
+- `Number` - field type is `number` (primitive, not wrapper object)
+- `String` - field type is `string` (primitive, not wrapper object)
+- `Boolean` - field type is `boolean` (primitive, not wrapper object)
 - `Object` - field type is `object`
 - `Array` - field type is `unknown[]`
 - `Date` - field type is `Date`
 - `RegExp` - field type is `RegExp`
-- `Symbol` - field type is `symbol`
-- `BigInt` - field type is `bigint`
+- `Symbol` - field type is `symbol` (primitive)
+- `BigInt` - field type is `bigint` (primitive)
 - Other ADTs - field type is the ADT instance
 - Predicates - custom validation functions with runtime checks
+- `Family` - recursive reference to the ADT being defined (for recursive ADTs only)
 
 **Type validation:**
 
-- Built-in types (Number, String, etc.) are validated at **compile-time** by TypeScript
+- Built-in primitive types (Number, String, Boolean, BigInt, Symbol) map to primitive TypeScript types (`number`, `string`, `boolean`, `bigint`, `symbol`) - validated at **compile-time** by TypeScript
+- Built-in object types (Object, Array, Date, RegExp) are validated at **compile-time** by TypeScript
 - ADT instances are validated at **runtime** with `instanceof` checks
 - Predicates are validated at **runtime** with custom logic
+- `Family` references are validated at **runtime** with `instanceof` checks against the ADT family
 
 **Requirements:**
 
@@ -873,6 +876,8 @@ Point.match('x', { out: Number }, {
 
 When extending an ADT, use `.extendMatch()` to add operations to new variants or override operations for inherited variants. This enables specialization and customization of behavior in extended ADTs.
 
+**Availability:** The `.extendMatch()` method is only available on **extended ADTs** (those created via `.extend()`). TypeScript prevents calling `.extendMatch()` on base ADTs at compile-time. This ensures that `.extendMatch()` is only used where it makes semantic sense - to extend operations that already exist on a parent ADT.
+
 **Basic usage:**
 
 ```ts
@@ -1000,21 +1005,236 @@ const ExtendedColor = Color.extend({ Yellow: [], Orange: [] })
     });
 ```
 
+## Structural Recursion (Fold Operations)
+
+Lapis ADTs support defining fold operations through the `.fold()` method, which provides **catamorphisms** - structural recursion that replaces constructors with functions. Unlike `.match()` which is non-recursive, `.fold()` automatically recurses into `Family` fields.
+
+**Availability:** The `.fold()` method is only available on **recursive ADTs** (those that contain `Family` references in at least one variant). TypeScript prevents calling `.fold()` on non-recursive ADTs at compile-time.
+
+### Basic Fold (Catamorphism)
+
+Define operations that recursively consume ADT structures from leaves to root:
+
+```ts
+const Peano = data(({ Family }) => ({ 
+    Zero: [], 
+    Succ: [{ pred: Family }] 
+}))
+.fold('toValue', { out: Number }, {
+    Zero() { return 0; },
+    Succ({ pred }) { return 1 + pred; }  // pred is already folded to number
+});
+
+const three = Peano.Succ({ pred: Peano.Succ({ pred: Peano.Succ({ pred: Peano.Zero }) }) });
+console.log(three.toValue()); // 3
+```
+
+**Key difference from `.match()`:** Handlers receive **already-folded values** for `Family` fields. The recursion happens automatically before your handler is called.
+
+### Fold on Lists
+
+For list structures, fold is a **right fold** (processes from tail to head):
+
+```ts
+const List = data(({ Family }) => ({ 
+    Nil: [], 
+    Cons: [{ head: Number }, { tail: Family }] 
+}))
+.fold('sum', { out: Number }, {
+    Nil() { return 0; },
+    Cons({ head, tail }) { return head + tail; }  // tail is the sum of remaining elements
+});
+
+const list = List.Cons({ head: 1, 
+    tail: List.Cons({ head: 2, 
+        tail: List.Cons({ head: 3, tail: List.Nil }) 
+    }) 
+});
+
+console.log(list.sum()); // 6
+// Evaluation structure: 1 + (2 + (3 + 0)) - right-associative
+// Actual order (bottom-up from Nil): Nil→0, Cons(3,Nil)→3+0=3, Cons(2,...)→2+3=5, Cons(1,...)→1+5=6
+```
+
+### Fold on Trees
+
+For tree structures, fold is a **catamorphism** (processes from leaves to root):
+
+```ts
+const Tree = data(({ Family }) => ({
+    Leaf: [{ value: Number }],
+    Node: [{ left: Family }, { right: Family }, { value: Number }]
+}))
+.fold('sum', { out: Number }, {
+    Leaf({ value }) { return value; },
+    Node({ left, right, value }) { 
+        // Both left and right are already folded to numbers
+        return left + right + value; 
+    }
+});
+
+const tree = Tree.Node({ 
+    left: Tree.Leaf({ value: 1 }), 
+    right: Tree.Leaf({ value: 2 }), 
+    value: 10 
+});
+
+console.log(tree.sum()); // 13
+```
+
+### Multiple Fold Operations
+
+Chain `.fold()` calls to define multiple operations:
+
+```ts
+const List = data(({ Family }) => ({ 
+    Nil: [], 
+    Cons: [{ head: Number }, { tail: Family }] 
+}))
+.fold('length', { out: Number }, {
+    Nil() { return 0; },
+    Cons({ tail }) { return 1 + tail; }
+})
+.fold('sum', { out: Number }, {
+    Nil() { return 0; },
+    Cons({ head, tail }) { return head + tail; }
+})
+.fold('product', { out: Number }, {
+    Nil() { return 1; },
+    Cons({ head, tail }) { return head * tail; }
+});
+
+const list = List.Cons({ head: 2, 
+    tail: List.Cons({ head: 3, 
+        tail: List.Cons({ head: 4, tail: List.Nil }) 
+    }) 
+});
+
+console.log(list.length());  // 3
+console.log(list.sum());     // 9
+console.log(list.product()); // 24
+```
+
+### Fold Callback Form
+
+For consistency with recursive ADTs, `.fold()` supports a callback form:
+
+```ts
+const List = data(({ Family }) => ({
+    Nil: [],
+    Cons: [{ head: Number }, { tail: Family }]
+}))
+.fold('length', { out: Number }, (Family) => ({
+    Nil() { return 0; },
+    Cons({ tail }) { return 1 + tail; }
+}));
+```
+
+### Fold Wildcard Handlers
+
+Use `_` wildcard to handle unknown variants:
+
+```ts
+const Peano = data(({ Family }) => ({ 
+    Zero: [], 
+    Succ: [{ pred: Family }],
+    NegSucc: [{ pred: Family }]
+}))
+.fold('toValue', { out: Number }, {
+    Zero() { return 0; },
+    _(instance) { 
+        console.log(`Unknown variant: ${instance.constructor.name}`);
+        return -999; 
+    }
+});
+
+console.log(Peano.Zero.toValue()); // 0
+console.log(Peano.Succ({ pred: Peano.Zero }).toValue()); // -999 (wildcard)
+```
+
+### Integration with Match
+
+Fold and match operations work together:
+
+```ts
+const List = data(({ Family }) => ({ 
+    Nil: [], 
+    Cons: [{ head: Number }, { tail: Family }] 
+}))
+.match('isEmpty', { out: Boolean }, {
+    Nil() { return true; },
+    Cons() { return false; }
+})
+.fold('length', { out: Number }, {
+    Nil() { return 0; },
+    Cons({ tail }) { return 1 + tail; }
+});
+
+const list = List.Cons({ head: 1, tail: List.Nil });
+console.log(list.isEmpty()); // false (match - non-recursive)
+console.log(list.length());  // 1 (fold - recursive)
+```
+
+### Handler Parameter Form
+
+**Fold handlers use named form only** (destructure fields):
+
+```ts
+// ✓ Correct - named destructuring
+Cons({ head, tail }) { return head + tail; }
+
+// ✓ Can ignore unused fields
+Cons({ tail }) { return 1 + tail; }
+
+// Singleton variants have no parameters
+Nil() { return 0; }
+```
+
+### What is Catamorphism?
+
+A **catamorphism** is the general pattern of structural recursion:
+
+- Processes data structures **bottom-up** (leaves to root)
+- Handlers receive **already-processed** recursive fields
+- Replaces constructors with functions
+
+**Terminology:**
+
+- **For lists**: This is a **right fold** (`foldr`) - processes from tail to head
+- **For trees**: This is a **catamorphism** - processes from leaves to root
+- **General**: Structural recursion that consumes data structures
+
+**Key insight:** The implementation automatically identifies `Family` fields and applies the operation recursively before calling your handler. You don't manually recurse - the framework does it for you.
+
 ### Key Points Summary
 
-**Pattern Matching:**
+**Pattern Matching (`.match()`):**
 
 - `.match()` performs **non-recursive** pattern matching (does not recurse into fields)
-- Handlers use **named form only** for clarity and partial destructuring
+- Available on **all ADTs** (both recursive and non-recursive)
+- Handlers receive raw field values (not processed)
 - Operations are installed on **variant class prototypes** (callable on variant instances)
 - Wildcard handler `_` receives the full variant instance
 - Operations are inherited by extended ADTs
 - Name collision detection prevents conflicts with variant fields
 - Chaining supported: `.match(...).match(...)` or `.extend(...).match(...)`
 
+**Structural Recursion (`.fold()`):**
+
+- `.fold()` performs **catamorphism** (structural recursion from leaves to root)
+- Available **only on recursive ADTs** (those with `Family` references) - TypeScript enforces this at compile-time
+- Handlers receive **already-folded values** for `Family` fields
+- For lists, behaves as **right fold** (right-associative, processes tail first)
+- For trees, processes from leaves to root (both subtrees evaluated before parent)
+- Automatic recursion - framework handles traversal
+- Wildcard handler `_` for unknown variants
+- Name collision detection prevents conflicts with variant fields
+- Chaining supported: `.fold(...).fold(...)` or `.match(...).fold(...)`
+
 **Operation Extension:**
 
 - `.extendMatch()` adds operations to new variants and overrides operations for inherited variants
+- Available **only on extended ADTs** (those created via `.extend()`) - TypeScript enforces this at compile-time
 - Override handlers access parent behavior via `fields[parent]!()`
 - Must import `parent` symbol: `import { data, parent } from '@lapis-lang/lapis-js'`
 - Overridden variants get new constructors (constructor identity broken)
