@@ -772,9 +772,9 @@ const ExtendedColor = Color.extend({ Yellow: [] })
     });
 
 // Note: Override only affects NEW instances created after extendMatch
-// Due to constructor identity preservation, Color.Red still uses original handler
+// Overriding breaks constructor identity: Color.Red uses the original handler, but ExtendedColor.Red is a new shadow constructor with the override.
 console.log(Color.Red.toHex()); // '#FF0000' (unchanged)
-console.log(ExtendedColor.Red.toHex()); // '#FF0000' (same constructor, uses parent)
+console.log(ExtendedColor.Red.toHex()); // '#FF0000' (shadow constructor, uses parent)
 ```
 
 **Replacing parent handlers (ignoring parent):**
