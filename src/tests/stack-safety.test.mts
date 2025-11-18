@@ -160,9 +160,7 @@ describe('Stack Safety Investigation', () => {
                 }
 
                 try {
-                    const start = performance.now();
                     const result = list.sum();
-                    const end = performance.now();
                     
                     assert.strictEqual(result, size);
                 } catch (error) {
