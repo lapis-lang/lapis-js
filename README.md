@@ -768,7 +768,7 @@ console.log(ExtendedColor.Yellow.toHex()); // '#FFFF00'
 const ExtendedColor = Color.extend({ Yellow: [] })
     .extendMatch('toHex', {
         Yellow() { return '#FFFF00'; },
-        Red(parent) { return parent().replace('FF', 'EE'); } // Use parent
+        Red(fields) { return fields[parent]!().replace('FF', 'EE'); } // Use parent
     });
 
 // Note: Override only affects NEW instances created after extendMatch
