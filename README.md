@@ -35,18 +35,20 @@ console.log(typeof data); // "function"
 
 ## Usage
 
+**Note:** Lapis JS is designed for use with TypeScript. TypeScript provides essential compile-time validation including reserved property name checking, exhaustiveness checking for pattern matching, and type inference. While the library can technically be used with plain JavaScript, doing so bypasses important safety checks.
+
 Lapis JS provides a powerful `data` function for defining algebraic data types (ADTs) using a class-based enumeration pattern. ADTs support simple enumerated types, structured data with fields, subtyping, and predicate-based validation.
 
 ### Simple Enumerated Types
 
-Define ADTs with simple variants (no data). Each variant is a singleton instance of its own class:
+Define ADTs with simple variants (no data). Each variant creates a single value (singleton):
 
 ```ts
 import { data } from '@lapis-lang/lapis-js';
 
 const Color = data({ Red: [], Green: [], Blue: [] });
 
-// Each variant is an instance
+// Color is the data type; Red, Green, Blue are singleton variants
 console.log(Color.Red instanceof Color); // true
 console.log(Color.Green instanceof Color); // true
 
@@ -85,7 +87,7 @@ console.log(p2.y); // 20
 const p3 = new Point.Point3D({ x: 1, y: 2, z: 3 });
 const p4 = new Point.Point3D(1, 2, 3);
 
-// All instances have proper type checking
+// All variant values support type checking
 console.log(p1 instanceof Point.Point2D); // true
 console.log(p2 instanceof Point); // true
 ```
@@ -114,6 +116,7 @@ console.log(p2 instanceof Point); // true
 
 - Variant names must be **PascalCase**
 - Property names must be **camelCase** (start with lowercase, no underscore prefix)
+- Property names cannot be **reserved JavaScript names**: `constructor`, `prototype`, `__proto__`, `toString`, `valueOf`, `hasOwnProperty`, `isPrototypeOf`, `propertyIsEnumerable`, `toLocaleString`
 - TypeScript enforces exact object shapes (all fields required, no extra fields allowed)
 
 ### Nested ADTs
@@ -188,7 +191,7 @@ const Shape = data({
 const circle = Shape.Circle({ radius: 5 });
 console.log(circle instanceof Shape); // true
 
-const unknown = Shape.Unknown; // Singleton instance
+const unknown = Shape.Unknown; // Singleton variant
 console.log(unknown instanceof Shape); // true
 ```
 
@@ -202,11 +205,11 @@ const Point = data({
     Point2D: [{ x: Number }, { y: Number }]
 });
 
-// Check against the ADT base class
+// Check against the data type
 console.log(Color.Red instanceof Color); // true
 console.log(Color.Green instanceof Color); // true
 
-// Check against specific variant constructors
+// Check against specific variants
 const p = Point.Point2D({ x: 10, y: 20 });
 console.log(p instanceof Point.Point2D); // true
 console.log(p instanceof Point); // true
@@ -482,7 +485,7 @@ const Point3D = Point.extend({
     Point3D: [{ x: Number }, { y: Number }, { z: Number }]
 });
 
-// Create instances
+// Create variant values
 const p2 = Point3D.Point2D({ x: 10, y: 20 });
 const p3 = Point3D.Point3D({ x: 1, y: 2, z: 3 });
 
@@ -493,7 +496,7 @@ console.log(p3 instanceof Point);   // true
 // Constructor identity preserved
 console.log(Point3D.Point2D === Point.Point2D); // true
 
-// Base instances are not instanceof extended type
+// Values from base ADT are not instanceof extended type
 const p2Base = Point.Point2D({ x: 5, y: 10 });
 console.log(p2Base instanceof Point);   // true
 console.log(p2Base instanceof Point3D); // false
@@ -552,10 +555,263 @@ console.log(five instanceof FullExpr);    // false
 
 - Extended ADTs have access to all parent variants (inheritance)
 - New variants can be simple enumerations or structured
-- Proper subtyping: extended variant instances are `instanceof` both extended and base ADTs
+- Proper subtyping: values of extended variants are `instanceof` both extended and base ADTs
 - Inherited variants maintain their original type (not `instanceof` extended ADT)
 - Constructor and singleton identity is preserved across hierarchy
 - `Family` references accept instances from any level of the hierarchy
 - Variant name collisions throw errors
 - Extended ADTs are also frozen and immutable
 - Supports deep extension hierarchies (A → B → C → ...)
+
+## Pattern Matching (Operations)
+
+Lapis ADTs support defining operations through the `.match()` method, which provides non-recursive pattern matching on variant constructors. Operations are installed on variant class prototypes and support proper inheritance through the extension hierarchy.
+
+### Basic Pattern Matching
+
+Define operations that dispatch on variant types without recursing into structure:
+
+```ts
+const Color = data({ Red: [], Green: [], Blue: [] })
+    .match('toHex', { out: String }, {
+        Red() { return '#FF0000'; },
+        Green() { return '#00FF00'; },
+        Blue() { return '#0000FF'; }
+    });
+
+console.log(Color.Red.toHex());   // '#FF0000'
+console.log(Color.Green.toHex()); // '#00FF00'
+console.log(Color.Blue.toHex());  // '#0000FF'
+```
+
+### Pattern Matching on Structured Variants
+
+Handlers use **named destructuring** to access variant fields:
+
+```ts
+const Point = data({
+    Point2D: [{ x: Number }, { y: Number }],
+    Point3D: [{ x: Number }, { y: Number }, { z: Number }]
+}).match('quadrant', { out: String }, {
+    Point2D({ x, y }) {
+        if (x >= 0 && y >= 0) return 'Q1';
+        if (x < 0 && y >= 0) return 'Q2';
+        if (x < 0 && y < 0) return 'Q3';
+        return 'Q4';
+    },
+    Point3D({ x, y, z }) {
+        // 3D quadrant logic...
+        return `Octant(${x >= 0}, ${y >= 0}, ${z >= 0})`;
+    }
+});
+
+const p = Point.Point2D({ x: 5, y: 10 });
+console.log(p.quadrant()); // 'Q1'
+
+const p3d = Point.Point3D({ x: -1, y: 2, z: 3 });
+console.log(p3d.quadrant()); // 'Octant(false, true, true)'
+```
+
+**Handler parameter form:**
+
+- Handlers use **named form only**: `Variant({ field1, field2 }) => ...`
+- Partial destructuring allowed: `Point3D({ x, y }) => ...` (ignoring `z`)
+- Singleton variants have no parameters: `Red() => ...`
+
+### Wildcard Handlers
+
+Use the `_` wildcard to handle unknown or unspecified variants:
+
+```ts
+const Color = data({ Red: [], Green: [], Blue: [] })
+    .match('toHex', { out: String }, {
+        Red() { return '#FF0000'; },
+        _(instance) { return '#UNKNOWN'; }
+    });
+
+console.log(Color.Red.toHex());   // '#FF0000'
+console.log(Color.Green.toHex()); // '#UNKNOWN' (wildcard)
+console.log(Color.Blue.toHex());  // '#UNKNOWN' (wildcard)
+```
+
+**Wildcard handler signature:**
+
+```ts
+_(instance) {
+    // Access variant information
+    console.log(instance.constructor.name); // Variant name
+    return someValue;
+}
+```
+
+### Exhaustiveness Checking
+
+TypeScript enforces **exhaustive pattern matching** at compile-time:
+
+#### Option 1: All handlers required (no wildcard)
+
+```ts
+// ✓ Compiles - all variants handled
+const Color = data({ Red: [], Green: [], Blue: [] })
+    .match('toHex', { out: String }, {
+        Red() { return '#FF0000'; },
+        Green() { return '#00FF00'; },
+        Blue() { return '#0000FF'; }
+    });
+
+// ✗ TypeScript Error - Green and Blue handlers missing
+const Incomplete = data({ Red: [], Green: [], Blue: [] })
+    .match('toHex', { out: String }, {
+        Red() { return '#FF0000'; }
+        // Error: Property '_' is missing
+    });
+```
+
+#### Option 2: Partial handlers with wildcard
+
+```ts
+// ✓ Compiles - wildcard handles unspecified variants
+const Color = data({ Red: [], Green: [], Blue: [] })
+    .match('toHex', { out: String }, {
+        Red() { return '#FF0000'; },
+        _(instance) { return '#UNKNOWN'; }
+    });
+```
+
+**Key points:**
+
+- Without a wildcard `_`, **all variants must have handlers**
+- With a wildcard `_`, handlers are optional (wildcard catches unhandled cases)
+- TypeScript catches missing handlers at **compile-time**
+- Extends to all variant types: simple enumerations, structured data, recursive ADTs, and extended ADTs
+
+### Multiple Operations
+
+Chain `.match()` calls to define multiple operations on the same ADT:
+
+```ts
+const Color = data({ Red: [], Green: [], Blue: [] })
+    .match('toHex', { out: String }, {
+        Red() { return '#FF0000'; },
+        Green() { return '#00FF00'; },
+        Blue() { return '#0000FF'; }
+    })
+    .match('toRGB', { out: String }, {
+        Red() { return 'rgb(255, 0, 0)'; },
+        Green() { return 'rgb(0, 255, 0)'; },
+        Blue() { return 'rgb(0, 0, 255)'; }
+    });
+
+console.log(Color.Red.toHex()); // '#FF0000'
+console.log(Color.Red.toRGB()); // 'rgb(255, 0, 0)'
+```
+
+### Callback Form
+
+For consistency with recursive ADTs, `.match()` supports a callback form that receives the `Family` reference:
+
+```ts
+const List = data(({ Family }) => ({
+    Nil: [],
+    Cons: [{ head: Number }, { tail: Family }]
+})).match('isEmpty', { out: Boolean }, (Family) => ({
+    Nil() { return true; },
+    Cons({ head: _head, tail: _tail }) { return false; }
+}));
+
+console.log(List.Nil.isEmpty()); // true
+console.log(List.Cons({ head: 1, tail: List.Nil }).isEmpty()); // false
+```
+
+### Integration with ADT Extension
+
+Operations defined on a base ADT are inherited by extended ADTs:
+
+```ts
+const Color = data({ Red: [], Green: [], Blue: [] })
+    .match('toHex', { out: String }, {
+        Red() { return '#FF0000'; },
+        Green() { return '#00FF00'; },
+        Blue() { return '#0000FF'; }
+    });
+
+const ExtendedColor = Color.extend({ Yellow: [], Orange: [] });
+
+// Inherited variants have the operation
+console.log(ExtendedColor.Red.toHex()); // '#FF0000'
+
+// New variants without handlers throw error
+ExtendedColor.Yellow.toHex(); // ✗ Error: No handler for variant 'Yellow'
+```
+
+**Use wildcard for open extension:**
+
+```ts
+const Color = data({ Red: [], Green: [], Blue: [] })
+    .match('toHex', { out: String }, {
+        Red() { return '#FF0000'; },
+        _(instance) { return '#UNKNOWN'; }
+    });
+
+const ExtendedColor = Color.extend({ Yellow: [], Orange: [] });
+
+console.log(ExtendedColor.Red.toHex());    // '#FF0000'
+console.log(ExtendedColor.Yellow.toHex()); // '#UNKNOWN' (wildcard)
+```
+
+**Add operations to extended ADTs:**
+
+```ts
+const ExtendedColor = Color.extend({ Yellow: [], Orange: [] })
+    .match('isWarm', { out: Boolean }, {
+        Red() { return true; },
+        Green() { return false; },
+        Blue() { return false; },
+        Yellow() { return true; },
+        Orange() { return true; }
+    });
+
+// Both operations available
+console.log(ExtendedColor.Red.toHex());  // '#FF0000' (inherited)
+console.log(ExtendedColor.Red.isWarm()); // true (new operation)
+console.log(ExtendedColor.Yellow.isWarm()); // true
+```
+
+### Error Handling
+
+**Missing handler:**
+
+```ts
+const Color = data({ Red: [], Green: [], Blue: [] })
+    .match('toHex', { out: String }, {
+        Red() { return '#FF0000'; }
+        // No handler for Green or Blue, no wildcard
+    });
+
+Color.Green.toHex(); 
+// ✗ Error: No handler for variant 'Green' in match operation 'toHex'
+```
+
+**Name collision with variant fields:**
+
+```ts
+const Point = data({
+    Point2D: [{ x: Number }, { y: Number }]
+});
+
+Point.match('x', { out: Number }, {
+    Point2D({ x, y }) { return x; }
+});
+// ✗ Error: Operation name 'x' conflicts with field 'x' in variant 'Point2D'
+```
+
+### Key Points
+
+- `.match()` performs **non-recursive** pattern matching (does not recurse into fields)
+- Handlers use **named form only** for clarity and partial destructuring
+- Operations are installed on **variant class prototypes** (callable on variant instances)
+- Wildcard handler `_` receives the full variant instance
+- Operations are inherited by extended ADTs
+- New variants in extended ADTs inherit parent operations
+- Name collision detection prevents conflicts with variant fields
+- Chaining supported: `.match(...).match(...)` or `.extend(...).match(...)`
