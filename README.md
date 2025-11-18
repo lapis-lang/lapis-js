@@ -1240,3 +1240,167 @@ A **catamorphism** is the general pattern of structural recursion:
 - Overridden variants get new constructors (constructor identity broken)
 - Base ADT instances unaffected by overrides in extended ADTs
 
+### Extending Fold Operations with `.extendFold()`
+
+When extending recursive ADTs, use `.extendFold()` to add fold operations to new variants or override fold operations for inherited variants. This enables specialization and customization of recursive behavior in extended ADTs with **polymorphic recursion** - recursive calls automatically use the extended operation.
+
+**Availability:** The `.extendFold()` method is only available on **extended recursive ADTs** (those created via `.extend()` from a base ADT that has `Family` references). TypeScript enforces this at compile-time.
+
+**Basic usage - adding handlers for new variants:**
+
+```ts
+import { data } from '@lapis-lang/lapis-js';
+
+// Base expression language with integers
+const IntExpr = data(({ Family }) => ({
+    IntLit: [{ value: Number }],
+    Add: [{ left: Family }, { right: Family }]
+}))
+    .fold('eval', { out: Number }, {
+        IntLit({ value }) { return value; },
+        Add({ left, right }) { return left + right; }
+    });
+
+// Extend with boolean operations
+const IntBoolExpr = IntExpr.extend(({ Family }) => ({
+    BoolLit: [{ value: Boolean }],
+    LessThan: [{ left: Family }, { right: Family }]
+}))
+    .extendFold('eval', {
+        BoolLit({ value }) { return value ? 1 : 0; },
+        LessThan({ left, right }) { return left < right ? 1 : 0; }
+    });
+
+// Inherited variants work
+const sum = IntBoolExpr.Add({
+    left: IntBoolExpr.IntLit({ value: 5 }),
+    right: IntBoolExpr.IntLit({ value: 3 })
+});
+console.log(sum.eval()); // 8
+
+// New variants work
+const lessThan = IntBoolExpr.LessThan({
+    left: IntBoolExpr.IntLit({ value: 3 }),
+    right: IntBoolExpr.IntLit({ value: 5 })
+});
+console.log(lessThan.eval()); // 1 (true)
+```
+
+**Override with parent access:**
+
+Use the `parent` symbol to access the parent handler when overriding fold operations:
+
+```ts
+import { data, parent } from '@lapis-lang/lapis-js';
+
+const Peano = data(({ Family }) => ({
+    Zero: [],
+    Succ: [{ pred: Family }]
+}))
+    .fold('toValue', { out: Number }, {
+        Zero() { return 0; },
+        Succ({ pred }) { return 1 + pred; }
+    });
+
+// Override Succ to scale parent result
+const ExtendedPeano = Peano.extend(({ Family }) => ({
+    NegSucc: [{ pred: Family }]
+}))
+    .extendFold('toValue', {
+        NegSucc({ pred }) { return -1 + pred; },
+        Succ(fields) {
+            const parentResult = fields[parent]!() as number;
+            return parentResult * 10;  // Scale by 10
+        }
+    });
+
+const one = ExtendedPeano.Succ({ pred: ExtendedPeano.Zero });
+console.log(one.toValue()); // 10 (instead of 1)
+
+// Base instances use base handlers
+const baseOne = Peano.Succ({ pred: Peano.Zero });
+console.log(baseOne.toValue()); // 1 (original)
+```
+
+**Polymorphic recursion:**
+
+The key power of `.extendFold()` is **polymorphic recursion** - when fold recursively evaluates `Family` fields, it uses the **extended operation**, not the parent operation. This means inherited variants automatically benefit from new functionality:
+
+```ts
+const IntExpr = data(({ Family }) => ({
+    IntLit: [{ value: Number }],
+    Add: [{ left: Family }, { right: Family }]
+}))
+    .fold('eval', { out: Number }, {
+        IntLit({ value }) { return value; },
+        Add({ left, right }) { return left + right; }
+    });
+
+// Extend with multiplication
+const ExtendedExpr = IntExpr.extend(({ Family }) => ({
+    Mul: [{ left: Family }, { right: Family }]
+}))
+    .extendFold('eval', {
+        Mul({ left, right }) { return left * right; }
+    });
+
+// Create expression: (2 + 3) * 4
+// The Add operation (inherited) can now work with Mul (new)
+// because polymorphic recursion evaluates children using extended eval
+const sum = ExtendedExpr.Add({
+    left: ExtendedExpr.IntLit({ value: 2 }),
+    right: ExtendedExpr.IntLit({ value: 3 })
+});
+const product = ExtendedExpr.Mul({ left: sum, right: ExtendedExpr.IntLit({ value: 4 }) });
+
+console.log(product.eval()); // 20 ((2 + 3) * 4)
+```
+
+**Multiple extension levels:**
+
+Fold operations can be extended across multiple levels of ADT hierarchy:
+
+```ts
+const L1 = data(({ Family }) => ({
+    IntLit: [{ value: Number }],
+    Add: [{ left: Family }, { right: Family }]
+}))
+    .fold('eval', { out: Number }, {
+        IntLit({ value }) { return value; },
+        Add({ left, right }) { return left + right; }
+    });
+
+const L2 = L1.extend(({ Family }) => ({
+    Sub: [{ left: Family }, { right: Family }]
+}))
+    .extendFold('eval', {
+        Sub({ left, right }) { return left - right; }
+    });
+
+const L3 = L2.extend(({ Family }) => ({
+    Mul: [{ left: Family }, { right: Family }]
+}))
+    .extendFold('eval', {
+        Mul({ left, right }) { return left * right; }
+    });
+
+// Create expression: (10 + 5) - (4 * 2)
+const expr = L3.Sub({
+    left: L3.Add({ left: L3.IntLit({ value: 10 }), right: L3.IntLit({ value: 5 }) }),
+    right: L3.Mul({ left: L3.IntLit({ value: 4 }), right: L3.IntLit({ value: 2 }) })
+});
+
+console.log(expr.eval()); // 7 ((10 + 5) - (4 * 2))
+```
+
+**Key points about extendFold:**
+
+- Automatically inherits all parent handlers
+- Only need to specify handlers for **new variants** or **variants to override**
+- Override handlers receive `fields[parent]!()` to access parent behavior
+- Polymorphic recursion: recursive calls use the **extended operation**
+- Constructor identity preserved for non-overridden variants
+- Constructor identity broken for overridden variants (new shadow constructors created)
+- Base ADT instances unaffected by extended ADT overrides
+- **Only one extendFold per operation per ADT level**: Calling `.extendFold('op', ...)` twice on the same operation throws an error. To override again, use `.extend()` to create a new ADT level first.
+- Supports both object and callback form: `.extendFold('op', handlers)` or `.extendFold('op', (Family) => handlers)`
