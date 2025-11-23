@@ -1389,11 +1389,16 @@ export function data(declOrFn) {
 
             // Create and register a transformer for this unfold operation
             // This allows merge to compose unfold with other operations
+            // Store the cases for deforestation optimization in merge
             const transformer = createTransformer({
                 name,
                 outSpec: spec?.out,
                 generator: (Family) => unfoldFn
             });
+            
+            // Store unfold cases and spec for access during merge deforestation
+            transformer.unfoldCases = cases;
+            transformer.unfoldSpec = spec;
 
             actualADT._registerTransformer(name, transformer, true); // Skip collision check since we already checked
 
@@ -1602,41 +1607,138 @@ export function data(declOrFn) {
                 };
 
                 // Create the merged unfold function that uses deforestation
-                // For unfold+fold composition (hylomorphism), we need to avoid creating intermediate structures
-                // The key is to replace constructors with fold handlers during unfold generation
+                // For unfold+fold composition (hylomorphism), we avoid creating intermediate structures
+                // by applying fold handlers directly during the unfold process
                 const mergedUnfoldFn = (seed) => {
-                    // For now, use a simplified approach: call unfold then apply map/fold
-                    // TODO: Implement true deforestation by integrating fold handlers into unfold process
-                    const unfoldFn = mergedTransformer.generator(actualADT);
-                    let result = unfoldFn(seed);
+                    // Runtime validation of spec.in if provided
+                    if (spec?.in) {
+                        validateInputType(seed, spec.in, name);
+                    }
+
+                    // Check if we have a fold in the composition for deforestation
+                    const hasFold = mergedTransformer.getCtorTransform !== undefined;
+                    const hasMap = mergedTransformer.getParamTransform !== undefined;
                     
-                    // If there's a map in the composition, apply it
-                    if (mergedTransformer.getParamTransform) {
-                        // Find the map operation name
-                        const mapIndex = transformers.findIndex(t => t.getParamTransform && !t.getCtorTransform);
-                        if (mapIndex !== -1) {
-                            const mapOpName = operationNames[mapIndex];
-                            // The result should have the map operation as a method
-                            if (result && typeof result[mapOpName] === 'function') {
-                                result = result[mapOpName]();
+                    if (hasFold) {
+                        // DEFORESTATION PATH: unfold+fold or unfold+map+fold composition
+                        // Instead of creating ADT instances, directly compute fold results
+                        // If there's a map, apply transformations to type parameters during folding
+                        
+                        // Get the unfold cases from the original unfold transformer
+                        const unfoldCases = unfoldOp.unfoldCases;
+                        if (!unfoldCases) {
+                            throw new Error(
+                                `Cannot perform deforestation: unfold operation '${unfoldOpName}' missing case information`
+                            );
+                        }
+                        
+                        const deforestedUnfold = (currentSeed) => {
+                            // Evaluate unfold cases in order
+                            for (const [variantName, caseFn] of Object.entries(unfoldCases)) {
+                                const result = caseFn(currentSeed);
+
+                                // null means case doesn't apply
+                                if (result === null || result === undefined) {
+                                    continue;
+                                }
+
+                                // Get the variant
+                                const variant = allVariants.get(variantName);
+                                if (!variant) {
+                                    throw new Error(
+                                        `Unknown variant '${variantName}' in unfold operation '${unfoldOpName}'`
+                                    );
+                                }
+
+                                // Determine the constructor to pass to getCtorTransform
+                                // For structured variants: variant is a constructor function
+                                // For singletons: variant is an instance (object), use its constructor
+                                const isSingleton = typeof variant === 'object';
+                                const variantCtor = isSingleton ? variant.constructor : variant;
+
+                                // Debug: ensure we have a valid constructor with a name
+                                if (!variantCtor || typeof variantCtor !== 'function' || !variantCtor.name) {
+                                    throw new Error(
+                                        `Invalid variant constructor for '${variantName}': ${variantCtor}. ` +
+                                        `Variant type: ${typeof variant}, variantCtor type: ${typeof variantCtor}, ` +
+                                        `constructor.name: ${variantCtor?.name}`
+                                    );
+                                }
+
+                                // Get the fold handler for this variant
+                                const foldHandler = mergedTransformer.getCtorTransform(variantCtor);
+
+                                // Handle singleton vs structured variant
+                                if (isSingleton || !result || Object.keys(result).length === 0) {
+                                    // For singletons, call fold handler with no arguments
+                                    return foldHandler();
+                                }
+
+                                // For structured variants, recursively process fields
+                                const fieldSpecs = variant._fieldSpecs || [];
+                                const processedFields = {};
+
+                                for (const { name: fieldName, spec: fieldSpec } of fieldSpecs) {
+                                    const fieldValue = result[fieldName];
+
+                                    // If this field is a Family reference, recursively apply deforestation
+                                    if (isFamilyRef(fieldSpec)) {
+                                        processedFields[fieldName] = deforestedUnfold(fieldValue);
+                                    } else if (hasMap && isTypeParam(fieldSpec)) {
+                                        // If there's a map and this is a type parameter, apply the map transformation
+                                        const paramName = fieldSpec[TypeParamSymbol];
+                                        const mapTransform = mergedTransformer.getParamTransform(paramName);
+                                        processedFields[fieldName] = mapTransform ? mapTransform(fieldValue) : fieldValue;
+                                    } else {
+                                        processedFields[fieldName] = fieldValue;
+                                    }
+                                }
+
+                                // Call fold handler with recursively computed and potentially mapped field values
+                                return foldHandler(processedFields);
+                            }
+
+                            return undefined;
+                        };
+
+                        const result = deforestedUnfold(seed);
+
+                        // Runtime validation of spec.out if provided
+                        if (spec?.out && result !== undefined) {
+                            validateReturnType(result, spec.out, name);
+                        }
+
+                        return result;
+                    } else {
+                        // NO DEFORESTATION: just unfold, or unfold+map, or unfold+map+fold
+                        // Use standard unfold path which creates ADT instances
+                        const unfoldFn = mergedTransformer.generator(actualADT);
+                        let result = unfoldFn(seed);
+                        
+                        // If there's a map in the composition, apply it
+                        if (hasMap) {
+                            const mapIndex = transformers.findIndex(t => t.getParamTransform && !t.getCtorTransform);
+                            if (mapIndex !== -1) {
+                                const mapOpName = operationNames[mapIndex];
+                                if (result && typeof result[mapOpName] === 'function') {
+                                    result = result[mapOpName]();
+                                }
                             }
                         }
-                    }
-                    
-                    // If there's a fold in the composition, apply it
-                    if (mergedTransformer.getCtorTransform) {
-                        // Find the fold operation name
-                        const foldIndex = transformers.findIndex(t => t.getCtorTransform && t[HandlerMapSymbol]);
-                        if (foldIndex !== -1) {
-                            const foldOpName = operationNames[foldIndex];
-                            // The result should have the fold operation as a method
-                            if (result && typeof result[foldOpName] === 'function') {
-                                result = result[foldOpName]();
+                        
+                        // If there's a fold in the composition, apply it
+                        if (hasFold) {
+                            const foldIndex = transformers.findIndex(t => t.getCtorTransform && t[HandlerMapSymbol]);
+                            if (foldIndex !== -1) {
+                                const foldOpName = operationNames[foldIndex];
+                                if (result && typeof result[foldOpName] === 'function') {
+                                    result = result[foldOpName]();
+                                }
                             }
                         }
+                        
+                        return result;
                     }
-                    
-                    return result;
                 };
 
                 // Install as static method on the ADT
