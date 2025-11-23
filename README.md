@@ -1570,3 +1570,272 @@ console.log(typeof sum); // 'number'
 - **Partial transforms allowed**: missing transforms leave values unchanged
 - Non-parameterized ADTs: map operations work but act as identity on non-type-parameter fields
 - Immutability: creates new instances, original instances unchanged
+
+## Merge Operations (Deforestation)
+
+The `.merge()` operation composes multiple operations (fold, map, unfold) into a single fused operation that eliminates intermediate data structure allocations. This optimization technique, known as **deforestation**, improves performance by avoiding the creation of temporary structures.
+
+### Basic Composition
+
+Merge takes a name and an array of operation names to compose:
+
+```js
+const List = data(({ Family }) => ({
+    Nil: {},
+    Cons: { head: Number, tail: Family }
+}))
+.unfold('Range', (List) => ({ in: Number, out: List }), {
+    Nil: (n) => (n <= 0 ? {} : null),
+    Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
+})
+.fold('sum', { out: Number }, () => ({
+    Nil() { return 0; },
+    Cons({ head, tail }) { return head + tail; }
+}))
+.merge('Triangular', ['Range', 'sum']);
+
+// Computes triangular numbers without creating intermediate list
+console.log(List.Triangular(5)); // 15 (1+2+3+4+5)
+```
+
+### Morphism Types
+
+Merge supports several recursion scheme patterns:
+
+#### Hylomorphism (unfold + fold)
+
+Combines generation and consumption - builds and immediately consumes a structure:
+
+```js
+const List = data(({ Family }) => ({
+    Nil: {},
+    Cons: { head: Number, tail: Family }
+}))
+.unfold('Counter', (List) => ({ in: Number, out: List }), {
+    Nil: (n) => (n <= 0 ? {} : null),
+    Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
+})
+.fold('product', { out: Number }, () => ({
+    Nil() { return 1; },
+    Cons({ head, tail }) { return head * tail; }
+}))
+.merge('Factorial', ['Counter', 'product']);
+
+// Factorial without creating intermediate list structure
+console.log(List.Factorial(5)); // 120 (5*4*3*2*1)
+```
+
+#### Paramorphism (map + fold)
+
+Transforms then consumes - applies transformations before folding:
+
+```js
+const List = data(({ Family, T }) => ({
+    Nil: {},
+    Cons: { head: T, tail: Family }
+}));
+
+const NumList = List({ T: Number })
+    .map('double', (Family) => ({ out: Family }), {
+        T: (x) => x * 2
+    })
+    .fold('sum', { out: Number }, () => ({
+        Nil() { return 0; },
+        Cons({ head, tail }) { return head + tail; }
+    }))
+    .merge('doubleSum', ['double', 'sum']);
+
+const list = NumList.Cons(1, NumList.Cons(2, NumList.Cons(3, NumList.Nil)));
+console.log(list.doubleSum()); // 12 ((1*2)+(2*2)+(3*2))
+```
+
+#### Apomorphism (unfold + map)
+
+Generates then transforms - creates structure with transformations applied:
+
+```js
+const List = data(({ Family, T }) => ({
+    Nil: {},
+    Cons: { head: T, tail: Family }
+}));
+
+const NumList = List({ T: Number })
+    .unfold('CountDown', (List) => ({ in: Number, out: List }), {
+        Nil: (n) => (n <= 0 ? {} : null),
+        Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
+    })
+    .map('square', (Family) => ({ out: Family }), {
+        T: (x) => x * x
+    })
+    .merge('Squares', ['CountDown', 'square']);
+
+const squares = NumList.Squares(5);
+// Creates List.Cons(25, List.Cons(16, List.Cons(9, List.Cons(4, List.Cons(1, List.Nil)))))
+```
+
+#### Complex Pipelines
+
+Combine multiple operations in sequence:
+
+```js
+const List = data(({ Family, T }) => ({
+    Nil: {},
+    Cons: { head: T, tail: Family }
+}));
+
+const NumList = List({ T: Number })
+    .unfold('Range', (List) => ({ in: Number, out: List }), {
+        Nil: (n) => (n <= 0 ? {} : null),
+        Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
+    })
+    .map('square', (Family) => ({ out: Family }), {
+        T: (x) => x * x
+    })
+    .fold('sum', { out: Number }, () => ({
+        Nil() { return 0; },
+        Cons({ head, tail }) { return head + tail; }
+    }))
+    .merge('SumOfSquares', ['Range', 'square', 'sum']);
+
+// Computes sum of squares without allocating intermediate structures
+console.log(NumList.SumOfSquares(5)); // 55 (25+16+9+4+1)
+```
+
+### Composition Rules
+
+The merge operation validates composition to ensure correctness:
+
+- **Minimum 2 operations**: At least two operations required for meaningful composition
+- **Maximum 1 unfold**: At most one generator operation
+- **Maximum 1 fold**: At most one consumption operation
+- **Any number of maps**: Multiple transformations allowed
+- **Left-to-right composition**: Operations applied in array order
+
+```js
+// Valid compositions
+.merge('name', ['unfold1', 'fold1'])           // ✓ hylomorphism
+.merge('name', ['map1', 'fold1'])              // ✓ paramorphism
+.merge('name', ['unfold1', 'map1'])            // ✓ apomorphism
+.merge('name', ['map1', 'map2', 'fold1'])      // ✓ multiple maps
+.merge('name', ['unfold1', 'map1', 'fold1'])   // ✓ full pipeline
+
+// Invalid compositions
+.merge('name', ['fold1'])                      // ✗ Error: need at least 2 operations
+.merge('name', [])                             // ✗ Error: empty array
+.merge('name', ['unfold1', 'unfold2'])         // ✗ Error: multiple unfolds
+.merge('name', ['fold1', 'fold2'])             // ✗ Error: multiple folds
+.merge('name', ['unfold1', 'unfold2', 'fold1']) // ✗ Error: multiple unfolds
+```
+
+### Naming Conventions
+
+Merged operations follow specific naming rules:
+
+- **Static methods (with unfold)**: Must be **PascalCase** (e.g., `'Factorial'`, `'Range'`)
+- **Instance methods (without unfold)**: Must be **camelCase** (e.g., `'doubleSum'`, `'sumOfSquares'`)
+
+```js
+// Static method (unfold present) - PascalCase required
+.merge('Factorial', ['Counter', 'product']);  // ✓ PascalCase
+.merge('factorial', ['Counter', 'product']);  // ✗ Error: must be PascalCase
+
+// Instance method (no unfold) - camelCase required
+.merge('doubleSum', ['double', 'sum']);       // ✓ camelCase
+.merge('DoubleSum', ['double', 'sum']);       // ✗ Error: must be camelCase
+```
+
+### Collision Detection
+
+Merge validates operation names to prevent conflicts:
+
+```js
+const Point = data({
+    Point2D: { x: Number, y: Number }
+})
+.map('scale', {}, { x: (n) => n * 2, y: (n) => n * 2 })
+.fold('magnitude', { out: Number }, () => ({
+    Point2D({ x, y }) { return Math.sqrt(x * x + y * y); }
+}));
+
+// Error: 'x' conflicts with field name
+Point.merge('x', ['scale', 'magnitude']);  // ✗ throws error
+
+// Error: 'Point2D' conflicts with variant name
+Point.merge('Point2D', ['scale', 'magnitude']);  // ✗ throws error
+```
+
+### Spec Inference
+
+Merged operations automatically infer their type specification from component operations:
+
+```js
+// No need to specify return type - inferred from 'sum' fold
+.merge('Triangular', ['Range', 'sum']);
+
+// Input type inferred from 'Range' unfold
+// Output type inferred from 'sum' fold
+```
+
+### Performance Benefits
+
+Deforestation eliminates intermediate allocations:
+
+```js
+// Without merge: allocates entire list
+const list = List.Range(1000000);  // Allocates 1M nodes
+const result = list.sum();         // Traverses 1M nodes
+
+// With merge: no intermediate list
+const result = List.Triangular(1000000);  // No allocation, direct computation
+```
+
+### Working with Extended ADTs
+
+Merge operations work seamlessly with ADT extension:
+
+```js
+const BaseList = data(({ Family }) => ({
+    Nil: {},
+    Cons: { head: Number, tail: Family }
+}))
+.unfold('Counter', (List) => ({ in: Number, out: List }), {
+    Nil: (n) => (n <= 0 ? {} : null),
+    Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
+})
+.fold('sum', { out: Number }, () => ({
+    Nil() { return 0; },
+    Cons({ head, tail }) { return head + tail; }
+}));
+
+const ExtendedList = BaseList.extend(({ Family }) => ({
+    Single: { value: Number }
+}))
+.fold('sum', { out: Number }, () => ({
+    Single({ value }) { return value; }
+}))
+.merge('Triangular', ['Counter', 'sum']);
+
+// Merged operation includes extended variant handlers
+console.log(ExtendedList.Triangular(5)); // 15
+```
+
+### Merge Operation Summary
+
+**Operation Composition (`.merge()`):**
+
+- Combines multiple operations into single fused operation (deforestation)
+- Eliminates intermediate data structure allocations for performance
+- Syntax: `.merge(name, [operation1, operation2, ...])`
+- Composition rules: minimum 2 operations, max 1 unfold, max 1 fold, any number of maps
+- Left-to-right composition: operations applied in array order
+- Static methods (with unfold): requires **PascalCase** names
+- Instance methods (without unfold): requires **camelCase** names
+- Automatic spec inference from component operations
+- Collision detection: prevents conflicts with variant/field names
+- Supports morphisms: hylomorphism, paramorphism, apomorphism
+- Returns ADT for fluent chaining: `.merge(...).merge(...)`
+- Works with extended ADTs and inherited operations
+- Stack-safe: uses same iterative fold implementation
+- Transform composition: map transforms applied before fold handlers
+- Validation: runtime checks for composition rules and naming conventions
+
