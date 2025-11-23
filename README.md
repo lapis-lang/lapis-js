@@ -1559,7 +1559,7 @@ console.log(typeof sum); // 'number'
 - Spec callback form: `(Family) => ({ out: Family })` - use when Family reference needed
 - Transform callback form: `.map(name, spec, (Family) => ({ T: fn, U: fn }))`
 - Runtime validation: when `spec.out` provided, enforces type constraints on return values
-- **Transform functions can accept arguments**: `.map('scale', {}, {}, { T: (x, factor) => x * factor })` then call `instance.scale(10)`
+- **Transform functions can accept arguments**: `.map('scale', {}, { T: (x, factor) => x * factor })` then call `instance.scale(10)`
 - **Recursively handles `Family` fields** - arguments passed through to recursive calls
 - Returns new instances with **same variant constructors**
 - Operation names must be **camelCase** (unlike `.fold()` which accepts any case)
