@@ -45,12 +45,17 @@ describe('Parameterized ADTs', () => {
         const strList = StrList.Cons({ head: 'hello', tail: StrList.Nil });
         assert.strictEqual(strList.head, 'hello');
 
-        // Type safety enforced at compile-time by TypeScript:
-        // @ts-expect-error - TypeScript catches this: string not assignable to number
-        NumList.Cons({ head: 'bad', tail: NumList.Nil });
+        // Runtime type safety: string not valid for Number list
+        assert.throws(
+            () => NumList.Cons({ head: 'bad', tail: NumList.Nil }),
+            /Field 'head' must be an instance of Number/
+        );
 
-        // @ts-expect-error - TypeScript catches this: number not assignable to string
-        StrList.Cons({ head: 42, tail: StrList.Nil });
+        // Runtime type safety: number not valid for String list
+        assert.throws(
+            () => StrList.Cons({ head: 42, tail: StrList.Nil }),
+            /Field 'head' must be an instance of String/
+        );
     });
 
     test('supports Maybe with type parameter', () => {
@@ -71,9 +76,11 @@ describe('Parameterized ADTs', () => {
         const justStr = StrMaybe.Just({ value: 'hello' });
         assert.strictEqual(justStr.value, 'hello');
 
-        // Type safety enforced at compile-time by TypeScript:
-        // @ts-expect-error - TypeScript catches this: string not assignable to number
-        NumMaybe.Just({ value: 'bad' });
+        // Runtime type safety: string not valid for Number Maybe
+        assert.throws(
+            () => NumMaybe.Just({ value: 'bad' }),
+            /Field 'value' must be an instance of Number/
+        );
     });
 
     test('supports Either with type parameter', () => {
@@ -271,16 +278,21 @@ describe('Parameterized ADTs', () => {
         assert.strictEqual(strs.head, 'hello');
         assert.strictEqual(strs.tail.head, 'world');
 
-        // Type safety enforced at compile-time by TypeScript:
-        // @ts-expect-error - TypeScript catches this: string not assignable to number
-        NumList.Cons({ head: 'bad', tail: NumList.Nil });
+        // Runtime type safety for Number list
+        assert.throws(
+            () => NumList.Cons({ head: 'bad', tail: NumList.Nil }),
+            /Field 'head' must be an instance of Number/
+        );
 
         // Instantiated Maybe with validation
         const NumMaybe = Maybe({ T: Number });
         const justFortyTwo = NumMaybe.Just({ value: 42 });
         assert.strictEqual(justFortyTwo.value, 42);
 
-        // @ts-expect-error - TypeScript catches this: string not assignable to number
-        NumMaybe.Just({ value: 'string' });
+        // Runtime type safety for Number Maybe
+        assert.throws(
+            () => NumMaybe.Just({ value: 'string' }),
+            /Field 'value' must be an instance of Number/
+        );
     });
 });

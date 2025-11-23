@@ -439,6 +439,102 @@ function installOperationOnVariant(variant, opName, transformer, skipIfExists = 
 }
 
 /**
+ * Installs a map operation on a variant's prototype.
+ * Creates a method that transforms type parameter fields while preserving structure.
+ * Recursively handles Family fields.
+ * 
+ * @param variant - The variant (constructor or singleton instance)
+ * @param opName - Name of the operation to install
+ * @param transforms - Map of type parameter names to transform functions { T: fn, U: fn }
+ * @param adtClass - The ADT class for constructor lookups
+ * @param outSpec - Optional output type spec for runtime validation
+ */
+function installMapOperationOnVariant(variant, opName, transforms, adtClass, outSpec) {
+    let VariantClass;
+
+    if (typeof variant === 'function') {
+        // Structured variant - Proxy-wrapped constructor
+        VariantClass = variant;
+    } else if (variant && typeof variant === 'object') {
+        // Singleton variant - get constructor
+        VariantClass = variant.constructor;
+    } else {
+        return;
+    }
+
+    // Skip if no prototype
+    if (!VariantClass?.prototype) {
+        return;
+    }
+
+    VariantClass.prototype[opName] = function (...args) {
+        // eslint-disable-next-line @typescript-eslint/no-this-alias
+        const instance = this;
+
+        // For singletons, return the same singleton (no transformation needed)
+        if (instance.constructor[IsSingleton]) {
+            return instance;
+        }
+
+        // For structured variants, transform type parameter fields
+        const fieldNames = instance.constructor._fieldNames || [];
+        const fieldSpecs = instance.constructor._fieldSpecs || [];
+
+        if (fieldNames.length === 0) {
+            return instance; // No fields to transform
+        }
+
+        // Build transformed fields object
+        const transformedFields = {};
+
+        for (let i = 0; i < fieldNames.length; i++) {
+            const fieldName = fieldNames[i];
+            const fieldSpec = fieldSpecs[i]?.spec;
+            const fieldValue = instance[fieldName];
+
+            // Check if this field is a type parameter
+            if (isTypeParam(fieldSpec)) {
+                const paramName = (fieldSpec)[TypeParamSymbol];
+                const transform = transforms[paramName];
+
+                if (transform && typeof transform === 'function') {
+                    // Apply transformation with arguments
+                    transformedFields[fieldName] = transform(fieldValue, ...args);
+                } else {
+                    // No transform for this parameter, keep as-is
+                    transformedFields[fieldName] = fieldValue;
+                }
+            }
+            // Check if this field is a Family reference (recursive)
+            else if (isFamilyRef(fieldSpec)) {
+                // Recursively transform Family fields, passing arguments
+                if (fieldValue && typeof fieldValue[opName] === 'function') {
+                    transformedFields[fieldName] = fieldValue[opName](...args);
+                } else {
+                    transformedFields[fieldName] = fieldValue;
+                }
+            }
+            // Other fields (primitives, ADTs, predicates) pass through unchanged
+            else {
+                transformedFields[fieldName] = fieldValue;
+            }
+        }
+
+        // Create a fresh instance with transformed fields by calling constructor as a function
+        // The variant constructor handles the callable-without-new pattern
+        const ConstructorFn = instance.constructor;
+        const result = ConstructorFn(transformedFields);
+
+        // Runtime validation of spec.out if provided
+        if (outSpec) {
+            validateReturnType(result, outSpec, opName);
+        }
+
+        return result;
+    };
+}
+
+/**
  * Collects variant types (singleton vs structured) from all variants in an ADT.
  * 
  * @param adt - The ADT class to collect variant types from
@@ -493,15 +589,6 @@ function collectVariantsFromChain(adt, accumulated = new Map()) {
     return collectVariantsFromChain(Object.getPrototypeOf(adt), accumulated);
 }
 
-/**
- * Merges parent handlers with child handlers, injecting parent callbacks for overrides.
- * Handles both wildcard and variant-specific handlers, as well as singleton vs structured variants.
- * 
- * @param parentHandlers - Handler map from parent transformer
- * @param handlersInput - New handlers from child (may override parent)
- * @param variantTypes - Map of variant names to their types
- * @returns Merged handler map with parent callbacks injected
- */
 /**
  * Creates a ParentFamily proxy that allows calling parent handlers.
  * Used in fold callback: (Family, ParentFamily) => ({ ... })
@@ -807,8 +894,14 @@ function isStructuredVariant(value) {
  * Validates a value against a field specification
  */
 function validateField(value, spec, fieldName, adtClass) {
-    // Skip validation for type parameters - compile-time types handle this
+    // Handle type parameters - validate against instantiated type if provided
     if (isTypeParam(spec)) {
+        const instantiatedType = spec._instantiatedType;
+        if (instantiatedType) {
+            // Recursively validate against the instantiated type
+            validateField(value, instantiatedType, fieldName, adtClass);
+        }
+        // If no instantiated type, skip validation (generic case)
         return;
     }
 
@@ -882,13 +975,27 @@ function validateField(value, spec, fieldName, adtClass) {
 export function data(declOrFn) {
     const isCallbackStyle = typeof declOrFn === 'function';
 
-    // typeArgs parameter is used for the instantiation API (e.g., List({ T: Number }))
-    // but not consumed during validation. Type safety is enforced at compile-time by TypeScript
-    // through the type system (TypeArgMap substitution in DataDef types).
-    // Runtime validation of type parameters was intentionally removed - if users bypass
-    // TypeScript with 'as any', that's their responsibility per Henry Spencer's principle:
-    // "If you lie to the compiler, it will get its revenge"
-    function createADT(_typeArgs) {
+    // Extract type parameter names from callback function if callback style
+    let typeParamNames = [];
+    if (isCallbackStyle) {
+        const fnStr = declOrFn.toString();
+        // Match destructured parameters: ({ Family, T, ItemType }) =>
+        // Or regular function: function({ Family, T })
+        const destructuredMatch = fnStr.match(/^\s*(?:function\s*[^(]*)?\(\s*\{\s*([^}]+)\s*\}/);
+
+        if (destructuredMatch) {
+            const params = destructuredMatch[1];
+            // Parse parameter names: "Family, T, U" or "Family, ItemType, ValueType"
+            typeParamNames = params
+                .split(',')
+                .map(p => p.trim())
+                .filter(p => p && p !== 'Family'); // Exclude Family as it's not a type param
+        }
+    }
+
+    // typeArgs parameter stores instantiated types (e.g., List(Number) passes Number)
+    // These are validated at runtime when constructing variants
+    function createADT(typeArgs) {
         // Base ADT constructor function
         function ADT() {
             // Allow subclasses to instantiate
@@ -1256,6 +1363,96 @@ export function data(declOrFn) {
             return actualADT;
         };
 
+        /**
+         * Define a map operation for transforming type parameters.
+         * Map preserves the ADT structure while transforming type parameter values.
+         * 
+         * @param name - Name of the map operation (must be camelCase)
+         * @param spec - Type specification { out: (T) => ADT } or callback (Family) => ({ out: Family })
+         * @param transformsOrFn - Either an object { T: fn, U: fn } or a callback (Family) => transforms
+         * @returns The ADT with the map operation installed
+         */
+        ADT.map = function (
+            name,
+            spec,
+            transformsOrFn
+        ) {
+            // Validate that name is camelCase
+            if (!/^[a-z]/.test(name)) {
+                throw new Error(
+                    `Map operation '${name}' must be camelCase (start with lowercase letter)`
+                );
+            }
+
+            // 'this' is the ADT function
+            const actualADT = this;
+
+            // Resolve spec - support both callback and direct object
+            let resolvedSpec;
+            if (typeof spec === 'function') {
+                // Callback form: (Family) => ({ out: Family })
+                resolvedSpec = spec(actualADT);
+            } else {
+                // Direct object form
+                resolvedSpec = spec;
+            }
+
+            // Extract outSpec from resolved spec (optional)
+            const outSpec = resolvedSpec?.out;
+
+            // Collect all variants to detect name collisions
+            const allVariants = collectVariantsFromChain(actualADT);
+
+            // Check for name collisions with variant fields
+            for (const [variantName, variant] of allVariants) {
+                const fieldNames = variant._fieldNames || [];
+                if (fieldNames.includes(name)) {
+                    throw new Error(
+                        `Operation name '${name}' conflicts with field '${name}' in variant '${variantName}'`
+                    );
+                }
+            }
+
+            // Resolve transforms - support both callback and direct object
+            let transforms;
+            if (typeof transformsOrFn === 'function') {
+                // Callback form: (Family) => transforms
+                // Create a dummy Family for the callback
+                const dummyFamily = createFamily();
+                transforms = transformsOrFn(dummyFamily);
+            } else {
+                // Direct object form
+                transforms = transformsOrFn;
+            }
+
+            // Validate transforms is an object
+            if (!transforms || typeof transforms !== 'object') {
+                throw new Error(
+                    `Map operation '${name}' requires transforms object { T: fn, U: fn, ... }`
+                );
+            }
+
+            // Create transformer for this map operation
+            const transformer = createTransformer({
+                name,
+                outSpec, // Use spec.out for runtime validation
+                getParamTransform: (paramName) => {
+                    return transforms[paramName];
+                },
+                getCtorTransform: () => undefined // No constructor transform for map
+            });
+
+            // Store transformer
+            actualADT._registerTransformer(name, transformer);
+
+            // Install map operation on all variants
+            for (const [, variant] of allVariants) {
+                installMapOperationOnVariant(variant, name, transforms, actualADT, outSpec);
+            }
+
+            return actualADT;
+        };
+
         // extend method - inherited by all ADTs and extended ADTs
         ADT.extend = function (extensionDeclOrFn) {
             const parentADT = this; // 'this' is the parent ADT function
@@ -1289,7 +1486,7 @@ export function data(declOrFn) {
             const extendedResult = ExtendedADT;                // Resolve the extension declaration
             const extensionFamily = createFamily();
             const extensionDecl = isExtensionCallback
-                ? extensionDeclOrFn({ Family: extensionFamily, T, U, V, W, X, Y, Z })
+                ? extensionDeclOrFn({ Family: extensionFamily, ...typeParamObjects })
                 : extensionDeclOrFn;
 
             // Check for variant name collisions
@@ -1355,19 +1552,20 @@ export function data(declOrFn) {
 
         // Resolve the declaration - handle both object and callback styles
         const Family = createFamily();
-        const T = { [TypeParamSymbol]: 'T' };
-        const U = { [TypeParamSymbol]: 'U' };
-        const V = { [TypeParamSymbol]: 'V' };
-        const W = { [TypeParamSymbol]: 'W' };
-        const X = { [TypeParamSymbol]: 'X' };
-        const Y = { [TypeParamSymbol]: 'Y' };
-        const Z = { [TypeParamSymbol]: 'Z' };
+
+        // Create type parameter objects dynamically based on extracted parameter names
+        const typeParamObjects = {};
+        for (const paramName of typeParamNames) {
+            typeParamObjects[paramName] = {
+                [TypeParamSymbol]: paramName,
+                // Store the instantiated type if provided
+                _instantiatedType: typeArgs?.[paramName]
+            };
+        }
 
         const decl = isCallbackStyle
-            ? declOrFn({ Family, T, U, V, W, X, Y, Z })
-            : declOrFn;
-
-        // Runtime validation for variant names
+            ? declOrFn({ Family, ...typeParamObjects })
+            : declOrFn;        // Runtime validation for variant names
         for (const variantName of Object.keys(decl)) {
             if (!isPascalCase(variantName)) {
                 throw new TypeError(
@@ -1433,8 +1631,28 @@ export function data(declOrFn) {
         // Create the base ADT
         const adt = createADT();
         // Make the ADT callable for parameterized types
-        const callable = function (typeArgs) {
-            return typeArgs ? createADT(typeArgs) : adt;
+        const callable = function (...typeArgs) {
+            if (typeArgs.length === 0) {
+                return adt;
+            }
+
+            // Convert arguments to type args object
+            let typeArgsObj;
+            if (typeArgs.length === 1 && typeof typeArgs[0] === 'object' && typeArgs[0] !== null && !isConstructable(typeArgs[0])) {
+                // Object style: List({ T: Number, U: String })
+                typeArgsObj = typeArgs[0];
+            } else {
+                // Positional style: List(Number) or List(Number, String)
+                // Map to parameter names in order
+                typeArgsObj = {};
+                typeParamNames.forEach((paramName, index) => {
+                    if (index < typeArgs.length) {
+                        typeArgsObj[paramName] = typeArgs[index];
+                    }
+                });
+            }
+
+            return createADT(typeArgsObj);
         };
 
         // Copy all ADT properties and methods to the callable function
@@ -1447,6 +1665,7 @@ export function data(declOrFn) {
         callable._getTransformerNames = adt._getTransformerNames;
         callable.fold = adt.fold;
         callable.unfold = adt.unfold;
+        callable.map = adt.map;
         callable.extend = adt.extend;
 
         // CRITICAL: Set callable.prototype to match adt.prototype so instanceof works

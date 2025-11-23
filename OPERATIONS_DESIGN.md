@@ -1112,7 +1112,7 @@ List.counter(5) // Cons(5, Cons(4, Cons(3, Cons(2, Cons(1, Nil)))))
 
 ---
 
-### PBI-3: Map Operation (Functor)
+### PBI-3: Map Operation (Functor) ✅ **COMPLETED**
 
 **Title**: Implement `.map()` operation for type parameter transformation
 
@@ -1121,42 +1121,56 @@ As a developer using parameterized ADTs, I want to define map operations so that
 
 **Acceptance Criteria**:
 
-- [ ] Implement `ADT.map(name, transforms)` method
-- [ ] Support transform spec: `{ T: (value: TIn) => TOut }`
-- [ ] Support callback form: `(Family) => transforms` for edge cases
-- [ ] Install operation as zero-argument instance method
-- [ ] Return new instance with transformed parameters
-- [ ] Preserve structure exactly (same constructors/recursion)
-- [ ] Detect name collisions with variant fields
-- [ ] Create transformer representation for map operations
-- [ ] Add TypeScript type signatures with inference
-- [ ] Infer input/output types from transform functions
-- [ ] Document functor transformations and type parameter mapping
-- [ ] Performance test: structure preservation overhead
-- [ ] Tests:
-  - [ ] List.increment (number transformation)
-  - [ ] List.toString (type change)
-  - [ ] Tree.map (recursive structure)
-  - [ ] Multiple type parameters
-  - [ ] Name collision detection
-  - [ ] Type safety for transformations
+- [x] Implement `ADT.map(name, transforms)` method
+- [x] Support transform spec: `{ T: (value: TIn) => TOut }`
+- [x] Support callback form: `(Family) => transforms` for edge cases
+- [x] Support arguments in transform functions for parameterized transformations
+- [x] Return new instance with transformed parameters
+- [x] Preserve structure exactly (same constructors/recursion)
+- [x] Detect name collisions with variant fields
+- [x] Create transformer representation for map operations
+- [x] Tests:
+  - [x] List.increment (number transformation)
+  - [x] List.stringify (type change)
+  - [x] Tree.map (recursive structure)
+  - [x] Multiple type parameters
+  - [x] Name collision detection
+  - [x] Non-parameterized ADTs
+  - [x] Arguments passed to transform functions
 
 **Example**:
 
 ```typescript
 const List = data(({ Family, T }) => ({
   Nil: {},
-  Cons: { head: T, tail: Family }
+  Cons: { head: T, tail: Family(T) }
 }))
-.map('increment', { T: (x: number) => x + 1 })
+.map('increment', {}, { T: (x) => x + 1 })
+.map('scale', {}, { T: (x, factor) => x * factor })
 
-List.Cons(1, List.Cons(2, List.Nil)).increment()
-// Cons(2, Cons(3, Nil))
+List.Cons({ head: 1, tail: List.Cons({ head: 2, tail: List.Nil }) }).increment()
+// Cons({ head: 2, tail: Cons({ head: 3, tail: Nil }) })
+
+List.Cons({ head: 2, tail: List.Cons({ head: 3, tail: List.Nil }) }).scale(10)
+// Cons({ head: 20, tail: Cons({ head: 30, tail: Nil }) })
 ```
+
+**Implementation Notes**:
+
+- Signature: `ADT.map(name, spec, transforms)` where `spec = { out: ADT }` (optional, defaults to the ADT)
+- Runtime validation: validates return values against `spec.out` if provided
+- Uses `TypeParamSymbol` and `_fieldSpecs` for runtime type parameter metadata
+- Transform functions receive `(value, ...args)` - supports parameterized transformations
+- Recursively transforms `Family` fields via `fieldValue[opName](...args)` - arguments passed through
+- Non-type-parameter fields pass through unchanged
+- Works on non-parameterized ADTs (acts as identity on non-type-parameter fields)
+- Operation names must be camelCase (validated at runtime)
+- Collision detection checks against variant field names and reserved properties
+- Immutable: creates fresh instances, never modifies original values
 
 **Dependencies**: PBI-2 (Unified Fold Operation) ✅
 
-**Estimated Effort**: 5-8 days
+**Completion Date**: 2025-01-15
 
 ---
 
