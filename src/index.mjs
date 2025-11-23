@@ -1710,7 +1710,7 @@ export function data(declOrFn) {
 
                         return result;
                     } else {
-                        // NO DEFORESTATION: just unfold, or unfold+map, or unfold+map+fold
+                        // NO DEFORESTATION: unfold or unfold+map (no fold)
                         // Use standard unfold path which creates ADT instances
                         const unfoldFn = mergedTransformer.generator(actualADT);
                         let result = unfoldFn(seed);
@@ -1722,17 +1722,6 @@ export function data(declOrFn) {
                                 const mapOpName = operationNames[mapIndex];
                                 if (result && typeof result[mapOpName] === 'function') {
                                     result = result[mapOpName]();
-                                }
-                            }
-                        }
-                        
-                        // If there's a fold in the composition, apply it
-                        if (hasFold) {
-                            const foldIndex = transformers.findIndex(t => t.getCtorTransform && t[HandlerMapSymbol]);
-                            if (foldIndex !== -1) {
-                                const foldOpName = operationNames[foldIndex];
-                                if (result && typeof result[foldOpName] === 'function') {
-                                    result = result[foldOpName]();
                                 }
                             }
                         }
@@ -1764,20 +1753,8 @@ export function data(declOrFn) {
                 }
 
                 // Install on all variants
-                // Use fold-style installation if there's a getCtorTransform
-                if (mergedTransformer.getCtorTransform) {
-                    for (const [, variant] of allVariants) {
-                        installOperationOnVariant(variant, name, mergedTransformer, false);
-                    }
-                } else if (mergedTransformer.getParamTransform) {
-                    // Map-style installation
-                    // Extract transforms from merged transformer
-                    const transforms = {};
-                    // We need to reconstruct transforms object - this is a limitation
-                    // For now, install as fold since composed maps become constructor transforms
-                    for (const [, variant] of allVariants) {
-                        installOperationOnVariant(variant, name, mergedTransformer, false);
-                    }
+                for (const [, variant] of allVariants) {
+                    installOperationOnVariant(variant, name, mergedTransformer, false);
                 }
             }
 
