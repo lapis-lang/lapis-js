@@ -37,7 +37,7 @@ console.log(typeof data); // "function"
 
 Lapis JS provides a powerful `data` function for defining algebraic data types (ADTs) using a class-based enumeration pattern. ADTs support simple enumerated types, structured data with fields, subtyping, and predicate-based validation.
 
-**Runtime Validation:** The library performs runtime validation for variant names (PascalCase), field names (camelCase), reserved property names, predicates, ADT instances, and Family references. Type parameters (T, U, V, etc.) accept any values and are not validated at runtime.
+**Runtime Validation:** The library performs runtime validation for variant names (PascalCase), field names (camelCase), reserved property names, predicates, ADT instances, and Family references. Type parameters (T, U, V, etc.) accept any values and are not validated at runtime for non-instantiated ADTs; however, when ADTs are instantiated with concrete types (e.g., `List({ T: Number })` or `List(Number)`), type parameters are validated at runtime.
 
 ### Simple Enumerated Types
 
