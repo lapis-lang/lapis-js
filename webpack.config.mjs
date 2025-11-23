@@ -6,28 +6,17 @@ const fileName = url.fileURLToPath(import.meta.url),
     dirName = path.dirname(fileName);
 
 export default {
-    entry: './src/index.mts',
+    entry: './src/index.mjs',
     devtool: 'source-map',
     mode: 'production',
     experiments: {
         outputModule: true
     },
-    module: {
-        rules: [
-            {
-                test: /\.mts$/,
-                use: 'ts-loader',
-                exclude: /node_modules/,
-            },
-        ],
-    },
     resolve: {
-        extensions: ['.mts', '.mjs', '.js', '.ts', '.json'],
+        extensions: ['.mjs', '.js', '.json'],
         extensionAlias: {
-             
-            '.js': ['.js', '.ts'],
-            '.mjs': ['.mjs', '.mts']
-             
+            '.js': ['.js'],
+            '.mjs': ['.mjs']
         }
     },
     output: {
@@ -41,7 +30,7 @@ export default {
     },
     plugins: [
         new ESLintWebpackPlugin({
-            extensions: ['.mts', '.mjs', '.js', '.ts', '.json'],
+            extensions: ['.mjs', '.js', '.json'],
             exclude: ['node_modules', 'dist', 'coverage'],
             fix: true
         })

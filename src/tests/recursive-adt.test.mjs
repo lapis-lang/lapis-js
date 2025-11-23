@@ -5,8 +5,8 @@ import assert from 'node:assert/strict';
 describe('Recursive ADTs', () => {
     test('supports recursive Peano numbers', () => {
         const Peano = data(({ Family }) => ({ 
-            Zero: [], 
-            Succ: [{ pred: Family }] 
+            Zero: {}, 
+            Succ: { pred: Family } 
         }));
 
         // Zero
@@ -33,18 +33,18 @@ describe('Recursive ADTs', () => {
 
     test('validates recursive Peano structure', () => {
         const Peano = data(({ Family }) => ({ 
-            Zero: [], 
-            Succ: [{ pred: Family }] 
+            Zero: {}, 
+            Succ: { pred: Family } 
         }));
 
         // Should reject non-Peano values
         assert.throws(
-            () => Peano.Succ({ pred: 42 } as any),
+            () => Peano.Succ({ pred: 42 }),
             /Field 'pred' must be an instance of the same ADT family/
         );
 
         assert.throws(
-            () => Peano.Succ({ pred: [] } as any),
+            () => Peano.Succ({ pred: {} }),
             /Field 'pred' must be an instance of the same ADT family/
         );
     });
@@ -53,8 +53,8 @@ describe('Recursive ADTs', () => {
         // Note: TypeScript can't enforce the type parameter at runtime,
         // but the structure supports it conceptually
         const List = data(({ Family }) => ({ 
-            Nil: [], 
-            Cons: [{ head: Number }, { tail: Family }] 
+            Nil: {}, 
+            Cons: { head: Number, tail: Family } 
         }));
 
         // Empty list
@@ -83,26 +83,26 @@ describe('Recursive ADTs', () => {
 
     test('validates recursive List structure', () => {
         const List = data(({ Family }) => ({ 
-            Nil: [], 
-            Cons: [{ head: Number }, { tail: Family }] 
+            Nil: {}, 
+            Cons: { head: Number, tail: Family } 
         }));
 
         // Should reject non-List tails
         assert.throws(
-            () => List.Cons({ head: 1, tail: null } as any),
+            () => List.Cons({ head: 1, tail: null }),
             /Field 'tail' must be an instance of the same ADT family/
         );
 
         assert.throws(
-            () => List.Cons({ head: 1, tail: [] } as any),
+            () => List.Cons({ head: 1, tail: {} }),
             /Field 'tail' must be an instance of the same ADT family/
         );
     });
 
     test('supports binary tree structure', () => {
         const Tree = data(({ Family }) => ({
-            Leaf: [{ value: Number }],
-            Node: [{ left: Family }, { right: Family }, { value: Number }]
+            Leaf: { value: Number },
+            Node: { left: Family, right: Family, value: Number }
         }));
 
         const leaf1 = Tree.Leaf({ value: 1 });
@@ -124,24 +124,24 @@ describe('Recursive ADTs', () => {
 
     test('validates binary tree structure', () => {
         const Tree = data(({ Family }) => ({
-            Leaf: [{ value: Number }],
-            Node: [{ left: Family }, { right: Family }, { value: Number }]
+            Leaf: { value: Number },
+            Node: { left: Family, right: Family, value: Number }
         }));
 
         const leaf = Tree.Leaf({ value: 1 });
 
         assert.throws(
-            () => Tree.Node({ left: leaf, right: [], value: 10 } as any),
+            () => Tree.Node({ left: leaf, right: {}, value: 10 }),
             /Field 'right' must be an instance of the same ADT family/
         );
     });
 
     test('supports mixed recursive and non-recursive fields', () => {
         const Expr = data(({ Family }) => ({
-            Num: [{ value: Number }],
-            Add: [{ left: Family }, { right: Family }],
-            Mul: [{ left: Family }, { right: Family }],
-            Var: [{ name: String }]
+            Num: { value: Number },
+            Add: { left: Family, right: Family },
+            Mul: { left: Family, right: Family },
+            Var: { name: String }
         }));
 
         const x = Expr.Var({ name: 'x' });
@@ -162,8 +162,8 @@ describe('Recursive ADTs', () => {
     test('comprehensive demo: Peano, List, and Tree', () => {
         // Peano numbers
         const Peano = data(({ Family }) => ({ 
-            Zero: [], 
-            Succ: [{ pred: Family }] 
+            Zero: {}, 
+            Succ: { pred: Family } 
         }));
 
         const zero = Peano.Zero;
@@ -176,8 +176,8 @@ describe('Recursive ADTs', () => {
 
         // Recursive list
         const List = data(({ Family }) => ({ 
-            Nil: [], 
-            Cons: [{ head: Number }, { tail: Family }] 
+            Nil: {}, 
+            Cons: { head: Number, tail: Family } 
         }));
 
         const empty = List.Nil;
@@ -194,8 +194,8 @@ describe('Recursive ADTs', () => {
 
         // Binary tree
         const Tree = data(({ Family }) => ({
-            Leaf: [{ value: Number }],
-            Node: [{ left: Family }, { right: Family }, { value: Number }]
+            Leaf: { value: Number },
+            Node: { left: Family, right: Family, value: Number }
         }));
 
         const leaf1 = Tree.Leaf({ value: 1 });

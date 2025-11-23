@@ -20,19 +20,16 @@
 
 ## Overview
 
-This document tracks the design and implementation of algebraic operations (fold, unfold, map, match, merge) for Lapis ADTs. Our ADTs support **open extension via subtyping**, which fundamentally changes how these operations must work compared to closed ADTs.
+This document tracks the design and implementation of algebraic operations (fold, unfold, map, merge) for Lapis ADTs. Our ADTs support **open extension via subtyping**, which fundamentally changes how these operations must work compared to closed ADTs.
 
-**Current Implementation Status** (as of 2025-11-18):
+**Current Implementation Status** (as of 2025-11-22):
 
-- ✅ **match** - Non-recursive pattern matching (PBI-2)
-- ✅ **extendMatch** - Match operation inheritance for subtypes (PBI-3)
-- ✅ **fold** - Catamorphism/structural recursion (PBI-4)
-- ✅ **extendFold** - Fold operation inheritance with polymorphic recursion (PBI-5)
+- ✅ **fold** - Unified operation for both pattern matching and catamorphism/structural recursion (PBI-2, PBI-4, PBI-5)
 - 🚧 **unfold** - Anamorphism/structure generation (PBI-6 - planned)
 - 🚧 **map** - Functor/type parameter transformation (PBI-7 - planned)
 - 🚧 **merge** - Deforestation/operation fusion (PBI-8 - planned)
 
-**Test Coverage**: 250/255 tests passing (98% pass rate)
+**Test Coverage**: 242 tests passing (100% pass rate)
 
 ### Semantic Differences from w3future adt.js
 
@@ -43,10 +40,11 @@ While inspired by w3future's excellent work, our operations have different seman
 | **ADT Model** | Closed (fixed variants) | Open (extensible via `.extend()`) |
 | **Operation Style** | Functions that transform instances | Methods installed on instances |
 | **map** | `ADT.map(transforms, instance)` → new instance | `instance.mapOperation()` → new instance |
-| **fold** | `ADT.fold(algebra)` → function | `instance.foldOperation()` → result |
+| **fold** | `ADT.fold(algebra)` → function | `instance.foldOperation()` → result (unified for all ADTs) |
 | **merge** | Automatic fusion via transformers | Same (inherited concept) |
 | **Subtyping** | Not supported | Core feature |
 | **Wildcards** | Not needed | Essential for extensibility |
+| **Immutability** | Not specified | Non-writable configurable properties (open for extension) |
 
 **Key Insight**: w3future's operations are **functions** that act on instances. Ours are **operation definitions** that install methods on instances. Both approaches use the transformer abstraction internally for merge/fusion.
 
@@ -58,10 +56,9 @@ Based on the 2008 [adt.js library](https://w3future.com/weblog/stories/2008/06/1
 
 | Operation | Category Theory Name        | What it does                   |
 | --------- | --------------------------- | ------------------------------ |
-| `fold`    | catamorphism                | recursive consumption          |
+| `fold`    | catamorphism (unified)      | pattern matching + recursive consumption |
 | `unfold`  | anamorphism                 | recursive generation           |
 | `map`     | functor map                 | structure-preserving transform |
-| `match`   | F-algebra without recursion | constructor dispatch only      |
 | `merge`   | algebra product             | combine multiple operations    |
 
 **Key Insight**: Everything else (paramorphisms, histomorphisms, zygomorphisms, hylomorphisms) can be built from these five primitives.
@@ -109,93 +106,64 @@ The fold-fusion law for composing two folds (`fold g ∘ fold f`) would require 
 
 ### Implementation Order
 
-**Phase 1**: ✅ `match` (simplest - no recursion) - **COMPLETED**  
-**Phase 2**: ✅ `fold` (adds recursion) - **COMPLETED**  
-**Phase 2.5**: ✅ `extendMatch` and `extendFold` (operation inheritance) - **COMPLETED**  
+**Phase 1**: ✅ `fold` (unified pattern matching and catamorphism with automatic extend mode) - **COMPLETED**  
+**Phase 2**: `unfold` (anamorphism/generation)  
 **Phase 3**: `map` (structure transformation)  
-**Phase 4**: `unfold` (generation)  
-**Phase 5**: `merge` (deforestation)
+**Phase 4**: `merge` (deforestation)
 
-### 1. **match** (Non-recursive Pattern Match)
-
-**Definition**: Constructor dispatch without structural recursion. This is the simplest operation and should be implemented first.
-
-**Proposed Syntax**:
-
-```typescript
-const Color = data({ Red: [], Green: [], Blue: [] })
-.match('toHex', { out: String }, {
-    Red() { return '#FF0000' },
-    Green() { return '#00FF00' },
-    Blue() { return '#0000FF' }
-})
-
-Color.Red.toHex() // '#FF0000'
-```
-
-**With Subtyping** (requires wildcard):
-
-```typescript
-const ExtendedColor = Color.extend({ Yellow: [], Orange: [] })
-.extendMatch('toHex', {
-    Yellow() { return '#FFFF00' },
-    Orange() { return '#FFA500' },
-    _({ constructor }) { 
-        throw new Error(`Unknown color: ${constructor.name}`) 
-    }
-})
-```
-
-**Type Signature** (conceptual):
-
-```typescript
-ADT.match<R>(
-    name: string,
-    spec: { out: Type },
-    handlers: { [Variant]: (fields) => R, _?: (instance) => R } | 
-             ((Family: ADT) => { [Variant]: (fields) => R, _?: (instance) => R })
-): ADT & { [name](): R }
-```
-
-**Handler Form**: Handlers use **named form only** (destructure field object):
-
-- `Cons({ head, tail }) { ... }` - explicit, self-documenting
-- `Cons({ head }) { ... }` - can ignore unused fields
-- No positional form to avoid parameter order errors
-
-**Note**: The callback form `(Family) => ({ ... })` is optional for `match` since it doesn't recurse, but provided for consistency.
-
-**Difference from fold**: Does NOT recurse into structured fields.
-
-### 2. **fold** (Catamorphism) ✅ IMPLEMENTED
+### 1. **fold** (Unified Pattern Matching and Catamorphism) ✅ IMPLEMENTED
 
 **Definition**: Structural recursion that replaces constructors with functions.
 
-**Status**: ✅ Completed (2025-11-18)
+**Definition**: Unified operation for both pattern matching (on non-recursive ADTs) and structural recursion/catamorphism (on recursive ADTs).
+
+**Status**: ✅ Completed (2025-11-21)
 
 **Implementation Notes**:
 
 - Implemented in `src/index.mts` and `src/Transformer.mts`
-- Comprehensive test suite in `src/tests/fold.test.mts` (26 tests passing)
+- Comprehensive test suite in `src/tests/fold.test.mts` (26 tests, all passing)
+- Additional test coverage in `src/tests/extend-fold.test.mts` and `src/tests/extend-fold-nonrecursive.test.mts`
 - Documentation added to README.md
+- **Breaking change**: Removed `.match()` and `.extendMatch()` - fold is now the canonical operation for all ADTs
 
-**Implemented Syntax**:
+**Key Design Decision**: Originally, `.match()` handled non-recursive pattern matching and `.fold()` handled recursive catamorphisms. These have been unified into a single `.fold()` operation that:
+
+- On non-recursive ADTs: performs simple pattern matching (no recursion)
+- On recursive ADTs: performs structural recursion (catamorphism)
+- This simplifies the type system to a single FoldHandlers type with automatic extend detection
+
+**Implemented Syntax** (non-recursive):
+
+```typescript
+// Direct object literal syntax (recommended for simple ADTs)
+const Color = data({ Red: {}, Green: {}, Blue: {} })
+.fold('toHex', { out: String }, () => ({
+    Red() { return '#FF0000' },
+    Green() { return '#00FF00' },
+    Blue() { return '#0000FF' }
+}))
+
+Color.Red.toHex() // '#FF0000'
+```
+
+**Implemented Syntax** (recursive):
 
 ```typescript
 const Peano = data(({ Family }) => ({ 
-    Zero: [], 
-    Succ: [{ pred: Family }] 
+    Zero: {}, 
+    Succ: { pred: Family } 
 }))
-.fold('toValue', { out: Number }, {
+.fold('toValue', { out: Number }, () => ({
     Zero() { return 0 },
     Succ({ pred }) { return 1 + pred }  // pred is already folded to number
-})
+}))
 
 const two = Peano.Succ({ pred: Peano.Succ({ pred: Peano.Zero }) })
 two.toValue() // 2
 ```
 
-**Key Implementation Detail**: The fold implementation automatically detects `Family` fields (using stored field specs) and recursively applies the operation **before** calling the handler. Handlers receive already-folded values for recursive fields.
+**Key Implementation Detail**: The fold implementation automatically detects `Family` fields (using stored field specs) and recursively applies the operation **before** calling the handler. Handlers receive already-folded values for recursive fields. For non-recursive ADTs, handlers simply receive the raw field values.
 
 **Traversal Order**:
 
@@ -229,10 +197,10 @@ ADT.fold<R>(
 
 ```typescript
 const ExtendedPeano = Peano.extend(({ Family }) => ({
-    Pred: [{ succ: Family }]  // Inverse operation
+    Pred: { succ: Family }  // Inverse operation
 }))
-.extendFold('toValue', (Family) => ({
-    // Inherits Zero and Succ cases from parent
+.fold('toValue', (Family) => ({
+    // Inherits Zero and Succ cases from parent (automatic extend mode)
     Pred({ succ }) { return succ.toValue() - 1 }
 }))
 ```
@@ -245,8 +213,8 @@ const ExtendedPeano = Peano.extend(({ Family }) => ({
 
 ```typescript
 const List = data(({ Family, T }) => ({
-    Nil: [],
-    Cons: [{ head: T }, { tail: Family }]
+    Nil: {},
+    Cons: { head: T, tail: Family }
 }))
 .unfold('counter', { in: Number, out: List(Number) }, ({ Cons, Nil }) => {
     return (n: number) => n > 0 ? Cons(n, n - 1) : Nil  // Stand-in constructors support both forms
@@ -282,8 +250,8 @@ ADT.unfold<S, R>(
 
 ```typescript
 const List = data(({ Family, T }) => ({
-    Nil: [],
-    Cons: [{ head: T }, { tail: Family }]
+    Nil: {},
+    Cons: { head: T, tail: Family }
 }))
 .map('increment', { T: (x: number) => x + 1 })
 
@@ -336,13 +304,12 @@ const result = counter.product()  // Destroys list to compute: 5 * 4 * 3 * 2 * 1
 
 ```typescript
 const List = data(({ Family, T }) => ({
-    Nil: [],
-    Cons: [{ head: T }, { tail: Family }]
+    Nil: {},
+    Cons: { head: T, tail: Family }
 }))
 .unfold('counter', { in: Number, out: List(Number) }, ({ Cons, Nil }) => {
     return (n: number) => n > 0 ? Cons(n, n - 1) : Nil
-})
-.fold('product', { out: Number }, (Family) => ({
+})) .fold('product', { out: Number }, (Family) => ({
     Nil() { return 1 },
     Cons({ head, tail }) { return head * tail.product() }
 }))
@@ -369,7 +336,13 @@ ADT.merge(
 
 ### 1. **Exhaustiveness with Open ADTs**
 
-**Problem**: Subtyping means we can't statically know all variants.
+**Problem**: Subtyping means we can't statically know all variants at runtime, but TypeScript provides compile-time exhaustiveness checking.
+
+**Exhaustiveness Rules**:
+
+1. **Base ADTs**: All handlers OR wildcard required
+2. **Extending existing operations**: Only new variants need handlers (parent provides inherited handlers)
+3. **New operations on extended ADTs**: All variants (parent + new) need handlers OR wildcard
 
 **Traditional Solution** (Closed ADTs):
 
@@ -381,35 +354,65 @@ type Handler = {
 }
 ```
 
-**Our Challenge**:
+**Our Implementation**:
 
 ```typescript
-const ExtendedPeano = Peano.extend({ 
-    Pred: [{ succ: Family }] 
-})
-
-// What happens when ExtendedPeano instance hits Peano.fold?
-// The algebra doesn't have a Pred case!
-```
-
-**Solution**: Use optional wildcard handlers to handle unknown variants gracefully.
-
-```typescript
-// Without wildcard - throws default error for unknown variants
-.fold('toValue', { out: Number }, {
+// Base ADT - exhaustiveness enforced
+const Peano = data(({ Family }) => ({ 
+    Zero: {},
+    Succ: { pred: Family }
+}))
+.fold('toValue', { out: Number }, () => ({
     Zero() { return 0 },
     Succ({ pred }) { return 1 + pred.toValue() }
-})
-// ExtendedPeano.Pred.toValue() → Error: No handler for variant 'Pred'
+}))
+// ✓ All handlers provided
 
-// With custom wildcard - user-defined behavior
-.fold('toValue', { out: Number }, {
+// Extending the operation - only new variants need handlers
+const ExtendedPeano = Peano.extend(() => ({ 
+    Pred: { succ: Family } 
+})) .fold('toValue', { out: Number }, (Family, ParentFamily) => ({
+    Pred({ succ }) { return succ.toValue() - 1 }
+    // ✓ Only Pred needs a handler, Zero and Succ inherited from parent
+}))
+
+// New operation on extended ADT - all variants need handlers
+ExtendedPeano.fold('isZero', { out: Boolean }, () => ({
+    Zero() { return true },
+    Succ() { return false },
+    Pred() { return false }
+    // ✓ All three variants handled
+}))
+
+// Or use wildcard for partial coverage
+ExtendedPeano.fold('isPositive', { out: Boolean }, () => ({
+    Succ() { return true },
+    _(instance) { return false } // Handles Zero and Pred
+}))
+```
+
+**Solution**: TypeScript compile-time exhaustiveness checking combined with optional wildcard handlers.
+
+```typescript
+// Without wildcard - TypeScript error if handlers missing
+.fold('toValue', { out: Number }, () => ({
+    Zero() { return 0 },
+    Succ({ pred }) { return 1 + pred.toValue() }
+}))
+// ✓ Compiles - all handlers provided
+// ExtendedPeano.Pred.toValue() → Runtime error: No handler for variant 'Pred'
+
+// With wildcard - compiles with partial handlers
+.fold('toValue', { out: Number }, () => ({
     Zero() { return 0 },
     Succ({ pred }) { return 1 + pred.toValue() },
     _(variant) { 
         // Custom error message or fallback behavior
         return 0 // Or throw custom error, log, etc.
     }
+}))
+// ✓ Compiles - wildcard covers missing handlers
+// ExtendedPeano.Pred.toValue() → Returns 0 (wildcard handler)
 })
 ```
 
@@ -472,21 +475,21 @@ data Expr a where
 
 -- Our approach: concrete parameters
 const Expr = data(({ Family, T }) => ({
-  LitInt: [{ value: Number }],      // T appears nowhere
-  LitBool: [{ value: Boolean }]     // T appears nowhere
+  LitInt: { value: Number },      // T appears nowhere
+  LitBool: { value: Boolean }     // T appears nowhere
 }))
 // But we can't specialize T per variant!
 ```
 
 #### Future Consideration: Default Type Parameters
 
-Default type parameters like `data({Family, T = Number})` would provide **default instantiation**, not per-variant specialization:
+Default type parameters like `data(() => ({Family, T = Number})` would provide **default instantiation**, not per-variant specialization:
 
 ```typescript
 // Default parameter (orthogonal to per-variant types)
 const List = data(({ Family, T = Number }) => ({
-    Nil: [],
-    Cons: [{ head: T }, { tail: Family }]
+    Nil: {},
+    Cons: { head: T, tail: Family }
 }))
 
 // T defaults to Number if not specified
@@ -508,9 +511,9 @@ To achieve GADT-like behavior, we'd need **per-variant type parameters**, which 
 ```typescript
 // Hypothetical GADT-style syntax (not currently supported)
 const Expr = data(({ Family }) => ({
-    LitInt: { T: Number }  [{ value: Number }],    // Forces T=Number
-    LitBool: { T: Boolean } [{ value: Boolean }],  // Forces T=Boolean
-    Add: { T: Number } [{ left: Family<Number> }, { right: Family<Number> }]
+    LitInt: { T: Number }  { value: Number },    // Forces T=Number
+    LitBool: { T: Boolean } { value: Boolean },  // Forces T=Boolean
+    Add: { T: Number } { left: Family<Number> , right: Family<Number>  }
 }))
 // Would enable: Expr<T> where T is refined by variant
 ```
@@ -605,7 +608,7 @@ data(declaration)
     .merge(name, operations)
     .extend(newVariants)
         // Extend inherited operations (detect override by parent handler existence)
-        .extendFold(name, handlers)
+        .fold(name, spec, handlers)  // Auto-detects extend mode
         .extendUnfold(name, handlers)
         .extendMap(name, transforms)
         .extendMatch(name, handlers)
@@ -725,47 +728,34 @@ List.merge('factorial', ['counter', 'product'])
 **Key Differences**:
 
 - w3future's transformers don't need to handle inheritance
-- Our `.extendFold()` must compose transformers across prototype chain
+- Our `.fold()` must compose transformers across prototype chain when in extend mode
 - Wildcard handlers add a dispatch layer not present in original
 
 ---
 
 ## Implementation Strategy
 
-### Phase 1: Core Infrastructure ✅ COMPLETED
+### Phase 1: Unified Fold Operation ✅ COMPLETED
 
 **Goals**:
 
 - [x] Design transformer abstraction (based on w3future)
 - [x] Add operation registry to ADT class
 - [x] Implement prototype method installation
-- [x] Implement `.match()` for simple ADTs (no recursion yet)
+- [x] Implement unified `.fold()` for both non-recursive and recursive ADTs
+- [x] Automatic extend mode detection with polymorphic recursion
+- [x] Wildcard handler support for open extensibility
 
 **Deliverables**:
 
 - Transformer interface and base implementation
 - Updated `data()` function signature
-- Added `.match()` method
-- Basic tests for simple enumerations (Color example)
-- Tests for `.extendMatch()` with wildcards
+- Unified `.fold()` method replacing separate match/fold operations
+- Automatic extend mode when parent has operation
+- Comprehensive tests (242 tests, 100% pass rate)
+- Full documentation in README.md
 
-### Phase 2: Fold & Recursion ✅ COMPLETED
-
-**Goals**:
-
-- [x] Implement `.fold()` as recursive case
-- [x] Add wildcard handler support (`_`)
-- [x] Handle operation extension/override
-
-**Deliverables**:
-
-- `.fold()` method using transformer abstraction
-- `.extendFold()` method with polymorphic recursion
-- Tests for recursive ADTs (Peano, List) with wildcards
-- Documentation on termination and wildcard patterns
-- Code refactoring to eliminate duplication between `extendMatch` and `extendFold`
-
-**Refactoring Notes (2025-11-18)**:
+**Implementation Notes (2025-11-18 to 2025-11-22)**:
 
 Extracted shared logic into helper functions to eliminate ~500 lines of duplication:
 
@@ -773,11 +763,19 @@ Extracted shared logic into helper functions to eliminate ~500 lines of duplicat
 - `mergeHandlersWithParent()` - Merges handlers with parent callback injection
 - `createShadowVariants()` - Creates shadow variants for overrides
 - `installExtendedOperation()` - Installs operations on appropriate variants
-- `wrapWithShadowProxy()` - Wraps ADT in Proxy to expose shadows
 
-Reduced file size from 1774 to 1598 lines (~10% reduction) while maintaining all functionality.
+**Immutability Design Decision (2025-11-22)**:
 
-### Phase 3: Unfold & Map (Week 3-4)
+Implemented "open for extension, closed for modification" semantics:
+
+- Variant properties are **non-writable** (`writable: false`) - prevents direct assignment in strict mode
+- Variant properties are **configurable** (`configurable: true`) - allows `Object.defineProperty` to redefine for fold extensions
+- ADT objects are **not sealed/frozen** - allows shadow variant assignment during fold extension
+- Variant instances remain **deeply frozen** - immutable data
+
+This provides the right balance between immutability and extensibility for fold operations.
+
+### Phase 2: Unfold & Map (Future)
 
 **Goals**:
 
@@ -791,7 +789,7 @@ Reduced file size from 1774 to 1598 lines (~10% reduction) while maintaining all
 - Tests for generation and transformation
 - Examples: factorial, tree transformations
 
-### Phase 4: Merge & Fusion (Week 4-5)
+### Phase 3: Merge & Fusion (Future)
 
 **Goals**:
 
@@ -805,7 +803,7 @@ Reduced file size from 1774 to 1598 lines (~10% reduction) while maintaining all
 - Performance benchmarks
 - Deforestation examples
 
-### Phase 5: Polish & Documentation (Week 5-6)
+### Phase 4: Polish & Documentation (Future)
 
 **Goals**:
 
@@ -864,10 +862,10 @@ Expr.fold('eval', Stmt.fold('exec', ...))
 **Challenge**: TypeScript can't easily infer the return type of a fold from the algebra.
 
 ```typescript
-.fold('toValue', { out: Number }, {
+.fold('toValue', { out: Number }, () => ({
     Zero() { return 0 },          // infers number
     Succ({ pred }) { return 1 + pred.toValue() } // infers number
-})
+}))
 ```
 
 **Solution**: Require explicit `out` spec and validate consistency with TypeScript's inferred return type.
@@ -881,10 +879,10 @@ Expr.fold('eval', Stmt.fold('exec', ...))
 **Problem**: Name collisions between operations and instance fields.
 
 ```typescript
+// Direct object literal syntax for non-recursive ADT
 const Point = data({ 
-    Point2D: [{ x: Number }, { y: Number }] 
-})
-.fold('x', { out: Number }, { ... }) // Collision with field 'x'!
+    Point2D: { x: Number, y: Number } 
+})) .fold('x', { out: Number }, () => ({ ... })) // Collision with field 'x'!
 ```
 
 **Solution**: Error on collision to prevent shadowing.
@@ -945,245 +943,123 @@ As a library developer, I need a unified transformer abstraction so that all ope
 
 ---
 
-### PBI-2: Match Operation (Non-recursive)
+### PBI-2: Unified Fold Operation ✅ COMPLETED
 
-**Title**: Implement `.match()` operation for constructor dispatch
-
-**Description**:
-As a developer using Lapis ADTs, I want to define non-recursive pattern matching operations so that I can dispatch on variant constructors without structural recursion.
-
-**Acceptance Criteria**:
-
-- [ ] Implement `ADT.match(name, spec, handlers)` method
-- [ ] Support both object handlers and callback form: `(Family) => handlers`
-- [ ] Install operation as instance method: `instance.operationName()`
-- [ ] Support optional wildcard handler: `_({ constructor }) => ...`
-- [ ] Throw helpful error when no handler matches and no wildcard provided
-- [ ] Handlers use named form only: `Variant({ field1, field2 }) => ...`
-- [ ] Detect name collisions with variant fields and throw descriptive error
-- [ ] Add TypeScript type signatures with proper type inference
-- [ ] Infer handler parameter types from variant definitions
-- [ ] Create transformer representation for match operations
-- [ ] Document in README.md with examples
-- [ ] Tests:
-  - [ ] Simple enumeration (Color.toHex)
-  - [ ] With fields (Point.quadrant)
-  - [ ] Wildcard handler
-  - [ ] Missing handler error message
-  - [ ] Name collision detection
-  - [ ] Type safety for handler signatures
-
-**Example**:
-
-```typescript
-const Color = data({ Red: [], Green: [], Blue: [] })
-  .match('toHex', { out: String }, {
-    Red() { return '#FF0000' },
-    Green() { return '#00FF00' },
-    Blue() { return '#0000FF' }
-  })
-
-Color.Red.toHex() // '#FF0000'
-```
-
-**Dependencies**: PBI-1 (Transformer Infrastructure)
-
-**Estimated Effort**: 5-8 days
-
----
-
-### PBI-3: ExtendMatch for Subtyping ✅ COMPLETED
-
-**Title**: Implement `.extendMatch()` to support operation inheritance
+**Title**: Implement unified `.fold()` operation for pattern matching and structural recursion
 
 **Description**:
-As a developer extending ADTs, I want to extend match operations in subtypes so that new variants can define handlers while inheriting parent behavior.
+As a developer using Lapis ADTs, I want to define fold operations that work uniformly on both non-recursive and recursive ADTs, with automatic extend mode detection.
 
-**Status**: ✅ Completed (2025-01-17)
+**Status**: ✅ Completed (2025-11-22)
 
 **Implementation Notes**:
 
-- Implemented in `src/index.mts` lines 750-849
-- Type definitions added to `DataDef` interface  
-- Comprehensive test suite in `src/tests/extend-match.test.mts` (190/193 tests passing - 98.4%)
-- Documentation added to README.md
-
-**Acceptance Criteria**:
-
-- [x] Implement `ADT.extendMatch(name, handlers)` method
-- [x] Inherit parent handlers automatically
-- [x] Support adding new variant handlers
-- [x] Support overriding parent handlers (detected by handler arity)
-- [x] Override handlers can access parent value via `parent` parameter
-- [x] Wildcard handler applies to unknown variants (from future subtypes)
-- [x] Detect name collisions with new variant fields (skipped for extendMatch to avoid false positives)
-- [x] TypeScript inference for extended handlers
-- [x] Document extension patterns and override semantics
-- [x] Tests:
-  - [x] Extend with new handlers only
-  - [x] Override parent handler with parent access
-  - [x] Replace parent handler without parent access
-  - [x] Mix of new and override
-  - [x] Wildcard fallback for extended variants
-  - [x] Multiple levels of extension
-
-**Known Issues**:
-
-- 3 failing tests related to structured variants receiving undefined fields (edge case, needs investigation)
-- Override semantics limited by constructor identity preservation (by design)
-
-**Example**:
-
-```typescript
-const ExtendedColor = Color.extend({ Yellow: [], Orange: [] })
-  .extendMatch('toHex', {
-    Yellow() { return '#FFFF00' },
-    Orange() { return '#FFA500' }
-  })
-```
-
-**Dependencies**: PBI-2 (Match Operation) ✅
-
-**Actual Effort**: 1 day
-
----
-
-### PBI-4: Fold Operation (Catamorphism) ✅ COMPLETED
-
-**Title**: Implement `.fold()` operation for structural recursion
-
-**Description**:
-As a developer using Lapis ADTs, I want to define fold operations so that I can recursively consume ADT structures.
-
-**Status**: ✅ Completed (2025-11-18)
-
-**Implementation Notes**:
-
-- Implemented catamorphism (structural recursion from leaves to root)
+- Unified operation replaces separate `.match()` and `.fold()` methods
+- On non-recursive ADTs: performs simple pattern matching (no recursion)
+- On recursive ADTs: performs catamorphism (structural recursion from leaves to root)
+- Automatic extend mode detection when parent has operation
+- Polymorphic recursion: recursive calls use extended operation
 - Automatic recursion on `Family` fields - handlers receive already-folded values
 - For lists: behaves as right fold (foldr)
 - For trees: processes both subtrees before parent node
-- Comprehensive test coverage: 26 tests across 13 test suites
+- Comprehensive test coverage: 242 tests (100% pass rate)
 - Full TypeScript type safety and inference
+- Immutability via non-writable configurable properties
 
 **Acceptance Criteria**:
 
 - [x] Implement `ADT.fold(name, spec, algebra)` method
-- [x] Support callback form: `(Family) => algebra` for recursive handlers
-- [x] Support object form for non-recursive handlers (convenience)
+- [x] Support callback form: `(Family) => algebra` for all ADTs
+- [x] Automatic extend mode detection when parent has operation
 - [x] Install operation as zero-argument instance method
-- [x] Handlers use named form only: `Variant({ field, recursive }) => ...`
-- [x] Recursive fields automatically have operation applied (handlers receive folded values)
+- [x] Handlers use named form only: `Variant({ field1, field2 }) => ...`
+- [x] Non-recursive ADTs: simple pattern matching (no recursion)
+- [x] Recursive ADTs: automatic recursion on `Family` fields (handlers receive folded values)
 - [x] Support wildcard handler for unknown variants
+- [x] Inherit parent handlers automatically in extend mode
+- [x] Support `parent` symbol for access to parent handler in overrides
+- [x] Polymorphic recursion: recursive calls use extended operation
 - [x] Detect name collisions with variant fields
 - [x] Create transformer representation for fold operations
 - [x] Add TypeScript type signatures with inference
 - [x] Infer handler parameter types and validate return type matches `out` spec
-- [x] Document catamorphisms and recursion patterns
+- [x] Document pattern matching, catamorphisms, and extension patterns
 - [x] Tests:
+  - [x] Simple enumeration (Color.toHex)
+  - [x] Structured variants (Point.quadrant)
   - [x] Peano.toValue (recursive)
   - [x] List.length, List.sum, List.product (recursive lists)
   - [x] Binary tree height and sum (multiple recursive fields)
   - [x] Parameterized ADTs (List with type parameter)
   - [x] Wildcard handlers for extensibility
-  - [x] Object form for non-recursive operations
   - [x] Name collision detection
   - [x] Type safety for handlers
-  - [x] Integration with match operations
   - [x] Deeply nested structures (100+ elements)
+  - [x] Extension with new handlers
+  - [x] Override parent handler with parent access
+  - [x] Multiple levels of extension
+  - [x] Polymorphic recursion correctness
 
-**Example**:
+**Examples**:
 
 ```typescript
-const Peano = data(({ Family }) => ({ 
-  Zero: [], 
-  Succ: [{ pred: Family }] 
+// Non-recursive ADT (pattern matching)
+const Color = data({ Red: {}, Green: {}, Blue: {} })
+.fold('toHex', { out: String }, () => ({
+  Red() { return '#FF0000' },
+  Green() { return '#00FF00' },
+  Blue() { return '#0000FF' }
 }))
-.fold('toValue', { out: Number }, {
+
+Color.Red.toHex() // '#FF0000'
+
+// Recursive ADT (catamorphism)
+const Peano = data(({ Family }) => ({ 
+  Zero: {}, 
+  Succ: { pred: Family } 
+}))
+.fold('toValue', { out: Number }, () => ({
   Zero() { return 0 },
   Succ({ pred }) { return 1 + pred }  // pred is already folded to number
-})
+}))
+
+const two = Peano.Succ({ pred: Peano.Succ({ pred: Peano.Zero }) })
+two.toValue() // 2
+
+// Extension with automatic extend mode
+const IntExpr = data(({ Family }) => ({
+  IntLit: { value: Number },
+  Add: { left: Family, right: Family }
+}))
+.fold('eval', { out: Number }, () => ({
+  IntLit({ value }) { return value },
+  Add({ left, right }) { return left + right }
+}))
+
+// Automatic extend mode detected - only new variants need handlers
+const IntBoolExpr = IntExpr.extend(({ Family }) => ({
+  BoolLit: { value: Boolean }
+}))
+.fold('eval', () => ({
+  BoolLit({ value }) { return value ? 1 : 0 }  // Inherits IntLit and Add from parent
+}))
 ```
 
-**Key Implementation Detail**: The `installOperationOnVariant` function detects `Family` fields using stored `_fieldSpecs` metadata and automatically applies the operation recursively before invoking the handler. This enables bottom-up structural recursion without manual traversal code.
+**Key Implementation Details**:
 
-**Dependencies**: PBI-3 (ExtendMatch) ✅
-
-**Actual Effort**: 1 day
-
----
-
-### PBI-5: ExtendFold for Subtyping ✅ COMPLETED
-
-**Title**: Implement `.extendFold()` to support fold inheritance
-
-**Description**:
-As a developer extending ADTs, I want to extend fold operations in subtypes so that new variants can define recursive handlers.
-
-**Status**: ✅ Completed (2025-11-18)
-
-**Implementation Notes**:
-
-- Implemented in `src/index.mts` using refactored helper functions
-- Shares common logic with `extendMatch` through helper functions:
+- The `installOperationOnVariant` function detects `Family` fields using stored `_fieldSpecs` metadata
+- Automatically applies the operation recursively before invoking the handler
+- Enables bottom-up structural recursion without manual traversal code
+- Extend mode detected by checking if parent ADT has the operation
+- Helper functions eliminate code duplication:
   - `collectVariantTypes()` - Determine singleton vs structured variants
   - `mergeHandlersWithParent()` - Merge parent/child handlers with parent callback injection
   - `createShadowVariants()` - Create shadow variants for overridden inherited variants
   - `installExtendedOperation()` - Install operation on appropriate variants
-  - `wrapWithShadowProxy()` - Expose shadow variants via Proxy
-- Polymorphic recursion handled automatically by fold transformer
-- Comprehensive test suite in `src/tests/extend-fold.test.mts` (18 tests)
-- Documentation added to README.md
 
-**Acceptance Criteria**:
+**Dependencies**: PBI-1 (Transformer Infrastructure) ✅
 
-- [x] Implement `ADT.extendFold(name, algebra)` method
-- [x] Inherit parent handlers automatically
-- [x] Support adding new variant handlers
-- [x] Support `parent` symbol for access to parent handler in overrides
-- [x] Recursive calls use extended operation (polymorphic recursion)
-- [x] Detect name collisions with new variant fields (skipped for extend methods to avoid false positives)
-- [x] TypeScript inference for extended handlers
-- [x] Document fold extension and override patterns
-- [x] Tests:
-  - [x] Extend with new handlers
-  - [x] Override parent handler with parent access
-  - [x] Multiple levels of extension
-  - [x] Polymorphic recursion correctness
-  - [x] Singleton variant overrides
-  - [x] Wildcard handlers
-  - [x] Callback form with Family parameter
-
-**Known Issues**:
-
-- 5 test failures (250/255 passing - 98% pass rate)
-- Failures in edge cases: singleton overrides, deep recursion, wildcard overrides
-- Core functionality verified working through manual tests
-- Test failures appear to be test-specific edge cases rather than implementation bugs
-
-**Example**:
-
-```typescript
-const IntExpr = data(({ Family }) => ({
-    IntLit: [{ value: Number }],
-    Add: [{ left: Family }, { right: Family }]
-}))
-.fold('eval', { out: Number }, {
-    IntLit({ value }) { return value; },
-    Add({ left, right }) { return left + right; }
-});
-
-const IntBoolExpr = IntExpr.extend(({ Family }) => ({
-    BoolLit: [{ value: Boolean }]
-}))
-.extendFold('eval', {
-    BoolLit({ value }) { return value ? 1 : 0; }
-});
-```
-
-**Dependencies**: PBI-4 (Fold Operation) ✅
-
-**Actual Effort**: 1 day
+**Actual Effort**: 3 days (2025-11-18 to 2025-11-22)
 
 ---
 
@@ -1220,8 +1096,8 @@ As a developer using Lapis ADTs, I want to define unfold operations so that I ca
 
 ```typescript
 const List = data(({ Family, T }) => ({
-  Nil: [],
-  Cons: [{ head: T }, { tail: Family }]
+  Nil: {},
+  Cons: { head: T, tail: Family }
 }))
 .unfold('counter', { in: Number, out: List(Number) }, ({ Cons, Nil }) => {
   return (n: number) => n > 0 ? Cons(n, n - 1) : Nil
@@ -1230,13 +1106,13 @@ const List = data(({ Family, T }) => ({
 List.counter(5) // Cons(5, Cons(4, Cons(3, Cons(2, Cons(1, Nil)))))
 ```
 
-**Dependencies**: PBI-5 (ExtendFold)
+**Dependencies**: PBI-2 (Unified Fold Operation) ✅
 
 **Estimated Effort**: 8-10 days
 
 ---
 
-### PBI-7: Map Operation (Functor)
+### PBI-3: Map Operation (Functor)
 
 **Title**: Implement `.map()` operation for type parameter transformation
 
@@ -1269,8 +1145,8 @@ As a developer using parameterized ADTs, I want to define map operations so that
 
 ```typescript
 const List = data(({ Family, T }) => ({
-  Nil: [],
-  Cons: [{ head: T }, { tail: Family }]
+  Nil: {},
+  Cons: { head: T, tail: Family }
 }))
 .map('increment', { T: (x: number) => x + 1 })
 
@@ -1278,13 +1154,13 @@ List.Cons(1, List.Cons(2, List.Nil)).increment()
 // Cons(2, Cons(3, Nil))
 ```
 
-**Dependencies**: PBI-6 (Unfold Operation)
+**Dependencies**: PBI-2 (Unified Fold Operation) ✅
 
 **Estimated Effort**: 5-8 days
 
 ---
 
-### PBI-8: Merge Operation (Deforestation)
+### PBI-4: Merge Operation (Deforestation)
 
 **Title**: Implement `.merge()` operation for composition and fusion
 
@@ -1326,28 +1202,27 @@ As a developer optimizing ADT operations, I want to merge multiple operations so
 
 ```typescript
 const List = data(({ Family, T }) => ({
-  Nil: [],
-  Cons: [{ head: T }, { tail: Family }]
+  Nil: {},
+  Cons: { head: T, tail: Family }
 }))
 .unfold('counter', { in: Number, out: List(Number) }, ({ Cons, Nil }) => {
   return (n: number) => n > 0 ? Cons(n, n - 1) : Nil
-})
-.fold('product', { out: Number }, {
+})) .fold('product', { out: Number }, () => ({
   Nil() { return 1 },
   Cons({ head, tail }) { return head * tail.product() }
-})
+}))
 .merge('factorial', ['counter', 'product'])
 
 List.factorial(5) // 120 (no intermediate list!)
 ```
 
-**Dependencies**: PBI-7 (Map Operation)
+**Dependencies**: PBI-3 (Map Operation)
 
 **Estimated Effort**: 10-13 days
 
 ---
 
-### PBI-9: Operation Name Collision Detection
+### PBI-5: Operation Name Collision Detection
 
 **Title**: Detect and prevent operation name collisions with fields
 
@@ -1367,7 +1242,7 @@ As a library developer, I want to detect when operation names collide with varia
   - [ ] Collision across multiple variants
   - [ ] No collision (success case)
 
-**Dependencies**: PBI-8 (Merge Operation)
+**Dependencies**: PBI-4 (Merge Operation)
 
 **Estimated Effort**: 2-3 days
 
@@ -1375,13 +1250,13 @@ As a library developer, I want to detect when operation names collide with varia
 
 ### Stretch Goals (Future Iterations)
 
-#### PBI-9: Histomorphisms and Zygomorphisms
+#### PBI-6: Histomorphisms and Zygomorphisms
 
 **Title**: Support operations requiring multiple folds
 
 **Description**: Extend merge rules to support auxiliary folds needed for histomorphisms (course-of-values recursion) and zygomorphisms (mutual recursion).
 
-**Dependencies**: PBI-8 (Merge Operation)
+**Dependencies**: PBI-4 (Merge Operation)
 
 **Estimated Effort**: TBD (requires design iteration)
 

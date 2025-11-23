@@ -13,10 +13,10 @@ describe('Variance Investigation', () => {
             }
 
             const AnimalList = data(({ Family }) => ({
-                Nil: [],
-                Cons: [{ head: Animal }, { tail: Family }]
+                Nil: {},
+                Cons: { head: Animal , tail: Family }
             }))
-                .fold('first', { out: Animal }, {
+                .fold('first', { out: Animal }, () => ({
                     Nil() { return new Animal(); },
                     Cons({ head }) {
                         // Can we return a more specific type?
@@ -25,7 +25,7 @@ describe('Variance Investigation', () => {
                         }
                         return head;
                     }
-                });
+                }));
 
             const dog = new Dog();
             const list = AnimalList.Cons({ head: dog, tail: AnimalList.Nil });
@@ -43,14 +43,14 @@ describe('Variance Investigation', () => {
                 speak() { return 'woof'; }
             }
 
-            const Pet = data({
-                Cat: [],
-                Dog: []
-            })
-                .match('create', { out: Animal }, {
+            const Pet = data(() => ({
+                Cat: {},
+                Dog: {}
+            }))
+                .fold('create', { out: Animal }, () => ({
                     Cat() { return new Animal(); },
                     Dog() { return new Dog(); } // Dog <: Animal
-                });
+                }));
 
             const result = Pet.Dog.create();
             assert.ok(result instanceof Animal);
@@ -63,17 +63,17 @@ describe('Variance Investigation', () => {
                 area() { return 0; }
             }
             class Circle extends Shape {
-                radius: number;
-                constructor(r: number) {
+                radius;
+                constructor(r) {
                     super();
                     this.radius = r;
                 }
                 area() { return Math.PI * this.radius * this.radius; }
             }
             class Rectangle extends Shape {
-                width: number;
-                height: number;
-                constructor(w: number, h: number) {
+                width;
+                height;
+                constructor(w, h) {
                     super();
                     this.width = w;
                     this.height = h;
@@ -81,14 +81,14 @@ describe('Variance Investigation', () => {
                 area() { return this.width * this.height; }
             }
 
-            const ShapeData = data({
-                CircleVariant: [],
-                RectVariant: []
-            })
-                .match('makeShape', { out: Shape }, {
+            const ShapeData = data(() => ({
+                CircleVariant: {},
+                RectVariant: {}
+            }))
+                .fold('makeShape', { out: Shape }, () => ({
                     CircleVariant() { return new Circle(5); },
                     RectVariant() { return new Rectangle(3, 4); }
-                });
+                }));
 
             const circle = ShapeData.CircleVariant.makeShape();
             const rect = ShapeData.RectVariant.makeShape();
@@ -104,33 +104,33 @@ describe('Variance Investigation', () => {
     describe('Handler Parameter Contravariance (would be unsafe if violated)', () => {
         test('fold handlers must accept exact types, not supertypes', () => {
             class Animal {
-                name: string;
-                constructor(name: string) { this.name = name; }
+                name;
+                constructor(name) { this.name = name; }
             }
             class Dog extends Animal {
-                breed: string;
-                constructor(name: string, breed: string) {
+                breed;
+                constructor(name, breed) {
                     super(name);
                     this.breed = breed;
                 }
             }
 
-            const DogList = data(({ Family }) => ({
-                Nil: [],
-                Cons: [{ head: Dog }, { tail: Family }]
+            const Option = data(({ Family }) => ({
+                Nil: {},
+                Cons: { head: Dog , tail: Family }
             }))
-                .fold('describe', { out: String }, {
+                .fold('describe', { out: String }, () => ({
                     Nil() { return 'empty'; },
                     Cons({ head }) {
-                        // head is typed as Dog
+                        // head is typed
                         // If contravariance were violated, we might accept Animal
                         // and try to access head.breed which doesn't exist on Animal
                         return `Dog: ${head.name}, breed: ${head.breed}`;
                     }
-                });
+                }));
 
             const dog = new Dog('Buddy', 'Labrador');
-            const list = DogList.Cons({ head: dog, tail: DogList.Nil });
+            const list = Option.Cons({ head: dog, tail: Option.Nil });
             const result = list.describe();
 
             assert.strictEqual(result, 'Dog: Buddy, breed: Labrador');
@@ -141,22 +141,22 @@ describe('Variance Investigation', () => {
     describe('Type Inference with Primitive Constructors', () => {
         test('spec.out: Number infers number (primitive), not Number (wrapper)', () => {
             const List = data(({ Family }) => ({
-                Nil: [],
-                Cons: [{ head: Number }, { tail: Family }]
+                Nil: {},
+                Cons: { head: Number, tail: Family }
             }))
-                .fold('sum', { out: Number }, {
+                .fold('sum', { out: Number }, () => ({
                     Nil() { return 0; },
                     Cons({ head, tail }) { return head + tail; }
-                });
+                }));
 
             const list = List.Cons({ head: 1, tail: List.Nil });
             const result = list.sum();
 
-            // If InferType works, result should be typed as number
+            // If InferType works, result should be typed
             assert.strictEqual(typeof result, 'number');
 
             // TypeScript should allow this (number is assignable to number)
-            const num: number = result;
+            const num = result;
             assert.strictEqual(num, 1);
 
             console.log('✓ Number constructor maps to number primitive');
@@ -164,13 +164,13 @@ describe('Variance Investigation', () => {
 
         test('handlers returning primitives work with primitive constructors', () => {
             const List = data(({ Family }) => ({
-                Nil: [],
-                Cons: [{ head: String }, { tail: Family }]
+                Nil: {},
+                Cons: { head: String, tail: Family }
             }))
-                .fold('concat', { out: String }, {
+                .fold('concat', { out: String }, () => ({
                     Nil() { return ''; },
                     Cons({ head, tail }) { return head + tail; }
-                });
+                }));
 
             const list = List.Cons({
                 head: 'hello',
@@ -184,14 +184,14 @@ describe('Variance Investigation', () => {
         });
 
         test('Boolean constructor maps to boolean primitive', () => {
-            const Data = data({
-                True: [],
-                False: []
-            })
-                .match('toBool', { out: Boolean }, {
+            const Data = data(() => ({
+                True: {},
+                False: {}
+            }))
+                .fold('toBool', { out: Boolean }, () => ({
                     True() { return true; },
                     False() { return false; }
-                });
+                }));
 
             const t = Data.True.toBool();
             const f = Data.False.toBool();
@@ -208,20 +208,20 @@ describe('Variance Investigation', () => {
         test('widening return type (if allowed, would be unsound)', () => {
             // This test checks if we can accidentally widen types
             class Animal { type = 'animal'; }
-            class Dog extends Animal { type = 'dog' as const; }
+            class Dog extends Animal { type = 'dog'; }
 
             const List = data(({ Family }) => ({
-                Nil: [],
-                Cons: [{ head: Dog }, { tail: Family }]
+                Nil: {},
+                Cons: { head: Dog , tail: Family }
             }))
-                .fold('getFirst', { out: Dog }, {
+                .fold('getFirst', { out: Dog }, () => ({
                     Nil() {
                         // What if we return Animal instead of Dog?
                         // This would be UNSOUND because callers expect Dog
-                        return new Animal() as Dog; // Type assertion to force it
+                        return new Animal(); // Type assertion to force it
                     },
                     Cons({ head }) { return head; }
-                });
+                }));
 
             const dog = new Dog();
             const list = List.Cons({ head: dog, tail: List.Nil });
@@ -248,14 +248,14 @@ describe('Variance Investigation', () => {
             class Dog extends Animal { }
             class Cat extends Animal { }
 
-            const AnimalData = data({
-                DogVariant: [],
-                CatVariant: []
-            })
-                .match('getAnimal', { out: Animal }, {
+            const AnimalData = data(() => ({
+                DogVariant: {},
+                CatVariant: {}
+            }))
+                .fold('getAnimal', { out: Animal }, () => ({
                     DogVariant() { return new Dog(); },
                     CatVariant() { return new Cat(); }
-                });
+                }));
 
             const dogResult = AnimalData.DogVariant.getAnimal();
             const catResult = AnimalData.CatVariant.getAnimal();
@@ -274,20 +274,20 @@ describe('Variance Investigation', () => {
 
     describe('InferType Correctness', () => {
         test('InferType handles all primitive constructors', () => {
-            const Data = data({
-                NumVariant: [{ val: Number }],
-                StrVariant: [{ val: String }],
-                BoolVariant: [{ val: Boolean }],
-                BigIntVariant: [{ val: BigInt }],
-                SymVariant: [{ val: Symbol }]
-            })
-                .match('getType', { out: String }, {
+            const Data = data(() => ({
+                NumVariant: { val: Number },
+                StrVariant: { val: String },
+                BoolVariant: { val: Boolean },
+                BigIntVariant: { val: BigInt },
+                SymVariant: { val: Symbol }
+            }))
+                .fold('getType', { out: String }, () => ({
                     NumVariant() { return 'number'; },
                     StrVariant() { return 'string'; },
                     BoolVariant() { return 'boolean'; },
                     BigIntVariant() { return 'bigint'; },
                     SymVariant() { return 'symbol'; }
-                });
+                }));
 
             const n = Data.NumVariant({ val: 42 });
             const s = Data.StrVariant({ val: 'hello' });
@@ -306,16 +306,16 @@ describe('Variance Investigation', () => {
 
         test('InferType with custom classes', () => {
             class CustomClass {
-                value: number;
-                constructor(value: number) { this.value = value; }
+                value;
+                constructor(value) { this.value = value; }
             }
 
-            const Data = data({
-                Variant: [{ val: CustomClass }]
-            })
-                .match('getValue', { out: Number }, {
+            const Data = data(() => ({
+                Variant: { val: CustomClass }
+            }))
+                .fold('getValue', { out: Number }, () => ({
                     Variant({ val }) { return val.value; }
-                });
+                }));
 
             const instance = new CustomClass(42);
             const v = Data.Variant({ val: instance });
@@ -326,16 +326,16 @@ describe('Variance Investigation', () => {
         });
 
         test('InferType with Date, RegExp, Array', () => {
-            const Data = data({
-                DateVariant: [{ val: Date }],
-                RegExpVariant: [{ val: RegExp }],
-                ArrayVariant: [{ val: Array }]
-            })
-                .match('getTypeName', { out: String }, {
+            const Data = data(() => ({
+                DateVariant: { val: Date },
+                RegExpVariant: { val: RegExp },
+                ArrayVariant: { val: Array }
+            }))
+                .fold('getTypeName', { out: String }, () => ({
                     DateVariant() { return 'Date'; },
                     RegExpVariant() { return 'RegExp'; },
                     ArrayVariant() { return 'Array'; }
-                });
+                }));
 
             const d = Data.DateVariant({ val: new Date() });
             const r = Data.RegExpVariant({ val: /test/ });
@@ -352,42 +352,40 @@ describe('Variance Investigation', () => {
     describe('Actual Variance in Type System', () => {
         test('assigning to wider type variable', () => {
             const List = data(({ Family }) => ({
-                Nil: [],
-                Cons: [{ head: Number }, { tail: Family }]
+                Nil: {},
+                Cons: { head: Number, tail: Family }
             }))
-                .fold('sum', { out: Number }, {
+                .fold('sum', { out: Number }, () => ({
                     Nil() { return 0; },
                     Cons({ head, tail }) { return head + tail; }
-                });
+                }));
 
             const list = List.Cons({ head: 1, tail: List.Nil });
 
             // Can we assign to any? (widening)
-            const anyResult: any = list.sum();
+            const anyResult = list.sum();
             assert.strictEqual(typeof anyResult, 'number');
 
             // Can we assign to unknown? (widening)
-            const unknownResult: unknown = list.sum();
+            const unknownResult = list.sum();
             assert.strictEqual(typeof unknownResult, 'number');
 
             console.log('✓ Widening to any/unknown works (expected)');
         });
 
         test('spec.out with union types', () => {
-            type Result = { success: true; value: number } | { success: false; error: string };
-
-            const Computation = data({
-                Success: [{ value: Number }],
-                Failure: [{ error: String }]
-            })
-                .match('toResult', { out: Object as any }, {
+            const Computation = data(() => ({
+                Success: { value: Number },
+                Failure: { error: String }
+            }))
+                .fold('toResult', { out: Object }, () => ({
                     Success({ value }) {
-                        return { success: true, value } as Result;
+                        return { success: true, value };
                     },
                     Failure({ error }) {
-                        return { success: false, error } as Result;
+                        return { success: false, error };
                     }
-                });
+                }));
 
             const success = Computation.Success({ value: 42 }).toResult();
             const failure = Computation.Failure({ error: 'oops' }).toResult();
@@ -401,19 +399,19 @@ describe('Variance Investigation', () => {
         test('contravariance would be unsound for parameters', () => {
             // This test demonstrates why contravariance matters
             class Animal {
-                name: string;
-                constructor(name: string) { this.name = name; }
+                name;
+                constructor(name) { this.name = name; }
             }
             class Dog extends Animal {
-                breed: string;
-                constructor(name: string, breed: string) {
+                breed;
+                constructor(name, breed) {
                     super(name);
                     this.breed = breed;
                 }
             }
 
             // If we had contravariant parameters, this would be dangerous:
-            const processDog = (dog: Dog) => {
+            const processDog = (dog) => {
                 return `${dog.name} is a ${dog.breed}`;
             };
 
@@ -434,14 +432,15 @@ describe('Variance Investigation', () => {
 
     describe('Edge Cases and Type Safety', () => {
         test('spec.out with null/undefined', () => {
-            const Maybe = data({
-                Just: [{ value: Number }],
-                Nothing: []
-            })
-                .match('toNullable', { out: Object as any }, {
+            const Maybe = data(() => ({
+                Just: { value: Number },
+                Nothing: {}
+            }))
+                // No spec.out - allows any return type including null and primitives
+                .fold('toNullable', {}, () => ({
                     Just({ value }) { return value; },
                     Nothing() { return null; }
-                });
+                }));
 
             const justResult = Maybe.Just({ value: 42 }).toNullable();
             const nothingResult = Maybe.Nothing.toNullable();
@@ -453,17 +452,15 @@ describe('Variance Investigation', () => {
         });
 
         test('spec.out with function types', () => {
-            type Fn = () => number;
-
-            const Lazy = data({
-                Thunk: [{ fn: Function as any }]
-            })
-                .match('toFunction', { out: Function }, {
-                    Thunk({ fn }) { return fn as Fn; }
-                });
+            const Lazy = data(() => ({
+                Thunk: { fn: Function }
+            }))
+                .fold('toFunction', { out: Function }, () => ({
+                    Thunk({ fn }) { return fn; }
+                }));
 
             const thunk = Lazy.Thunk({ fn: () => 42 });
-            const fn = thunk.toFunction() as Fn;
+            const fn = thunk.toFunction();
             const result = fn();
 
             assert.strictEqual(result, 42);
@@ -472,18 +469,18 @@ describe('Variance Investigation', () => {
         });
 
         test('multiple operations with different return types', () => {
-            const Point = data({
-                Point2D: [{ x: Number }, { y: Number }]
-            })
-                .match('asString', { out: String }, {
+            const Point = data(() => ({
+                Point2D: { x: Number, y: Number }
+            }))
+                .fold('asString', { out: String }, () => ({
                     Point2D({ x, y }) { return `(${x}, ${y})`; }
-                })
-                .match('magnitude', { out: Number }, {
+                }))
+                .fold('magnitude', { out: Number }, () => ({
                     Point2D({ x, y }) { return Math.sqrt(x * x + y * y); }
-                })
-                .match('asArray', { out: Array }, {
+                }))
+                .fold('asArray', { out: Array }, () => ({
                     Point2D({ x, y }) { return [x, y]; }
-                });
+                }));
 
             const p = Point.Point2D({ x: 3, y: 4 });
 
