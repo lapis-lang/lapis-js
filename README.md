@@ -41,12 +41,16 @@ Lapis JS provides a powerful `data` function for defining algebraic data types (
 
 ### Simple Enumerated Types
 
-Define ADTs with simple variants (no data). Each variant creates a single value (singleton):
+Define ADTs with simple variants (no data). Each variant creates a single value (singleton). For simple ADTs without recursive types or type parameters, you can use direct object literal syntax:
 
 ```ts
 import { data } from '@lapis-lang/lapis-js';
 
-const Color = data({ Red: [], Green: [], Blue: [] });
+// Direct object literal syntax (recommended for simple ADTs)
+const Color = data({ Red: {}, Green: {}, Blue: {} });
+
+// Alternative: Callback syntax (use when you need Family or type parameters)
+const ColorAlt = data(() => ({ Red: {}, Green: {}, Blue: {} }));
 
 // Color is the data type; Red, Green, Blue are singleton variants
 console.log(Color.Red instanceof Color); // true
@@ -61,20 +65,21 @@ if (Color.Red instanceof Color) {
 **Requirements:**
 
 - Variant names must be **PascalCase** (start with uppercase letter)
-- Values must be empty arrays `[]`
+- Values must be empty objects `{}`
 
 ### Structured Data
 
-Define variants with typed fields using an array of single-key objects. Each object maps a field name to its type. Structured variants are callable constructors (no `new` keyword needed):
+Define variants with typed fields using object literals. Each key-value pair maps a field name to its type. Structured variants are callable constructors (no `new` keyword needed):
 
 ```ts
+// Direct object literal syntax (for non-recursive ADTs)
 const Point = data({
-    Point2D: [{ x: Number }, { y: Number }],
-    Point3D: [{ x: Number }, { y: Number }, { z: Number }]
+    Point2D: { x: Number, y: Number },
+    Point3D: { x: Number, y: Number, z: Number }
 });
 
 // Named arguments (object form)
-const p1 = Point.Point2D({ x: 10, y: 20 });
+const p1 = Point.Point2D({ x: 10, y: 20 });  
 console.log(p1.x); // 10
 console.log(p1.y); // 20
 
@@ -84,7 +89,7 @@ console.log(p2.x); // 10
 console.log(p2.y); // 20
 
 // Both forms work with 'new' keyword if preferred
-const p3 = new Point.Point3D({ x: 1, y: 2, z: 3 });
+const p3 = new Point.Point3D({ x: 1, y: 2, z: 3 });  
 const p4 = new Point.Point3D(1, 2, 3);
 
 // All variant values support type checking
@@ -127,14 +132,14 @@ console.log(p2 instanceof Point); // true
 Fields can reference other ADTs with full type checking:
 
 ```ts
-const Color = data({ Red: [], Green: [], Blue: [] });
+const Color = data(() => ({ Red: {}, Green: {}, Blue: {} }));
 
-const ColorPoint = data({ 
-    Point2: [{ x: Number }, { y: Number }, { color: Color }],
-    Point3: [{ x: Number }, { y: Number }, { z: Number }, { color: Color }]
-});
+const ColorPoint = data(() => ({ 
+    Point2: { x: Number, y: Number, color: Color },
+    Point3: { x: Number, y: Number, z: Number, color: Color }
+}));
 
-const p = ColorPoint.Point2({ x: 5, y: 10, color: Color.Red });
+const p = ColorPoint.Point2({ x: 5, y: 10, color: Color.Red }));  
 console.log(p.color instanceof Color); // true
 console.log(p instanceof ColorPoint); // true
 ```
@@ -147,15 +152,15 @@ Use custom validation functions (predicates) for runtime field validation:
 const isEven = (x: unknown): x is number => 
     typeof x === 'number' && x % 2 === 0;
 
-const EvenPoint = data({ 
-    Point2: [{ x: isEven }, { y: isEven }]
-});
+const EvenPoint = data(() => ({ 
+    Point2: { x: isEven , y: isEven }
+}));
 
-const p = EvenPoint.Point2({ x: 2, y: 4 }); // ✓ Valid
+const p = EvenPoint.Point2({ x: 2, y: 4 }));  // ✓ Valid
 console.log(p.x); // 2
 console.log(p.y); // 4
 
-EvenPoint.Point2({ x: 3, y: 4 }); // ✗ Throws TypeError
+EvenPoint.Point2({ x: 3, y: 4 }));  // ✗ Throws TypeError
 // TypeError: Field 'x' failed predicate validation
 ```
 
@@ -167,17 +172,15 @@ const inRange = (min: number, max: number) =>
     (x: unknown): x is number => 
         typeof x === 'number' && x >= min && x <= max;
 
-const Percentage = data({
-    Value: [{ amount: inRange(0, 100) }]
-});
-
-// String validation
+const Percentage = data(() => ({
+    Value: { amount: inRange(0, 100)  }
+}));  // String validation
 const isEmail = (s: unknown): s is string => 
     typeof s === 'string' && s.includes('@');
 
-const User = data({
-    RegisteredUser: [{ email: isEmail }, { username: String }]
-});
+const User = data(() => ({
+    RegisteredUser: { email: isEmail , username: String }
+}));  
 ```
 
 ### Mixed Variants
@@ -186,9 +189,9 @@ Combine simple and structured variants in the same ADT:
 
 ```ts
 const Shape = data({
-    Circle: [{ radius: Number }],
-    Square: [{ side: Number }],
-    Unknown: []  // Simple variant (singleton)
+    Circle: { radius: Number },
+    Square: { side: Number },
+    Unknown: {}  // Simple variant (singleton)
 });
 
 const circle = Shape.Circle({ radius: 5 });
@@ -203,9 +206,9 @@ console.log(unknown instanceof Shape); // true
 The class-based pattern enables powerful runtime type checking:
 
 ```ts
-const Color = data({ Red: [], Green: [], Blue: [] });
+const Color = data({ Red: {}, Green: {}, Blue: {} });
 const Point = data({ 
-    Point2D: [{ x: Number }, { y: Number }]
+    Point2D: { x: Number, y: Number }
 });
 
 // Check against the data type
@@ -228,16 +231,15 @@ function isColor(value: unknown): value is typeof Color.Red {
 **Important:** Each call to a variant constructor creates a new instance. Standard JavaScript identity rules apply:
 
 ```ts
-const Point = data({
-    Point2D: [{ x: Number }, { y: Number }]
-});
-
+const Point = data(() => ({
+    Point2D: { x: Number, y: Number }
+}));  
 const p1 = Point.Point2D(1, 2);
 const p2 = Point.Point2D(1, 2);
 console.log(p1 === p2); // false - different instances
 
 // Singletons are always the same instance
-const Color = data({ Red: [], Green: [], Blue: [] });
+const Color = data(() => ({ Red: {}, Green: {}, Blue: {} }));
 const red1 = Color.Red;
 const red2 = Color.Red;
 console.log(red1 === red2); // true - same singleton instance
@@ -246,10 +248,9 @@ console.log(red1 === red2); // true - same singleton instance
 **Working with collections:** Use custom comparison for value equality when needed:
 
 ```ts
-const Point = data({
-    Point2D: [{ x: Number }, { y: Number }]
-});
-
+const Point = data(() => ({
+    Point2D: { x: Number, y: Number }
+}));  
 const points = [
     Point.Point2D(1, 2),
     Point.Point2D(3, 4),
@@ -270,19 +271,19 @@ Define recursive data structures using the callback form with `Family` to refere
 ```ts
 // Peano numbers
 const Peano = data(({ Family }) => ({ 
-    Zero: [], 
-    Succ: [{ pred: Family }] 
+    Zero: {}, 
+    Succ: { pred: Family } 
 }));
 
 const zero = Peano.Zero;
-const one = Peano.Succ({ pred: zero });
-const two = Peano.Succ({ pred: one });
+const one = Peano.Succ({ pred: zero }));  
+const two = Peano.Succ({ pred: one }));  
 console.log(two.pred.pred === zero); // true
 
 // Recursive list
 const List = data(({ Family }) => ({ 
-    Nil: [], 
-    Cons: [{ head: Number }, { tail: Family }] 
+    Nil: {}, 
+    Cons: { head: Number, tail: Family } 
 }));
 
 const empty = List.Nil;
@@ -290,19 +291,19 @@ const list = List.Cons({ head: 1,
     tail: List.Cons({ head: 2, 
         tail: List.Cons({ head: 3, tail: empty }) 
     }) 
-});
+}));  
 console.log(list.head); // 1
 console.log(list.tail.head); // 2
 
 // Binary tree
 const Tree = data(({ Family }) => ({
-    Leaf: [{ value: Number }],
-    Node: [{ left: Family }, { right: Family }, { value: Number }]
+    Leaf: { value: Number },
+    Node: { left: Family, right: Family, value: Number }
 }));
 
-const leaf1 = Tree.Leaf({ value: 1 });
-const leaf2 = Tree.Leaf({ value: 2 });
-const tree = Tree.Node({ left: leaf1, right: leaf2, value: 10 });
+const leaf1 = Tree.Leaf({ value: 1 }));  
+const leaf2 = Tree.Leaf({ value: 2 }));  
+const tree = Tree.Node({ left: leaf1, right: leaf2, value: 10 }));  
 ```
 
 **Key points:**
@@ -319,37 +320,37 @@ Define generic data structures with type parameters using `T`, `U`, `V`, `W`, `X
 ```ts
 // Generic Maybe type
 const Maybe = data(({ T }) => ({
-    Nothing: [],
-    Just: [{ value: T }]
+    Nothing: {},
+    Just: { value: T }
 }));
 
-const justNum = Maybe.Just({ value: 42 });
-const justStr = Maybe.Just({ value: 'hello' });
+const justNum = Maybe.Just({ value: 42 }));  
+const justStr = Maybe.Just({ value: 'hello' }));  
 const nothing = Maybe.Nothing;
 
 // Generic Either type with two type parameters
 const Either = data(({ U, V }) => ({
-    Left: [{ value: U }],
-    Right: [{ value: V }]
+    Left: { value: U },
+    Right: { value: V }
 }));
 
 // Heterogeneous Pair with different types
 const Pair = data(({ T, U }) => ({
-    MakePair: [{ first: T }, { second: U }]
+    MakePair: { first: T, second: U }
 }));
 
 // Parameterized recursive list
 const List = data(({ Family, T }) => ({
-    Nil: [],
-    Cons: [{ head: T }, { tail: Family(T) }]  // Family(T) or just Family
+    Nil: {},
+    Cons: { head: T, tail: Family(T) }  // Family(T) or just Family
 }));
 
 const numList = List.Cons({ head: 1, 
     tail: List.Cons({ head: 2, tail: List.Nil }) 
-});
+}));  
 const strList = List.Cons({ head: 'a', 
     tail: List.Cons({ head: 'b', tail: List.Nil }) 
-});
+}));  
 ```
 
 **Type instantiation:**
@@ -358,33 +359,28 @@ For stricter type validation, instantiate parameterized ADTs with specific types
 
 ```ts
 const List = data(({ Family, T }) => ({
-    Nil: [],
-    Cons: [{ head: T }, { tail: Family(T) }]
+    Nil: {},
+    Cons: { head: T, tail: Family(T) }
 }));
 
 // Instantiate with Number
-const NumList = List({ T: Number });
+const NumList = List({ T: Number }));  
 const nums = NumList.Cons({ head: 10, 
     tail: NumList.Cons({ head: 20, tail: NumList.Nil }) 
-});
-
-// Instantiate with String
-const StrList = List({ T: String });
+}));  // Instantiate with String
+const StrList = List({ T: String }));  
 const strs = StrList.Cons({ head: 'hello', 
     tail: StrList.Cons({ head: 'world', tail: StrList.Nil }) 
-});
-
-// Type validation enforced at compile-time by TypeScript
-NumList.Cons({ head: 'bad', tail: NumList.Nil }); 
-// ✗ TypeScript compile error: Type 'string' is not assignable to type 'number'
+}));  // Type validation enforced at compile-time by TypeScript
+NumList.Cons({ head: 'bad', tail: NumList.Nil }));  // ✗ TypeScript compile error: Type 'string' is not assignable to type 'number'
 
 // Multiple type parameters
 const Pair = data(({ T, U }) => ({
-    MakePair: [{ first: T }, { second: U }]
+    MakePair: { first: T, second: U }
 }));
 
-const NumStrPair = Pair({ T: Number, U: String });
-const pair = NumStrPair.MakePair({ first: 42, second: 'hello' });
+const NumStrPair = Pair({ T: Number, U: String }));  
+const pair = NumStrPair.MakePair({ first: 42, second: 'hello' }));  
 ```
 
 **Key points:**
@@ -397,55 +393,73 @@ const pair = NumStrPair.MakePair({ first: 42, second: 'hello' });
 
 ### Immutability
 
-All ADT instances and the ADT itself are deeply frozen and immutable:
+Lapis JS provides immutability through two mechanisms:
+
+**Variant instances** are deeply frozen and cannot be modified:
 
 ```ts
-const Color = data({ Red: [], Green: [], Blue: [] });
-
-Color.Red = []; // ✗ Throws Error (cannot modify)
-Color.Yellow = []; // ✗ Throws Error (cannot add properties)
-
-const Point = data({ Point2D: [{ x: Number }, { y: Number }] });
+const Point = data(() => ({ Point2D: { x: Number, y: Number } }));
 const p = Point.Point2D({ x: 10, y: 20 });
 p.x = 30; // ✗ Throws Error (instance is frozen)
 ```
 
+**ADT objects** use non-writable properties to prevent mutation in strict mode while allowing fold extensions:
+
+```ts
+const Color = data(() => ({ Red: {}, Green: {}, Blue: {} }));
+
+// In strict mode (or TypeScript), variant properties cannot be reassigned
+Color.Red = []; // ✗ Throws Error in strict mode (cannot assign to read-only property)
+
+// However, properties are configurable to support fold operation extensions
+// The ADT itself is not sealed/frozen to allow shadow variant assignment
+```
+
+This design follows the **"open for extension, closed for modification"** principle: variant properties are protected from casual mutation, but the implementation can extend operations through the `.fold()` mechanism.
+
 ### ADT Extension (Subtyping)
 
-Extend existing ADTs with new variants using the `.extend()` method. This enables open ADTs that can be incrementally extended while maintaining proper subtyping relationships:
+Extend existing ADTs with new variants using the `.extend()` method. This enables open ADTs that can be incrementally extended while maintaining proper subtyping relationships.
+
+Like `data()`, `.extend()` supports both object literal and callback forms:
 
 ```ts
 // Base ADT
-const Color = data({ Red: [], Green: [], Blue: [] });
+const Color = data({ Red: {}, Green: {}, Blue: {} });
 
-// Extend with new variants
-const ExtendedColor = Color.extend({ Yellow: [], Orange: [] });
+// Object literal form (for simple extensions without Family/type parameters)
+const ExtendedColor1 = Color.extend({ Yellow: {}, Orange: {} });
 
+// Callback form (required when using Family for recursive ADTs)
+const ExtendedColor2 = Color.extend(() => ({ Yellow: {}, Orange: {} }));
+
+// Both forms create the same result
 // All variants accessible on extended ADT
-console.log(ExtendedColor.Red);    // Inherited singleton
-console.log(ExtendedColor.Yellow); // New singleton
+console.log(ExtendedColor1.Red);    // Inherited singleton
+console.log(ExtendedColor1.Yellow); // New singleton
 
 // Proper subtyping: extended variants are instanceof base
 console.log(ExtendedColor.Yellow instanceof Color); // true
 console.log(ExtendedColor.Yellow instanceof ExtendedColor); // true
 
 // But inherited variants maintain original type
-console.log(ExtendedColor.Red instanceof Color); // true
-console.log(ExtendedColor.Red instanceof ExtendedColor); // false
+console.log(ExtendedColor1.Red instanceof Color); // true
+console.log(ExtendedColor1.Red instanceof ExtendedColor1); // false
 
 // Singleton identity preserved
-console.log(ExtendedColor.Red === Color.Red); // true
+console.log(ExtendedColor1.Red === Color.Red); // true
 ```
 
 **Extending structured variants:**
 
 ```ts
 const Point = data({
-    Point2D: [{ x: Number }, { y: Number }]
+    Point2D: { x: Number, y: Number }
 });
 
+// Object literal form (no Family needed)
 const Point3D = Point.extend({
-    Point3D: [{ x: Number }, { y: Number }, { z: Number }]
+    Point3D: { x: Number, y: Number, z: Number }
 });
 
 // Create variant values
@@ -472,35 +486,31 @@ Use the callback style with `Family` to extend recursive ADTs. The `Family` refe
 ```ts
 // Base expression language
 const IntExpr = data(({ Family }) => ({
-    IntLit: [{ value: Number }],
-    Add: [{ left: Family }, { right: Family }]
+    IntLit: { value: Number },
+    Add: { left: Family, right: Family }
 }));
 
 // Extend with boolean operations
 const IntBoolExpr = IntExpr.extend(({ Family }) => ({
-    BoolLit: [{ value: Boolean }],
-    LessThan: [{ left: Family }, { right: Family }]
+    BoolLit: { value: Boolean },
+    LessThan: { left: Family, right: Family }
 }));
 
 // Extend further with variables
 const FullExpr = IntBoolExpr.extend(({ Family }) => ({
-    Var: [{ name: String }],
-    Let: [{ name: String }, { value: Family }, { body: Family }]
+    Var: { name: String },
+    Let: { name: String, value: Family, body: Family }
 }));
 
 // Build complex expressions
-const five = FullExpr.IntLit({ value: 5 });
-const x = FullExpr.Var({ name: 'x' });
-const lessThan = FullExpr.LessThan({ left: x, right: five });
-
-// Family accepts instances from any level
+const five = FullExpr.IntLit({ value: 5 }));  
+const x = FullExpr.Var({ name: 'x' }));  
+const lessThan = FullExpr.LessThan({ left: x, right: five }));  // Family accepts instances from any level
 const letExpr = FullExpr.Let({ 
     name: 'x', 
     value: five,      // IntExpr variant
     body: lessThan    // IntBoolExpr variant
-});
-
-// Proper subtyping hierarchy
+}));  // Proper subtyping hierarchy
 console.log(letExpr instanceof FullExpr);    // true
 console.log(letExpr instanceof IntBoolExpr); // true
 console.log(letExpr instanceof IntExpr);     // true
@@ -523,39 +533,40 @@ console.log(five instanceof FullExpr);    // false
 - Constructor and singleton identity is preserved across hierarchy
 - `Family` references accept instances from any level of the hierarchy
 - Variant name collisions throw errors
-- Extended ADTs are also frozen and immutable
+- Variant instances are deeply frozen (immutable)
+- ADT objects use non-writable configurable properties for controlled mutability
 - Supports deep extension hierarchies (A → B → C → ...)
 
-## Pattern Matching (Operations)
+## Fold Operations
 
-Lapis ADTs support defining operations through the `.match()` method, which provides non-recursive pattern matching on variant constructors. Operations are installed on variant class prototypes and support proper inheritance through the extension hierarchy.
+Lapis ADTs support defining operations through the `.fold()` method, which provides a unified approach to both pattern matching and structural recursion (catamorphisms). For non-recursive ADTs, fold performs simple pattern matching. For recursive ADTs, fold automatically recurses into `Family` fields, replacing constructors with functions. Operations are installed on variant class prototypes and support proper inheritance through the extension hierarchy.
 
-### Basic Pattern Matching
+### Basic Fold Operations
 
 Define operations that dispatch on variant types without recursing into structure:
 
 ```ts
-const Color = data({ Red: [], Green: [], Blue: [] })
-    .match('toHex', { out: String }, {
+const Color = data(() => ({ Red: {}, Green: {}, Blue: {} }))
+    .fold('toHex', { out: String }, () => ({
         Red() { return '#FF0000'; },
         Green() { return '#00FF00'; },
         Blue() { return '#0000FF'; }
-    });
+    }));
 
 console.log(Color.Red.toHex());   // '#FF0000'
 console.log(Color.Green.toHex()); // '#00FF00'
 console.log(Color.Blue.toHex());  // '#0000FF'
 ```
 
-### Pattern Matching on Structured Variants
+### Fold on Structured Variants
 
 Handlers use **named destructuring** to access variant fields:
 
 ```ts
-const Point = data({
-    Point2D: [{ x: Number }, { y: Number }],
-    Point3D: [{ x: Number }, { y: Number }, { z: Number }]
-}).match('quadrant', { out: String }, {
+const Point = data(() => ({
+    Point2D: { x: Number, y: Number },
+    Point3D: { x: Number, y: Number, z: Number }
+}).fold('quadrant', { out: String }, () => ({
     Point2D({ x, y }) {
         if (x >= 0 && y >= 0) return 'Q1';
         if (x < 0 && y >= 0) return 'Q2';
@@ -566,12 +577,12 @@ const Point = data({
         // 3D quadrant logic...
         return `Octant(${x >= 0}, ${y >= 0}, ${z >= 0})`;
     }
-});
+}));
 
-const p = Point.Point2D({ x: 5, y: 10 });
+const p = Point.Point2D({ x: 5, y: 10 }));  
 console.log(p.quadrant()); // 'Q1'
 
-const p3d = Point.Point3D({ x: -1, y: 2, z: 3 });
+const p3d = Point.Point3D({ x: -1, y: 2, z: 3 }));  
 console.log(p3d.quadrant()); // 'Octant(false, true, true)'
 ```
 
@@ -586,11 +597,11 @@ console.log(p3d.quadrant()); // 'Octant(false, true, true)'
 Use the `_` wildcard to handle unknown or unspecified variants:
 
 ```ts
-const Color = data({ Red: [], Green: [], Blue: [] })
-    .match('toHex', { out: String }, {
+const Color = data(() => ({ Red: {}, Green: {}, Blue: {} }))
+    .fold('toHex', { out: String }, () => ({
         Red() { return '#FF0000'; },
         _(instance) { return '#UNKNOWN'; }
-    });
+    }));
 
 console.log(Color.Red.toHex());   // '#FF0000'
 console.log(Color.Green.toHex()); // '#UNKNOWN' (wildcard)
@@ -609,61 +620,115 @@ _(instance) {
 
 ### Exhaustiveness Checking
 
-TypeScript enforces **exhaustive pattern matching** at compile-time:
+TypeScript enforces **exhaustive handler coverage** at compile-time:
 
 #### Option 1: All handlers required (no wildcard)
 
 ```ts
 // ✓ Compiles - all variants handled
-const Color = data({ Red: [], Green: [], Blue: [] })
-    .match('toHex', { out: String }, {
+const Color = data(() => ({ Red: {}, Green: {}, Blue: {} }))
+    .fold('toHex', { out: String }, () => ({
         Red() { return '#FF0000'; },
         Green() { return '#00FF00'; },
         Blue() { return '#0000FF'; }
-    });
+    }));
 
 // ✗ TypeScript Error - Green and Blue handlers missing
-const Incomplete = data({ Red: [], Green: [], Blue: [] })
-    .match('toHex', { out: String }, {
+const Incomplete = data(() => ({ Red: {}, Green: {}, Blue: {} }))
+    .fold('toHex', { out: String }, () => ({
         Red() { return '#FF0000'; }
         // Error: Property '_' is missing
-    });
+    }));
 ```
 
 #### Option 2: Partial handlers with wildcard
 
 ```ts
 // ✓ Compiles - wildcard handles unspecified variants
-const Color = data({ Red: [], Green: [], Blue: [] })
-    .match('toHex', { out: String }, {
+const Color = data(() => ({ Red: {}, Green: {}, Blue: {} }))
+    .fold('toHex', { out: String }, () => ({
         Red() { return '#FF0000'; },
         _(instance) { return '#UNKNOWN'; }
-    });
+    }));
+```
+
+#### Extended ADTs and Exhaustiveness
+
+**When extending an existing operation**: Only new variants need handlers (parent provides inherited handlers)
+
+```ts
+const Color = data(() => ({ Red: {}, Green: {}, Blue: {} }))
+    .fold('toHex', { out: String }, () => ({
+        Red() { return '#FF0000'; },
+        Green() { return '#00FF00'; },
+        Blue() { return '#0000FF'; }
+    }));
+
+// ✓ Only new variants (Yellow, Orange) need handlers
+const ExtendedColor = Color.extend(() => ({ Yellow: {}, Orange: {} }))
+    .fold('toHex', { out: String }, () => ({
+        Yellow() { return '#FFFF00'; },
+        Orange() { return '#FFA500'; }
+    }));
+```
+
+**When adding a new operation to an extended ADT**: All variants (parent + new) need handlers OR wildcard
+
+```ts
+// ✗ TypeScript Error - Yellow and Orange handlers missing
+const ExtendedColor = Color.extend(() => ({ Yellow: {}, Orange: {} }))
+    .fold('toRGB', { out: String }, () => ({
+        Red() { return 'rgb(255,0,0)'; },
+        Green() { return 'rgb(0,255,0)'; },
+        Blue() { return 'rgb(0,0,255)'; }
+        // Error: Missing Yellow and Orange handlers or wildcard
+    }));
+
+// ✓ All 5 variants handled
+const Complete = Color.extend(() => ({ Yellow: {}, Orange: {} }))
+    .fold('toRGB', { out: String }, () => ({
+        Red() { return 'rgb(255,0,0)'; },
+        Green() { return 'rgb(0,255,0)'; },
+        Blue() { return 'rgb(0,0,255)'; },
+        Yellow() { return 'rgb(255,255,0)'; },
+        Orange() { return 'rgb(255,165,0)'; }
+    }));
+
+// ✓ Or use wildcard for unhandled variants
+const WithWildcard = Color.extend(() => ({ Yellow: {}, Orange: {} }))
+    .fold('toRGB', { out: String }, () => ({
+        Red() { return 'rgb(255,0,0)'; },
+        Green() { return 'rgb(0,255,0)'; },
+        Blue() { return 'rgb(0,0,255)'; },
+        _(instance) { return 'rgb(128,128,128)'; } // Handles Yellow, Orange
+    }));
 ```
 
 **Key points:**
 
 - Without a wildcard `_`, **all variants must have handlers**
 - With a wildcard `_`, handlers are optional (wildcard catches unhandled cases)
+- **Extending existing operations**: Only new variants need handlers (partial handlers allowed)
+- **New operations on extended ADTs**: All variants (parent + new) need handlers OR wildcard
 - TypeScript catches missing handlers at **compile-time**
 - Extends to all variant types: simple enumerations, structured data, recursive ADTs, and extended ADTs
 
-### Multiple Operations
+### Multiple Fold Operations
 
-Chain `.match()` calls to define multiple operations on the same ADT:
+Chain `.fold()` calls to define multiple operations on the same ADT:
 
 ```ts
-const Color = data({ Red: [], Green: [], Blue: [] })
-    .match('toHex', { out: String }, {
+const Color = data(() => ({ Red: {}, Green: {}, Blue: {} }))
+    .fold('toHex', { out: String }, () => ({
         Red() { return '#FF0000'; },
         Green() { return '#00FF00'; },
         Blue() { return '#0000FF'; }
-    })
-    .match('toRGB', { out: String }, {
+    }))
+    .fold('toRGB', { out: String }, () => ({
         Red() { return 'rgb(255, 0, 0)'; },
         Green() { return 'rgb(0, 255, 0)'; },
         Blue() { return 'rgb(0, 0, 255)'; }
-    });
+    }));
 
 console.log(Color.Red.toHex()); // '#FF0000'
 console.log(Color.Red.toRGB()); // 'rgb(255, 0, 0)'
@@ -671,13 +736,13 @@ console.log(Color.Red.toRGB()); // 'rgb(255, 0, 0)'
 
 ### Callback Form
 
-For consistency with recursive ADTs, `.match()` supports a callback form that receives the `Family` reference:
+`.fold()` always uses a callback form that returns the handler object. For recursive ADTs, the callback receives the `Family` reference:
 
 ```ts
 const List = data(({ Family }) => ({
-    Nil: [],
-    Cons: [{ head: Number }, { tail: Family }]
-})).match('isEmpty', { out: Boolean }, (Family) => ({
+    Nil: {},
+    Cons: { head: Number, tail: Family }
+})).fold('isEmpty', { out: Boolean }, (Family) => ({
     Nil() { return true; },
     Cons({ head: _head, tail: _tail }) { return false; }
 }));
@@ -686,19 +751,20 @@ console.log(List.Nil.isEmpty()); // true
 console.log(List.Cons({ head: 1, tail: List.Nil }).isEmpty()); // false
 ```
 
+**Note:** The callback form is **required** - object literals are not supported. For non-recursive ADTs, use `() => ({ ... })`. For recursive ADTs, use `(Family) => ({ ... })`.
+
 ### Integration with ADT Extension
 
 Operations defined on a base ADT are inherited by extended ADTs:
 
 ```ts
-const Color = data({ Red: [], Green: [], Blue: [] })
-    .match('toHex', { out: String }, {
+const Color = data(() => ({ Red: {}, Green: {}, Blue: {} }))
+    .fold('toHex', { out: String }, () => ({
         Red() { return '#FF0000'; },
         Green() { return '#00FF00'; },
         Blue() { return '#0000FF'; }
-    });
-
-const ExtendedColor = Color.extend({ Yellow: [], Orange: [] });
+    }));  
+const ExtendedColor = Color.extend(() => ({ Yellow: {}, Orange: {} }));
 
 // Inherited variants have the operation
 console.log(ExtendedColor.Red.toHex()); // '#FF0000'
@@ -710,13 +776,13 @@ ExtendedColor.Yellow.toHex(); // ✗ Error: No handler for variant 'Yellow'
 **Use wildcard for open extension:**
 
 ```ts
-const Color = data({ Red: [], Green: [], Blue: [] })
-    .match('toHex', { out: String }, {
+const Color = data(() => ({ Red: {}, Green: {}, Blue: {} }))
+    .fold('toHex', { out: String }, () => ({
         Red() { return '#FF0000'; },
         _(instance) { return '#UNKNOWN'; }
-    });
+    }));
 
-const ExtendedColor = Color.extend({ Yellow: [], Orange: [] });
+const ExtendedColor = Color.extend(() => ({ Yellow: {}, Orange: {} }));
 
 console.log(ExtendedColor.Red.toHex());    // '#FF0000'
 console.log(ExtendedColor.Yellow.toHex()); // '#UNKNOWN' (wildcard)
@@ -725,14 +791,14 @@ console.log(ExtendedColor.Yellow.toHex()); // '#UNKNOWN' (wildcard)
 **Add operations to extended ADTs:**
 
 ```ts
-const ExtendedColor = Color.extend({ Yellow: [], Orange: [] })
-    .match('isWarm', { out: Boolean }, {
+const ExtendedColor = Color.extend(() => ({ Yellow: {}, Orange: {} }))
+    .fold('isWarm', { out: Boolean }, () => ({
         Red() { return true; },
         Green() { return false; },
         Blue() { return false; },
         Yellow() { return true; },
         Orange() { return true; }
-    });
+    }));
 
 // Both operations available
 console.log(ExtendedColor.Red.toHex());  // '#FF0000' (inherited)
@@ -740,23 +806,24 @@ console.log(ExtendedColor.Red.isWarm()); // true (new operation)
 console.log(ExtendedColor.Yellow.isWarm()); // true
 ```
 
-### Extending Match Operations
+### Extending Fold Operations
 
-Use `.extendMatch()` to add handlers for new variants in extended ADTs while inheriting parent behavior:
+When calling `.fold()` on an extended ADT with an operation that already exists on the parent, `.fold()` automatically enters **extend mode** and inherits parent behavior:
 
 ```ts
-const Color = data({ Red: [], Green: [], Blue: [] })
-    .match('toHex', { out: String }, {
+const Color = data(() => ({ Red: {}, Green: {}, Blue: {} }))
+    .fold('toHex', { out: String }, () => ({
         Red() { return '#FF0000'; },
         Green() { return '#00FF00'; },
         Blue() { return '#0000FF'; }
-    });
+    }));
 
-const ExtendedColor = Color.extend({ Yellow: [], Orange: [] })
-    .extendMatch('toHex', {
+// .fold() auto-detects extend mode because parent has 'toHex' operation
+const ExtendedColor = Color.extend(() => ({ Yellow: {}, Orange: {} }))
+    .fold('toHex', () => ({
         Yellow() { return '#FFFF00'; },
         Orange() { return '#FFA500'; }
-    });
+    }));
 
 // Inherited variants use parent handlers
 console.log(ExtendedColor.Red.toHex()); // '#FF0000'
@@ -768,13 +835,13 @@ console.log(ExtendedColor.Yellow.toHex()); // '#FFFF00'
 **Override parent handlers:**
 
 ```ts
-const ExtendedColor = Color.extend({ Yellow: [] })
-    .extendMatch('toHex', {
+const ExtendedColor = Color.extend(() => ({ Yellow: {} }))
+    .fold('toHex', () => ({
         Yellow() { return '#FFFF00'; },
         Red(fields) { return fields[parent]!().replace('FF', 'EE'); } // Use parent
-    });
+    }));
 
-// Note: Override only affects NEW instances created after extendMatch
+// Note: Override only affects NEW instances created via ExtendedColor
 // Overriding breaks constructor identity: Color.Red uses the original handler, but ExtendedColor.Red is a new shadow constructor with the override.
 console.log(Color.Red.toHex()); // '#FF0000' (unchanged)
 console.log(ExtendedColor.Red.toHex()); // '#FF0000' (shadow constructor, uses parent)
@@ -783,26 +850,26 @@ console.log(ExtendedColor.Red.toHex()); // '#FF0000' (shadow constructor, uses p
 **Replacing parent handlers (ignoring parent):**
 
 ```ts
-const ExtendedColor = Color.extend({ Yellow: [] })
-    .extendMatch('toHex', {
+const ExtendedColor = Color.extend(() => ({ Yellow: {} }))
+    .fold('toHex', () => ({
         Yellow() { return '#FFFF00'; },
         Red() { return '#EE0000'; } // Replace handler completely (no parent access)
-    });
+    }));
 ```
 
 **Wildcard inheritance:**
 
 ```ts
-const Color = data({ Red: [], Green: [] })
-    .match('toHex', { out: String }, {
+const Color = data(() => ({ Red: {}, Green: {} }))
+    .fold('toHex', { out: String }, () => ({
         Red() { return '#FF0000'; },
         _(_instance) { return '#UNKNOWN'; } // Wildcard for undefined variants
-    });
+    }));
 
-const ExtendedColor = Color.extend({ Blue: [] })
-    .extendMatch('toHex', {
+const ExtendedColor = Color.extend(() => ({ Blue: {} }))
+    .fold('toHex', () => ({
         // Blue not specified - inherits wildcard from parent
-    });
+    }));
 
 console.log(ExtendedColor.Blue.toHex()); // '#UNKNOWN' (wildcard from parent)
 ```
@@ -812,204 +879,71 @@ console.log(ExtendedColor.Blue.toHex()); // '#UNKNOWN' (wildcard from parent)
 When you override a wildcard handler, it receives the `parent` parameter first (like any other override):
 
 ```ts
-const ExtendedColor = Color.extend({ Blue: [] })
-    .extendMatch('toHex', {
+const ExtendedColor = Color.extend(() => ({ Blue: {} }))
+    .fold('toHex', () => ({
         _({ instance, [parent]: _parent }) {
             return `#EXTENDED-${instance.constructor.name}`;
         }
-    });
+    }));
 
 console.log(ExtendedColor.Blue.toHex()); // '#EXTENDED-Blue'
 ```
 
-**Key points about extendMatch:**
+**Key points about fold in extend mode:**
 
+- `.fold()` automatically detects extend mode when parent has the same operation
 - Automatically inherits all parent handlers
-- Only need to specify handlers for **new variants**
+- **Extending existing operations**: Only need to specify handlers for **new variants** or **variants to override** (TypeScript allows partial handlers)
+- **New operations on extended ADTs**: Must provide handlers for **all variants** (parent + new) OR use wildcard (TypeScript enforces exhaustiveness)
 - **Overriding parent handlers**: When you override an existing variant, the handler receives a `fields` object containing the optional `parent` symbol (accessed as `fields[parent]`)
 - You can ignore the `fields[parent]` property if you don't need it
 - Wildcard handlers are inherited from parent
-- **Only one extendMatch per operation per ADT level**: Calling `.extendMatch('foo', ...)` twice on the same operation throws an error. To override again, use `.extend()` to create a new ADT level first.
+- **ParentFamily parameter**: When extending an operation, callback receives `(Family, ParentFamily)` where `ParentFamily` provides access to parent handlers for reuse
+- **Only one .fold() per operation per ADT level**: Calling `.fold('foo', ...)` twice on the same operation throws an error. To override again, use `.extend()` to create a new ADT level first.
 - Overridden variants get new shadow constructors (constructor identity is broken)
-- Supports both object and callback form: `.extendMatch('op', handlers)` or `.extendMatch('op', (Family) => handlers)`
+- Uses callback form only: `.fold('op', () => handlers)` or `.fold('op', (Family, ParentFamily) => handlers)`
 
 ### Error Handling
 
 **Missing handler:**
 
 ```ts
-const Color = data({ Red: [], Green: [], Blue: [] })
-    .match('toHex', { out: String }, {
+const Color = data(() => ({ Red: {}, Green: {}, Blue: {} }))
+    .fold('toHex', { out: String }, () => ({
         Red() { return '#FF0000'; }
         // No handler for Green or Blue, no wildcard
-    });
+    }));
 
 Color.Green.toHex(); 
-// ✗ Error: No handler for variant 'Green' in match operation 'toHex'
+// ✗ Error: No handler for variant 'Green' in fold operation 'toHex'
 ```
 
 **Name collision with variant fields:**
 
 ```ts
-const Point = data({
-    Point2D: [{ x: Number }, { y: Number }]
-});
-
-Point.match('x', { out: Number }, {
+const Point = data(() => ({
+    Point2D: { x: Number, y: Number }
+}));  
+Point.fold('x', { out: Number }, () => ({
     Point2D({ x, y }) { return x; }
-});
+}));
 // ✗ Error: Operation name 'x' conflicts with field 'x' in variant 'Point2D'
 ```
 
 ### Key Points
 
-- `.match()` performs **non-recursive** pattern matching (does not recurse into fields)
+- `.fold()` performs pattern matching on non-recursive ADTs and structural recursion (catamorphisms) on recursive ADTs
 - Handlers use **named form only** for clarity and partial destructuring
 - Operations are installed on **variant class prototypes** (callable on variant instances)
 - Wildcard handler `_` receives the full variant instance
 - Operations are inherited by extended ADTs
 - New variants in extended ADTs inherit parent operations
 - Name collision detection prevents conflicts with variant fields
-- Chaining supported: `.match(...).match(...)` or `.extend(...).match(...)`
+- Chaining supported: `.fold(...).fold(...)` or `.extend(...).fold(...)`
 
-### Extending Operations with `.extendMatch()`
+## Structural Recursion with Fold
 
-When extending an ADT, use `.extendMatch()` to add operations to new variants or override operations for inherited variants. This enables specialization and customization of behavior in extended ADTs.
-
-**Availability:** The `.extendMatch()` method is only available on **extended ADTs** (those created via `.extend()`). TypeScript prevents calling `.extendMatch()` on base ADTs at compile-time. This ensures that `.extendMatch()` is only used where it makes semantic sense - to extend operations that already exist on a parent ADT.
-
-**Basic usage:**
-
-```ts
-import { data, parent } from '@lapis-lang/lapis-js';
-
-const Color = data({ Red: [], Green: [], Blue: [] })
-    .match('brightness', { out: Number }, {
-        Red() { return 100; },
-        Green() { return 150; },
-        Blue() { return 50; }
-    });
-
-// Extend with new variants
-const ExtendedColor = Color.extend({ Yellow: [], Orange: [] })
-    .extendMatch('brightness', {
-        Yellow() { return 200; },  // New variant handler
-        Orange() { return 180; }   // New variant handler
-    });
-
-console.log(ExtendedColor.Yellow.brightness()); // 200
-console.log(ExtendedColor.Red.brightness());    // 100 (inherited)
-```
-
-**Override with parent access:**
-
-Use the `parent` symbol to access the parent handler when overriding. The parent callback is provided in the `fields` object:
-
-```ts
-import { data, parent } from '@lapis-lang/lapis-js';
-
-const Color = data({ Red: [], Green: [], Blue: [] })
-    .match('brightness', { out: Number }, {
-        Red() { return 100; },
-        Green() { return 150; },
-        Blue() { return 50; }
-    });
-
-const ExtendedColor = Color.extend({ Yellow: [], Orange: [] })
-    .extendMatch('brightness', {
-        Yellow() { return 200; },
-        Orange() { return 180; },
-        // Override inherited variant
-        Red(fields) { 
-            const parentValue = fields[parent]!();
-            return parentValue * 1.5;  // 150 (brighter red)
-        }
-    });
-
-console.log(ExtendedColor.Red.brightness()); // 150 (overridden)
-console.log(Color.Red.brightness());         // 100 (original unchanged)
-```
-
-**Override structured variants:**
-
-For structured variants, the `parent` symbol is included alongside the field destructuring:
-
-```ts
-import { data, parent } from '@lapis-lang/lapis-js';
-
-const Point = data({
-    Point2D: [{ x: Number }, { y: Number }]
-})
-    .match('magnitude', { out: Number }, {
-        Point2D({ x, y }) { return Math.sqrt(x * x + y * y); }
-    });
-
-const Point3D = Point.extend({
-    Point3D: [{ x: Number }, { y: Number }, { z: Number }]
-})
-    .extendMatch('magnitude', {
-        Point3D({ x, y, z }) { 
-            return Math.sqrt(x * x + y * y + z * z); 
-        },
-        // Override with scaling
-        Point2D(fields) { 
-            const baseValue = fields[parent]!();
-            return baseValue * 10;  // Scale by 10
-        }
-    });
-
-const p2 = Point.Point2D({ x: 3, y: 4 });
-const p2Extended = Point3D.Point2D({ x: 3, y: 4 });
-
-console.log(p2.magnitude());         // 5 (base)
-console.log(p2Extended.magnitude()); // 50 (overridden and scaled)
-```
-
-**Key differences from `.match()`:**
-
-- **Import required:** Must import `parent` symbol: `import { data, parent } from '@lapis-lang/lapis-js'`
-- **Parent access:** Override handlers receive `fields[parent]` callback to invoke parent behavior
-- **Singleton handlers:** For singletons, `fields` is `{ [parent]: () => R }`
-- **Structured handlers:** For structured, `fields` includes both field destructuring and `[parent]`
-- **Constructor copying:** Overridden variants get new constructors (breaks constructor identity)
-- **Instance dispatch:** Extended ADT instances use override handlers; base ADT instances use original handlers
-
-**Override behavior:**
-
-When you override a variant, instances created from the extended ADT use the override:
-
-```ts
-// Base instances use base handlers
-const baseRed = Color.Red;
-console.log(baseRed.brightness()); // 100
-
-// Extended instances use overrides
-const extendedRed = ExtendedColor.Red;
-console.log(extendedRed.brightness()); // 150
-
-// Constructor identity broken for overridden variants
-console.log(ExtendedColor.Red === Color.Red); // false (overridden)
-console.log(ExtendedColor.Blue === Color.Blue); // true (not overridden)
-```
-
-**Mixing new and override handlers:**
-
-```ts
-const ExtendedColor = Color.extend({ Yellow: [], Orange: [] })
-    .extendMatch('brightness', {
-        Yellow() { return 200; },      // New variant
-        Orange() { return 180; },      // New variant
-        Red(fields) {                  // Override
-            return fields[parent]!() + 50;
-        }
-    });
-```
-
-## Structural Recursion (Fold Operations)
-
-Lapis ADTs support defining fold operations through the `.fold()` method, which provides **catamorphisms** - structural recursion that replaces constructors with functions. Unlike `.match()` which is non-recursive, `.fold()` automatically recurses into `Family` fields.
-
-**Availability:** The `.fold()` method is only available on **recursive ADTs** (those that contain `Family` references in at least one variant). TypeScript prevents calling `.fold()` on non-recursive ADTs at compile-time.
+For recursive ADTs (those containing `Family` references), `.fold()` provides **catamorphisms** - structural recursion that replaces constructors with functions. Fold automatically recurses into `Family` fields, passing already-folded values to your handlers.
 
 ### Basic Fold (Catamorphism)
 
@@ -1017,19 +951,17 @@ Define operations that recursively consume ADT structures from leaves to root:
 
 ```ts
 const Peano = data(({ Family }) => ({ 
-    Zero: [], 
-    Succ: [{ pred: Family }] 
+    Zero: {}, 
+    Succ: { pred: Family } 
 }))
-.fold('toValue', { out: Number }, {
+.fold('toValue', { out: Number }, () => ({
     Zero() { return 0; },
     Succ({ pred }) { return 1 + pred; }  // pred is already folded to number
-});
+}));
 
-const three = Peano.Succ({ pred: Peano.Succ({ pred: Peano.Succ({ pred: Peano.Zero }) }) });
+const three = Peano.Succ({ pred: Peano.Succ({ pred: Peano.Succ({ pred: Peano.Zero }) }) }));  
 console.log(three.toValue()); // 3
 ```
-
-**Key difference from `.match()`:** Handlers receive **already-folded values** for `Family` fields. The recursion happens automatically before your handler is called.
 
 ### Fold on Lists
 
@@ -1037,20 +969,19 @@ For list structures, fold is a **right fold** (processes from tail to head):
 
 ```ts
 const List = data(({ Family }) => ({ 
-    Nil: [], 
-    Cons: [{ head: Number }, { tail: Family }] 
+    Nil: {}, 
+    Cons: { head: Number, tail: Family } 
 }))
-.fold('sum', { out: Number }, {
+.fold('sum', { out: Number }, () => ({
     Nil() { return 0; },
     Cons({ head, tail }) { return head + tail; }  // tail is the sum of remaining elements
-});
+}));
 
 const list = List.Cons({ head: 1, 
     tail: List.Cons({ head: 2, 
         tail: List.Cons({ head: 3, tail: List.Nil }) 
     }) 
-});
-
+}));  
 console.log(list.sum()); // 6
 // Evaluation structure: 1 + (2 + (3 + 0)) - right-associative
 // Actual order (bottom-up from Nil): Nil→0, Cons(3,Nil)→3+0=3, Cons(2,...)→2+3=5, Cons(1,...)→1+5=6
@@ -1062,54 +993,52 @@ For tree structures, fold is a **catamorphism** (processes from leaves to root):
 
 ```ts
 const Tree = data(({ Family }) => ({
-    Leaf: [{ value: Number }],
-    Node: [{ left: Family }, { right: Family }, { value: Number }]
+    Leaf: { value: Number },
+    Node: { left: Family, right: Family, value: Number }
 }))
-.fold('sum', { out: Number }, {
+.fold('sum', { out: Number }, () => ({
     Leaf({ value }) { return value; },
     Node({ left, right, value }) { 
         // Both left and right are already folded to numbers
         return left + right + value; 
     }
-});
+}));
 
 const tree = Tree.Node({ 
     left: Tree.Leaf({ value: 1 }), 
     right: Tree.Leaf({ value: 2 }), 
     value: 10 
-});
-
+}));  
 console.log(tree.sum()); // 13
 ```
 
-### Multiple Fold Operations
+### Chaining Multiple Fold Operations
 
 Chain `.fold()` calls to define multiple operations:
 
 ```ts
 const List = data(({ Family }) => ({ 
-    Nil: [], 
-    Cons: [{ head: Number }, { tail: Family }] 
+    Nil: {}, 
+    Cons: { head: Number, tail: Family } 
 }))
-.fold('length', { out: Number }, {
+.fold('length', { out: Number }, () => ({
     Nil() { return 0; },
     Cons({ tail }) { return 1 + tail; }
-})
-.fold('sum', { out: Number }, {
+}))
+.fold('sum', { out: Number }, () => ({
     Nil() { return 0; },
     Cons({ head, tail }) { return head + tail; }
-})
-.fold('product', { out: Number }, {
+}))
+.fold('product', { out: Number }, () => ({
     Nil() { return 1; },
     Cons({ head, tail }) { return head * tail; }
-});
+}));
 
 const list = List.Cons({ head: 2, 
     tail: List.Cons({ head: 3, 
         tail: List.Cons({ head: 4, tail: List.Nil }) 
     }) 
-});
-
+}));  
 console.log(list.length());  // 3
 console.log(list.sum());     // 9
 console.log(list.product()); // 24
@@ -1121,8 +1050,8 @@ For consistency with recursive ADTs, `.fold()` supports a callback form:
 
 ```ts
 const List = data(({ Family }) => ({
-    Nil: [],
-    Cons: [{ head: Number }, { tail: Family }]
+    Nil: {},
+    Cons: { head: Number, tail: Family }
 }))
 .fold('length', { out: Number }, (Family) => ({
     Nil() { return 0; },
@@ -1136,43 +1065,43 @@ Use `_` wildcard to handle unknown variants:
 
 ```ts
 const Peano = data(({ Family }) => ({ 
-    Zero: [], 
-    Succ: [{ pred: Family }],
-    NegSucc: [{ pred: Family }]
+    Zero: {}, 
+    Succ: { pred: Family },
+    NegSucc: { pred: Family }
 }))
-.fold('toValue', { out: Number }, {
+.fold('toValue', { out: Number }, () => ({
     Zero() { return 0; },
     _(instance) { 
         console.log(`Unknown variant: ${instance.constructor.name}`);
         return -999; 
     }
-});
+}));
 
 console.log(Peano.Zero.toValue()); // 0
 console.log(Peano.Succ({ pred: Peano.Zero }).toValue()); // -999 (wildcard)
 ```
 
-### Integration with Match
+### Integration with Multiple Fold Operations
 
-Fold and match operations work together:
+Multiple fold operations work together on the same ADT:
 
 ```ts
 const List = data(({ Family }) => ({ 
-    Nil: [], 
-    Cons: [{ head: Number }, { tail: Family }] 
+    Nil: {}, 
+    Cons: { head: Number, tail: Family } 
 }))
-.match('isEmpty', { out: Boolean }, {
+.fold('isEmpty', { out: Boolean }, () => ({
     Nil() { return true; },
     Cons() { return false; }
-})
-.fold('length', { out: Number }, {
+}))
+.fold('length', { out: Number }, () => ({
     Nil() { return 0; },
     Cons({ tail }) { return 1 + tail; }
-});
+}));
 
 const list = List.Cons({ head: 1, tail: List.Nil });
-console.log(list.isEmpty()); // false (match - non-recursive)
-console.log(list.length());  // 1 (fold - recursive)
+console.log(list.isEmpty()); // false (non-recursive check)
+console.log(list.length());  // 1 (recursive computation)
 ```
 
 ### Handler Parameter Form
@@ -1208,16 +1137,16 @@ A **catamorphism** is the general pattern of structural recursion:
 
 ### Key Points Summary
 
-**Pattern Matching (`.match()`):**
+**Pattern Matching (`.fold()`):**
 
-- `.match()` performs **non-recursive** pattern matching (does not recurse into fields)
+- `.fold()` performs pattern matching on non-recursive ADTs and structural recursion (catamorphisms) on recursive ADTs
 - Available on **all ADTs** (both recursive and non-recursive)
 - Handlers receive raw field values (not processed)
 - Operations are installed on **variant class prototypes** (callable on variant instances)
 - Wildcard handler `_` receives the full variant instance
 - Operations are inherited by extended ADTs
 - Name collision detection prevents conflicts with variant fields
-- Chaining supported: `.match(...).match(...)` or `.extend(...).match(...)`
+- Chaining supported: `.fold(...).fold(...)` or `.extend(...).fold(...)`
 
 **Structural Recursion (`.fold()`):**
 
@@ -1229,22 +1158,20 @@ A **catamorphism** is the general pattern of structural recursion:
 - Automatic recursion - framework handles traversal
 - Wildcard handler `_` for unknown variants
 - Name collision detection prevents conflicts with variant fields
-- Chaining supported: `.fold(...).fold(...)` or `.match(...).fold(...)`
+- Chaining supported: `.fold(...).fold(...)` or `.fold(...).fold(...)`
 
 **Operation Extension:**
 
-- `.extendMatch()` adds operations to new variants and overrides operations for inherited variants
-- Available **only on extended ADTs** (those created via `.extend()`) - TypeScript enforces this at compile-time
+- `.fold()` automatically enters extend mode when called on an extended ADT with an operation that exists on the parent
+- In extend mode, inherits parent handlers and allows adding/overriding variants
 - Override handlers access parent behavior via `fields[parent]!()`
 - Must import `parent` symbol: `import { data, parent } from '@lapis-lang/lapis-js'`
 - Overridden variants get new constructors (constructor identity broken)
 - Base ADT instances unaffected by overrides in extended ADTs
 
-### Extending Fold Operations with `.extendFold()`
+### Extending Fold Operations (Recursive ADTs)
 
-When extending recursive ADTs, use `.extendFold()` to add fold operations to new variants or override fold operations for inherited variants. This enables specialization and customization of recursive behavior in extended ADTs with **polymorphic recursion** - recursive calls automatically use the extended operation.
-
-**Availability:** The `.extendFold()` method is only available on **extended recursive ADTs** (those created via `.extend()` from a base ADT that has `Family` references). TypeScript enforces this at compile-time.
+When calling `.fold()` on an extended recursive ADT with an operation that exists on the parent, `.fold()` enters **extend mode** with **polymorphic recursion** - recursive calls automatically use the extended operation.
 
 **Basic usage - adding handlers for new variants:**
 
@@ -1253,36 +1180,36 @@ import { data } from '@lapis-lang/lapis-js';
 
 // Base expression language with integers
 const IntExpr = data(({ Family }) => ({
-    IntLit: [{ value: Number }],
-    Add: [{ left: Family }, { right: Family }]
+    IntLit: { value: Number },
+    Add: { left: Family, right: Family }
 }))
-    .fold('eval', { out: Number }, {
+    .fold('eval', { out: Number }, () => ({
         IntLit({ value }) { return value; },
         Add({ left, right }) { return left + right; }
-    });
+    }));
 
-// Extend with boolean operations
+// Extend with boolean operations - .fold() auto-detects extend mode
 const IntBoolExpr = IntExpr.extend(({ Family }) => ({
-    BoolLit: [{ value: Boolean }],
-    LessThan: [{ left: Family }, { right: Family }]
+    BoolLit: { value: Boolean },
+    LessThan: { left: Family, right: Family }
 }))
-    .extendFold('eval', {
+    .fold('eval', () => ({
         BoolLit({ value }) { return value ? 1 : 0; },
         LessThan({ left, right }) { return left < right ? 1 : 0; }
-    });
+    }));
 
 // Inherited variants work
 const sum = IntBoolExpr.Add({
     left: IntBoolExpr.IntLit({ value: 5 }),
     right: IntBoolExpr.IntLit({ value: 3 })
-});
+}));  
 console.log(sum.eval()); // 8
 
 // New variants work
 const lessThan = IntBoolExpr.LessThan({
     left: IntBoolExpr.IntLit({ value: 3 }),
     right: IntBoolExpr.IntLit({ value: 5 })
-});
+}));  
 console.log(lessThan.eval()); // 1 (true)
 ```
 
@@ -1294,55 +1221,55 @@ Use the `parent` symbol to access the parent handler when overriding fold operat
 import { data, parent } from '@lapis-lang/lapis-js';
 
 const Peano = data(({ Family }) => ({
-    Zero: [],
-    Succ: [{ pred: Family }]
+    Zero: {},
+    Succ: { pred: Family }
 }))
-    .fold('toValue', { out: Number }, {
+    .fold('toValue', { out: Number }, () => ({
         Zero() { return 0; },
         Succ({ pred }) { return 1 + pred; }
-    });
+    }));
 
 // Override Succ to scale parent result
 const ExtendedPeano = Peano.extend(({ Family }) => ({
-    NegSucc: [{ pred: Family }]
+    NegSucc: { pred: Family }
 }))
-    .extendFold('toValue', {
+    .fold('toValue', () => ({
         NegSucc({ pred }) { return -1 + pred; },
         Succ(fields) {
             const parentResult = fields[parent]!() as number;
             return parentResult * 10;  // Scale by 10
         }
-    });
+    }));
 
-const one = ExtendedPeano.Succ({ pred: ExtendedPeano.Zero });
+const one = ExtendedPeano.Succ({ pred: ExtendedPeano.Zero }));  
 console.log(one.toValue()); // 10 (instead of 1)
 
 // Base instances use base handlers
-const baseOne = Peano.Succ({ pred: Peano.Zero });
+const baseOne = Peano.Succ({ pred: Peano.Zero }));  
 console.log(baseOne.toValue()); // 1 (original)
 ```
 
 **Polymorphic recursion:**
 
-The key power of `.extendFold()` is **polymorphic recursion** - when fold recursively evaluates `Family` fields, it uses the **extended operation**, not the parent operation. This means inherited variants automatically benefit from new functionality:
+The key power of `.fold()` in extend mode is **polymorphic recursion** - when fold recursively evaluates `Family` fields, it uses the **extended operation**, not the parent operation. This means inherited variants automatically benefit from new functionality:
 
 ```ts
 const IntExpr = data(({ Family }) => ({
-    IntLit: [{ value: Number }],
-    Add: [{ left: Family }, { right: Family }]
+    IntLit: { value: Number },
+    Add: { left: Family, right: Family }
 }))
-    .fold('eval', { out: Number }, {
+    .fold('eval', { out: Number }, () => ({
         IntLit({ value }) { return value; },
         Add({ left, right }) { return left + right; }
-    });
+    }));
 
 // Extend with multiplication
 const ExtendedExpr = IntExpr.extend(({ Family }) => ({
-    Mul: [{ left: Family }, { right: Family }]
+    Mul: { left: Family, right: Family }
 }))
-    .extendFold('eval', {
+    .fold('eval', () => ({
         Mul({ left, right }) { return left * right; }
-    });
+    }));
 
 // Create expression: (2 + 3) * 4
 // The Add operation (inherited) can now work with Mul (new)
@@ -1350,9 +1277,8 @@ const ExtendedExpr = IntExpr.extend(({ Family }) => ({
 const sum = ExtendedExpr.Add({
     left: ExtendedExpr.IntLit({ value: 2 }),
     right: ExtendedExpr.IntLit({ value: 3 })
-});
-const product = ExtendedExpr.Mul({ left: sum, right: ExtendedExpr.IntLit({ value: 4 }) });
-
+}));  
+const product = ExtendedExpr.Mul({ left: sum, right: ExtendedExpr.IntLit({ value: 4 }) }));  
 console.log(product.eval()); // 20 ((2 + 3) * 4)
 ```
 
@@ -1362,39 +1288,38 @@ Fold operations can be extended across multiple levels of ADT hierarchy:
 
 ```ts
 const L1 = data(({ Family }) => ({
-    IntLit: [{ value: Number }],
-    Add: [{ left: Family }, { right: Family }]
+    IntLit: { value: Number },
+    Add: { left: Family, right: Family }
 }))
-    .fold('eval', { out: Number }, {
+    .fold('eval', { out: Number }, () => ({
         IntLit({ value }) { return value; },
         Add({ left, right }) { return left + right; }
-    });
-
+    }));
 const L2 = L1.extend(({ Family }) => ({
-    Sub: [{ left: Family }, { right: Family }]
+    Sub: { left: Family, right: Family }
 }))
-    .extendFold('eval', {
+    .fold('eval', () => ({
         Sub({ left, right }) { return left - right; }
-    });
+    }));
 
 const L3 = L2.extend(({ Family }) => ({
-    Mul: [{ left: Family }, { right: Family }]
+    Mul: { left: Family, right: Family }
 }))
-    .extendFold('eval', {
+    .fold('eval', () => ({
         Mul({ left, right }) { return left * right; }
-    });
+    }));
 
 // Create expression: (10 + 5) - (4 * 2)
 const expr = L3.Sub({
     left: L3.Add({ left: L3.IntLit({ value: 10 }), right: L3.IntLit({ value: 5 }) }),
     right: L3.Mul({ left: L3.IntLit({ value: 4 }), right: L3.IntLit({ value: 2 }) })
-});
-
+}));  
 console.log(expr.eval()); // 7 ((10 + 5) - (4 * 2))
 ```
 
-**Key points about extendFold:**
+**Key points about fold in extend mode (recursive ADTs):**
 
+- `.fold()` automatically detects extend mode when parent has the same operation
 - Automatically inherits all parent handlers
 - Only need to specify handlers for **new variants** or **variants to override**
 - Override handlers receive `fields[parent]!()` to access parent behavior
@@ -1402,5 +1327,5 @@ console.log(expr.eval()); // 7 ((10 + 5) - (4 * 2))
 - Constructor identity preserved for non-overridden variants
 - Constructor identity broken for overridden variants (new shadow constructors created)
 - Base ADT instances unaffected by extended ADT overrides
-- **Only one extendFold per operation per ADT level**: Calling `.extendFold('op', ...)` twice on the same operation throws an error. To override again, use `.extend()` to create a new ADT level first.
-- Supports both object and callback form: `.extendFold('op', handlers)` or `.extendFold('op', (Family) => handlers)`
+- **Only one .fold() per operation per ADT level**: Calling `.fold('op', ...)` twice on the same operation throws an error. To override again, use `.extend()` to create a new ADT level first.
+- Uses callback form only: `.fold('op', () => handlers)` or `.fold('op', (Family, ParentFamily) => handlers)` with ParentFamily parameter for extend mode

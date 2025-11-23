@@ -8,10 +8,10 @@ describe('Transformer Infrastructure', () => {
         test('creates transformer with all components', () => {
             const transformer = createTransformer({
                 name: 'testOp',
-                generator: (_ctors) => (seed: number) => seed,
+                generator: (_ctors) => (seed) => seed,
                 getCtorTransform: (_ctor) => () => 42,
-                getParamTransform: (_param) => (x: any) => x,
-                getAtomTransform: (_ctor) => (x: any) => x
+                getParamTransform: (_param) => (x) => x,
+                getAtomTransform: (_ctor) => (x) => x
             });
 
             assert.strictEqual(transformer.name, 'testOp');
@@ -24,7 +24,7 @@ describe('Transformer Infrastructure', () => {
         test('creates transformer with only generator', () => {
             const transformer = createTransformer({
                 name: 'unfoldOp',
-                generator: (_ctors) => (seed: number) => seed
+                generator: (_ctors) => (seed) => seed
             });
 
             assert.strictEqual(transformer.name, 'unfoldOp');
@@ -66,7 +66,7 @@ describe('Transformer Infrastructure', () => {
         test('composes two transformers with different components', () => {
             const unfold = createTransformer({
                 name: 'counter',
-                generator: (_ctors) => (n: number) => n
+                generator: (_ctors) => (n) => n
             });
 
             const fold = createTransformer({
@@ -84,12 +84,12 @@ describe('Transformer Infrastructure', () => {
         test('throws error if both transformers have generators', () => {
             const unfold1 = createTransformer({
                 name: 'counter1',
-                generator: (_ctors) => (n: number) => n
+                generator: (_ctors) => (n) => n
             });
 
             const unfold2 = createTransformer({
                 name: 'counter2',
-                generator: (_ctors) => (n: number) => n * 2
+                generator: (_ctors) => (n) => n * 2
             });
 
             assert.throws(
@@ -101,16 +101,16 @@ describe('Transformer Infrastructure', () => {
         test('composes constructor transforms', () => {
             const t1 = createTransformer({
                 name: 't1',
-                getCtorTransform: (_ctor) => (x: number) => x + 1
+                getCtorTransform: (_ctor) => (x) => x + 1
             });
 
             const t2 = createTransformer({
                 name: 't2',
-                getCtorTransform: (_ctor) => (x: number) => x * 2
+                getCtorTransform: (_ctor) => (x) => x * 2
             });
 
             const composed = composeTransformers(t1, t2);
-            const transform = composed.getCtorTransform!({} as any);
+            const transform = composed.getCtorTransform({});
 
             // Should apply t1 then t2: t2(t1(5)) = (5 + 1) * 2 = 12
             assert.ok(transform);
@@ -120,7 +120,7 @@ describe('Transformer Infrastructure', () => {
 
     describe('ADT Transformer Registry', () => {
         test('ADT can register and retrieve transformers', () => {
-            const Color = data({ Red: [], Green: [], Blue: [] });
+            const Color = data(() => ({ Red: {}, Green: {}, Blue: {} }));
 
             const transformer = createTransformer({
                 name: 'toHex',
@@ -143,19 +143,19 @@ describe('Transformer Infrastructure', () => {
         });
 
         test('can register multiple transformers', () => {
-            const Point = data({
-                Point2D: [{ x: Number }, { y: Number }]
-            });
+            const Point = data(() => ({
+                Point2D: { x: Number, y: Number }
+            }));
 
             const distance = createTransformer({
                 name: 'distance',
-                getCtorTransform: () => ({ x, y }: { x: number; y: number }) =>
+                getCtorTransform: () => ({ x, y }) =>
                     Math.sqrt(x * x + y * y)
             });
 
             const scale = createTransformer({
                 name: 'scale',
-                getCtorTransform: () => ({ x, y }: { x: number; y: number }) => ({ x: x * 2, y: y * 2 })
+                getCtorTransform: () => ({ x, y }) => ({ x: x * 2, y: y * 2 })
             });
 
             // @ts-expect-error - accessing internal API
@@ -172,7 +172,7 @@ describe('Transformer Infrastructure', () => {
         });
 
         test('extended ADT inherits parent transformers', () => {
-            const Color = data({ Red: [], Green: [], Blue: [] });
+            const Color = data(() => ({ Red: {}, Green: {}, Blue: {} }));
 
             const toHex = createTransformer({
                 name: 'toHex',
@@ -185,7 +185,7 @@ describe('Transformer Infrastructure', () => {
             // @ts-expect-error - accessing internal API
             Color._registerTransformer('toHex', toHex);
 
-            const ExtendedColor = Color.extend({ Yellow: [] });
+            const ExtendedColor = Color.extend(() => ({ Yellow: {} }));
 
             // Extended ADT should be able to access parent transformer
             // @ts-expect-error - accessing internal API
@@ -195,7 +195,7 @@ describe('Transformer Infrastructure', () => {
         });
 
         test('extended ADT can have its own transformers', () => {
-            const Color = data({ Red: [], Green: [], Blue: [] });
+            const Color = data(() => ({ Red: {}, Green: {}, Blue: {} }));
 
             const toHex = createTransformer({
                 name: 'toHex',
@@ -205,7 +205,7 @@ describe('Transformer Infrastructure', () => {
             // @ts-expect-error - accessing internal API
             Color._registerTransformer('toHex', toHex);
 
-            const ExtendedColor = Color.extend({ Yellow: [] });
+            const ExtendedColor = Color.extend(() => ({ Yellow: {} }));
 
             const brightness = createTransformer({
                 name: 'brightness',
@@ -229,9 +229,9 @@ describe('Transformer Infrastructure', () => {
         });
 
         test('throws error on name collision with variant field', () => {
-            const Point = data({
-                Point2D: [{ x: Number }, { y: Number }]
-            });
+            const Point = data(() => ({
+                Point2D: { x: Number, y: Number }
+            }));
 
             const transformer = createTransformer({
                 name: 'x', // Collides with field 'x'
@@ -246,8 +246,8 @@ describe('Transformer Infrastructure', () => {
         });
 
         test('transformer registry is isolated between different ADTs', () => {
-            const Color = data({ Red: [], Green: [], Blue: [] });
-            const Point = data({ Point2D: [{ x: Number }, { y: Number }] });
+            const Color = data(() => ({ Red: {}, Green: {}, Blue: {} }));
+            const Point = data(() => ({ Point2D: { x: Number, y: Number } }));
 
             const colorTransformer = createTransformer({
                 name: 'toHex',
@@ -281,15 +281,15 @@ describe('Transformer Infrastructure', () => {
     describe('Transformer with Recursive ADTs', () => {
         test('can register transformer on recursive ADT', () => {
             const Peano = data(({ Family }) => ({
-                Zero: [],
-                Succ: [{ pred: Family }]
+                Zero: {},
+                Succ: { pred: Family }
             }));
 
             const toValue = createTransformer({
                 name: 'toValue',
                 getCtorTransform: (ctor) => {
                     if (ctor.name === 'Zero') return () => 0;
-                    if (ctor.name === 'Succ') return ({ pred }: any) => 1 + pred;
+                    if (ctor.name === 'Succ') return ({ pred }) => 1 + pred;
                     return undefined;
                 }
             });
@@ -305,15 +305,15 @@ describe('Transformer Infrastructure', () => {
 
         test('can register transformer on parameterized ADT', () => {
             const List = data(({ Family, T }) => ({
-                Nil: [],
-                Cons: [{ head: T }, { tail: Family }]
+                Nil: {},
+                Cons: { head: T, tail: Family }
             }));
 
             const length = createTransformer({
                 name: 'length',
                 getCtorTransform: (ctor) => {
                     if (ctor.name === 'Nil') return () => 0;
-                    if (ctor.name === 'Cons') return ({ tail }: any) => 1 + tail;
+                    if (ctor.name === 'Cons') return ({ tail }) => 1 + tail;
                     return undefined;
                 }
             });

@@ -1,10 +1,10 @@
-import { strict as assert } from 'node:assert';
+import * as assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { data } from '../index.mjs';
 
 test('Positional arguments - basic 2-field variant', () => {
     const Point = data({
-        Point2D: [{ x: Number }, { y: Number }]
+        Point2D: { x: Number, y: Number }
     });
 
     // Positional form
@@ -24,7 +24,7 @@ test('Positional arguments - basic 2-field variant', () => {
 
 test('Positional arguments - 3-field variant', () => {
     const Point = data({
-        Point3D: [{ x: Number }, { y: Number }, { z: Number }]
+        Point3D: { x: Number, y: Number, z: Number }
     });
 
     const p = Point.Point3D(12, 37, 54);
@@ -36,10 +36,10 @@ test('Positional arguments - 3-field variant', () => {
 
 test('Positional arguments - single field with primitive', () => {
     const Wrapper = data({
-        IntWrapper: [{ value: Number }]
+        IntWrapper: { value: Number }
     });
 
-    // Single non-object primitive should be treated as positional
+    // Single non-object primitive should be treated
     const w = Wrapper.IntWrapper(42);
     assert.equal(w.value, 42);
 
@@ -49,12 +49,12 @@ test('Positional arguments - single field with primitive', () => {
 });
 
 test('Positional arguments - single field with ADT instance', () => {
-    const Color = data({ Red: [], Green: [], Blue: [] });
+    const Color = data({ Red: {}, Green: {}, Blue: {} });
     const ColorWrapper = data({
-        Wrap: [{ color: Color }]
+        Wrap: { color: Color }
     });
 
-    // ADT instance is not an object literal, so treated as positional
+    // ADT instance is not an object literal, so treated
     const wrapped = ColorWrapper.Wrap(Color.Red);
     assert.equal(wrapped.color, Color.Red);
 
@@ -65,12 +65,12 @@ test('Positional arguments - single field with ADT instance', () => {
 
 test('Positional arguments - recursive ADT (Peano)', () => {
     const Peano = data(({ Family }) => ({
-        Zero: [],
-        Succ: [{ pred: Family }]
+        Zero: {},
+        Succ: { pred: Family }
     }));
 
     const zero = Peano.Zero;
-    
+
     // Positional form - much more concise!
     const one = Peano.Succ(zero);
     const two = Peano.Succ(one);
@@ -89,12 +89,12 @@ test('Positional arguments - recursive ADT (Peano)', () => {
 
 test('Positional arguments - recursive List', () => {
     const List = data(({ Family }) => ({
-        Nil: [],
-        Cons: [{ head: Number }, { tail: Family }]
+        Nil: {},
+        Cons: { head: Number, tail: Family }
     }));
 
     const empty = List.Nil;
-    
+
     // Positional form - much cleaner than named!
     const list = List.Cons(1, List.Cons(2, List.Cons(3, empty)));
 
@@ -113,14 +113,14 @@ test('Positional arguments - recursive List', () => {
 
 test('Positional arguments - binary tree', () => {
     const Tree = data(({ Family }) => ({
-        Leaf: [{ value: Number }],
-        Node: [{ left: Family }, { right: Family }, { value: Number }]
+        Leaf: { value: Number },
+        Node: { left: Family, right: Family, value: Number }
     }));
 
     const leaf1 = Tree.Leaf(1);
     const leaf2 = Tree.Leaf(2);
     const leaf3 = Tree.Leaf(3);
-    
+
     // Positional form for complex tree
     const tree = Tree.Node(
         Tree.Node(leaf1, leaf2, 10),
@@ -136,9 +136,9 @@ test('Positional arguments - binary tree', () => {
 });
 
 test('Positional arguments - nested ADTs', () => {
-    const Color = data({ Red: [], Green: [], Blue: [] });
+    const Color = data({ Red: {}, Green: {}, Blue: {} });
     const Point = data({
-        ColorPoint2D: [{ x: Number }, { y: Number }, { color: Color }]
+        ColorPoint2D: { x: Number, y: Number, color: Color }
     });
 
     const p = Point.ColorPoint2D(5, 10, Color.Red);
@@ -149,11 +149,11 @@ test('Positional arguments - nested ADTs', () => {
 });
 
 test('Positional arguments - with predicates', () => {
-    const isEven = (x: unknown): x is number =>
+    const isEven = (x) =>
         typeof x === 'number' && x % 2 === 0;
 
     const EvenPoint = data({
-        Point2D: [{ x: isEven }, { y: isEven }]
+        Point2D: { x: isEven , y: isEven }
     });
 
     // Valid even numbers
@@ -174,8 +174,8 @@ test('Positional arguments - with predicates', () => {
 
 test('Positional arguments - parameterized ADT', () => {
     const List = data(({ Family, T }) => ({
-        Nil: [],
-        Cons: [{ head: T }, { tail: Family }]
+        Nil: {},
+        Cons: { head: T, tail: Family }
     }));
 
     const NumList = List({ T: Number });
@@ -190,33 +190,33 @@ test('Positional arguments - parameterized ADT', () => {
 
 test('Positional arguments - arity validation (too few args)', () => {
     const Point = data({
-        Point2D: [{ x: Number }, { y: Number }]
+        Point2D: { x: Number, y: Number }
     });
 
     assert.throws(() => {
-        (Point.Point2D as any)(3);
+        (Point.Point2D)(3);
     }, /Wrong number of arguments/);
 });
 
 test('Positional arguments - arity validation (too many args)', () => {
     const Point = data({
-        Point2D: [{ x: Number }, { y: Number }]
+        Point2D: { x: Number, y: Number }
     });
 
     assert.throws(() => {
-        (Point.Point2D as any)(3, 2, 1);
+        (Point.Point2D)(3, 2, 1);
     }, /Wrong number of arguments/);
 });
 
 test('Positional arguments - arity validation error message', () => {
     const Point = data({
-        Point2D: [{ x: Number }, { y: Number }]
+        Point2D: { x: Number, y: Number }
     });
 
     try {
-        (Point.Point2D as any)(3);
+        (Point.Point2D)(3);
         assert.fail('Should have thrown');
-    } catch (error: any) {
+    } catch (error) {
         assert.ok(error.message.includes('Point2D(x, y)'));
         assert.ok(error.message.includes('Point2D(arg0)'));
     }
@@ -224,7 +224,7 @@ test('Positional arguments - arity validation error message', () => {
 
 test('Positional arguments - works with new keyword', () => {
     const Point = data({
-        Point2D: [{ x: Number }, { y: Number }]
+        Point2D: { x: Number, y: Number }
     });
 
     // Positional with new
@@ -240,8 +240,8 @@ test('Positional arguments - works with new keyword', () => {
 
 test('Positional arguments - mixed usage in same codebase', () => {
     const Point = data({
-        Point2D: [{ x: Number }, { y: Number }],
-        Point3D: [{ x: Number }, { y: Number }, { z: Number }]
+        Point2D: { x: Number, y: Number },
+        Point3D: { x: Number, y: Number, z: Number }
     });
 
     // Mix positional and named styles
@@ -257,12 +257,12 @@ test('Positional arguments - mixed usage in same codebase', () => {
 
 test('Positional arguments - with extend', () => {
     const Point = data({
-        Point2D: [{ x: Number }, { y: Number }]
+        Point2D: { x: Number, y: Number }
     });
 
-    const Point3D = Point.extend({
-        Point3D: [{ x: Number }, { y: Number }, { z: Number }]
-    });
+    const Point3D = Point.extend(() => ({
+        Point3D: { x: Number, y: Number, z: Number }
+    }));
 
     // Positional works on base variant
     const p2 = Point3D.Point2D(10, 20);
@@ -282,13 +282,13 @@ test('Positional arguments - with extend', () => {
 
 test('Positional arguments - recursive extend', () => {
     const IntExpr = data(({ Family }) => ({
-        IntLit: [{ value: Number }],
-        Add: [{ left: Family }, { right: Family }]
+        IntLit: { value: Number },
+        Add: { left: Family, right: Family }
     }));
 
     const IntBoolExpr = IntExpr.extend(({ Family }) => ({
-        BoolLit: [{ value: Boolean }],
-        LessThan: [{ left: Family }, { right: Family }]
+        BoolLit: { value: Boolean },
+        LessThan: { left: Family, right: Family }
     }));
 
     // Positional form for cleaner construction
@@ -306,7 +306,7 @@ test('Positional arguments - recursive extend', () => {
 
 test('Positional arguments - field order preserved', () => {
     const Record = data({
-        Person: [{ name: String }, { age: Number }, { city: String }]
+        Person: { name: String, age: Number, city: String }
     });
 
     const p = Record.Person('Alice', 30, 'NYC');
@@ -317,7 +317,7 @@ test('Positional arguments - field order preserved', () => {
 
 test('Positional arguments - different types', () => {
     const Mixed = data({
-        MixedData: [{ str: String }, { num: Number }, { bool: Boolean }, { bigint: BigInt }]
+        MixedData: { str: String, num: Number, bool: Boolean, bigint: BigInt }
     });
 
     const m = Mixed.MixedData('hello', 42, true, BigInt(999));
