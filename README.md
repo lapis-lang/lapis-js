@@ -35,9 +35,9 @@ console.log(typeof data); // "function"
 
 ## Usage
 
-**Note:** Lapis JS is designed for use with TypeScript. TypeScript provides essential compile-time validation including reserved property name checking, exhaustiveness checking for pattern matching, and type inference. While the library can technically be used with plain JavaScript, doing so bypasses important safety checks.
-
 Lapis JS provides a powerful `data` function for defining algebraic data types (ADTs) using a class-based enumeration pattern. ADTs support simple enumerated types, structured data with fields, subtyping, and predicate-based validation.
+
+**Runtime Validation:** The library performs runtime validation for variant names (PascalCase), field names (camelCase), reserved property names, predicates, ADT instances, and Family references. Type parameters (T, U, V, etc.) accept any values and are not validated at runtime for non-instantiated ADTs; however, when ADTs are instantiated with concrete types (e.g., `List({ T: Number })` or `List(Number)`), type parameters are validated at runtime.
 
 ### Simple Enumerated Types
 
@@ -114,18 +114,19 @@ console.log(p2 instanceof Point); // true
 
 **Type validation:**
 
-- Built-in primitive types (Number, String, Boolean, BigInt, Symbol) map to primitive TypeScript types (`number`, `string`, `boolean`, `bigint`, `symbol`) - validated at **compile-time** by TypeScript
-- Built-in object types (Object, Array, Date, RegExp) are validated at **compile-time** by TypeScript
+- Built-in primitive types (Number, String, Boolean, BigInt, Symbol) map to primitive types (`number`, `string`, `boolean`, `bigint`, `symbol`) - validated at **runtime** with `typeof` checks
+- Built-in object types (Object, Array, Date, RegExp) - validated at **runtime** with `instanceof` or `typeof` checks
 - ADT instances are validated at **runtime** with `instanceof` checks
-- Predicates are validated at **runtime** with custom logic
+- Predicates are validated at **runtime** with custom predicate functions
 - `Family` references are validated at **runtime** with `instanceof` checks against the ADT family
+- Type parameters (T, U, V, etc.) **without instantiation** - not validated at runtime, accept any values
+- Type parameters (T, U, V, etc.) **with instantiation** (e.g., `List(Number)`) - validated at runtime against the instantiated type
 
 **Requirements:**
 
-- Variant names must be **PascalCase**
-- Property names must be **camelCase** (start with lowercase, no underscore prefix)
-- Property names cannot be **reserved JavaScript names**: `constructor`, `prototype`, `__proto__`, `toString`, `valueOf`, `hasOwnProperty`, `isPrototypeOf`, `propertyIsEnumerable`, `toLocaleString`
-- TypeScript enforces exact object shapes (all fields required, no extra fields allowed)
+- Variant names must be **PascalCase** (validated at runtime)
+- Property names must be **camelCase** (start with lowercase, no underscore prefix, validated at runtime)
+- Property names cannot be **reserved JavaScript names**: `constructor`, `prototype`, `__proto__`, `toString`, `valueOf`, `hasOwnProperty`, `isPrototypeOf`, `propertyIsEnumerable`, `toLocaleString` (validated at runtime)
 
 ### Nested ADTs
 
@@ -160,11 +161,11 @@ const p = EvenPoint.Point2({ x: 2, y: 4 }));  // ✓ Valid
 console.log(p.x); // 2
 console.log(p.y); // 4
 
-EvenPoint.Point2({ x: 3, y: 4 }));  // ✗ Throws TypeError
+EvenPoint.Point2({ x: 3, y: 4 }));  // ✗ Throws TypeError at runtime
 // TypeError: Field 'x' failed predicate validation
 ```
 
-**Predicates enable runtime validation that TypeScript cannot check at compile-time:**
+**Predicates enable custom runtime validation:**
 
 ```ts
 // Range validation
@@ -315,80 +316,85 @@ const tree = Tree.Node({ left: leaf1, right: leaf2, value: 10 }));
 
 ### Parameterized ADTs
 
-Define generic data structures with type parameters using `T`, `U`, `V`, `W`, `X`, `Y`, or `Z` in the callback:
+Define generic data structures with type parameters using **arbitrary parameter names** in the destructured callback:
 
 ```ts
-// Generic Maybe type
+// Generic Maybe type - parameter name can be anything
 const Maybe = data(({ T }) => ({
     Nothing: {},
     Just: { value: T }
 }));
 
-const justNum = Maybe.Just({ value: 42 }));  
-const justStr = Maybe.Just({ value: 'hello' }));  
+const justNum = Maybe.Just({ value: 42 });  
+const justStr = Maybe.Just({ value: 'hello' });  
 const nothing = Maybe.Nothing;
 
-// Generic Either type with two type parameters
-const Either = data(({ U, V }) => ({
-    Left: { value: U },
-    Right: { value: V }
-}));
-
-// Heterogeneous Pair with different types
-const Pair = data(({ T, U }) => ({
-    MakePair: { first: T, second: U }
+// Use descriptive parameter names
+const Result = data(({ ErrorType, ValueType }) => ({
+    Error: { error: ErrorType },
+    Success: { value: ValueType }
 }));
 
 // Parameterized recursive list
-const List = data(({ Family, T }) => ({
+const List = data(({ Family, ItemType }) => ({
     Nil: {},
-    Cons: { head: T, tail: Family(T) }  // Family(T) or just Family
+    Cons: { head: ItemType, tail: Family }  // Family or Family(ItemType)
 }));
 
 const numList = List.Cons({ head: 1, 
     tail: List.Cons({ head: 2, tail: List.Nil }) 
-}));  
+});  
 const strList = List.Cons({ head: 'a', 
     tail: List.Cons({ head: 'b', tail: List.Nil }) 
-}));  
+});  
 ```
 
-**Type instantiation:**
+**Type instantiation with runtime validation:**
 
-For stricter type validation, instantiate parameterized ADTs with specific types:
+Instantiate parameterized ADTs with specific types to enable **runtime type validation**:
 
 ```ts
 const List = data(({ Family, T }) => ({
     Nil: {},
-    Cons: { head: T, tail: Family(T) }
+    Cons: { head: T, tail: Family }
 }));
 
-// Instantiate with Number
-const NumList = List({ T: Number }));  
-const nums = NumList.Cons({ head: 10, 
-    tail: NumList.Cons({ head: 20, tail: NumList.Nil }) 
-}));  // Instantiate with String
-const StrList = List({ T: String }));  
-const strs = StrList.Cons({ head: 'hello', 
-    tail: StrList.Cons({ head: 'world', tail: StrList.Nil }) 
-}));  // Type validation enforced at compile-time by TypeScript
-NumList.Cons({ head: 'bad', tail: NumList.Nil }));  // ✗ TypeScript compile error: Type 'string' is not assignable to type 'number'
+// Positional syntax: List(Number)
+const NumList = List(Number);  
+const nums = NumList.Cons(10, NumList.Cons(20, NumList.Nil)); 
+// ✓ Valid: all numbers
+
+// Object syntax: List({ T: String })
+const StrList = List({ T: String });  
+const strs = StrList.Cons('hello', StrList.Cons('world', StrList.Nil));
+// ✓ Valid: all strings
+
+// Runtime validation catches type errors
+NumList.Cons('bad', NumList.Nil);
+// ✗ TypeError: Field 'head' must be an instance of Number
+
+StrList.Cons(42, StrList.Nil);
+// ✗ TypeError: Field 'head' must be an instance of String
 
 // Multiple type parameters
 const Pair = data(({ T, U }) => ({
     MakePair: { first: T, second: U }
 }));
 
-const NumStrPair = Pair({ T: Number, U: String }));  
-const pair = NumStrPair.MakePair({ first: 42, second: 'hello' }));  
+// Both positional and object syntax work
+const NumStrPair = Pair(Number, String);
+const pair1 = NumStrPair.MakePair(42, 'hello'); // ✓
+
+const StrBoolPair = Pair({ T: String, U: Boolean });
+const pair2 = StrBoolPair.MakePair('test', true); // ✓
 ```
 
 **Key points:**
 
-- Available type parameters: `T`, `U`, `V`, `W`, `X`, `Y`, `Z` (7 parameters total)
+- **Arbitrary type parameter names**: Use any descriptive names like `ItemType`, `ValueType`, `ErrorType` (not limited to T, U, V)
+- **Runtime type validation**: When instantiated with types (e.g., `List(Number)`), all fields of that type parameter are validated
+- **Dual instantiation syntax**: Both positional `List(Number)` and object `List({ T: Number })` forms supported
 - Combine `Family` and type parameters for recursive parameterized types
-- Without instantiation, accepts any type for type parameters
-- With instantiation `ADT({ T: SomeType })`, validates types at compile-time by TypeScript
 - Use multiple parameters for heterogeneous data structures (e.g., `Pair` with different types)
 
 ### Immutability
@@ -408,7 +414,7 @@ p.x = 30; // ✗ Throws Error (instance is frozen)
 ```ts
 const Color = data(() => ({ Red: {}, Green: {}, Blue: {} }));
 
-// In strict mode (or TypeScript), variant properties cannot be reassigned
+// In strict mode, variant properties cannot be reassigned
 Color.Red = []; // ✗ Throws Error in strict mode (cannot assign to read-only property)
 
 // However, properties are configurable to support fold operation extensions
@@ -620,12 +626,12 @@ _(instance) {
 
 ### Exhaustiveness Checking
 
-TypeScript enforces **exhaustive handler coverage** at compile-time:
+Exhaustive handler coverage is enforced at runtime:
 
 #### Option 1: All handlers required (no wildcard)
 
 ```ts
-// ✓ Compiles - all variants handled
+// ✓ Valid - all variants handled
 const Color = data(() => ({ Red: {}, Green: {}, Blue: {} }))
     .fold('toHex', { out: String }, () => ({
         Red() { return '#FF0000'; },
@@ -633,23 +639,28 @@ const Color = data(() => ({ Red: {}, Green: {}, Blue: {} }))
         Blue() { return '#0000FF'; }
     }));
 
-// ✗ TypeScript Error - Green and Blue handlers missing
+// ✗ Runtime Error - Green and Blue handlers missing
 const Incomplete = data(() => ({ Red: {}, Green: {}, Blue: {} }))
     .fold('toHex', { out: String }, () => ({
         Red() { return '#FF0000'; }
-        // Error: Property '_' is missing
+        // Missing handlers - will throw at runtime when Green or Blue is encountered
     }));
+
+// Color.Red.toHex() works fine
+// Color.Green.toHex() throws: Error: No handler for variant 'Green' in operation 'toHex'
 ```
 
 #### Option 2: Partial handlers with wildcard
 
 ```ts
-// ✓ Compiles - wildcard handles unspecified variants
+// ✓ Valid - wildcard handles unspecified variants
 const Color = data(() => ({ Red: {}, Green: {}, Blue: {} }))
     .fold('toHex', { out: String }, () => ({
         Red() { return '#FF0000'; },
         _(instance) { return '#UNKNOWN'; }
     }));
+
+// Color.Green.toHex() returns '#UNKNOWN' (wildcard handler)
 ```
 
 #### Extended ADTs and Exhaustiveness
@@ -675,14 +686,16 @@ const ExtendedColor = Color.extend(() => ({ Yellow: {}, Orange: {} }))
 **When adding a new operation to an extended ADT**: All variants (parent + new) need handlers OR wildcard
 
 ```ts
-// ✗ TypeScript Error - Yellow and Orange handlers missing
+// ✗ Runtime Error - Yellow and Orange handlers missing
 const ExtendedColor = Color.extend(() => ({ Yellow: {}, Orange: {} }))
     .fold('toRGB', { out: String }, () => ({
         Red() { return 'rgb(255,0,0)'; },
         Green() { return 'rgb(0,255,0)'; },
         Blue() { return 'rgb(0,0,255)'; }
-        // Error: Missing Yellow and Orange handlers or wildcard
+        // Missing Yellow and Orange - will throw at runtime when encountered
     }));
+
+// ExtendedColor.Yellow.toRGB() throws: Error: No handler for variant 'Yellow' in operation 'toRGB'
 
 // ✓ All 5 variants handled
 const Complete = Color.extend(() => ({ Yellow: {}, Orange: {} }))
@@ -706,11 +719,11 @@ const WithWildcard = Color.extend(() => ({ Yellow: {}, Orange: {} }))
 
 **Key points:**
 
-- Without a wildcard `_`, **all variants must have handlers**
-- With a wildcard `_`, handlers are optional (wildcard catches unhandled cases)
+- Without a wildcard `_`, **all variants must have handlers** (runtime throws error if handler missing)
+- With a wildcard `_`, handlers are optional (wildcard catches unhandled cases at runtime)
 - **Extending existing operations**: Only new variants need handlers (partial handlers allowed)
 - **New operations on extended ADTs**: All variants (parent + new) need handlers OR wildcard
-- TypeScript catches missing handlers at **compile-time**
+- Runtime validation: error thrown when a variant without a handler is encountered
 - Extends to all variant types: simple enumerations, structured data, recursive ADTs, and extended ADTs
 
 ### Multiple Fold Operations
@@ -893,8 +906,8 @@ console.log(ExtendedColor.Blue.toHex()); // '#EXTENDED-Blue'
 
 - `.fold()` automatically detects extend mode when parent has the same operation
 - Automatically inherits all parent handlers
-- **Extending existing operations**: Only need to specify handlers for **new variants** or **variants to override** (TypeScript allows partial handlers)
-- **New operations on extended ADTs**: Must provide handlers for **all variants** (parent + new) OR use wildcard (TypeScript enforces exhaustiveness)
+- **Extending existing operations**: Only need to specify handlers for **new variants** or **variants to override** (partial handlers allowed)
+- **New operations on extended ADTs**: Must provide handlers for **all variants** (parent + new) OR use wildcard (runtime enforces exhaustiveness)
 - **Overriding parent handlers**: When you override an existing variant, the handler receives a `fields` object containing the optional `parent` symbol (accessed as `fields[parent]`)
 - You can ignore the `fields[parent]` property if you don't need it
 - Wildcard handlers are inherited from parent
@@ -1135,7 +1148,7 @@ A **catamorphism** is the general pattern of structural recursion:
 
 **Key insight:** The implementation automatically identifies `Family` fields and applies the operation recursively before calling your handler. You don't manually recurse - the framework does it for you.
 
-### Key Points Summary
+### Fold Operation Summary
 
 **Pattern Matching (`.fold()`):**
 
@@ -1151,8 +1164,7 @@ A **catamorphism** is the general pattern of structural recursion:
 **Structural Recursion (`.fold()`):**
 
 - `.fold()` performs **catamorphism** (structural recursion from leaves to root)
-- Available **only on recursive ADTs** (those with `Family` references) - TypeScript enforces this at compile-time
-- Handlers receive **already-folded values** for `Family` fields
+- Available on all ADTs; for recursive ADTs (those with `Family` references), handlers receive **already-folded values** for `Family` fields
 - For lists, behaves as **right fold** (right-associative, processes tail first)
 - For trees, processes from leaves to root (both subtrees evaluated before parent)
 - Automatic recursion - framework handles traversal
@@ -1277,8 +1289,8 @@ const ExtendedExpr = IntExpr.extend(({ Family }) => ({
 const sum = ExtendedExpr.Add({
     left: ExtendedExpr.IntLit({ value: 2 }),
     right: ExtendedExpr.IntLit({ value: 3 })
-}));  
-const product = ExtendedExpr.Mul({ left: sum, right: ExtendedExpr.IntLit({ value: 4 }) }));  
+});  
+const product = ExtendedExpr.Mul({ left: sum, right: ExtendedExpr.IntLit({ value: 4 }) });  
 console.log(product.eval()); // 20 ((2 + 3) * 4)
 ```
 
@@ -1329,3 +1341,232 @@ console.log(expr.eval()); // 7 ((10 + 5) - (4 * 2))
 - Base ADT instances unaffected by extended ADT overrides
 - **Only one .fold() per operation per ADT level**: Calling `.fold('op', ...)` twice on the same operation throws an error. To override again, use `.extend()` to create a new ADT level first.
 - Uses callback form only: `.fold('op', () => handlers)` or `.fold('op', (Family, ParentFamily) => handlers)` with ParentFamily parameter for extend mode
+
+## Type Parameter Transformations with Map
+
+For parameterized ADTs with type parameters (`T`, `U`, `V`, etc.), `.map()` provides structure-preserving transformations that change type parameter values while maintaining the ADT's shape. Unlike `.fold()` which can collapse structures, `.map()` returns a new instance of the same variant type with transformed type parameter fields.
+
+### Basic Map
+
+Transform type parameter values across an entire ADT structure:
+
+```ts
+const List = data(({ Family, T }) => ({
+    Nil: {},
+    Cons: { head: T, tail: Family(T) }
+}))
+.map('increment', {}, { T: (x) => x + 1 });
+
+const list = List.Cons({
+    head: 1,
+    tail: List.Cons({
+        head: 2,
+        tail: List.Cons({ head: 3, tail: List.Nil })
+    })
+});
+
+const incremented = list.increment();
+console.log(incremented.head); // 2
+console.log(incremented.tail.head); // 3
+console.log(incremented.tail.tail.head); // 4
+console.log(incremented instanceof List.Cons); // true - same structure
+```
+
+### Map on Trees
+
+Map recursively transforms type parameters in tree structures:
+
+```ts
+const Tree = data(({ Family, T }) => ({
+    Leaf: { value: T },
+    Node: { left: Family(T), right: Family(T), value: T }
+}))
+.map('increment', {}, { T: (x) => x + 1 });
+
+const tree = Tree.Node({
+    left: Tree.Leaf({ value: 1 }),
+    right: Tree.Leaf({ value: 2 }),
+    value: 10
+});
+
+const incremented = tree.increment();
+console.log(incremented.value); // 11
+console.log(incremented.left.value); // 2
+console.log(incremented.right.value); // 3
+```
+
+### Multiple Type Parameters
+
+Transform each type parameter independently with different functions:
+
+```ts
+const Pair = data(({ T, U }) => ({
+    MakePair: { first: T, second: U }
+}))
+.map('transform', {}, {  // Empty spec - no validation
+    T: (x) => x * 2,
+    U: (s) => s.toUpperCase()
+});
+
+const pair = Pair.MakePair({ first: 5, second: 'hello' });
+const transformed = pair.transform();
+console.log(transformed.first); // 10
+console.log(transformed.second); // 'HELLO'
+```
+
+### Type Changing Maps
+
+Map can change the type of parameters, creating a new parameterization:
+
+```ts
+const List = data(({ Family, T }) => ({
+    Nil: {},
+    Cons: { head: T, tail: Family }
+}))
+.map('stringify', (Family) => ({ out: Family }), { T: (x) => String(x) });
+
+const numbers = List.Cons({
+    head: 42,
+    tail: List.Cons({ head: 100, tail: List.Nil })
+});
+
+const strings = numbers.stringify();
+console.log(typeof strings.head); // 'string'
+console.log(strings.head); // '42'
+console.log(typeof strings.tail.head); // 'string'
+console.log(strings.tail.head); // '100'
+```
+
+### Map Callback Form
+
+For consistency with other operations, `.map()` supports a callback form:
+
+```ts
+const List = data(({ Family, T }) => ({
+    Nil: {},
+    Cons: { head: T, tail: Family }
+}))
+.map('double', (Family) => ({ out: Family }), { T: (x) => x * 2 });
+
+const list = List.Cons({ head: 5, tail: List.Cons({ head: 10, tail: List.Nil }) });
+const doubled = list.double();
+console.log(doubled.head); // 10
+console.log(doubled.tail.head); // 20
+```
+
+### Chaining Map Operations
+
+Chain multiple `.map()` operations to compose transformations:
+
+```ts
+const List = data(({ Family, T }) => ({
+    Nil: {},
+    Cons: { head: T, tail: Family }
+}))
+.map('increment', (Family) => ({ out: Family }), { T: (x) => x + 1 })
+.map('double', (Family) => ({ out: Family }), { T: (x) => x * 2 })
+.map('stringify', (Family) => ({ out: Family }), { T: (x) => String(x) });
+
+const list = List.Cons({ head: 5, tail: List.Cons({ head: 10, tail: List.Nil }) });
+const result = list.increment().double().stringify();
+
+// ((5 + 1) * 2).toString() = "12"
+// ((10 + 1) * 2).toString() = "22"
+console.log(result.head); // '12'
+console.log(result.tail.head); // '22'
+```
+
+### Map with Arguments
+
+Transform functions can accept arguments, enabling parameterized transformations:
+
+```ts
+const List = data(({ Family, T }) => ({
+    Nil: {},
+    Cons: { head: T, tail: Family }
+}))
+.map('scale', (Family) => ({ out: Family }), { T: (x, factor) => x * factor })
+.map('add', (Family) => ({ out: Family }), { T: (x, offset) => x + offset });
+
+const list = List.Cons({ head: 2, tail: List.Cons({ head: 3, tail: List.Nil }) });
+
+// Scale by 10
+const scaled = list.scale(10);
+console.log(scaled.head); // 20
+console.log(scaled.tail.head); // 30
+
+// Add 100
+const shifted = scaled.add(100);
+console.log(shifted.head); // 120
+console.log(shifted.tail.head); // 130
+
+// Arguments are passed through recursive calls
+const tree = Tree.Node({
+    left: Tree.Leaf({ value: 5 }),
+    right: Tree.Leaf({ value: 10 }),
+    value: 15
+}).scale(2); // All values multiplied by 2
+```
+
+### Map vs Fold
+
+**When to use `.map()`:**
+
+- Transform type parameter values while **preserving structure**
+- Change parameter types (e.g., `number` → `string`)
+- Compose transformations via chaining
+- Need instances of the **same variant type**
+
+**When to use `.fold()`:**
+
+- **Collapse or reduce** structures to different types
+- Compute aggregate values (sum, length, etc.)
+- Pattern match and branch on variant types
+- Flexible handler logic with wildcard support
+
+**Comparison:**
+
+```ts
+const List = data(({ Family, T }) => ({
+    Nil: {},
+    Cons: { head: T, tail: Family }
+}))
+.map('increment', (Family) => ({ out: Family }), { T: (x) => x + 1 })
+.fold('sum', { out: Number }, () => ({
+    Nil() { return 0; },
+    Cons({ head, tail }) { return head + tail; }
+}));
+
+const list = List.Cons({ head: 1, tail: List.Cons({ head: 2, tail: List.Nil }) });
+
+// Map: transforms and preserves structure
+const incremented = list.increment(); // List.Cons({ head: 2, tail: List.Cons({ head: 3, tail: List.Nil }) })
+console.log(incremented instanceof List.Cons); // true
+
+// Fold: collapses structure to a value
+const sum = list.sum(); // 3
+console.log(typeof sum); // 'number'
+```
+
+### Map Operation Summary
+
+**Type Parameter Transformations (`.map()`):**
+
+- `.map()` transforms type parameter values while **preserving ADT structure**
+- Available on **all ADTs** (works on both parameterized and non-parameterized ADTs)
+- Syntax: `.map(name, spec, { T: fn, U: fn })` - spec object required, `out` property optional
+- Spec with validation: `{ out: ADT }` - validates return values against ADT type
+- Empty spec: `{}` - no validation performed
+- Spec callback form: `(Family) => ({ out: Family })` - use when Family reference needed
+- Transform callback form: `.map(name, spec, (Family) => ({ T: fn, U: fn }))`
+- Runtime validation: when `spec.out` provided, enforces type constraints on return values
+- **Transform functions can accept arguments**: `.map('scale', {}, { T: (x, factor) => x * factor })` then call `instance.scale(10)`
+- **Recursively handles `Family` fields** - arguments passed through to recursive calls
+- Returns new instances with **same variant constructors**
+- Operation names must be **camelCase** (unlike `.fold()` which accepts any case)
+- Name collision detection prevents conflicts with variant fields and reserved names
+- Multiple operations supported: `.map('op1', ...).map('op2', ...)` defines separate methods
+- Operations installed on **variant class prototypes** (callable on variant instances)
+- **Partial transforms allowed**: missing transforms leave values unchanged
+- Non-parameterized ADTs: map operations work but act as identity on non-type-parameter fields
+- Immutability: creates new instances, original instances unchanged
