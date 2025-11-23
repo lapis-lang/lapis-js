@@ -119,7 +119,8 @@ console.log(p2 instanceof Point); // true
 - ADT instances are validated at **runtime** with `instanceof` checks
 - Predicates are validated at **runtime** with custom predicate functions
 - `Family` references are validated at **runtime** with `instanceof` checks against the ADT family
-- Type parameters (T, U, V, etc.) - **not validated** at runtime, accept any values
+- Type parameters (T, U, V, etc.) **without instantiation** - not validated at runtime, accept any values
+- Type parameters (T, U, V, etc.) **with instantiation** (e.g., `List(Number)`) - validated at runtime against the instantiated type
 
 **Requirements:**
 
