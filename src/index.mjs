@@ -1166,43 +1166,6 @@ export function data(declOrFn) {
         }
 
         /**
-         * Validates that an input value matches the expected type specification.
-         * 
-         * @param value - The value to validate
-         * @param spec - The expected type (constructor function)
-         * @param opName - Operation name for error messages
-         */
-        function validateInputType(value, spec, opName) {
-            // Handle primitive constructors
-            if (spec === Number) {
-                if (typeof value !== 'number') {
-                    throw new TypeError(
-                        `Operation '${opName}' expected input of type Number (primitive number), but got ${typeof value}`
-                    );
-                }
-            } else if (spec === String) {
-                if (typeof value !== 'string') {
-                    throw new TypeError(
-                        `Operation '${opName}' expected input of type String (primitive string), but got ${typeof value}`
-                    );
-                }
-            } else if (spec === Boolean) {
-                if (typeof value !== 'boolean') {
-                    throw new TypeError(
-                        `Operation '${opName}' expected input of type Boolean (primitive boolean), but got ${typeof value}`
-                    );
-                }
-            } else if (typeof spec === 'function') {
-                // Custom class/constructor - use instanceof
-                if (!(value instanceof spec)) {
-                    throw new TypeError(
-                        `Operation '${opName}' expected input of type ${spec.name || 'specified type'}, but got ${value?.constructor?.name || typeof value}`
-                    );
-                }
-            }
-        }
-
-        /**
          * Define an unfold operation (anamorphism).
          * Creates a static constructor method that generates ADT instances from seed values.
          * Cases are evaluated in order; the first case returning non-null wins.
