@@ -41,7 +41,7 @@ console.log(typeof data); // "function"
 
 ### Simple Enumerated Types
 
-Data types like simple enumerations can be difined as such:
+Data types like simple enumerations can be defined as such:
 
 ```ts
 import { data } from '@lapis-lang/lapis-js';
