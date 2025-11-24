@@ -21,19 +21,6 @@ const shadowedVariants = new WeakMap();
 const FamilyRefSymbol = Symbol('FamilyRef');
 const TypeParamSymbol = Symbol('TypeParam');
 
-// Reserved property names that cannot be used as field names (runtime validation)
-const RESERVED_PROPERTY_NAMES = new Set([
-    'constructor',
-    'prototype',
-    '__proto__',
-    'toString',
-    'valueOf',
-    'hasOwnProperty',
-    'isPrototypeOf',
-    'propertyIsEnumerable',
-    'toLocaleString'
-]);
-
 // Runtime validation helpers
 function isPascalCase(str) {
     return str.length > 0 && str[0] === str[0].toUpperCase() && str[0] !== str[0].toLowerCase();
@@ -41,10 +28,6 @@ function isPascalCase(str) {
 
 function isCamelCase(str) {
     return str.length > 0 && str[0] === str[0].toLowerCase() && !str.startsWith('_');
-}
-
-function isReservedPropertyName(str) {
-    return RESERVED_PROPERTY_NAMES.has(str);
 }
 
 // Type definitions removed - using runtime validation instead
@@ -1888,13 +1871,6 @@ export function data(declOrFn) {
                     if (!isCamelCase(name)) {
                         throw new TypeError(
                             `Field '${name}' in variant '${variantName}' must be camelCase (start with lowercase, no underscore prefix)`
-                        );
-                    }
-
-                    // Runtime validation: check field name is not reserved
-                    if (isReservedPropertyName(name)) {
-                        throw new TypeError(
-                            `Field '${name}' in variant '${variantName}' is a reserved property name and cannot be used`
                         );
                     }
 
