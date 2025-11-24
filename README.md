@@ -125,7 +125,7 @@ Guards can be:
 - Other ADTs
 - Predicates (custom validation functions)
 
-When a primitive type guards is used. `Number`, `String`, etc., these are validated at runtime using `typeof` checks.
+When a primitive type guard is used. `Number`, `String`, etc., these are validated at runtime using `typeof` checks.
 So `Number` fields must be of type `number` (primitive, not wrapper object).
 
 When an object type guard is used, such as `Object`, `Array`, `Date`, or `RegExp`, these are validated at runtime using `instanceof` or `typeof` checks as appropriate.
