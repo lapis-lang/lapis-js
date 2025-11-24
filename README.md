@@ -925,7 +925,7 @@ The merge operation validates composition to ensure correctness:
 Merged operations follow specific naming rules:
 
 - Static methods (with unfold): Must be PascalCase (e.g., `'Factorial'`, `'Range'`)
-- Instance methods (without unfold): Must be camelCase (e.g., '`doubleSum'`, `'sumOfSquares'`)
+- Instance methods (without unfold): Must be camelCase (e.g., `'doubleSum'`, `'sumOfSquares'`)
 
 ## References, Inspirations, and Further Reading
 
