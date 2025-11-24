@@ -898,11 +898,11 @@ console.log(List.Factorial(5)); // 120 (5 * 4 * 3 * 2 * 1) - no intermediate lis
 
 The merge operation validates composition to ensure correctness:
 
--Minimum 2 operations: At least two operations required for meaningful composition
--Maximum 1 unfold: At most one generator operation
--Maximum 1 fold: At most one consumption operation
--Any number of maps: Multiple transformations allowed
--Left-to-right composition: Operations applied in array order
+- Minimum 2 operations: At least two operations required for meaningful composition
+- Maximum 1 unfold: At most one generator operation
+- Maximum 1 fold: At most one consumption operation
+- Any number of maps: Multiple transformations allowed
+- Left-to-right composition: Operations applied in array order
 
 ```ts
 // Valid compositions
