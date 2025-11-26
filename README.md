@@ -498,8 +498,6 @@ console.log(Color.Red.toRGB()); // 'rgb(255, 0, 0)'
 
 For recursive ADTs, `.fold()` performs **catamorphisms** - structural recursion from leaves to root. The framework automatically recurses into `Family` fields, passing already-folded values to handlers.
 
-**Stack Safety:** Fold operations are implemented using iterative post-order traversal with an explicit work stack, making them stack-safe even for deeply nested structures. This avoids the stack overflow issues that would occur with naive recursive implementations.
-
 ```ts
 const Peano = data(({ Family }) => ({
     Zero: {},
@@ -696,6 +694,97 @@ console.log(ExtendedColor.Blue.toHex()); // '#EXTENDED-Blue'
 - Only one `.fold()` per operation per ADT level
 - Operations inherited by extended ADTs
 - Chaining supported: `.fold(...).fold(...)`
+
+### Recursion and Stack Safety
+
+Lapis JS provides **stack-safe structural recursion** through its fold mechanism, but it's important to understand what this means and what it doesn't cover.
+
+#### What Lapis JS Provides: Structural Recursion
+
+The library implements fold operations using **iterative post-order traversal** with an explicit work stack. This means that when you define a fold operation on a recursive ADT, the recursion through the data structure happens iteratively, not through JavaScript function calls:
+
+```ts
+const List = data(({ Family }) => ({
+    Nil: {},
+    Cons: { head: Number, tail: Family }
+}))
+.fold('sum', { out: Number }, {
+    Nil() { return 0; },
+    Cons({ head, tail }) { return head + tail; }
+});
+
+// This works for arbitrarily large lists without stack overflow
+let bigList = List.Nil;
+for (let i = 100000; i > 0; i--) {
+    bigList = List.Cons({ head: 1, tail: bigList });
+}
+
+console.log(bigList.sum()); // 100000 - no stack overflow
+```
+
+The fold mechanism automatically:
+
+- Traverses the structure from leaves to root
+- Processes `Family` fields iteratively
+- Passes already-computed values to handlers
+- Avoids deep JavaScript call stacks
+
+#### What Lapis JS Doesn't Provide: Tail-Call Optimization
+
+JavaScript (outside of Safari/WebKit) does **not** provide tail-call optimization (TCO). This means:
+
+**Regular recursive functions will still overflow:**
+
+```ts
+// This will overflow for large N - NOT recommended
+function factorial(n) {
+    if (n <= 1) return 1;
+    return n * factorial(n - 1);  // Not tail-recursive
+}
+
+factorial(100000); // Stack overflow!
+```
+
+**Mutual recursion between operations is not optimized:**
+
+```ts
+// These would overflow for large N - NOT a library use case
+function isEven(n) {
+    if (n === 0) return true;
+    return isOdd(n - 1);
+}
+
+function isOdd(n) {
+    if (n === 0) return false;
+    return isEven(n - 1);
+}
+
+isEven(100000); // Stack overflow!
+```
+
+#### The Lapis Approach: Structural Transformation
+
+Instead of writing mutually recursive functions, express computations as **structural transformations** using fold:
+
+```ts
+// Idiomatic: single fold operation
+const Peano = data(({ Family }) => ({
+    Zero: {},
+    Succ: { pred: Family }
+}))
+.fold('isEven', { out: Boolean }, {
+    Zero() { return true; },
+    Succ({ pred }) { return !pred; }  // pred is already a boolean
+})
+.unfold('FromValue', (Peano) => ({ in: Number, out: Peano }), {
+    Zero: (n) => (n <= 0 ? {} : null),
+    Succ: (n) => (n > 0 ? { pred: n - 1 } : null)
+});
+
+// Stack-safe for arbitrarily deep structures
+const big = Peano.FromValue(100000);
+console.log(big.isEven()); // Works without overflow
+```
 
 ### Polymorphic Recursion in Extended Folds
 
