@@ -120,7 +120,7 @@ describe('Transformer Infrastructure', () => {
 
     describe('ADT Transformer Registry', () => {
         test('ADT can register and retrieve transformers', () => {
-            const Color = data(() => ({ Red: {}, Green: {}, Blue: {} }));
+            const Color = data({ Red: {}, Green: {}, Blue: {} });
 
             const transformer = createTransformer({
                 name: 'toHex',
@@ -172,7 +172,7 @@ describe('Transformer Infrastructure', () => {
         });
 
         test('extended ADT inherits parent transformers', () => {
-            const Color = data(() => ({ Red: {}, Green: {}, Blue: {} }));
+            const Color = data({ Red: {}, Green: {}, Blue: {} });
 
             const toHex = createTransformer({
                 name: 'toHex',
@@ -185,7 +185,7 @@ describe('Transformer Infrastructure', () => {
             // @ts-expect-error - accessing internal API
             Color._registerTransformer('toHex', toHex);
 
-            const ExtendedColor = Color.extend(() => ({ Yellow: {} }));
+            const ExtendedColor = Color.extend({ Yellow: {} });
 
             // Extended ADT should be able to access parent transformer
             // @ts-expect-error - accessing internal API
@@ -195,7 +195,7 @@ describe('Transformer Infrastructure', () => {
         });
 
         test('extended ADT can have its own transformers', () => {
-            const Color = data(() => ({ Red: {}, Green: {}, Blue: {} }));
+            const Color = data({ Red: {}, Green: {}, Blue: {} });
 
             const toHex = createTransformer({
                 name: 'toHex',
@@ -205,7 +205,7 @@ describe('Transformer Infrastructure', () => {
             // @ts-expect-error - accessing internal API
             Color._registerTransformer('toHex', toHex);
 
-            const ExtendedColor = Color.extend(() => ({ Yellow: {} }));
+            const ExtendedColor = Color.extend({ Yellow: {} });
 
             const brightness = createTransformer({
                 name: 'brightness',
@@ -246,8 +246,8 @@ describe('Transformer Infrastructure', () => {
         });
 
         test('transformer registry is isolated between different ADTs', () => {
-            const Color = data(() => ({ Red: {}, Green: {}, Blue: {} }));
-            const Point = data(() => ({ Point2D: { x: Number, y: Number } }));
+            const Color = data({ Red: {}, Green: {}, Blue: {} });
+            const Point = data({ Point2D: { x: Number, y: Number } });
 
             const colorTransformer = createTransformer({
                 name: 'toHex',

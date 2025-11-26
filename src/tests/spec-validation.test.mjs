@@ -9,10 +9,10 @@ describe('Spec Validation - Runtime Type Checking', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family }
             }))
-                .fold('length', { out: Number }, () => ({
+                .fold('length', { out: Number }, {
                     Nil() { return 0; },
                     Cons({ tail }) { return 1 + tail; }
-                }));
+                });
 
             const list = List.Cons({ head: 1, tail: List.Cons({ head: 2, tail: List.Nil }) });
             const result = list.length();
@@ -26,10 +26,10 @@ describe('Spec Validation - Runtime Type Checking', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family }
             }))
-                .fold('badLength', { out: Number }, () => ({
+                .fold('badLength', { out: Number }, {
                     Nil() { return 'zero'; }, // Wrong: returns string instead of number
                     Cons({ tail }) { return 1 + tail; }
-                }));
+                });
 
             const list = List.Nil;
             assert.throws(
@@ -43,10 +43,10 @@ describe('Spec Validation - Runtime Type Checking', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family }
             }))
-                .fold('isEmpty', { out: Boolean }, () => ({
+                .fold('isEmpty', { out: Boolean }, {
                     Nil() { return true; },
                     Cons() { return false; }
-                }));
+                });
 
             const result = List.Nil.isEmpty();
             assert.strictEqual(typeof result, 'boolean');
@@ -58,10 +58,10 @@ describe('Spec Validation - Runtime Type Checking', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family }
             }))
-                .fold('badIsEmpty', { out: Boolean }, () => ({
+                .fold('badIsEmpty', { out: Boolean }, {
                     Nil() { return 1; }, // Wrong: returns number instead of boolean
                     Cons() { return false; }
-                }));
+                });
 
             assert.throws(
                 () => List.Nil.badIsEmpty(),
@@ -74,10 +74,10 @@ describe('Spec Validation - Runtime Type Checking', () => {
                 Leaf: { value: Number },
                 Node: { left: Family, right: Family }
             }))
-                .fold('describe', { out: String }, () => ({
+                .fold('describe', { out: String }, {
                     Leaf({ value }) { return 'Leaf(' + value + ')'; },
                     Node() { return 'Node'; }
-                }));
+                });
 
             const result = Tree.Leaf({ value: 42 }).describe();
             assert.strictEqual(typeof result, 'string');
@@ -89,10 +89,10 @@ describe('Spec Validation - Runtime Type Checking', () => {
                 Leaf: { value: Number },
                 Node: { left: Family, right: Family }
             }))
-                .fold('badDescribe', { out: String }, () => ({
+                .fold('badDescribe', { out: String }, {
                     Leaf({ value }) { return value; }, // Wrong: returns number instead of string
                     Node() { return 'Node'; }
-                }));
+                });
 
             assert.throws(
                 () => Tree.Leaf({ value: 42 }).badDescribe(),
@@ -109,10 +109,10 @@ describe('Spec Validation - Runtime Type Checking', () => {
                 Zero: {},
                 Succ: { pred: Family }
             }))
-                .fold('toResult', { out: Result }, () => ({
+                .fold('toResult', { out: Result }, {
                     Zero() { return new Result(0); },
                     Succ({ pred }) { return new Result(pred.value + 1); }
-                }));
+                });
 
             const result = Peano.Zero.toResult();
             assert.ok(result instanceof Result);
@@ -128,10 +128,10 @@ describe('Spec Validation - Runtime Type Checking', () => {
                 Zero: {},
                 Succ: { pred: Family }
             }))
-                .fold('badToResult', { out: Result }, () => ({
+                .fold('badToResult', { out: Result }, {
                     Zero() { return 0; }, // Wrong: returns number instead of Result instance
                     Succ({ pred }) { return new Result(pred + 1); }
-                }));
+                });
 
             assert.throws(
                 () => Peano.Zero.badToResult(),
@@ -143,11 +143,11 @@ describe('Spec Validation - Runtime Type Checking', () => {
     describe('spec.out - Non-Recursive ADTs', () => {
         test('should validate Boolean return type', () => {
             const Color = data((_context) => ({ Red: {}, Green: {}, Blue: {} }))
-                .fold('isPrimary', { out: Boolean }, () => ({
+                .fold('isPrimary', { out: Boolean }, {
                     Red() { return true; },
                     Green() { return true; },
                     Blue() { return true; }
-                }));
+                });
 
             const result = Color.Red.isPrimary();
             assert.strictEqual(typeof result, 'boolean');
@@ -156,11 +156,11 @@ describe('Spec Validation - Runtime Type Checking', () => {
 
         test('should throw TypeError when Boolean return is violated', () => {
             const Color = data((_context) => ({ Red: {}, Green: {}, Blue: {} }))
-                .fold('badIsPrimary', { out: Boolean }, () => ({
+                .fold('badIsPrimary', { out: Boolean }, {
                     Red() { return 'yes'; }, // Wrong: returns string instead of boolean
                     Green() { return true; },
                     Blue() { return true; }
-                }));
+                });
 
             assert.throws(
                 () => Color.Red.badIsPrimary(),
@@ -170,11 +170,11 @@ describe('Spec Validation - Runtime Type Checking', () => {
 
         test('should validate String return type', () => {
             const Color = data((_context) => ({ Red: {}, Green: {}, Blue: {} }))
-                .fold('toHex', { out: String }, () => ({
+                .fold('toHex', { out: String }, {
                     Red() { return '#FF0000'; },
                     Green() { return '#00FF00'; },
                     Blue() { return '#0000FF'; }
-                }));
+                });
 
             const result = Color.Red.toHex();
             assert.strictEqual(typeof result, 'string');
@@ -185,9 +185,9 @@ describe('Spec Validation - Runtime Type Checking', () => {
             const Point = data((_context) => ({
                 Point2D: { x: Number, y: Number }
             }))
-                .fold('magnitude', { out: Number }, () => ({
+                .fold('magnitude', { out: Number }, {
                     Point2D({ x, y }) { return Math.sqrt(x * x + y * y); }
-                }));
+                });
 
             const result = Point.Point2D({ x: 3, y: 4 }).magnitude();
             assert.strictEqual(typeof result, 'number');
@@ -201,18 +201,18 @@ describe('Spec Validation - Runtime Type Checking', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family }
             }))
-                .fold('isEmpty', { out: Boolean }, () => ({
+                .fold('isEmpty', { out: Boolean }, {
                     Nil() { return true; },
                     Cons() { return false; }
-                }))
-                .fold('length', { out: Number }, () => ({
+                })
+                .fold('length', { out: Number }, {
                     Nil() { return 0; },
                     Cons({ tail }) { return 1 + tail; }
-                }))
-                .fold('describe', { out: String }, () => ({
+                })
+                .fold('describe', { out: String }, {
                     Nil() { return 'empty list'; },
                     Cons({ head, tail }) { return head + ', ' + tail; }
-                }));
+                });
 
             const list = List.Cons({ head: 1, tail: List.Cons({ head: 2, tail: List.Nil }) });
 
@@ -234,14 +234,14 @@ describe('Spec Validation - Runtime Type Checking', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family }
             }))
-                .fold('goodOp', { out: Boolean }, () => ({
+                .fold('goodOp', { out: Boolean }, {
                     Nil() { return true; },
                     Cons() { return false; }
-                }))
-                .fold('badOp', { out: Number }, () => ({
+                })
+                .fold('badOp', { out: Number }, {
                     Nil() { return 'wrong'; }, // Wrong type
                     Cons({ tail }) { return 1 + tail; }
-                }));
+                });
 
             // Good operation works
             assert.strictEqual(List.Nil.goodOp(), true);
@@ -257,9 +257,9 @@ describe('Spec Validation - Runtime Type Checking', () => {
     describe('Primitive Constructor Mapping', () => {
         test('Number spec validates primitive number', () => {
             const ADT = data((_context) => ({ Value: {} }))
-                .fold('getValue', { out: Number }, () => ({
+                .fold('getValue', { out: Number }, {
                     Value() { return 42; }
-                }));
+                });
 
             const result = ADT.Value.getValue();
             assert.strictEqual(typeof result, 'number');
@@ -268,9 +268,9 @@ describe('Spec Validation - Runtime Type Checking', () => {
 
         test('String spec validates primitive string', () => {
             const ADT = data((_context) => ({ Value: {} }))
-                .fold('getValue', { out: String }, () => ({
+                .fold('getValue', { out: String }, {
                     Value() { return 'hello'; }
-                }));
+                });
 
             const result = ADT.Value.getValue();
             assert.strictEqual(typeof result, 'string');
@@ -279,9 +279,9 @@ describe('Spec Validation - Runtime Type Checking', () => {
 
         test('Boolean spec validates primitive boolean', () => {
             const ADT = data((_context) => ({ Value: {} }))
-                .fold('getValue', { out: Boolean }, () => ({
+                .fold('getValue', { out: Boolean }, {
                     Value() { return true; }
-                }));
+                });
 
             const result = ADT.Value.getValue();
             assert.strictEqual(typeof result, 'boolean');
@@ -364,10 +364,10 @@ describe('Spec Validation - Runtime Type Checking', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family }
             }))
-                .fold('anything', {}, () => ({
+                .fold('anything', {}, {  
                     Nil() { return 'string'; },
                     Cons() { return 42; }
-                }));
+                });
 
             // Both return different types - should work fine without spec.out
             assert.strictEqual(List.Nil.anything(), 'string');

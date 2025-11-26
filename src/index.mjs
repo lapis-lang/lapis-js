@@ -1141,8 +1141,13 @@ export function data(declOrFn) {
         ADT.fold = function (
             name,
             spec,
-            handlersFn
+            handlersOrFn
         ) {
+            // Normalize handlersOrFn to always be a function
+            // If it's an object, wrap it in a function that ignores parameters
+            const handlersFn = typeof handlersOrFn === 'function'
+                ? handlersOrFn
+                : (_adt, _parentFamily) => handlersOrFn;
             // Store spec for runtime validation
             const outSpec = spec?.out;
 
