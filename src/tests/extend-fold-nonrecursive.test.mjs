@@ -79,7 +79,7 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
                 });
 
             const ExtendedColor = Color.extend({ Yellow: {}, Orange: {} })
-                .fold('brightness', { out: Number },    {
+                .fold('brightness', { out: Number }, {
                     Yellow() { return 200; },
                     Orange() { return 200; },
                     Red() { return 150; } // Override ignores parent
