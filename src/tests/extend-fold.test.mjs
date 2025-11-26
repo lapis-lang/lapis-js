@@ -10,20 +10,20 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 IntLit: { value: Number },
                 Add: { left: Family, right: Family }
             }))
-                .fold('eval', { out: Number }, () => ({
+                .fold('eval', { out: Number }, {
                     IntLit({ value }) { return value; },
                     Add({ left, right }) { return left + right; }
-                }));
+                });
 
             // Extend with boolean operations
             const IntBoolExpr = IntExpr.extend(({ Family }) => ({
                 BoolLit: { value: Boolean },
                 LessThan: { left: Family, right: Family }
             }))
-                .fold('eval', { out: Number }, () => ({
+                .fold('eval', { out: Number }, {
                     BoolLit({ value }) { return value ? 1 : 0; },
                     LessThan({ left, right }) { return left < right ? 1 : 0; }
-                }));
+                });
 
             // Test inherited variants work
             const five = IntBoolExpr.IntLit({ value: 5 });
@@ -50,19 +50,19 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 IntLit: { value: Number },
                 Add: { left: Family, right: Family }
             }))
-                .fold('eval', { out: Number }, () => ({
+                .fold('eval', { out: Number }, {
                     IntLit({ value }) { return value; },
                     Add({ left, right }) { return left + right; }
-                }));
+                });
 
             const IntBoolExpr = IntExpr.extend(({ Family }) => ({
                 BoolLit: { value: Boolean },
                 LessThan: { left: Family, right: Family }
             }))
-                .fold('eval', { out: Number }, (_Family) => ({
+                .fold('eval', { out: Number }, {
                     BoolLit({ value }) { return value ? 1 : 0; },
                     LessThan({ left, right }) { return left < right ? 1 : 0; }
-                }));
+                });
 
             const five = IntBoolExpr.IntLit({ value: 5 });
             const three = IntBoolExpr.IntLit({ value: 3 });
@@ -75,18 +75,18 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family }
             }))
-                .fold('sum', { out: Number }, () => ({
+                .fold('sum', { out: Number }, {
                     Nil() { return 0; },
                     Cons({ head, tail }) { return head + tail; }
-                }));
+                });
 
             // Extend with new variant - Empty list with a label
             const LabeledList = NumList.extend(({ Family }) => ({
                 Labeled: { label: String, list: Family }
             }))
-                .fold('sum', { out: Number }, () => ({
+                .fold('sum', { out: Number }, {
                     Labeled({ list }) { return list; } // Just forward to the list
-                }));
+                });
 
             const list = LabeledList.Cons({
                 head: 1,
@@ -108,19 +108,19 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 Zero: {},
                 Succ: { pred: Family }
             }))
-                .fold('toValue', { out: Number }, () => ({
+                .fold('toValue', { out: Number }, {
                     Zero() { return 0; },
                     Succ({ pred }) { return 1 + pred; }
-                }));
+                });
 
             // Extend with NegSucc and override Succ to double its value
             const ExtendedPeano = Peano.extend(({ Family }) => ({
                 NegSucc: { pred: Family }
             }))
-                .fold('toValue', { out: Number }, () => ({
+                .fold('toValue', { out: Number }, {
                     NegSucc({ pred }) { return -1 + pred; },
                     Succ({ pred }) { return 2 + pred; } // Override: double increment
-                }));
+                });
 
             // Base instances use base handler
             const baseTwo = Peano.Succ({ pred: Peano.Succ({ pred: Peano.Zero }) });
@@ -140,10 +140,10 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 Zero: {},
                 Succ: { pred: Family }
             }))
-                .fold('toValue', { out: Number }, () => ({
+                .fold('toValue', { out: Number }, {
                     Zero() { return 0; },
                     Succ({ pred }) { return 1 + pred; }
-                }));
+                });
 
             // Override Succ to scale parent result by 10
             const ExtendedPeano = Peano.extend(({ Family }) => ({
@@ -173,10 +173,10 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 Zero: {},
                 Succ: { pred: Family }
             }))
-                .fold('toValue', { out: Number }, () => ({
+                .fold('toValue', { out: Number }, {
                     Zero() { return 0; },
                     Succ({ pred }) { return 1 + pred; }
-                }));
+                });
 
             // Override Zero to return 100
             const ExtendedPeano = Peano.extend(({ Family }) => ({
@@ -209,19 +209,19 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 IntLit: { value: Number },
                 Add: { left: Family, right: Family }
             }))
-                .fold('eval', { out: Number }, () => ({
+                .fold('eval', { out: Number }, {
                     IntLit({ value }) { return value; },
                     Add({ left, right }) { return left + right; }
-                }));
+                });
 
             // Extend with multiplication - polymorphic recursion ensures
             // Add's left and right are evaluated using the extended eval
             const ExtendedExpr = IntExpr.extend(({ Family }) => ({
                 Mul: { left: Family, right: Family }
             }))
-                .fold('eval', { out: Number }, () => ({
+                .fold('eval', { out: Number }, {
                     Mul({ left, right }) { return left * right; }
-                }));
+                });
 
             // Create complex expression: (2 + 3) * 4
             const two = ExtendedExpr.IntLit({ value: 2 });
@@ -239,26 +239,26 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 IntLit: { value: Number },
                 Add: { left: Family, right: Family }
             }))
-                .fold('eval', { out: Number }, () => ({
+                .fold('eval', { out: Number }, {
                     IntLit({ value }) { return value; },
                     Add({ left, right }) { return left + right; }
-                }));
+                });
 
             // First extension: add subtraction
             const SubExpr = IntExpr.extend(({ Family }) => ({
                 Sub: { left: Family, right: Family }
             }))
-                .fold('eval', { out: Number }, () => ({
+                .fold('eval', { out: Number }, {
                     Sub({ left, right }) { return left - right; }
-                }));
+                });
 
             // Second extension: add multiplication
             const MulExpr = SubExpr.extend(({ Family }) => ({
                 Mul: { left: Family, right: Family }
             }))
-                .fold('eval', { out: Number }, () => ({
+                .fold('eval', { out: Number }, {
                     Mul({ left, right }) { return left * right; }
-                }));
+                });
 
             // Create expression: (10 - 3) * 2 + 5
             const ten = MulExpr.IntLit({ value: 10 });
@@ -278,10 +278,10 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 IntLit: { value: Number },
                 Add: { left: Family, right: Family }
             }))
-                .fold('eval', { out: Number }, () => ({
+                .fold('eval', { out: Number }, {
                     IntLit({ value }) { return value; },
                     Add({ left, right }) { return left + right; }
-                }));
+                });
 
             // Override Add to log and scale result
             const LogExpr = IntExpr.extend(({ Family }) => ({
@@ -318,34 +318,34 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 IntLit: { value: Number },
                 Add: { left: Family, right: Family }
             }))
-                .fold('eval', { out: Number }, () => ({
+                .fold('eval', { out: Number }, {
                     IntLit({ value }) { return value; },
                     Add({ left, right }) { return left + right; }
-                }));
+                });
 
             // Level 2: Add subtraction
             const L2 = L1.extend(({ Family }) => ({
                 Sub: { left: Family, right: Family }
             }))
-                .fold('eval', { out: Number }, () => ({
+                .fold('eval', { out: Number }, {
                     Sub({ left, right }) { return left - right; }
-                }));
+                });
 
             // Level 3: Add multiplication
             const L3 = L2.extend(({ Family }) => ({
                 Mul: { left: Family, right: Family }
             }))
-                .fold('eval', { out: Number }, () => ({
+                .fold('eval', { out: Number }, {
                     Mul({ left, right }) { return left * right; }
-                }));
+                });
 
             // Level 4: Add division
             const L4 = L3.extend(({ Family }) => ({
                 Div: { left: Family, right: Family }
             }))
-                .fold('eval', { out: Number }, () => ({
+                .fold('eval', { out: Number }, {
                     Div({ left, right }) { return left / right; }
-                }));
+                });
 
             // Test complex expression: (10 + 5) / (4 - 1) * 2
             const ten = L4.IntLit({ value: 10 });
@@ -367,10 +367,10 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 IntLit: { value: Number },
                 Add: { left: Family, right: Family }
             }))
-                .fold('eval', { out: Number }, () => ({
+                .fold('eval', { out: Number }, {
                     IntLit({ value }) { return value; },
                     Add({ left, right }) { return left + right; }
-                }));
+                });
 
             // L2: Override IntLit to negate values
             const L2 = L1.extend(({ Family }) => ({
@@ -420,19 +420,19 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 IntLit: { value: Number },
                 Add: { left: Family, right: Family }
             }))
-                .fold('eval', { out: Number }, () => ({
+                .fold('eval', { out: Number }, {
                     IntLit({ value }) { return value; },
                     Add({ left, right }) { return left + right; }
-                }));
+                });
 
-            const Extended = Base.extend(() => ({ BoolLit: { value: Boolean } }));
+            const Extended = Base.extend({ BoolLit: { value: Boolean } });
 
             // Adding a new operation to extended ADT requires all handlers
-            Extended.fold('toBool', { out: Boolean }, () => ({
+            Extended.fold('toBool', { out: Boolean }, {
                 IntLit({ value }) { return value !== 0; },
                 Add({ left, right }) { return left || right; },
                 BoolLit({ value }) { return value; }
-            }));
+            });
 
             const result = Extended.BoolLit({ value: true }).toBool();
             assert.strictEqual(result, true);
@@ -443,21 +443,21 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 IntLit: { value: Number },
                 Add: { left: Family, right: Family }
             }))
-                .fold('eval', { out: Number }, () => ({
+                .fold('eval', { out: Number }, {
                     IntLit({ value }) { return value; },
                     Add({ left, right }) { return left + right; }
-                }));
+                });
 
-            const Extended = Base.extend(() => ({ BoolLit: { value: Boolean } }))
-                .fold('eval', { out: Number }, () => ({
+            const Extended = Base.extend({ BoolLit: { value: Boolean } })
+                .fold('eval', { out: Number }, {
                     BoolLit({ value }) { return value ? 1 : 0; }
-                }));
+                });
 
             assert.throws(
                 () => {
-                    Extended.fold('eval', { out: Number }, () => ({
+                    Extended.fold('eval', { out: Number }, {
                         BoolLit({ value }) { return value ? 0 : 1; } // Try to extend again
-                    }));
+                    });
                 },
                 /Operation 'eval' has already been extended on this ADT/
             );
@@ -468,21 +468,21 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 IntLit: { value: Number },
                 Add: { left: Family, right: Family }
             }))
-                .fold('eval', { out: Number }, () => ({
+                .fold('eval', { out: Number }, {
                     IntLit({ value }) { return value; },
                     Add({ left, right }) { return left + right; }
-                }));
+                });
 
             const L2 = L1.extend(({ Family }) => ({ Sub: { left: Family, right: Family } }))
-                .fold('eval', { out: Number }, () => ({
+                .fold('eval', { out: Number }, {
                     Sub({ left, right }) { return left - right; }
-                }));
+                });
 
             // This should work - different ADT level
             const L3 = L2.extend(({ Family }) => ({ Mul: { left: Family, right: Family } }))
-                .fold('eval', { out: Number }, () => ({
+                .fold('eval', { out: Number }, {
                     Mul({ left, right }) { return left * right; }
-                }));
+                });
 
             const result = L3.Sub({
                 left: L3.Add({ left: L3.IntLit({ value: 5 }), right: L3.IntLit({ value: 3 }) }),
@@ -499,15 +499,15 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 IntLit: { value: Number },
                 Add: { left: Family, right: Family }
             }))
-                .fold('eval', { out: Number }, () => ({
+                .fold('eval', { out: Number }, {
                     IntLit({ value }) { return value; },
                     _(_instance) { return -999; } // Wildcard for unknown variants
-                }));
+                });
 
-            const Extended = Base.extend(() => ({ BoolLit: { value: Boolean } }))
-                .fold('eval', { out: Number }, () => ({
+            const Extended = Base.extend({ BoolLit: { value: Boolean } })
+                .fold('eval', { out: Number }, {
                     BoolLit({ value }) { return value ? 1 : 0; }
-                }));
+                });
 
             // IntLit uses base handler
             assert.strictEqual(Extended.IntLit({ value: 5 }).eval(), 5);
@@ -528,12 +528,12 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 IntLit: { value: Number },
                 Add: { left: Family, right: Family }
             }))
-                .fold('eval', { out: Number }, () => ({
+                .fold('eval', { out: Number }, {
                     IntLit({ value }) { return value; },
                     _(_instance) { return -999; } // Wildcard
-                }));
+                });
 
-            const Extended = Base.extend(() => ({ BoolLit: { value: Boolean } }))
+            const Extended = Base.extend({ BoolLit: { value: Boolean } })
                 .fold('eval', { out: Number }, (_Family, ParentFamily) => ({
                     BoolLit({ value }) { return value ? 1 : 0; },
                     _(instance) {

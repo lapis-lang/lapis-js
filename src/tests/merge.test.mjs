@@ -13,10 +13,10 @@ describe('Merge Operation (Deforestation)', () => {
                 Nil: (n) => (n <= 0 ? {} : null),
                 Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
             })
-            .fold('product', { out: Number }, () => ({
+            .fold('product', { out: Number }, {
                 Nil() { return 1; },
                 Cons({ head, tail }) { return head * tail; }
-            }))
+            })
             .merge('Factorial', ['Counter', 'product']);
 
             // Test factorial computation
@@ -35,10 +35,10 @@ describe('Merge Operation (Deforestation)', () => {
                 Nil: (n) => (n <= 0 ? {} : null),
                 Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
             })
-            .fold('sum', { out: Number }, () => ({
+            .fold('sum', { out: Number }, {
                 Nil() { return 0; },
                 Cons({ head, tail }) { return head + tail; }
-            }));
+            });
 
             assert.throws(
                 () => List.merge('triangular', ['Counter', 'sum']),
@@ -55,10 +55,10 @@ describe('Merge Operation (Deforestation)', () => {
                 Nil: (n) => (n <= 0 ? {} : null),
                 Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
             })
-            .fold('sum', { out: Number }, () => ({
+            .fold('sum', { out: Number }, {
                 Nil() { return 0; },
                 Cons({ head, tail }) { return head + tail; }
-            }))
+            })
             .merge('Triangular', ['CountUp', 'sum']);
 
             // Triangular numbers: sum from 1 to n
@@ -80,10 +80,10 @@ describe('Merge Operation (Deforestation)', () => {
                 .map('double', (Family) => ({ out: Family }), {
                     T: (x) => x * 2
                 })
-                .fold('sum', { out: Number }, () => ({
+                .fold('sum', { out: Number }, {
                     Nil() { return 0; },
                     Cons({ head, tail }) { return head + tail; }
-                }))
+                })
                 .merge('doubleSum', ['double', 'sum']);
 
             const list = NumList.Cons(1, NumList.Cons(2, NumList.Cons(3, NumList.Nil)));
@@ -102,10 +102,10 @@ describe('Merge Operation (Deforestation)', () => {
                 .map('increment', { out: List }, () => ({
                     T: (x) => x + 1
                 }))
-                .fold('product', { out: Number }, () => ({
+                .fold('product', { out: Number }, {
                     Nil() { return 1; },
                     Cons({ head, tail }) { return head * tail; }
-                }));
+                });
 
             assert.throws(
                 () => NumList.merge('IncrementProduct', ['increment', 'product']),
@@ -155,10 +155,10 @@ describe('Merge Operation (Deforestation)', () => {
                 .map('square', (Family) => ({ out: Family }), () => ({
                     T: (x) => x * x
                 }))
-                .fold('sum', { out: Number }, () => ({
+                .fold('sum', { out: Number }, {
                     Nil() { return 0; },
                     Cons({ head, tail }) { return head + tail; }
-                }))
+                })
                 .merge('SumOfSquares', ['Range', 'square', 'sum']);
 
             // Sum of squares: 1^2 + 2^2 + 3^2 + 4^2 + 5^2 = 1 + 4 + 9 + 16 + 25 = 55
@@ -179,10 +179,10 @@ describe('Merge Operation (Deforestation)', () => {
                 .map('increment', (Family) => ({ out: Family }), {
                     T: (x) => x + 1
                 })
-                .fold('product', { out: Number }, () => ({
+                .fold('product', { out: Number }, {
                     Nil() { return 1; },
                     Cons({ head, tail }) { return head * tail; }
-                }))
+                })
                 .merge('transformProduct', ['double', 'increment', 'product']);
 
             const list = NumList.Cons(1, NumList.Cons(2, NumList.Cons(3, NumList.Nil)));
@@ -219,14 +219,14 @@ describe('Merge Operation (Deforestation)', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family }
             }))
-            .fold('sum', { out: Number }, () => ({
+            .fold('sum', { out: Number }, {
                 Nil() { return 0; },
                 Cons({ head, tail }) { return head + tail; }
-            }))
-            .fold('product', { out: Number }, () => ({
+            })
+            .fold('product', { out: Number }, {
                 Nil() { return 1; },
                 Cons({ head, tail }) { return head * tail; }
-            }));
+            });
 
             assert.throws(
                 () => List.merge('invalid', ['sum', 'product']),
@@ -239,10 +239,10 @@ describe('Merge Operation (Deforestation)', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family }
             }))
-            .fold('sum', { out: Number }, () => ({
+            .fold('sum', { out: Number }, {
                 Nil() { return 0; },
                 Cons({ head, tail }) { return head + tail; }
-            }));
+            });
 
             assert.throws(
                 () => List.merge('invalid', ['sum', 'unknown']),
@@ -267,10 +267,10 @@ describe('Merge Operation (Deforestation)', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family }
             }))
-            .fold('sum', { out: Number }, () => ({
+            .fold('sum', { out: Number }, {
                 Nil() { return 0; },
                 Cons({ head, tail }) { return head + tail; }
-            }));
+            });
 
             assert.throws(
                 () => List.merge('justSum', ['sum']),
@@ -283,10 +283,10 @@ describe('Merge Operation (Deforestation)', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family }
             }))
-            .fold('sum', { out: Number }, () => ({
+            .fold('sum', { out: Number }, {
                 Nil() { return 0; },
                 Cons({ head, tail }) { return head + tail; }
-            }));
+            });
 
             assert.throws(
                 () => List.merge(null, ['sum']),
@@ -310,9 +310,9 @@ describe('Merge Operation (Deforestation)', () => {
                 .map('scale', (Family) => ({ out: Family }), {
                     T: (n) => n * 2
                 })
-                .fold('magnitude', { out: Number }, () => ({
+                .fold('magnitude', { out: Number }, {
                     Point2D({ x, y }) { return Math.sqrt(x * x + y * y); }
-                }));
+                });
 
             // Try to create a merged operation named 'x', which conflicts with the field name
             assert.throws(
@@ -330,10 +330,10 @@ describe('Merge Operation (Deforestation)', () => {
                 Nil: (n) => (n <= 0 ? {} : null),
                 Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
             })
-            .fold('sum', { out: Number }, () => ({
+            .fold('sum', { out: Number }, {
                 Nil() { return 0; },
                 Cons({ head, tail }) { return head + tail; }
-            }));
+            });
 
             assert.throws(
                 () => List.merge('Cons', ['Counter', 'sum']),
@@ -352,10 +352,10 @@ describe('Merge Operation (Deforestation)', () => {
                 Nil: (n) => (n <= 0 ? {} : null),
                 Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
             })
-            .fold('sum', { out: Number }, () => ({
+            .fold('sum', { out: Number }, {
                 Nil() { return 0; },
                 Cons({ head, tail }) { return head + tail; }
-            }))
+            })
             .merge('Triangular', ['Counter', 'sum']);
 
             const n = 1000;
@@ -397,10 +397,10 @@ describe('Merge Operation (Deforestation)', () => {
                 Nil: (n) => (n <= 0 ? {} : null),
                 Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
             })
-            .fold('length', { out: Number }, () => ({
+            .fold('length', { out: Number }, {
                 Nil() { return 0; },
                 Cons({ head, tail }) { return 1 + tail; }
-            }))
+            })
             .merge('Count', ['Range', 'length']);
 
             // Sequential: creates intermediate list, then counts it
@@ -429,15 +429,15 @@ describe('Merge Operation (Deforestation)', () => {
                 Nil: (n) => (n <= 0 ? {} : null),
                 Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
             })
-            .fold('sum', { out: Number }, () => ({
+            .fold('sum', { out: Number }, {
                 Nil() { return 0; },
                 Cons({ head, tail }) { return head + tail; }
-            }))
+            })
             .merge('Triangular', ['Counter', 'sum'])
-            .fold('product', { out: Number }, () => ({
+            .fold('product', { out: Number }, {
                 Nil() { return 1; },
                 Cons({ head, tail }) { return head * tail; }
-            }))
+            })
             .merge('Factorial', ['Counter', 'product']);
 
             // Both merged operations should be available
@@ -456,17 +456,17 @@ describe('Merge Operation (Deforestation)', () => {
                 Nil: (n) => (n <= 0 ? {} : null),
                 Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
             })
-            .fold('sum', { out: Number }, () => ({
+            .fold('sum', { out: Number }, {
                 Nil() { return 0; },
                 Cons({ head, tail }) { return head + tail; }
-            }));
+            });
 
             const ExtendedList = BaseList.extend(({ Family }) => ({
                 Single: { value: Number }
             }))
-            .fold('sum', { out: Number }, () => ({
+            .fold('sum', { out: Number }, {
                 Single({ value }) { return value; }
-            }))
+            })
             .merge('Triangular', ['Counter', 'sum']);
 
             // Merged operation should work

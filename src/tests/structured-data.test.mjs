@@ -64,7 +64,7 @@ describe('Structured Data', () => {
     });
 
     test('validates nested ADT fields', () => {
-        const Color = data(() => ({ Red: {}, Green: {}, Blue: {} }));
+        const Color = data({ Red: {}, Green: {}, Blue: {} });
 
         const ColorPoint = data(() => ({
             Point: { x: Number, color: Color }
@@ -77,7 +77,7 @@ describe('Structured Data', () => {
     });
 
     test('supports mixing simple and structured variants', () => {
-        const Color = data(() => ({ Red: {}, Green: {}, Blue: {} }));
+        const Color = data({ Red: {}, Green: {}, Blue: {} });
 
         const Shape = data(() => ({
             Circle: { radius: Number, color: Color },

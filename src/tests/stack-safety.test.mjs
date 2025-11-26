@@ -9,10 +9,10 @@ describe('Stack Safety Investigation', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family }
             }))
-                .fold('sum', { out: Number }, () => ({
+                .fold('sum', { out: Number }, {
                     Nil() { return 0; },
                     Cons({ head, tail }) { return head + tail; }
-                }));
+                });
 
             // Build a small list
             let list= List.Nil;
@@ -29,10 +29,10 @@ describe('Stack Safety Investigation', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family }
             }))
-                .fold('length', { out: Number }, () => ({
+                .fold('length', { out: Number }, {
                     Nil() { return 0; },
                     Cons({ tail }) { return 1 + tail; }
-                }));
+                });
 
             // Build a medium list
             let list= List.Nil;
@@ -49,10 +49,10 @@ describe('Stack Safety Investigation', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family }
             }))
-                .fold('length', { out: Number }, () => ({
+                .fold('length', { out: Number }, {
                     Nil() { return 0; },
                     Cons({ tail }) { return 1 + tail; }
-                }));
+                });
 
             // Build a large list - this will likely overflow the stack
             // JavaScript typically has stack limit around 10,000-15,000 frames
@@ -80,10 +80,10 @@ describe('Stack Safety Investigation', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family }
             }))
-                .fold('length', { out: Number }, () => ({
+                .fold('length', { out: Number }, {
                     Nil() { return 0; },
                     Cons({ tail }) { return 1 + tail; }
-                }));
+                });
 
             // Build a very large list
             let list= List.Nil;
@@ -111,10 +111,10 @@ describe('Stack Safety Investigation', () => {
                 Leaf: { value: Number },
                 Node: { left: Family, right: Family, value: Number }
             }))
-                .fold('sum', { out: Number }, () => ({
+                .fold('sum', { out: Number }, {
                     Leaf({ value }) { return value; },
                     Node({ left, right, value }) { return left + right + value; }
-                }));
+                });
 
             // Build a deep unbalanced tree (essentially a list)
             let tree= Tree.Leaf({ value: 0 });
@@ -146,10 +146,10 @@ describe('Stack Safety Investigation', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family }
             }))
-                .fold('sum', { out: Number }, () => ({
+                .fold('sum', { out: Number }, {
                     Nil() { return 0; },
                     Cons({ head, tail }) { return head + tail; }
-                }));
+                });
 
             const sizes = [100, 500, 1000, 5000];
 

@@ -245,7 +245,7 @@ describe('Map Operations', () => {
         });
 
         test('works on non-parameterized ADTs with no-op', () => {
-            const Color = data(() => ({ Red: {}, Green: {}, Blue: {} }))
+            const Color = data({ Red: {}, Green: {}, Blue: {} })
                 .map('identity', (Family) => ({ out: Family }), {});
 
             // Map on non-parameterized ADT returns same instances

@@ -289,12 +289,12 @@ Semantically you can think of folds as creating methods on each variant class th
 Define operations that dispatch on variant types without recursing into structure:
 
 ```ts
-const Color = data(() => ({ Red: {}, Green: {}, Blue: {} }))
-    .fold('toHex', { out: String }, () => ({
+const Color = data({ Red: {}, Green: {}, Blue: {} })
+    .fold('toHex', { out: String }, {
         Red() { return '#FF0000'; },
         Green() { return '#00FF00'; },
         Blue() { return '#0000FF'; }
-    }));
+    });
 
 console.log(Color.Red.toHex());   // '#FF0000'
 console.log(Color.Green.toHex()); // '#00FF00'
@@ -319,7 +319,7 @@ Handlers use **named destructuring** to access variant fields:
 const Point = data(() => ({
     Point2D: { x: Number, y: Number },
     Point3D: { x: Number, y: Number, z: Number }
-}).fold('quadrant', { out: String }, () => ({
+}).fold('quadrant', { out: String }, {
     Point2D({ x, y }) {
         if (x >= 0 && y >= 0) return 'Q1';
         if (x < 0 && y >= 0) return 'Q2';
@@ -350,11 +350,11 @@ console.log(p3d.quadrant()); // 'Octant(false, true, true)'
 Use the `_` wildcard to handle unknown or unspecified variants:
 
 ```ts
-const Color = data(() => ({ Red: {}, Green: {}, Blue: {} }))
-    .fold('toHex', { out: String }, () => ({
+const Color = data({ Red: {}, Green: {}, Blue: {} })
+    .fold('toHex', { out: String }, {
         Red() { return '#FF0000'; },
         _(instance) { return '#UNKNOWN'; }
-    }));
+    });
 
 console.log(Color.Red.toHex());   // '#FF0000'
 console.log(Color.Green.toHex()); // '#UNKNOWN' (wildcard)
@@ -379,19 +379,19 @@ Exhaustive handler coverage is enforced at runtime:
 
 ```ts
 // Valid - all variants handled
-const Color = data(() => ({ Red: {}, Green: {}, Blue: {} }))
-    .fold('toHex', { out: String }, () => ({
+const Color = data({ Red: {}, Green: {}, Blue: {} })
+    .fold('toHex', { out: String }, {
         Red() { return '#FF0000'; },
         Green() { return '#00FF00'; },
         Blue() { return '#0000FF'; }
-    }));
+    });
 
 // Runtime Error - Green and Blue handlers missing
-const Incomplete = data(() => ({ Red: {}, Green: {}, Blue: {} }))
-    .fold('toHex', { out: String }, () => ({
+const Incomplete = data({ Red: {}, Green: {}, Blue: {} })
+    .fold('toHex', { out: String }, {
         Red() { return '#FF0000'; }
         // Missing handlers - will throw at runtime when Green or Blue is encountered
-    }));
+    });
 
 // Color.Red.toHex() works fine
 // Color.Green.toHex() throws: Error: No handler for variant 'Green' in operation 'toHex'
@@ -401,11 +401,11 @@ const Incomplete = data(() => ({ Red: {}, Green: {}, Blue: {} }))
 
 ```ts
 // Valid - wildcard handles unspecified variants
-const Color = data(() => ({ Red: {}, Green: {}, Blue: {} }))
-    .fold('toHex', { out: String }, () => ({
+const Color = data({ Red: {}, Green: {}, Blue: {} })
+    .fold('toHex', { out: String }, {
         Red() { return '#FF0000'; },
         _(instance) { return '#UNKNOWN'; }
-    }));
+    });
 
 // Color.Green.toHex() returns '#UNKNOWN' (wildcard handler)
 ```
@@ -415,53 +415,53 @@ const Color = data(() => ({ Red: {}, Green: {}, Blue: {} }))
 **When extending an existing operation**: Only new variants need handlers (parent provides inherited handlers)
 
 ```ts
-const Color = data(() => ({ Red: {}, Green: {}, Blue: {} }))
-    .fold('toHex', { out: String }, () => ({
+const Color = data({ Red: {}, Green: {}, Blue: {} })
+    .fold('toHex', { out: String }, {
         Red() { return '#FF0000'; },
         Green() { return '#00FF00'; },
         Blue() { return '#0000FF'; }
-    }));
+    });
 
 // Valid - only new variants (Yellow, Orange) need handlers
-const ExtendedColor = Color.extend(() => ({ Yellow: {}, Orange: {} }))
-    .fold('toHex', { out: String }, () => ({
+const ExtendedColor = Color.extend({ Yellow: {}, Orange: {} })
+    .fold('toHex', { out: String }, {
         Yellow() { return '#FFFF00'; },
         Orange() { return '#FFA500'; }
-    }));
+    });
 ```
 
 **When adding a new operation to an extended ADT**: All variants (parent + new) need handlers OR wildcard
 
 ```ts
 // Runtime Error - Yellow and Orange handlers missing
-const ExtendedColor = Color.extend(() => ({ Yellow: {}, Orange: {} }))
-    .fold('toRGB', { out: String }, () => ({
+const ExtendedColor = Color.extend({ Yellow: {}, Orange: {} })
+    .fold('toRGB', { out: String }, {
         Red() { return 'rgb(255,0,0)'; },
         Green() { return 'rgb(0,255,0)'; },
         Blue() { return 'rgb(0,0,255)'; }
         // Missing Yellow and Orange - will throw at runtime when encountered
-    }));
+    });
 
 // ExtendedColor.Yellow.toRGB() throws: Error: No handler for variant 'Yellow' in operation 'toRGB'
 
 // All 5 variants handled
-const Complete = Color.extend(() => ({ Yellow: {}, Orange: {} }))
-    .fold('toRGB', { out: String }, () => ({
+const Complete = Color.extend({ Yellow: {}, Orange: {} })
+    .fold('toRGB', { out: String }, {
         Red() { return 'rgb(255,0,0)'; },
         Green() { return 'rgb(0,255,0)'; },
         Blue() { return 'rgb(0,0,255)'; },
         Yellow() { return 'rgb(255,255,0)'; },
         Orange() { return 'rgb(255,165,0)'; }
-    }));
+    });
 
 // Or use wildcard for unhandled variants
-const WithWildcard = Color.extend(() => ({ Yellow: {}, Orange: {} }))
-    .fold('toRGB', { out: String }, () => ({
+const WithWildcard = Color.extend({ Yellow: {}, Orange: {} })
+    .fold('toRGB', { out: String }, {
         Red() { return 'rgb(255,0,0)'; },
         Green() { return 'rgb(0,255,0)'; },
         Blue() { return 'rgb(0,0,255)'; },
         _(instance) { return 'rgb(128,128,128)'; } // Handles Yellow, Orange
-    }));
+    });
 ```
 
 **Key points:**
@@ -478,13 +478,13 @@ const WithWildcard = Color.extend(() => ({ Yellow: {}, Orange: {} }))
 Chain `.fold()` calls to define multiple operations on the same ADT:
 
 ```ts
-const Color = data(() => ({ Red: {}, Green: {}, Blue: {} }))
-    .fold('toHex', { out: String }, () => ({
+const Color = data({ Red: {}, Green: {}, Blue: {} })
+    .fold('toHex', { out: String }, {
         Red() { return '#FF0000'; },
         Green() { return '#00FF00'; },
         Blue() { return '#0000FF'; }
-    }))
-    .fold('toRGB', { out: String }, () => ({
+    })
+    .fold('toRGB', { out: String }, {
         Red() { return 'rgb(255, 0, 0)'; },
         Green() { return 'rgb(0, 255, 0)'; },
         Blue() { return 'rgb(0, 0, 255)'; }
@@ -505,10 +505,10 @@ const Peano = data(({ Family }) => ({
     Zero: {},
     Succ: { pred: Family }
 }))
-.fold('toValue', { out: Number }, () => ({
+.fold('toValue', { out: Number }, {
     Zero() { return 0; },
-    Succ({ pred }) { return 1 + pred; }  // pred is already folded to number
-}));
+    Succ({ pred }) { return 1 + pred; }  // pred is already a Number
+});
 
 const three = Peano.Succ({ pred: Peano.Succ({ pred: Peano.Succ({ pred: Peano.Zero }) }) });
 console.log(three.toValue()); // 3
@@ -518,10 +518,10 @@ const List = data(({ Family }) => ({
     Nil: {},
     Cons: { head: Number, tail: Family }
 }))
-.fold('sum', { out: Number }, () => ({
+.fold('sum', { out: Number }, {
     Nil() { return 0; },
     Cons({ head, tail }) { return head + tail; }  // tail is the sum of remaining elements
-}));
+});
 
 const list = List.Cons({ head: 1,
     tail: List.Cons({ head: 2,
@@ -535,26 +535,26 @@ const Tree = data(({ Family }) => ({
     Leaf: { value: Number },
     Node: { left: Family, right: Family, value: Number }
 }))
-.fold('sum', { out: Number }, () => ({
+.fold('sum', { out: Number }, {
     Leaf({ value }) { return value; },
     Node({ left, right, value }) { return left + right + value; }
-}));
+});
 ```
 
-**Note:** The callback form `() => ({ ... })` is **required** for all fold operations.
+**Note:** Both object literal form `{ ... }` and callback form `() => ({ ... })` are supported for fold operations. The object literal form is preferred for readability.
 
 ### Integration with ADT Extension
 
 Operations defined on a base ADT are inherited by extended ADTs:
 
 ```ts
-const Color = data(() => ({ Red: {}, Green: {}, Blue: {} }))
-    .fold('toHex', { out: String }, () => ({
+const Color = data({ Red: {}, Green: {}, Blue: {} })
+    .fold('toHex', { out: String }, {
         Red() { return '#FF0000'; },
         Green() { return '#00FF00'; },
         Blue() { return '#0000FF'; }
-    }));
-const ExtendedColor = Color.extend(() => ({ Yellow: {}, Orange: {} }));
+    });
+const ExtendedColor = Color.extend({ Yellow: {}, Orange: {} });
 
 // Inherited variants have the operation
 console.log(ExtendedColor.Red.toHex()); // '#FF0000'
@@ -566,13 +566,13 @@ ExtendedColor.Yellow.toHex(); // ✗ Error: No handler for variant 'Yellow'
 **Use wildcard for open extension:**
 
 ```ts
-const Color = data(() => ({ Red: {}, Green: {}, Blue: {} }))
-    .fold('toHex', { out: String }, () => ({
+const Color = data({ Red: {}, Green: {}, Blue: {} })
+    .fold('toHex', { out: String }, {
         Red() { return '#FF0000'; },
         _(instance) { return '#UNKNOWN'; }
-    }));
+    });
 
-const ExtendedColor = Color.extend(() => ({ Yellow: {}, Orange: {} }));
+const ExtendedColor = Color.extend({ Yellow: {}, Orange: {} });
 
 console.log(ExtendedColor.Red.toHex());    // '#FF0000'
 console.log(ExtendedColor.Yellow.toHex()); // '#UNKNOWN' (wildcard)
@@ -581,14 +581,14 @@ console.log(ExtendedColor.Yellow.toHex()); // '#UNKNOWN' (wildcard)
 **Add operations to extended ADTs:**
 
 ```ts
-const ExtendedColor = Color.extend(() => ({ Yellow: {}, Orange: {} }))
-    .fold('isWarm', { out: Boolean }, () => ({
+const ExtendedColor = Color.extend({ Yellow: {}, Orange: {} })
+    .fold('isWarm', { out: Boolean }, {
         Red() { return true; },
         Green() { return false; },
         Blue() { return false; },
         Yellow() { return true; },
         Orange() { return true; }
-    }));
+    });
 
 // Both operations available
 console.log(ExtendedColor.Red.toHex());  // '#FF0000' (inherited)
@@ -601,19 +601,19 @@ console.log(ExtendedColor.Yellow.isWarm()); // true
 When calling `.fold()` on an extended ADT with an operation that exists on the parent, extend mode is automatically activated with **polymorphic recursion**.
 
 ```ts
-const Color = data(() => ({ Red: {}, Green: {}, Blue: {} }))
-    .fold('toHex', { out: String }, () => ({
+const Color = data({ Red: {}, Green: {}, Blue: {} })
+    .fold('toHex', { out: String }, {
         Red() { return '#FF0000'; },
         Green() { return '#00FF00'; },
         Blue() { return '#0000FF'; }
-    }));
+    });
 
 // .fold() auto-detects extend mode because parent has 'toHex' operation
-const ExtendedColor = Color.extend(() => ({ Yellow: {}, Orange: {} }))
-    .fold('toHex', () => ({
+const ExtendedColor = Color.extend({ Yellow: {}, Orange: {} })
+    .fold('toHex', {
         Yellow() { return '#FFFF00'; },
         Orange() { return '#FFA500'; }
-    }));
+    });
 
 // Inherited variants use parent handlers
 console.log(ExtendedColor.Red.toHex()); // '#FF0000'
@@ -629,14 +629,14 @@ When extending an operation, you can override parent handlers while still access
 ```ts
 import { data, parent } from '@lapis-lang/lapis-js';
 
-const ExtendedColor = Color.extend(() => ({ Yellow: {} }))
-    .fold('toHex', () => ({
+const ExtendedColor = Color.extend({ Yellow: {} })
+    .fold('toHex', {
         Yellow() { return '#FFFF00'; },
         Red(fields) {
             // fields[parent]!() calls the parent's Red handler
             return fields[parent]!().replace('FF', 'EE');
         }
-    }));
+    });
 
 console.log(ExtendedColor.Red.toHex()); // '#EE0000' (overridden)
 ```
@@ -644,26 +644,26 @@ console.log(ExtendedColor.Red.toHex()); // '#EE0000' (overridden)
 **Replacing parent handlers (ignoring parent):**
 
 ```ts
-const ExtendedColor = Color.extend(() => ({ Yellow: {} }))
-    .fold('toHex', () => ({
+const ExtendedColor = Color.extend({ Yellow: {} })
+    .fold('toHex', {
         Yellow() { return '#FFFF00'; },
         Red() { return '#EE0000'; } // Replace handler completely (no parent access)
-    }));
+    });
 ```
 
 **Wildcard inheritance:**
 
 ```ts
-const Color = data(() => ({ Red: {}, Green: {} }))
-    .fold('toHex', { out: String }, () => ({
+const Color = data({ Red: {}, Green: {} })
+    .fold('toHex', { out: String }, {
         Red() { return '#FF0000'; },
         _(_instance) { return '#UNKNOWN'; } // Wildcard for undefined variants
-    }));
+    });
 
-const ExtendedColor = Color.extend(() => ({ Blue: {} }))
-    .fold('toHex', () => ({
+const ExtendedColor = Color.extend({ Blue: {} })
+    .fold('toHex', {
         // Blue not specified - inherits wildcard from parent
-    }));
+    });
 
 console.log(ExtendedColor.Blue.toHex()); // '#UNKNOWN' (wildcard from parent)
 ```
@@ -673,12 +673,12 @@ console.log(ExtendedColor.Blue.toHex()); // '#UNKNOWN' (wildcard from parent)
 When you override a wildcard handler, it receives the `parent` parameter first (like any other override):
 
 ```ts
-const ExtendedColor = Color.extend(() => ({ Blue: {} }))
-    .fold('toHex', () => ({
+const ExtendedColor = Color.extend({ Blue: {} })
+    .fold('toHex', {
         _({ instance, [parent]: _parent }) {
             return `#EXTENDED-${instance.constructor.name}`;
         }
-    }));
+    });
 
 console.log(ExtendedColor.Blue.toHex()); // '#EXTENDED-Blue'
 ```
@@ -708,18 +708,18 @@ const IntExpr = data(({ Family }) => ({
     IntLit: { value: Number },
     Add: { left: Family, right: Family }
 }))
-.fold('eval', { out: Number }, () => ({
+.fold('eval', { out: Number }, {
     IntLit({ value }) { return value; },
     Add({ left, right }) { return left + right; }
-}));
+});
 
 // Extend with multiplication - inherited Add works with new Mul
 const ExtendedExpr = IntExpr.extend(({ Family }) => ({
     Mul: { left: Family, right: Family }
 }))
-.fold('eval', () => ({
+.fold('eval', {
     Mul({ left, right }) { return left * right; }
-}));
+});
 
 // Expression: (2 + 3) * 4
 const product = ExtendedExpr.Mul({
@@ -741,21 +741,21 @@ const Peano = data(({ Family }) => ({
     Zero: {},
     Succ: { pred: Family }
 }))
-.fold('toValue', { out: Number }, () => ({
+.fold('toValue', { out: Number }, {
     Zero() { return 0; },
     Succ({ pred }) { return 1 + pred; }
-}));
+});
 
 const ExtendedPeano = Peano.extend(({ Family }) => ({
     NegSucc: { pred: Family }
 }))
-.fold('toValue', () => ({
+.fold('toValue', {
     NegSucc({ pred }) { return -1 + pred; },
     Succ(fields) {
         const parentResult = fields[parent]!() as number;
         return parentResult * 10;  // Override: scale by 10
     }
-}));
+});
 
 console.log(ExtendedPeano.Succ({ pred: ExtendedPeano.Zero }).toValue()); // 10
 console.log(Peano.Succ({ pred: Peano.Zero }).toValue()); // 1 (original)
@@ -885,10 +885,10 @@ const List = data(({ Family }) => ({
     Nil: (n) => (n <= 0 ? {} : null),
     Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
 })
-.fold('product', { out: Number }, () => ({
+.fold('product', { out: Number }, {
     Nil() { return 1; },
     Cons({ head, tail }) { return head * tail; }
-}))
+})
 .merge('Factorial', ['Range', 'product']);
 
 console.log(List.Factorial(5)); // 120 (5 * 4 * 3 * 2 * 1) - no intermediate list created
