@@ -60,4 +60,3 @@ describe('Class-based ADT', () => {
         assert.ok(p.color instanceof Color);
     });
 });
-    
