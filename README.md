@@ -775,6 +775,10 @@ const Peano = data(({ Family }) => ({
 .fold('isEven', { out: Boolean }, {
     Zero() { return true; },
     Succ({ pred }) { return !pred; }  // pred is already a boolean
+})
+.unfold('FromValue', (Peano) => ({ in: Number, out: Peano }), {
+    Zero: (n) => (n <= 0 ? {} : null),
+    Succ: (n) => (n > 0 ? { pred: n - 1 } : null)
 });
 
 // Stack-safe for arbitrarily deep structures
