@@ -14,7 +14,7 @@ describe('Variance Investigation', () => {
 
             const AnimalList = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Animal , tail: Family }
+                Cons: { head: Animal, tail: Family }
             }))
                 .fold('first', { out: Animal }, {
                     Nil() { return new Animal(); },
@@ -32,7 +32,7 @@ describe('Variance Investigation', () => {
             const result = list.first();
 
             assert.ok(result instanceof Animal);
-            console.log('✓ Returning Dog where Animal expected works (covariant)');
+            console.log('Returning Dog where Animal expected works (covariant)');
         });
 
         test('match handlers can return subtypes of spec.out', () => {
@@ -55,7 +55,7 @@ describe('Variance Investigation', () => {
             const result = Pet.Dog.create();
             assert.ok(result instanceof Animal);
             assert.ok(result instanceof Dog);
-            console.log('✓ Returning Dog where Animal expected works (covariant)');
+            console.log('Returning Dog where Animal expected works (covariant)');
         });
 
         test('handlers returning more specific types work correctly', () => {
@@ -97,7 +97,7 @@ describe('Variance Investigation', () => {
             assert.ok(circle instanceof Circle);
             assert.ok(rect instanceof Shape);
             assert.ok(rect instanceof Rectangle);
-            console.log('✓ Multiple subtypes return correctly');
+            console.log('Multiple subtypes return correctly');
         });
     });
 
@@ -117,7 +117,7 @@ describe('Variance Investigation', () => {
 
             const Option = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Dog , tail: Family }
+                Cons: { head: Dog, tail: Family }
             }))
                 .fold('describe', { out: String }, {
                     Nil() { return 'empty'; },
@@ -134,7 +134,7 @@ describe('Variance Investigation', () => {
             const result = list.describe();
 
             assert.strictEqual(result, 'Dog: Buddy, breed: Labrador');
-            console.log('✓ Handler parameters maintain exact type (safe)');
+            console.log('Handler parameters maintain exact type (safe)');
         });
     });
 
@@ -159,7 +159,7 @@ describe('Variance Investigation', () => {
             const num = result;
             assert.strictEqual(num, 1);
 
-            console.log('✓ Number constructor maps to number primitive');
+            console.log('Number constructor maps to number primitive');
         });
 
         test('handlers returning primitives work with primitive constructors', () => {
@@ -180,7 +180,7 @@ describe('Variance Investigation', () => {
 
             assert.strictEqual(typeof result, 'string');
             assert.strictEqual(result, 'hello world');
-            console.log('✓ String constructor maps to string primitive');
+            console.log('String constructor maps to string primitive');
         });
 
         test('Boolean constructor maps to boolean primitive', () => {
@@ -200,7 +200,7 @@ describe('Variance Investigation', () => {
             assert.strictEqual(typeof f, 'boolean');
             assert.strictEqual(t, true);
             assert.strictEqual(f, false);
-            console.log('✓ Boolean constructor maps to boolean primitive');
+            console.log('Boolean constructor maps to boolean primitive');
         });
     });
 
@@ -212,9 +212,9 @@ describe('Variance Investigation', () => {
 
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Dog , tail: Family }
+                Cons: { head: Dog, tail: Family }
             }))
-                .fold('getFirst', { out: Dog },     {
+                .fold('getFirst', { out: Dog }, {
                     Nil() {
                         // What if we return Animal instead of Dog?
                         // This would be UNSOUND because callers expect Dog
@@ -229,7 +229,7 @@ describe('Variance Investigation', () => {
 
             // Runtime check - this should be Dog
             assert.strictEqual(result.type, 'dog');
-            console.log('✓ Return type narrowing enforced');
+            console.log('Return type narrowing enforced');
         });
 
         test('spec.out constraint vs handler return type - type errors caught', () => {
@@ -239,7 +239,7 @@ describe('Variance Investigation', () => {
             // But we can verify the type system would catch it
 
             assert.ok(true); // Type check passes if code compiles
-            console.log('✓ TypeScript type system enforces handler return types');
+            console.log('TypeScript type system enforces handler return types');
         });
 
         test('narrowing spec.out type unsafely', () => {
@@ -268,7 +268,7 @@ describe('Variance Investigation', () => {
             assert.ok(dogResult instanceof Dog);
             assert.ok(catResult instanceof Cat);
 
-            console.log('✓ Runtime types preserve subtype information');
+            console.log('Runtime types preserve subtype information');
         });
     });
 
@@ -301,7 +301,7 @@ describe('Variance Investigation', () => {
             assert.strictEqual(bi.getType(), 'bigint');
             assert.strictEqual(sym.getType(), 'symbol');
 
-            console.log('✓ InferType handles all primitive constructors correctly');
+            console.log('InferType handles all primitive constructors correctly');
         });
 
         test('InferType with custom classes', () => {
@@ -322,7 +322,7 @@ describe('Variance Investigation', () => {
             const result = v.getValue();
 
             assert.strictEqual(result, 42);
-            console.log('✓ InferType handles custom classes correctly');
+            console.log('InferType handles custom classes correctly');
         });
 
         test('InferType with Date, RegExp, Array', () => {
@@ -345,7 +345,7 @@ describe('Variance Investigation', () => {
             assert.strictEqual(r.getTypeName(), 'RegExp');
             assert.strictEqual(a.getTypeName(), 'Array');
 
-            console.log('✓ InferType handles Date, RegExp, Array correctly');
+            console.log('InferType handles Date, RegExp, Array correctly');
         });
     });
 
@@ -370,7 +370,7 @@ describe('Variance Investigation', () => {
             const unknownResult = list.sum();
             assert.strictEqual(typeof unknownResult, 'number');
 
-            console.log('✓ Widening to any/unknown works (expected)');
+            console.log('Widening to any/unknown works (expected)');
         });
 
         test('spec.out with union types', () => {
@@ -393,7 +393,7 @@ describe('Variance Investigation', () => {
             assert.ok('success' in success);
             assert.ok('success' in failure);
 
-            console.log('✓ Union types work with spec.out');
+            console.log('Union types work with spec.out');
         });
 
         test('contravariance would be unsound for parameters', () => {
@@ -426,7 +426,7 @@ describe('Variance Investigation', () => {
             // const animal = new Animal('Generic');
             // processDog(animal); // TypeScript error: Property 'breed' is missing
 
-            console.log('✓ TypeScript prevents unsound parameter contravariance');
+            console.log('TypeScript prevents unsound parameter contravariance');
         });
     });
 
@@ -448,24 +448,24 @@ describe('Variance Investigation', () => {
             assert.strictEqual(justResult, 42);
             assert.strictEqual(nothingResult, null);
 
-            console.log('✓ null/undefined handling works');
+            console.log('null/undefined handling works');
         });
 
-        test('spec.out with function types', () => {
-            const Lazy = data(() => ({
-                Thunk: { fn: Function }
-            }))
-                .fold('toFunction', { out: Function }, {
-                    Thunk({ fn }) { return fn; }
-                });
+        test('spec.out with function types prevented', () => {
+            // Function guards in specs are prevented to avoid hackish currying patterns
+            assert.throws(() => {
+                const Lazy = data(() => ({
+                    Thunk: { fn: Function }
+                }))
+                    .fold('toFunction', { out: Function }, {
+                        Thunk({ fn }) { return fn; }
+                    });
+            }, {
+                name: 'TypeError',
+                message: /cannot use Function as 'out' guard/
+            });
 
-            const thunk = Lazy.Thunk({ fn: () => 42 });
-            const fn = thunk.toFunction();
-            const result = fn();
-
-            assert.strictEqual(result, 42);
-
-            console.log('✓ Function types work with spec.out');
+            console.log('Function guards in specs are correctly prevented');
         });
 
         test('multiple operations with different return types', () => {
@@ -492,7 +492,7 @@ describe('Variance Investigation', () => {
             assert.strictEqual(typeof mag, 'number');
             assert.ok(Array.isArray(arr));
 
-            console.log('✓ Multiple operations with different return types work correctly');
+            console.log('Multiple operations with different return types work correctly');
         });
     });
 });
