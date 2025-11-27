@@ -21,6 +21,11 @@ const shadowedVariants = new WeakMap();
 const FamilyRefSymbol = Symbol('FamilyRef');
 const TypeParamSymbol = Symbol('TypeParam');
 
+// Symbol to mark parameterized ADT instances and track their parent
+const IsParameterizedInstance = Symbol('IsParameterizedInstance');
+const ParentADTSymbol = Symbol('ParentADT');
+const TypeArgsSymbol = Symbol('TypeArgs');
+
 // Runtime validation helpers
 function isPascalCase(str) {
     return str.length > 0 && str[0] === str[0].toUpperCase() && str[0] !== str[0].toLowerCase();
@@ -264,10 +269,10 @@ function validateTypeSpec(value, spec, opName, context) {
         // Custom class/constructor - use instanceof
         // For "to return" context, say "to return instance of X"
         // For "input of type" context, say "input of type X"
-        const typePhrase = context === 'to return' 
+        const typePhrase = context === 'to return'
             ? `${context} instance of ${spec.name || 'specified type'}`
             : `${context} ${spec.name || 'specified type'}`;
-        
+
         if (!(value instanceof spec)) {
             throw new TypeError(
                 `Operation '${opName}' expected ${typePhrase}, but got ${value?.constructor?.name || typeof value}`
@@ -285,6 +290,44 @@ function validateTypeSpec(value, spec, opName, context) {
  */
 function validateReturnType(value, spec, opName) {
     validateTypeSpec(value, spec, opName, 'to return');
+}
+
+/**
+ * Validates that a spec doesn't use the Function constructor as a type guard.
+ * Using `Function` as a guard enables hackish currying patterns that should use unfold instead.
+ * 
+ * Note: This checks for the Function constructor specifically (e.g., `{ in: Function }`),
+ * NOT custom predicates that happen to be functions (e.g., `{ in: MyClass }` where MyClass
+ * is used for instanceof checks). Custom class constructors are allowed.
+ * 
+ * @param {*} spec - The spec to validate (can be a guard or object literal)
+ * @param {string} specType - Either 'in' or 'out' for error messages
+ * @param {string} opName - Operation name for error messages
+ */
+function validateSpecGuard(spec, specType, opName) {
+    // Specifically check for Function constructor, not all functions
+    if (spec === Function) {
+        throw new TypeError(
+            `Operation '${opName}' cannot use Function as '${specType}' guard. ` +
+            `Use unfold with object literal guards for binary/n-ary operations instead.`
+        );
+    }
+
+    // Recursively check object literal guards
+    if (isObjectLiteral(spec)) {
+        for (const [fieldName, fieldSpec] of Object.entries(spec)) {
+            if (fieldSpec === Function) {
+                throw new TypeError(
+                    `Operation '${opName}' cannot use Function as guard for field '${fieldName}' in '${specType}' spec. ` +
+                    `Use unfold with object literal guards for binary/n-ary operations instead.`
+                );
+            }
+            // Recursively validate nested object literals
+            if (isObjectLiteral(fieldSpec)) {
+                validateSpecGuard(fieldSpec, specType, opName);
+            }
+        }
+    }
 }
 
 /**
@@ -392,12 +435,12 @@ function installOperationOnVariant(variant, opName, transformer, skipIfExists = 
                             // Non-recursive field - apply map transform if present
                             // This is needed for merged operations like map+fold (paramorphism)
                             const fieldSpec = fieldSpecs && fieldSpecs[i] ? fieldSpecs[i].spec : null;
-                            
+
                             // Check if this field is a type parameter and transformer has map transforms
                             if (transformer.getParamTransform && fieldSpec && isTypeParam(fieldSpec)) {
                                 const paramName = (fieldSpec)[TypeParamSymbol];
                                 const paramTransform = transformer.getParamTransform(paramName);
-                                
+
                                 if (paramTransform && typeof paramTransform === 'function') {
                                     // Apply the map transformation
                                     fields[fieldName] = paramTransform(fieldValue);
@@ -994,6 +1037,33 @@ function validateField(value, spec, fieldName, adtClass) {
     }
 
     if (isConstructable(spec)) {
+        // Special case: if spec is a parameterized ADT instance (e.g., Maybe(Number)),
+        // we need to check if value is an instance of that specific instantiation
+        if (spec[IsParameterizedInstance]) {
+            // For parameterized ADTs, check if the value is an instance of this or any
+            // parameterized instance of the same parent ADT
+            const parentADT = spec[ParentADTSymbol];
+
+            // Check if value's constructor exists in spec's variants
+            // This handles cases like: MaybeNum.Just({ value: 1 }) validates against MaybeNum
+            const variantName = value.constructor?.name;
+            if (variantName && spec[variantName]) {
+                // Valid if the value was constructed by a variant of this parameterized ADT
+                return;
+            }
+
+            // Also check if value's constructor exists in the parent ADT
+            // This allows instances from different parameterizations to work together
+            if (parentADT && variantName && parentADT[variantName]) {
+                // Valid if the value was constructed by a variant of the parent ADT
+                return;
+            }
+
+            throw new TypeError(
+                `Field '${fieldName}' must be an instance of parameterized type ${spec.name || 'specified type'}`
+            );
+        }
+
         // ADT class - check instanceof
         if (!(value instanceof spec)) {
             throw new TypeError(`Field '${fieldName}' must be an instance of ${spec.name || 'ADT'}`);
@@ -1034,10 +1104,20 @@ export function data(declOrFn) {
 
     // typeArgs parameter stores instantiated types (e.g., List(Number) passes Number)
     // These are validated at runtime when constructing variants
-    function createADT(typeArgs) {
+    // parentADT is the uninstantiated generic ADT (e.g., List when creating List(Number))
+    function createADT(typeArgs, parentADT = null) {
         // Base ADT constructor function
         function ADT() {
             // Allow subclasses to instantiate
+        }
+
+        // Mark as parameterized instance and track parent if instantiated with type args
+        if (typeArgs && parentADT) {
+            ADT[IsParameterizedInstance] = true;
+            ADT[ParentADTSymbol] = parentADT;
+            ADT[TypeArgsSymbol] = typeArgs;
+            // Set prototype chain: List(Number).__proto__ = List
+            Object.setPrototypeOf(ADT, parentADT);
         }
 
         /**
@@ -1151,9 +1231,20 @@ export function data(declOrFn) {
             // Store spec for runtime validation
             const outSpec = spec?.out;
 
+            // Validate that spec doesn't use Function guards
+            if (spec?.in) {
+                validateSpecGuard(spec.in, 'in', name);
+            }
+            if (spec?.out) {
+                validateSpecGuard(spec.out, 'out', name);
+            }
+
             // 'this' is the ADT function
             const actualADT = this;
             const parentADT = Object.getPrototypeOf(actualADT);
+
+            // If no spec provided, check that handlers don't return functions (to prevent currying pattern)
+            const shouldCheckForFunctions = !spec || (!spec.in && !spec.out);
 
             // Check if parent has this operation (indicates extend behavior)
             const parentTransformer = parentADT && parentADT._getTransformer && parentADT._getTransformer(name);
@@ -1206,7 +1297,19 @@ export function data(declOrFn) {
 
                         // Check child's specific handler (method on variant class in child ADT)
                         if (handlersInput[variantName]) {
-                            return handlersInput[variantName];
+                            const handler = handlersInput[variantName];
+                            // If no spec, wrap to prevent Function returns (currying pattern)
+                            return shouldCheckForFunctions ? (arg) => {
+                                const result = handler(arg);
+                                if (typeof result === 'function') {
+                                    throw new TypeError(
+                                        `Operation '${name}' handler for '${variantName}' returned a function. ` +
+                                        `Functions cannot be returned without an explicit spec. ` +
+                                        `Use unfold with object literal guards for binary/n-ary operations instead.`
+                                    );
+                                }
+                                return result;
+                            } : handler;
                         }
 
                         // Check child's wildcard (method on child ADT class)
@@ -1310,6 +1413,22 @@ export function data(declOrFn) {
 
             const actualADT = this;
 
+            // Resolve spec first if it's a callback
+            let resolvedSpec;
+            if (typeof spec === 'function') {
+                resolvedSpec = spec(actualADT);
+            } else {
+                resolvedSpec = spec;
+            }
+
+            // Validate that spec doesn't use Function guards
+            if (resolvedSpec?.in) {
+                validateSpecGuard(resolvedSpec.in, 'in', name);
+            }
+            if (resolvedSpec?.out) {
+                validateSpecGuard(resolvedSpec.out, 'out', name);
+            }
+
             // Check for name collision with existing variants
             if (name in actualADT) {
                 throw new Error(
@@ -1317,14 +1436,16 @@ export function data(declOrFn) {
                 );
             }
 
-            // Get all variants from this ADT
-            const allVariants = collectVariantsFromChain(actualADT);
+            // Get all variants from spec.out if provided, otherwise from this ADT
+            // This allows unfold to construct instances of a different ADT type
+            const targetADT = resolvedSpec?.out || actualADT;
+            const allVariants = collectVariantsFromChain(targetADT);
 
             // Create the unfold function that evaluates cases in order
             const unfoldFn = (seed) => {
                 // Runtime validation of spec.in if provided
-                if (spec?.in) {
-                    validateInputType(seed, spec.in, name);
+                if (resolvedSpec?.in) {
+                    validateInputType(seed, resolvedSpec.in, name);
                 }
 
                 // Evaluate cases in declaration order (object property order)
@@ -1380,13 +1501,13 @@ export function data(declOrFn) {
             // Store the cases for deforestation optimization in merge
             const transformer = createTransformer({
                 name,
-                outSpec: spec?.out,
+                outSpec: resolvedSpec?.out,
                 generator: (Family) => unfoldFn
             });
-            
+
             // Store unfold cases and spec for access during merge deforestation
             transformer.unfoldCases = cases;
-            transformer.unfoldSpec = spec;
+            transformer.unfoldSpec = resolvedSpec;
 
             actualADT._registerTransformer(name, transformer, true); // Skip collision check since we already checked
 
@@ -1432,6 +1553,14 @@ export function data(declOrFn) {
 
             // Extract outSpec from resolved spec (optional)
             const outSpec = resolvedSpec?.out;
+
+            // Validate that spec doesn't use Function guards
+            if (resolvedSpec?.in) {
+                validateSpecGuard(resolvedSpec.in, 'in', name);
+            }
+            if (resolvedSpec?.out) {
+                validateSpecGuard(resolvedSpec.out, 'out', name);
+            }
 
             // Collect all variants to detect name collisions
             const allVariants = collectVariantsFromChain(actualADT);
@@ -1586,7 +1715,7 @@ export function data(declOrFn) {
                 // Find the original unfold operation to get its spec
                 const unfoldOp = transformers.find(t => t.generator);
                 const unfoldOpName = operationNames[transformers.indexOf(unfoldOp)];
-                
+
                 // Extract spec from the original unfold operation's function
                 // Note: Unfold operations don't store spec in transformer, so we infer from last transformer
                 const spec = {
@@ -1606,12 +1735,12 @@ export function data(declOrFn) {
                     // Check if we have a fold in the composition for deforestation
                     const hasFold = mergedTransformer.getCtorTransform !== undefined;
                     const hasMap = mergedTransformer.getParamTransform !== undefined;
-                    
+
                     if (hasFold) {
                         // DEFORESTATION PATH: unfold+fold or unfold+map+fold composition
                         // Instead of creating ADT instances, directly compute fold results
                         // If there's a map, apply transformations to type parameters during folding
-                        
+
                         // Get the unfold cases from the original unfold transformer
                         const unfoldCases = unfoldOp.unfoldCases;
                         if (!unfoldCases) {
@@ -1619,7 +1748,7 @@ export function data(declOrFn) {
                                 `Cannot perform deforestation: unfold operation '${unfoldOpName}' missing case information`
                             );
                         }
-                        
+
                         const deforestedUnfold = (currentSeed) => {
                             // Evaluate unfold cases in order
                             for (const [variantName, caseFn] of Object.entries(unfoldCases)) {
@@ -1702,7 +1831,7 @@ export function data(declOrFn) {
                         // Use standard unfold path which creates ADT instances
                         const unfoldFn = mergedTransformer.generator(actualADT);
                         let result = unfoldFn(seed);
-                        
+
                         // If there's a map in the composition, apply it
                         if (hasMap) {
                             const mapIndex = transformers.findIndex(t => t.getParamTransform && !t.getCtorTransform);
@@ -1713,7 +1842,7 @@ export function data(declOrFn) {
                                 }
                             }
                         }
-                        
+
                         return result;
                     }
                 };
@@ -1936,7 +2065,8 @@ export function data(declOrFn) {
                 });
             }
 
-            return createADT(typeArgsObj);
+            // Pass callable (the parent ADT) to createADT
+            return createADT(typeArgsObj, callable);
         };
 
         // Copy all ADT properties and methods to the callable function

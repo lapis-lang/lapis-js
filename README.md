@@ -123,6 +123,7 @@ Guards can be:
 - Built-in primitive types: `Number`, `String`, `Boolean`, `BigInt`, `Symbol`
 - Built-in object types: `Object`, `Array`, `Date`, `RegExp`
 - Other ADTs
+- Object literals (for validating structured inputs with multiple fields)
 - Predicates (custom validation functions)
 
 When a primitive type guard is used. `Number`, `String`, etc., these are validated at runtime using `typeof` checks.
@@ -147,6 +148,16 @@ console.log(p.y); // 4
 
 EvenPoint.Point2({ x: 3, y: 4 });  // Throws TypeError at runtime
 // TypeError: Field 'x' failed predicate validation
+```
+
+When an object literal guard is used, it validates structured inputs with multiple named fields. This is particularly useful in operation specs (see Unfold Operations) for binary or n-ary operations:
+
+```ts
+// Object literal guard in a spec validates structured input
+{ in: { x: Number, y: Number }, out: SomeType }
+
+// Each field is validated against its guard
+{ in: { list1: List(Number), list2: List(String) }, out: ResultType }
 ```
 
 ## Parameterized and Recursive ADTs
@@ -909,6 +920,8 @@ const scaled = list.scale(10); // All values multiplied by 10
 
 `.unfold()` generates ADT instances through corecursion (anamorphisms), the dual of fold. While fold consumes structures bottom-up, unfold produces structures top-down from a seed value.
 
+### Basic Unfold Operations
+
 ```js
 const List = data(({ Family }) => ({
     Nil: {},
@@ -939,14 +952,92 @@ const nums = NumList.Range(3);  // Works
 // GenericList(String).Range(3);  // Error: Range not defined
 ```
 
+### Binary Operations with Unfold
+
+Unfold operations support **object literal guards** in the `in` spec, enabling clean binary and n-ary operations:
+
+```ts
+const List = data(({ Family, T }) => ({
+    Nil: {},
+    Cons: { head: T, tail: Family(T) }
+}));
+
+const Pair = data(({ T, U }) => ({
+    MakePair: { first: T, second: U }
+}));
+
+// Instantiate types
+const NumList = List(Number);
+const StrList = List(String);
+const PairList = List(Object);
+
+// Define zip as an unfold with object literal guard
+NumList.unfold('Zip', {
+    in: { xs: NumList, ys: StrList },
+    out: PairList
+}, {
+    Nil: ({ xs, ys }) => {
+        // If either list is empty, produce Nil
+        return (!xs || xs.constructor.name === 'Nil' ||
+                !ys || ys.constructor.name === 'Nil') ? {} : null;
+    },
+    Cons: ({ xs, ys }) => {
+        // If both lists have elements, produce Cons
+        if (xs && xs.constructor.name === 'Cons' &&
+            ys && ys.constructor.name === 'Cons') {
+            return {
+                head: Pair(Number, String).MakePair({
+                    first: xs.head,
+                    second: ys.head
+                }),
+                tail: { xs: xs.tail, ys: ys.tail }  // Seeds for recursive unfold
+            };
+        }
+        return null;
+    }
+});
+
+// Usage
+const nums = NumList.Cons(1, NumList.Cons(2, NumList.Cons(3, NumList.Nil)));
+const strs = StrList.Cons("a", StrList.Cons("b", StrList.Cons("c", StrList.Nil)));
+const zipped = NumList.Zip({ xs: nums, ys: strs });
+
+// zipped is PairList: Cons((1,"a"), Cons((2,"b"), Cons((3,"c"), Nil)))
+```
+
+### Object Literal Guards in Specs
+
+The `in` property of a spec can use **object literal guards** to validate structured input:
+
+```ts
+// Single argument - simple guard
+{ in: Number, out: SomeType }
+
+// Multiple arguments - object literal guard
+{ in: { x: Number, y: String }, out: SomeType }
+
+// Nested structure validation
+{ in: { list1: List(Number), list2: List(String) }, out: List(Pair(Number, String)) }
+```
+
+Object literal guards validate that:
+
+- Input is an object with exactly the specified fields
+- Each field value matches its guard (primitive, ADT, predicate, etc.)
+- Runtime validation throws `TypeError` if validation fails
+
 **Key points:**
 
 - Syntax: `.unfold(name, spec, handlers)` where handlers return `{ field: value, ... }` or `null`
 - Spec: `(ADT) => ({ in: Guard, out: ADT })` specifies input and output types
+- Object literal guards `{ xs: Type1, ys: Type2 }` validate multi-argument inputs
 - Handlers return field object or `null` to terminate generation
+- Each handler returns field values as seeds for recursive construction
+- Return `null` to skip a variant (handler doesn't match current seed)
+- First non-null handler determines which variant to construct
 - Unfold creates static methods (PascalCase required)
 - Dual to fold: fold consumes (catamorphism), unfold produces (anamorphism)
-- State can be passed through recursive calls via tuple `[nextInput, nextState]`
+- Unfolds are stack-safe through iterative implementation
 - When called on parameterized ADT instantiation (e.g., `List(Number)`), operation is installed only on that specific instantiation
 
 ## Merge Operations (Deforestation)
@@ -995,11 +1086,11 @@ The merge operation validates composition to ensure correctness:
 
 ```ts
 // Valid compositions
-.merge('name', ['unfold1', 'fold1'])           // ✓ hylomorphism
-.merge('name', ['map1', 'fold1'])              // ✓ paramorphism
-.merge('name', ['unfold1', 'map1'])            // ✓ apomorphism
-.merge('name', ['map1', 'map2', 'fold1'])      // ✓ multiple maps
-.merge('name', ['unfold1', 'map1', 'fold1'])   // ✓ full pipeline
+.merge('name', ['unfold1', 'fold1'])           // hylomorphism
+.merge('name', ['map1', 'fold1'])              // paramorphism
+.merge('name', ['unfold1', 'map1'])            // apomorphism
+.merge('name', ['map1', 'map2', 'fold1'])      // multiple maps
+.merge('name', ['unfold1', 'map1', 'fold1'])   // full pipeline
 
 // Invalid compositions
 .merge('name', ['fold1'])                      // ✗ Error: need at least 2 operations
