@@ -183,8 +183,8 @@ describe('Binary Operations with Unfold', () => {
             const StrList = List(String);
 
             const nums = NumList.Nil;
-            const strs = StrList.Nil; const zipped = NumList.Zip({ xs: nums, ys: strs });
-
+            const strs = StrList.Nil;
+            const zipped = NumList.Zip({ xs: nums, ys: strs });
             assert.strictEqual(zipped.constructor.name, 'Nil');
 
             console.log('Zip handles both empty lists correctly');
