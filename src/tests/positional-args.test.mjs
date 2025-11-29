@@ -268,8 +268,9 @@ test('Positional arguments - with extend', () => {
     const p2 = Point3D.Point2D(10, 20);
     assert.equal(p2.x, 10);
     assert.equal(p2.y, 20);
-    assert.ok(p2 instanceof Point.Point2D);
+    assert.ok(p2 instanceof Point3D.Point2D);
     assert.ok(p2 instanceof Point);
+    assert.ok(p2 instanceof Point3D);
 
     // Positional works on extended variant
     const p3 = Point3D.Point3D(1, 2, 3);

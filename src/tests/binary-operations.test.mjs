@@ -3,48 +3,35 @@ import assert from 'node:assert/strict';
 import { data } from '../index.mjs';
 
 // Define ADTs once and share across all tests
-const List = data(({ Family, T }) => ({
-    Nil: {},
-    Cons: { head: T, tail: Family(T) }
-}));
-
 const Pair = data(({ T, U }) => ({
     MakePair: { first: T, second: U }
 }));
 
-// Define Zip operation on the generic List - it will be inherited by all instantiations
-// This demonstrates that operations can be defined on generic ADTs and work with any type parameters
-List.unfold('Zip', (List) => ({
-    in: { xs: List, ys: List },
-    out: List
-}), {
-    Nil: ({ xs, ys }) => {
-        return (!xs || xs.constructor.name === 'Nil' ||
-            !ys || ys.constructor.name === 'Nil') ? {} : null;
-    },
-    Cons: ({ xs, ys }) => {
-        if (xs && xs.constructor.name === 'Cons' &&
-            ys && ys.constructor.name === 'Cons') {
-            // Dynamically create a Pair type based on the actual types being zipped
-            const PairType = Pair(typeof xs.head, typeof ys.head);
-            return {
-                head: PairType.MakePair({
-                    first: xs.head,
-                    second: ys.head
-                }),
-                tail: { xs: xs.tail, ys: ys.tail }
-            };
-        }
-        return null;
-    }
-});
+const List = data(({ Family, T }) => ({
+    Nil: {},
+    Cons: { head: T, tail: Family(T) }
+}))
+    .fold('zip', {}, ({ Nil, Cons }) => ({
+        Nil() { return Nil; },
+        Cons({ head, tail }, ys) {
+            if (!ys || ys.constructor.name === 'Nil')
+                return Nil;
 
-describe('Binary Operations with Unfold', () => {
+            const PairType = Pair(typeof head, typeof ys.head);
+
+            return Cons({
+                head: PairType.MakePair({ first: head, second: ys.head }),
+                tail: tail(ys.tail)  // tail is a partially applied function
+            });
+        }
+    }));
+
+const NumList = List(Number),
+    StrList = List(String);
+
+describe('Binary Operations with Fold', () => {
     describe('Zip Operation', () => {
         test('should zip two lists of equal length', () => {
-            // Instantiate types - Zip operation is already defined on generic List
-            const NumList = List(Number);
-            const StrList = List(String);
 
             // Create test lists
             const nums = NumList.Cons({
@@ -62,8 +49,7 @@ describe('Binary Operations with Unfold', () => {
                 })
             });
 
-            // Zip the lists
-            const zipped = NumList.Zip({ xs: nums, ys: strs });
+            const zipped = nums.zip(strs);
 
             // Verify structure
             assert.strictEqual(zipped.constructor.name, 'Cons');
@@ -87,10 +73,6 @@ describe('Binary Operations with Unfold', () => {
         });
 
         test('should handle lists of different lengths (shorter first)', () => {
-            // Instantiate types - Zip operation is already defined on generic List
-            const NumList = List(Number);
-            const StrList = List(String);
-
             // Shorter first list
             const nums = NumList.Cons({
                 head: 1,
@@ -104,7 +86,7 @@ describe('Binary Operations with Unfold', () => {
                 })
             });
 
-            const zipped = NumList.Zip({ xs: nums, ys: strs });
+            const zipped = nums.zip(strs);
 
             // Should only zip 2 elements
             assert.strictEqual(zipped.head.first, 1);
@@ -117,10 +99,6 @@ describe('Binary Operations with Unfold', () => {
         });
 
         test('should handle lists of different lengths (shorter second)', () => {
-            // Instantiate types - Zip operation is already defined on generic List
-            const NumList = List(Number);
-            const StrList = List(String);
-
             // Shorter second list
             const nums = NumList.Cons({
                 head: 1,
@@ -131,7 +109,7 @@ describe('Binary Operations with Unfold', () => {
             });
             const strs = StrList.Cons({ head: "a", tail: StrList.Nil });
 
-            const zipped = NumList.Zip({ xs: nums, ys: strs });
+            const zipped = nums.zip(strs);
 
             // Should only zip 1 element
             assert.strictEqual(zipped.head.first, 1);
@@ -142,17 +120,13 @@ describe('Binary Operations with Unfold', () => {
         });
 
         test('should handle empty first list', () => {
-            // Instantiate types - Zip operation is already defined on generic List
-            const NumList = List(Number);
-            const StrList = List(String);
-
             const nums = NumList.Nil;
             const strs = StrList.Cons({
                 head: "a",
                 tail: StrList.Cons({ head: "b", tail: StrList.Nil })
             });
 
-            const zipped = NumList.Zip({ xs: nums, ys: strs });
+            const zipped = nums.zip(strs);
 
             assert.strictEqual(zipped.constructor.name, 'Nil');
 
@@ -160,17 +134,13 @@ describe('Binary Operations with Unfold', () => {
         });
 
         test('should handle empty second list', () => {
-            // Instantiate types - Zip operation is already defined on generic List
-            const NumList = List(Number);
-            const StrList = List(String);
-
             const nums = NumList.Cons({
                 head: 1,
                 tail: NumList.Cons({ head: 2, tail: NumList.Nil })
             });
             const strs = StrList.Nil;
 
-            const zipped = NumList.Zip({ xs: nums, ys: strs });
+            const zipped = nums.zip(strs);
 
             assert.strictEqual(zipped.constructor.name, 'Nil');
 
@@ -178,13 +148,9 @@ describe('Binary Operations with Unfold', () => {
         });
 
         test('should handle both empty lists', () => {
-            // Instantiate types - Zip operation is already defined on generic List
-            const NumList = List(Number);
-            const StrList = List(String);
-
             const nums = NumList.Nil;
             const strs = StrList.Nil;
-            const zipped = NumList.Zip({ xs: nums, ys: strs });
+            const zipped = nums.zip(strs);
             assert.strictEqual(zipped.constructor.name, 'Nil');
 
             console.log('Zip handles both empty lists correctly');
@@ -193,14 +159,6 @@ describe('Binary Operations with Unfold', () => {
 
     describe('Object Literal Guard Validation', () => {
         test('should validate object literal guard structure', () => {
-            const List = data(({ Family, T }) => ({
-                Nil: {},
-                Cons: { head: T, tail: Family(T) }
-            }));
-
-            const NumList = List(Number);
-            const StrList = List(String);
-
             NumList.unfold('BinaryOp', (ResultList) => ({
                 in: { a: NumList, b: StrList },
                 out: ResultList
