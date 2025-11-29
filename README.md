@@ -613,23 +613,6 @@ const List = data(({ Family, T }) => ({
 const NumList = List(Number);
 const nums = NumList.Cons(1, NumList.Cons(2, NumList.Nil));
 const result = nums.append(3);  // Returns NumList instance, not generic List
-
-// Without input parameter - simple catamorphism
-.fold('length', { out: Number }, {
-    Nil() { return 0; },
-    Cons({ tail }) { return 1 + tail; }
-});
-
-// With input parameter - parameterized catamorphism
-.fold('map', { in: Function }, (List) => ({
-    Nil(fn) { return List.Nil; },
-    Cons({ head, tail }, fn) {
-        return List.Cons(fn(head), tail(fn));
-    }
-}));
-
-list.length();        // No argument - returns number
-list.map(x => x * 2); // One argument - returns transformed list
 ```
 
 **Note:** Both object literal form `{ ... }` and callback form `() => ({ ... })` are supported for fold operations. The object literal form is preferred for readability.
