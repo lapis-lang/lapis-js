@@ -15,15 +15,16 @@ describe('ADT Extension', () => {
         // Extended ADT's own variants are instanceof ExtendedColor
         assert.ok(ExtendedColor.Yellow instanceof ExtendedColor);
 
-        // Inherited variants (singletons) are only instanceof their original ADT
+        // Inherited variants get new singleton instances for ExtendedColor
         assert.ok(ExtendedColor.Red instanceof Color);
-        assert.ok(!(ExtendedColor.Red instanceof ExtendedColor));
+        assert.ok(ExtendedColor.Red instanceof ExtendedColor);
 
         // Extended variants are also instanceof base (proper subtyping)
         assert.ok(ExtendedColor.Yellow instanceof Color);
 
-        // Singleton identity is preserved
-        assert.strictEqual(ExtendedColor.Red, Color.Red);
+        // Original Color.Red remains instanceof only Color
+        assert.ok(Color.Red instanceof Color);
+        assert.ok(!(Color.Red instanceof ExtendedColor));
     });
 
     test('extension with structured variants', () => {
@@ -39,16 +40,13 @@ describe('ADT Extension', () => {
         const p2 = Point3DExtended.Point2D({ x: 10, y: 20 });
         const p3 = Point3DExtended.Point3D({ x: 1, y: 2, z: 3 });
 
-        // Inherited variant instances are only instanceof base (constructor is shared)
+        // Instances from extended ADT are instanceof extended ADT
         assert.ok(p2 instanceof Point);
-        assert.ok(!(p2 instanceof Point3DExtended));
+        assert.ok(p2 instanceof Point3DExtended);
 
         // Extended variant instances are instanceof both (proper subtyping)
         assert.ok(p3 instanceof Point3DExtended);
         assert.ok(p3 instanceof Point);
-
-        // Constructor identity is preserved
-        assert.strictEqual(Point3DExtended.Point2D, Point.Point2D);
 
         // Base instances created via base ADT are NOT instanceof extended type
         const p2Base = Point.Point2D({ x: 5, y: 10 });
@@ -87,11 +85,11 @@ describe('ADT Extension', () => {
             elseBranch: lit1
         });
 
-        // Inherited variant instances are only instanceof base
+        // Instances created via extended ADT are instanceof extended ADT
         assert.ok(lit1 instanceof IntAlgebra);
-        assert.ok(!(lit1 instanceof IntBoolAlgebra));
+        assert.ok(lit1 instanceof IntBoolAlgebra);
         assert.ok(add instanceof IntAlgebra);
-        assert.ok(!(add instanceof IntBoolAlgebra));
+        assert.ok(add instanceof IntBoolAlgebra);
 
         // Extended variant instances are instanceof both (proper subtyping)
         assert.ok(boolLit instanceof IntBoolAlgebra);
@@ -148,33 +146,41 @@ describe('ADT Extension', () => {
         assert.ok(C.C1);
         assert.ok(C.C2);
 
-        // Only C's own variants are instanceof C
+        // All variants accessible via C are instanceof C
         assert.ok(C.C1 instanceof C);
         assert.ok(C.C2 instanceof C);
-
-        // Inherited singletons maintain their original type
-        assert.ok(!(C.A1 instanceof C));
-        assert.ok(!(C.A2 instanceof C));
-        assert.ok(!(C.B1 instanceof C));
-        assert.ok(!(C.B2 instanceof C));
+        assert.ok(C.A1 instanceof C);
+        assert.ok(C.A2 instanceof C);
+        assert.ok(C.B1 instanceof C);
+        assert.ok(C.B2 instanceof C);
 
         // C's variants are instanceof all ancestors (proper subtyping)
         assert.ok(C.C1 instanceof B);
         assert.ok(C.C1 instanceof A);
 
-        // B's variants are instanceof B and A
+        // Variants accessed via C are instanceof C
         assert.ok(C.B1 instanceof B);
         assert.ok(C.B1 instanceof A);
-        assert.ok(!(C.B1 instanceof C));
+        assert.ok(C.B1 instanceof C);
 
-        // A's variants are only instanceof A
+        // Variants accessed via C are instanceof all ancestors
         assert.ok(C.A1 instanceof A);
-        assert.ok(!(C.A1 instanceof B));
-        assert.ok(!(C.A1 instanceof C));
+        assert.ok(C.A1 instanceof B);
+        assert.ok(C.A1 instanceof C);
 
-        // Singleton identity preserved
-        assert.strictEqual(C.A1, A.A1);
-        assert.strictEqual(C.B1, B.B1);
+        // Original variants retain their original type
+        assert.ok(A.A1 instanceof A);
+        assert.ok(!(A.A1 instanceof B));
+        assert.ok(!(A.A1 instanceof C));
+        
+        assert.ok(B.B1 instanceof B);
+        assert.ok(B.B1 instanceof A);
+        assert.ok(!(B.B1 instanceof C));
+
+        // New singletons are created for each extension level
+        // This allows fold overrides to work correctly
+        assert.notStrictEqual(C.A1, A.A1);
+        assert.notStrictEqual(C.B1, B.B1);
     });
 
     test('variant name collision throws error', () => {
@@ -283,11 +289,15 @@ describe('ADT Extension', () => {
         assert.ok(error instanceof Result);
         assert.ok(error instanceof Maybe);
 
-        // Inherited variants are only instanceof base
+        // Inherited variants accessed via Result are instanceof Result
         assert.ok(nothing instanceof Maybe);
-        assert.ok(!(nothing instanceof Result));
+        assert.ok(nothing instanceof Result);
         assert.ok(just instanceof Maybe);
-        assert.ok(!(just instanceof Result));
+        assert.ok(just instanceof Result);
+        
+        // Original variants retain their original type
+        assert.ok(Maybe.Nothing instanceof Maybe);
+        assert.ok(!(Maybe.Nothing instanceof Result));
     });
 
     test('comprehensive example: expression language extension', () => {
@@ -327,18 +337,24 @@ describe('ADT Extension', () => {
         assert.ok(x instanceof IntBoolExpr);
         assert.ok(x instanceof IntExpr);
 
-        // IntBoolExpr's variants are instanceof IntBoolExpr and IntExpr (not FullExpr)
+        // Variants created via FullExpr are instanceof FullExpr (proper subtyping)
         assert.ok(lessThan instanceof IntBoolExpr);
         assert.ok(lessThan instanceof IntExpr);
-        assert.ok(!(lessThan instanceof FullExpr));
+        assert.ok(lessThan instanceof FullExpr);
 
-        // IntExpr's variants are only instanceof IntExpr
+        // Variants created via FullExpr are instanceof all ancestors
         assert.ok(five instanceof IntExpr);
-        assert.ok(!(five instanceof IntBoolExpr));
-        assert.ok(!(five instanceof FullExpr));
+        assert.ok(five instanceof IntBoolExpr);
+        assert.ok(five instanceof FullExpr);
+        
+        // Original variants retain their original types
+        assert.ok(IntExpr.IntLit({ value: 1 }) instanceof IntExpr);
+        assert.ok(!(IntExpr.IntLit({ value: 1 }) instanceof IntBoolExpr));
+        assert.ok(!(IntExpr.IntLit({ value: 1 }) instanceof FullExpr));
 
-        // Constructor identity is preserved
-        assert.strictEqual(FullExpr.IntLit, IntExpr.IntLit);
+        // New constructors are created for each extension level
+        // This allows proper instanceof checking and fold overrides
+        assert.notStrictEqual(FullExpr.IntLit, IntExpr.IntLit);
 
         // Verify structure
         assert.strictEqual(letExpr.name, 'x');

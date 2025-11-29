@@ -14,6 +14,9 @@ export const parent = Symbol('parent');
 // Symbol to mark singleton variants (vs structured variants with fields)
 const IsSingleton = Symbol('IsSingleton');
 
+// Symbol to store reference to the ADT that owns a variant
+const DataTypeSymbol = Symbol('DataType');
+
 // WeakMap to track constructor copies for overridden variants
 const shadowedVariants = new WeakMap();
 
@@ -25,6 +28,37 @@ const TypeParamSymbol = Symbol('TypeParam');
 const IsParameterizedInstance = Symbol('IsParameterizedInstance');
 const ParentADTSymbol = Symbol('ParentADT');
 const TypeArgsSymbol = Symbol('TypeArgs');
+const VariantDeclSymbol = Symbol('VariantDecl');
+
+/**
+ * Decorator to make a class callable.
+ * When the class is called as a function, it invokes the constructor.
+ * This enables syntax like: List(Number) instead of new List(Number)
+ * 
+ * @param Class - The class to make callable
+ * @returns A proxy that can be called as a function or used with 'new'
+ */
+function callable(Class) {
+    return new Proxy(Class, {
+        apply(target, thisArg, argumentsList) {
+            // Check if this is a variant constructor (has _fieldNames or is a singleton)
+            // Variants should use their constructor, not _call
+            const isVariant = '_fieldNames' in target || target[IsSingleton] === true;
+
+            // When called as a function, check if it has a _call method (for ADT parameterization)
+            // But only use _call if this is not a variant
+            if (!isVariant && target._call) {
+                return target._call(...argumentsList);
+            }
+            // Otherwise, invoke the constructor (for variant constructors or base ADT)
+            return Reflect.construct(target, argumentsList);
+        },
+        construct(target, argumentsList) {
+            // When called with 'new', invoke the constructor normally
+            return Reflect.construct(target, argumentsList);
+        }
+    });
+}
 
 // Runtime validation helpers
 function isPascalCase(str) {
@@ -80,20 +114,20 @@ function isTypeParam(value) {
 }
 
 /**
- * Helper to create a singleton variant instance using ES5
+ * Helper to create a singleton variant (ES6 class-based)
  */
 function createSingletonVariant(
     BaseConstructor,
-    variantName
+    variantName,
+    dataType
 ) {
-    // Create a constructor function for the variant
-    function VariantConstructor() {
-        BaseConstructor.call(this);
+    class VariantConstructor {
+        static [IsSingleton] = true;
+        static [DataTypeSymbol] = dataType;
     }
 
-    // Set up prototype chain
-    VariantConstructor.prototype = Object.create(BaseConstructor.prototype);
-    VariantConstructor.prototype.constructor = VariantConstructor;
+    // Manually set up prototype chain to prevent inheriting static methods
+    Object.setPrototypeOf(VariantConstructor.prototype, BaseConstructor.prototype);
 
     // Set the constructor name for reflection
     Object.defineProperty(VariantConstructor, 'name', {
@@ -101,9 +135,6 @@ function createSingletonVariant(
         writable: false,
         configurable: false
     });
-
-    // Mark as singleton variant
-    VariantConstructor[IsSingleton] = true;
 
     // Create the singleton instance
     const instance = new VariantConstructor();
@@ -113,53 +144,39 @@ function createSingletonVariant(
 }
 
 /**
- * Helper to create a structured variant using ES5 function constructor
+ * Helper to create a structured variant using ES6 class (callable)
  */
 function createStructuredVariant(
     BaseConstructor,
     variantName,
-    fields,
-    adtForValidation
+    fieldSpecObj,
+    dataType
 ) {
-    const fieldNames = fields.map(f => f.name);
+    const fieldNames = Object.keys(fieldSpecObj);
 
-    function VariantConstructor(...args) {
-        // Handle callable without 'new' - ES5 style
-        if (!(this instanceof VariantConstructor)) {
-            // When called without new, create instance and call constructor with all arguments
-            const instance = Object.create(VariantConstructor.prototype);
-            VariantConstructor.apply(instance, args);
-            return instance;
+    // Create ES6 class WITHOUT extending - we'll set up prototype chain manually
+    // This prevents variant from inheriting ADT's static methods
+    class VariantConstructor {
+        static _fieldNames = fieldNames;
+        static _fieldSpecs = fieldSpecObj;
+        static [IsSingleton] = false;
+        static [DataTypeSymbol] = dataType;
+
+        constructor(...args) {
+            const namedArgs = normalizeConstructorArgs(fieldNames, args, variantName);
+            const actualADT = this.constructor[DataTypeSymbol];
+
+            for (const fieldName of fieldNames) {
+                validateField(namedArgs[fieldName], fieldSpecObj[fieldName], fieldName, actualADT);
+            }
+
+            Object.assign(this, namedArgs);
+            Object.freeze(this);
         }
-
-        // Call parent constructor
-        BaseConstructor.call(this);
-
-        // Convert positional/named arguments to named object
-        const namedArgs = createVariantInstance(VariantConstructor, fieldNames, args, variantName);
-
-        // Validate field types against specifications
-        for (const { name, spec } of fields) {
-            validateField(namedArgs[name], spec, name, adtForValidation);
-        }
-
-        // Assign fields to instance
-        for (const { name } of fields) {
-            Object.defineProperty(this, name, {
-                value: namedArgs[name],
-                writable: false,
-                enumerable: true,
-                configurable: false
-            });
-        }
-
-        // Freeze instance for immutability
-        Object.freeze(this);
     }
 
-    // Set up prototype chain
-    VariantConstructor.prototype = Object.create(BaseConstructor.prototype);
-    VariantConstructor.prototype.constructor = VariantConstructor;
+    // Manually set up prototype chain instead of using 'extends' to prevent inheriting static methods
+    Object.setPrototypeOf(VariantConstructor.prototype, BaseConstructor.prototype);
 
     // Set the constructor name for reflection
     Object.defineProperty(VariantConstructor, 'name', {
@@ -168,28 +185,20 @@ function createStructuredVariant(
         configurable: false
     });
 
-    // Store metadata on the VariantConstructor for later inspection
-    VariantConstructor._fieldNames = fieldNames;
-    // Store full field specs for fold operations
-    VariantConstructor._fieldSpecs = fields;
-    VariantConstructor[IsSingleton] = false;
-
-    return VariantConstructor;
+    return callable(VariantConstructor);
 }
 
 /**
- * Helper to convert arguments to named object form for ES5 constructors.
+ * Converts constructor arguments to named object form.
+ * Supports both named style (single object) and positional style (multiple args).
  * Returns a named args object (never creates instances).
  */
-function createVariantInstance(
-    VariantConstructor,
+function normalizeConstructorArgs(
     fieldNames,
     args,
     variantName,
     prefix = ''
 ) {
-    // args is already an array from rest parameters
-
     // Detect argument style: named (object literal) vs positional
     const firstArg = args[0];
 
@@ -331,40 +340,45 @@ function validateSpecGuard(spec, specType, opName) {
 }
 
 /**
- * Installs an operation on a variant's prototype.
+ * Installs an operation on the ADT's prototype.
  * Creates a method that extracts fields and calls the transformer's handler.
  * For fold operations, uses stack-safe iterative traversal instead of recursion.
  * 
- * @param variant - The variant (constructor or singleton instance)
+ * @param adtClass - The ADT class to install the operation on
  * @param opName - Name of the operation to install
  * @param transformer - The transformer containing the operation logic
  * @param skipIfExists - If true, skip installation if method already exists (default: true)
  */
-function installOperationOnVariant(variant, opName, transformer, skipIfExists = true) {
-    let VariantClass;
-
-    if (typeof variant === 'function') {
-        // Structured variant - Proxy-wrapped constructor
-        VariantClass = variant;
-    } else if (variant && typeof variant === 'object') {
-        // Singleton variant - get constructor
-        VariantClass = variant.constructor;
-    } else {
-        return;
-    }
-
+function installOperationOnADT(adtClass, opName, transformer, skipIfExists = true) {
     // Skip if no prototype or if method already exists and we should skip
-    if (!VariantClass?.prototype) {
+    if (!adtClass?.prototype) {
         return;
     }
 
-    if (skipIfExists && VariantClass.prototype[opName]) {
+    if (skipIfExists && adtClass.prototype[opName]) {
         return;
     }
 
-    VariantClass.prototype[opName] = function () {
+    adtClass.prototype[opName] = function (...args) {
         // Stack-safe fold implementation using explicit stack
         // This avoids deep recursion by using an iterative post-order traversal
+
+        // Enforce at most one argument
+        if (args.length > 1) {
+            throw new TypeError(
+                `Fold operation '${opName}' accepts at most one argument, but ${args.length} were provided`
+            );
+        }
+
+        const inputArg = args[0];
+
+        // Validate input if spec.in is provided (optional validation)
+        if (transformer.inSpec !== undefined && args.length > 0) {
+            validateInputType(inputArg, transformer.inSpec, opName);
+        }
+
+        // Check if this fold accepts input parameters (has argument)
+        const hasInputParam = args.length > 0;
 
         // eslint-disable-next-line @typescript-eslint/no-this-alias
         const root = this;
@@ -423,10 +437,20 @@ function installOperationOnVariant(variant, opName, transformer, skipIfExists = 
                         const fieldValue = frame.instance[fieldName];
 
                         // Check if this field is a Family reference (recursive field)
-                        if (fieldSpecs && fieldSpecs[i] && isFamilyRef(fieldSpecs[i].spec)) {
+                        if (fieldSpecs && isFamilyRef(fieldSpecs[fieldName])) {
                             // Recursive field - use memoized value
                             if (fieldValue && memoCache.has(fieldValue)) {
-                                fields[fieldName] = memoCache.get(fieldValue);
+                                const memoizedValue = memoCache.get(fieldValue);
+                                // For parameterized folds, Family fields become partially applied functions
+                                if (hasInputParam) {
+                                    // Create a function that accepts the input parameter
+                                    fields[fieldName] = (inputArg) => {
+                                        // Recursively call the operation with the input parameter
+                                        return fieldValue[opName](inputArg);
+                                    };
+                                } else {
+                                    fields[fieldName] = memoizedValue;
+                                }
                             } else {
                                 // Field doesn't have the operation or wasn't memoized - pass as-is
                                 fields[fieldName] = fieldValue;
@@ -434,7 +458,7 @@ function installOperationOnVariant(variant, opName, transformer, skipIfExists = 
                         } else {
                             // Non-recursive field - apply map transform if present
                             // This is needed for merged operations like map+fold (paramorphism)
-                            const fieldSpec = fieldSpecs && fieldSpecs[i] ? fieldSpecs[i].spec : null;
+                            const fieldSpec = fieldSpecs ? fieldSpecs[fieldName] : null;
 
                             // Check if this field is a type parameter and transformer has map transforms
                             if (transformer.getParamTransform && fieldSpec && isTypeParam(fieldSpec)) {
@@ -455,11 +479,11 @@ function installOperationOnVariant(variant, opName, transformer, skipIfExists = 
                         }
                     }
 
-                    const result = ctorTransform.call(frame.instance, fields);
+                    const result = hasInputParam ? ctorTransform.call(frame.instance, fields, inputArg) : ctorTransform.call(frame.instance, fields);
                     memoCache.set(frame.instance, result);
                 } else {
                     // Singleton variant - no fields to pass
-                    const result = ctorTransform.call(frame.instance);
+                    const result = hasInputParam ? ctorTransform.call(frame.instance, inputArg) : ctorTransform.call(frame.instance);
                     memoCache.set(frame.instance, result);
                 }
                 continue;
@@ -481,7 +505,7 @@ function installOperationOnVariant(variant, opName, transformer, skipIfExists = 
                     // Check if this field is a Family reference and has the operation
                     // Intentionally skips Family fields that do not have the operation defined.
                     // This allows for extended ADTs where not all variants/fields implement all operations.
-                    if (fieldSpecs && fieldSpecs[i] && isFamilyRef(fieldSpecs[i].spec)) {
+                    if (fieldSpecs && isFamilyRef(fieldSpecs[fieldNames[i]])) {
                         if (fieldValue && typeof fieldValue[opName] !== 'undefined' && !memoCache.has(fieldValue)) {
                             stack.push({ instance: fieldValue, processed: false });
                         }
@@ -503,35 +527,22 @@ function installOperationOnVariant(variant, opName, transformer, skipIfExists = 
 }
 
 /**
- * Installs a map operation on a variant's prototype.
+ * Installs a map operation on the ADT's prototype.
  * Creates a method that transforms type parameter fields while preserving structure.
  * Recursively handles Family fields.
  * 
- * @param variant - The variant (constructor or singleton instance)
+ * @param adtClass - The ADT class to install the operation on
  * @param opName - Name of the operation to install
  * @param transforms - Map of type parameter names to transform functions { T: fn, U: fn }
- * @param adtClass - The ADT class for constructor lookups
  * @param outSpec - Optional output type spec for runtime validation
  */
-function installMapOperationOnVariant(variant, opName, transforms, adtClass, outSpec) {
-    let VariantClass;
-
-    if (typeof variant === 'function') {
-        // Structured variant - Proxy-wrapped constructor
-        VariantClass = variant;
-    } else if (variant && typeof variant === 'object') {
-        // Singleton variant - get constructor
-        VariantClass = variant.constructor;
-    } else {
-        return;
-    }
-
+function installMapOperationOnADT(adtClass, opName, transforms, outSpec) {
     // Skip if no prototype
-    if (!VariantClass?.prototype) {
+    if (!adtClass?.prototype) {
         return;
     }
 
-    VariantClass.prototype[opName] = function (...args) {
+    adtClass.prototype[opName] = function (...args) {
         // eslint-disable-next-line @typescript-eslint/no-this-alias
         const instance = this;
 
@@ -542,7 +553,7 @@ function installMapOperationOnVariant(variant, opName, transforms, adtClass, out
 
         // For structured variants, transform type parameter fields
         const fieldNames = instance.constructor._fieldNames || [];
-        const fieldSpecs = instance.constructor._fieldSpecs || [];
+        const fieldSpecs = instance.constructor._fieldSpecs || {};
 
         if (fieldNames.length === 0) {
             return instance; // No fields to transform
@@ -551,9 +562,8 @@ function installMapOperationOnVariant(variant, opName, transforms, adtClass, out
         // Build transformed fields object
         const transformedFields = {};
 
-        for (let i = 0; i < fieldNames.length; i++) {
-            const fieldName = fieldNames[i];
-            const fieldSpec = fieldSpecs[i]?.spec;
+        for (const fieldName of fieldNames) {
+            const fieldSpec = fieldSpecs[fieldName];
             const fieldValue = instance[fieldName];
 
             // Check if this field is a type parameter
@@ -584,12 +594,10 @@ function installMapOperationOnVariant(variant, opName, transforms, adtClass, out
             }
         }
 
-        // Create a fresh instance with transformed fields by calling constructor as a function
-        // The variant constructor handles the callable-without-new pattern
+        // Create a fresh instance with transformed fields
         const ConstructorFn = instance.constructor;
-        const result = ConstructorFn(transformedFields);
+        const result = Reflect.construct(ConstructorFn, [transformedFields]);
 
-        // Runtime validation of spec.out if provided
         if (outSpec) {
             validateReturnType(result, outSpec, opName);
         }
@@ -750,58 +758,13 @@ function createShadowVariants(
         const variantType = variantTypes.get(variantName);
 
         if (variantType === 'singleton') {
-            // Copy singleton variant - it's already an instance, just get its constructor
-            const OriginalConstructor = inheritedVariant.constructor;
-
-            // Create new constructor function
-            function CopiedVariantConstructor() {
-                OriginalConstructor.call(this);
-            }
-
-            // Set up prototype chain
-            CopiedVariantConstructor.prototype = Object.create(OriginalConstructor.prototype);
-            CopiedVariantConstructor.prototype.constructor = CopiedVariantConstructor;
-
-            Object.defineProperty(CopiedVariantConstructor, 'name', {
-                value: variantName,
-                writable: false,
-                configurable: false
-            });
-
-            // Create the new singleton instance (no longer frozen)
-            const newInstance = new CopiedVariantConstructor();
-
-            shadowMap.set(variantName, newInstance);
+            // For singleton variants, just use the inherited singleton instance directly
+            // No need to create a copy since singletons are immutable
+            shadowMap.set(variantName, inheritedVariant);
         } else {
-            // Copy structured variant - inheritedVariant is a constructor function
-            const fieldNames = inheritedVariant._fieldNames || [];
-            const fieldSpecs = inheritedVariant._fieldSpecs || [];
-            const isSingleton = inheritedVariant[IsSingleton] || false;
-            const OriginalConstructor = inheritedVariant;
-
-            // Create new constructor function that handles callable-without-new
-            function CopiedVariantConstructor(data) {
-                if (!(this instanceof CopiedVariantConstructor)) {
-                    return new CopiedVariantConstructor(data);
-                }
-                return OriginalConstructor.call(this, data) || this;
-            }
-
-            // Set up prototype chain
-            CopiedVariantConstructor.prototype = Object.create(OriginalConstructor.prototype);
-            CopiedVariantConstructor.prototype.constructor = CopiedVariantConstructor;
-
-            Object.defineProperty(CopiedVariantConstructor, 'name', {
-                value: variantName,
-                writable: false,
-                configurable: false
-            });
-
-            CopiedVariantConstructor._fieldNames = fieldNames;
-            CopiedVariantConstructor._fieldSpecs = fieldSpecs;
-            CopiedVariantConstructor[IsSingleton] = isSingleton;
-
-            shadowMap.set(variantName, CopiedVariantConstructor);
+            // For structured variants, just use the inherited variant constructor directly
+            // Since we're not extending variant constructors anymore, we can reuse them
+            shadowMap.set(variantName, inheritedVariant);
         }
     }
 
@@ -823,97 +786,16 @@ function createShadowVariants(
             const variantType = variantTypes.get(variantName);
 
             if (variantType === 'singleton') {
-                // Copy singleton variant
-                const OriginalConstructor = variant.constructor;
-
-                // Guard against undefined prototype
-                if (!OriginalConstructor || !OriginalConstructor.prototype) continue;
-
-                function CopiedVariantConstructor() {
-                    OriginalConstructor.call(this);
-                }
-
-                CopiedVariantConstructor.prototype = Object.create(OriginalConstructor.prototype);
-                CopiedVariantConstructor.prototype.constructor = CopiedVariantConstructor;
-
-                Object.defineProperty(CopiedVariantConstructor, 'name', {
-                    value: variantName,
-                    writable: false,
-                    configurable: false
-                });
-
-                const newInstance = new CopiedVariantConstructor();
-
-                shadowMap.set(variantName, newInstance);
+                // For singleton variants, just use the inherited singleton instance directly
+                shadowMap.set(variantName, variant);
             } else {
-                // Copy structured variant
-                const fieldNames = variant._fieldNames || [];
-                const fieldSpecs = variant._fieldSpecs || [];
-                const isSingleton = variant[IsSingleton] || false;
-                const OriginalConstructor = variant;
-
-                // Guard against undefined prototype
-                if (!OriginalConstructor || !OriginalConstructor.prototype) continue;
-
-                function CopiedVariantConstructor(data) {
-                    if (!(this instanceof CopiedVariantConstructor)) {
-                        return new CopiedVariantConstructor(data);
-                    }
-                    return OriginalConstructor.call(this, data) || this;
-                }
-
-                CopiedVariantConstructor.prototype = Object.create(OriginalConstructor.prototype);
-                CopiedVariantConstructor.prototype.constructor = CopiedVariantConstructor;
-
-                Object.defineProperty(CopiedVariantConstructor, 'name', {
-                    value: variantName,
-                    writable: false,
-                    configurable: false
-                });
-
-                CopiedVariantConstructor._fieldNames = fieldNames;
-                CopiedVariantConstructor._fieldSpecs = fieldSpecs;
-                CopiedVariantConstructor[IsSingleton] = isSingleton;
-
-                shadowMap.set(variantName, CopiedVariantConstructor);
+                // For structured variants, just use the inherited variant constructor directly
+                shadowMap.set(variantName, variant);
             }
         }
     }
 
     return shadowMap;
-}
-
-/**
- * Installs an extended operation on variants, using shadow variants for overrides.
- * 
- * @param actualADT - The child ADT class
- * @param shadowMap - Map of variant names to shadow variants
- * @param name - Name of the operation
- * @param transformer - The transformer to install
- */
-function installExtendedOperation(
-    actualADT,
-    shadowMap,
-    name,
-    transformer
-) {
-    const allVariants = collectVariantsFromChain(actualADT);
-
-    for (const [variantName, variant] of allVariants) {
-        const shadowedVariant = shadowMap.get(variantName);
-
-        if (shadowedVariant) {
-            // Overridden variant - install on shadow
-            installOperationOnVariant(shadowedVariant, name, transformer, false);
-        } else {
-            // For all other variants (both new and inherited non-overridden),
-            // install the extended operation to support polymorphic recursion.
-            // Inherited variants need the extended operation so that when they
-            // recursively call the operation on Family fields, they use the
-            // extended transformer (with overridden handlers), not the parent's.
-            installOperationOnVariant(variant, name, transformer, false);
-        }
-    }
 }
 
 /**
@@ -955,35 +837,26 @@ function isStructuredVariant(value) {
 }
 
 /**
- * Copies ADT static methods from source to target.
- * Eliminates duplication when creating ExtendedADTs and callable wrappers.
- * 
- * @param {Object} target - Target object to copy methods to
- * @param {Object} source - Source ADT to copy methods from
- */
-function copyADTMethods(target, source) {
-    target._registerTransformer = source._registerTransformer;
-    target._getTransformer = source._getTransformer;
-    target._getTransformerNames = source._getTransformerNames;
-    target.fold = source.fold;
-    target.unfold = source.unfold;
-    target.map = source.map;
-    target.merge = source.merge;
-    target.extend = source.extend;
-}
-
-/**
  * Validates a value against a field specification
  */
 function validateField(value, spec, fieldName, adtClass) {
-    // Handle type parameters - validate against instantiated type if provided
+    // Handle type parameters - look up instantiated type from ADT class
     if (isTypeParam(spec)) {
-        const instantiatedType = spec._instantiatedType;
-        if (instantiatedType) {
-            // Recursively validate against the instantiated type
-            validateField(value, instantiatedType, fieldName, adtClass);
+        const paramName = spec[TypeParamSymbol];
+
+        // Look up the type args from the ADT class
+        if (adtClass && adtClass[TypeArgsSymbol]) {
+            const typeArgs = adtClass[TypeArgsSymbol];
+            const instantiatedType = typeArgs[paramName];
+
+            if (instantiatedType) {
+                // Recursively validate against the instantiated type
+                validateField(value, instantiatedType, fieldName, adtClass);
+                return;
+            }
         }
-        // If no instantiated type, skip validation (generic case)
+
+        // If no instantiated type found, skip validation (generic case)
         return;
     }
 
@@ -992,7 +865,25 @@ function validateField(value, spec, fieldName, adtClass) {
         if (!adtClass) {
             throw new Error('FamilyRef used without ADT class context');
         }
-        if (!(value instanceof adtClass)) {
+
+        // Check if value is instance of the ADT or any parent ADT in the chain
+        let currentADT = adtClass;
+        let isValidFamily = false;
+
+        while (currentADT && !isValidFamily) {
+            if (value instanceof currentADT) {
+                isValidFamily = true;
+                break;
+            }
+            // Walk up the prototype chain to check parent ADTs
+            currentADT = Object.getPrototypeOf(currentADT);
+            // Stop if we've reached Function.prototype or Object.prototype
+            if (currentADT === Function.prototype || currentADT === Object.prototype) {
+                break;
+            }
+        }
+
+        if (!isValidFamily) {
             throw new TypeError(`Field '${fieldName}' must be an instance of the same ADT family`);
         }
         return;
@@ -1106,18 +997,20 @@ export function data(declOrFn) {
     // These are validated at runtime when constructing variants
     // parentADT is the uninstantiated generic ADT (e.g., List when creating List(Number))
     function createADT(typeArgs, parentADT = null) {
-        // Base ADT constructor function
-        function ADT() {
+        // Create the base ADT class
+        const BaseClass = parentADT || class ADT {
             // Allow subclasses to instantiate
-        }
+        };
 
-        // Mark as parameterized instance and track parent if instantiated with type args
+        // For parameterized instances, create a subclass
+        let ADT;
         if (typeArgs && parentADT) {
+            ADT = class extends BaseClass { };
             ADT[IsParameterizedInstance] = true;
             ADT[ParentADTSymbol] = parentADT;
             ADT[TypeArgsSymbol] = typeArgs;
-            // Set prototype chain: List(Number).__proto__ = List
-            Object.setPrototypeOf(ADT, parentADT);
+        } else {
+            ADT = BaseClass;
         }
 
         /**
@@ -1343,8 +1236,8 @@ export function data(declOrFn) {
                 // Create shadow variants for overridden inherited variants
                 const shadowMap = createShadowVariants(actualADT, parentHandlers, handlersInput, variantTypes, true);
 
-                // Install operation on variants
-                installExtendedOperation(actualADT, shadowMap, name, transformer);
+                // Install operation on ADT prototype
+                installOperationOnADT(actualADT, name, transformer, false);
 
                 // Copy shadow variants to actualADT to replace inherited variants
                 // Use Object.defineProperty to replace writable but non-configurable properties
@@ -1367,16 +1260,12 @@ export function data(declOrFn) {
                 const variantNames = new Set(Array.from(allVariantsForValidation.keys()));
                 validateHandlerKeys(handlers, variantNames, name);
 
-                const transformer = createFoldTransformer(name, handlers, outSpec);
+                const transformer = createFoldTransformer(name, handlers, outSpec, spec?.in);
 
                 actualADT._registerTransformer(name, transformer);
 
-                // Install operation method on all variant prototypes
-                const allVariants = collectVariantsFromChain(actualADT);
-
-                for (const [, variant] of allVariants) {
-                    installOperationOnVariant(variant, name, transformer, false);
-                }
+                // Install operation method on ADT prototype
+                installOperationOnADT(actualADT, name, transformer, false);
 
                 return this;
             }
@@ -1474,10 +1363,10 @@ export function data(declOrFn) {
                     }
 
                     // For structured variants, recursively unfold Family fields
-                    const fieldSpecs = variant._fieldSpecs || [];
+                    const fieldSpecs = variant._fieldSpecs || {};
                     const processedFields = {};
 
-                    for (const { name: fieldName, spec: fieldSpec } of fieldSpecs) {
+                    for (const [fieldName, fieldSpec] of Object.entries(fieldSpecs)) {
                         const fieldValue = result[fieldName];
 
                         // If this field is a Family reference, recursively call unfold
@@ -1607,10 +1496,8 @@ export function data(declOrFn) {
             // Store transformer
             actualADT._registerTransformer(name, transformer);
 
-            // Install map operation on all variants
-            for (const [, variant] of allVariants) {
-                installMapOperationOnVariant(variant, name, transforms, actualADT, outSpec);
-            }
+            // Install map operation on ADT prototype
+            installMapOperationOnADT(actualADT, name, transforms, outSpec);
 
             return actualADT;
         };
@@ -1792,10 +1679,10 @@ export function data(declOrFn) {
                                 }
 
                                 // For structured variants, recursively process fields
-                                const fieldSpecs = variant._fieldSpecs || [];
+                                const fieldSpecs = variant._fieldSpecs || {};
                                 const processedFields = {};
 
-                                for (const { name: fieldName, spec: fieldSpec } of fieldSpecs) {
+                                for (const [fieldName, fieldSpec] of Object.entries(fieldSpecs)) {
                                     const fieldValue = result[fieldName];
 
                                     // If this field is a Family reference, recursively apply deforestation
@@ -1869,10 +1756,8 @@ export function data(declOrFn) {
                     }
                 }
 
-                // Install on all variants
-                for (const [, variant] of allVariants) {
-                    installOperationOnVariant(variant, name, mergedTransformer, false);
-                }
+                // Install on ADT prototype
+                installOperationOnADT(actualADT, name, mergedTransformer, false);
             }
 
             return actualADT;
@@ -1880,28 +1765,12 @@ export function data(declOrFn) {
 
         // extend method - inherited by all ADTs and extended ADTs
         ADT.extend = function (extensionDeclOrFn) {
-            const parentADT = this; // 'this' is the parent ADT function
+            const ParentADT = this; // 'this' is the parent ADT class
             const isExtensionCallback = typeof extensionDeclOrFn === 'function';
 
-            // Create extended ADT constructor that inherits from parent ADT
-            function ExtendedADT() {
-                parentADT.call(this);
-            }
-
-            // Set up prototype chain using Object.create
-            ExtendedADT.prototype = Object.create(parentADT.prototype);
-            ExtendedADT.prototype.constructor = ExtendedADT;
-
-            // Copy static methods from parent to child
-            copyADTMethods(ExtendedADT, parentADT);
-
-            // Set up prototype chain for the constructor functions themselves
-            // This makes parent variants accessible via prototype chain
-            Object.setPrototypeOf(ExtendedADT, parentADT);
-
-            // Note: We don't need to copy parent variants explicitly because
-            // Object.setPrototypeOf makes them accessible via prototype chain.
-            // ExtendedADT.Red will resolve to parentADT.Red through the chain.
+            // Create extended ADT class that extends parent ADT
+            // Static methods are automatically inherited through ES6 class extends
+            class ExtendedADT extends ParentADT { }
 
             const extendedResult = ExtendedADT;                // Resolve the extension declaration
             const extensionFamily = createFamily();
@@ -1911,7 +1780,7 @@ export function data(declOrFn) {
 
             // Check for variant name collisions
             for (const variantName of Object.keys(extensionDecl)) {
-                if (variantName in parentADT) {
+                if (variantName in ParentADT) {
                     throw new Error(
                         `Variant name collision: '${variantName}' already exists in base ADT`
                     );
@@ -1920,45 +1789,79 @@ export function data(declOrFn) {
 
             // Create new variants for the extension
             for (const [variantName, value] of Object.entries(extensionDecl)) {
+                let variantValue;
+
                 if (isStructuredVariant(value)) {
                     // Structured variant with field definitions (object literal)
-                    const fieldObj = value;
-
-                    // Extract field names and specs from object literal
-                    const fields = Object.entries(fieldObj).map(([name, spec]) => {
-                        return { name, spec };
-                    });
-
-                    extendedResult[variantName] = createStructuredVariant(
+                    variantValue = createStructuredVariant(
                         ExtendedADT,
                         variantName,
-                        fields,
-                        result
+                        value,
+                        extendedResult
                     );
                 } else {
                     // Simple enumerated variant (empty object {})
-                    extendedResult[variantName] = createSingletonVariant(ExtendedADT, variantName);
+                    variantValue = createSingletonVariant(ExtendedADT, variantName, extendedResult);
                 }
 
-                // Make variant property non-writable but configurable
-                // Allows shadow variants to be redefined during fold extension
                 Object.defineProperty(extendedResult, variantName, {
-                    value: extendedResult[variantName],
+                    value: variantValue,
                     writable: false,
                     enumerable: true,
                     configurable: true
                 });
             }
 
-            // Install parent operations on new variants
-            const parentTransformerNames = parentADT._getTransformerNames?.() || [];
+            // Install parent operations on ExtendedADT prototype
+            // New variants automatically inherit through prototype chain (Variant.prototype → ExtendedADT.prototype)
+            const parentTransformerNames = ParentADT._getTransformerNames?.() || [];
             for (const opName of parentTransformerNames) {
-                const transformer = parentADT._getTransformer?.(opName);
+                const transformer = ParentADT._getTransformer?.(opName);
                 if (!transformer) continue;
 
-                // Install operation on each new variant
-                for (const variantName of Object.keys(extensionDecl)) {
-                    installOperationOnVariant(extendedResult[variantName], opName, transformer);
+                // Install operation once on ExtendedADT prototype
+                installOperationOnADT(extendedResult, opName, transformer);
+            }
+
+            // Create new singletons and wrapped constructors for inherited variants
+            // This is necessary so that:
+            // 1. Fold operations on ExtendedADT.Red use ExtendedADT's transformer
+            // 2. Instances created via ExtendedADT.Point2D are instanceof ExtendedADT
+            for (const key of Object.keys(ParentADT)) {
+                if (key.startsWith('_') || key === 'extend' || extendedResult.hasOwnProperty(key)) {
+                    continue; // Skip private methods, extend, and already-defined variants
+                }
+
+                const parentVariant = ParentADT[key];
+
+                // Check if this is a singleton variant (frozen instance, not a constructor)
+                if (parentVariant && typeof parentVariant === 'object' && Object.isFrozen(parentVariant)) {
+                    // Create a new singleton instance that inherits from ExtendedADT
+                    const variantName = parentVariant.constructor.name;
+                    const newSingleton = createSingletonVariant(ExtendedADT, variantName, extendedResult);
+
+                    Object.defineProperty(extendedResult, key, {
+                        value: newSingleton,
+                        writable: false,
+                        enumerable: true,
+                        configurable: true
+                    });
+                }
+                // Check if this is a structured variant constructor
+                else if (typeof parentVariant === 'function' && parentVariant._fieldNames) {
+                    // Create a wrapped constructor that creates instances with ExtendedADT prototype
+                    const variantName = parentVariant.name;
+                    const fieldSpecs = parentVariant._fieldSpecs;
+
+                    // Create new variant constructor for extended ADT
+                    const newConstructor = createStructuredVariant(ExtendedADT, variantName, fieldSpecs, extendedResult);
+
+                    Object.defineProperty(extendedResult, key, {
+                        value: newConstructor,
+                        writable: false,
+                        enumerable: true,
+                        configurable: true
+                    });
                 }
             }
 
@@ -1977,15 +1880,24 @@ export function data(declOrFn) {
         const typeParamObjects = {};
         for (const paramName of typeParamNames) {
             typeParamObjects[paramName] = {
-                [TypeParamSymbol]: paramName,
-                // Store the instantiated type if provided
-                _instantiatedType: typeArgs?.[paramName]
+                [TypeParamSymbol]: paramName
             };
         }
 
-        const decl = isCallbackStyle
-            ? declOrFn({ Family, ...typeParamObjects })
-            : declOrFn;        // Runtime validation for variant names
+        // Only create variant declaration for base ADT, not parameterized instances
+        let decl;
+        if (typeArgs && parentADT) {
+            // Parameterized instance - reuse parent's declaration
+            decl = parentADT[VariantDeclSymbol];
+        } else {
+            // Base ADT - create new declaration
+            decl = isCallbackStyle
+                ? declOrFn({ Family, ...typeParamObjects })
+                : declOrFn;
+
+            ADT[VariantDeclSymbol] = decl;
+        }
+
         for (const variantName of Object.keys(decl)) {
             if (!isPascalCase(variantName)) {
                 throw new TypeError(
@@ -1996,41 +1908,72 @@ export function data(declOrFn) {
 
         for (const [variantName, value] of Object.entries(decl)) {
             if (isStructuredVariant(value)) {
-                // Structured variant with field definitions (object literal)
-                const fieldObj = value;
-
-                // Extract field names and specs from object literal
-                const fields = Object.entries(fieldObj).map(([name, spec]) => {
-                    // Runtime validation: check field name is camelCase
+                for (const name of Object.keys(value)) {
                     if (!isCamelCase(name)) {
                         throw new TypeError(
                             `Field '${name}' in variant '${variantName}' must be camelCase (start with lowercase, no underscore prefix)`
                         );
                     }
+                }
 
-                    return { name, spec };
-                });
-
-                result[variantName] = createStructuredVariant(
+                const variantClass = createStructuredVariant(
                     ADT,
                     variantName,
-                    fields,
-                    ADT
+                    value,
+                    result
                 );
+
+                Object.defineProperty(result, variantName, {
+                    value: variantClass,
+                    writable: false,
+                    enumerable: true,
+                    configurable: true
+                });
             } else {
                 // Simple enumerated variant (empty object {})
-                result[variantName] = createSingletonVariant(ADT, variantName);
+                const variantValue = createSingletonVariant(ADT, variantName, result);
+                Object.defineProperty(result, variantName, {
+                    value: variantValue,
+                    writable: false,
+                    enumerable: true,
+                    configurable: true
+                });
             }
-
-            // Make variant property non-writable but configurable
-            // Allows shadow variants to be redefined during fold extension
-            Object.defineProperty(result, variantName, {
-                value: result[variantName],
-                writable: false,
-                enumerable: true,
-                configurable: true
-            });
         }
+
+        // If this is a parameterized instance, create new variant classes for it
+        if (typeArgs && parentADT) {
+            const parentDecl = parentADT[VariantDeclSymbol];
+
+            // Create new variant classes that extend this parameterized ADT
+            for (const [variantName, value] of Object.entries(parentDecl)) {
+                if (isStructuredVariant(value)) {
+                    // Create a new variant class that extends the parameterized ADT
+                    const parameterizedVariant = createStructuredVariant(
+                        result,  // Use the parameterized ADT as the base
+                        variantName,
+                        value,
+                        result
+                    );
+
+                    // Override the inherited variant with the parameterized one
+                    Object.defineProperty(result, variantName, {
+                        value: parameterizedVariant,
+                        writable: false,
+                        enumerable: true,
+                        configurable: true
+                    });
+                } else {
+                    // Singleton variants don't need to be recreated
+                    // They can be shared across parameterized instances
+                }
+            }
+        }
+
+        // Parameterized instances automatically inherit operations through prototype chain:
+        // List(Number).prototype → List.prototype
+        // Cons(Number).prototype → List(Number).prototype → List.prototype
+        // No need to reinstall operations
 
         // Note: ADT is not sealed to allow fold extensions to redefine properties
         // Properties are non-writable for immutability in strict mode
@@ -2038,15 +1981,16 @@ export function data(declOrFn) {
         return result;
     }
 
-    // For callback-style ADTs, return a function that can be called with type args
+    // For callback-style ADTs, return a callable class
     // For object-style ADTs, just return the ADT directly
     if (isCallbackStyle) {
-        // Create the base ADT
+        // Create the base ADT class
         const adt = createADT();
-        // Make the ADT callable for parameterized types
-        const callable = function (...typeArgs) {
+
+        // Add static _call method for parameterization
+        adt._call = function (...typeArgs) {
             if (typeArgs.length === 0) {
-                return adt;
+                return callableADT;
             }
 
             // Convert arguments to type args object
@@ -2065,27 +2009,13 @@ export function data(declOrFn) {
                 });
             }
 
-            // Pass callable (the parent ADT) to createADT
-            return createADT(typeArgsObj, callable);
+            const parameterizedADT = createADT(typeArgsObj, callableADT);
+            return callable(parameterizedADT);
         };
 
-        // Copy all ADT properties and methods to the callable function
-        for (const key of Object.keys(adt)) {
-            callable[key] = adt[key];
-        }
-        // Copy static methods
-        copyADTMethods(callable, adt);
+        const callableADT = callable(adt);
 
-        // CRITICAL: Set callable.prototype to match adt.prototype so instanceof works
-        callable.prototype = adt.prototype;
-
-        // Set up prototype chain so it looks like the ADT
-        Object.setPrototypeOf(callable, Object.getPrototypeOf(adt));
-
-        // Don't freeze callable - fold/unfold need to add methods
-        // But the individual variant properties are already immutable (frozen objects)
-
-        return callable;
+        return callableADT;
     } else {
         return createADT();
     }

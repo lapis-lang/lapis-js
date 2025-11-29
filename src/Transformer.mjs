@@ -21,7 +21,7 @@ export const HandlerMapSymbol = Symbol('HandlerMap');
  * @typedef {Object} Transformer
  * @property {string} name - Operation name
  * @property {*} [outSpec] - Output type specification for validation
- * @property {*} [inSpec] - Input type specification (for unfold operations)
+ * @property {*} [inSpec] - Input type specification (for unfold and parameterized fold operations)
  * @property {Function} [generator] - Generator function for unfold operations
  * @property {Function} [getCtorTransform] - Get constructor transform for fold operations
  * @property {Function} [getParamTransform] - Get parameter transform for map operations
@@ -275,11 +275,13 @@ function extractInSpec(transformer) {
 export function createFoldTransformer(
     name,
     handlers,
-    outSpec
+    outSpec,
+    inSpec
 ){
     const transformer = createTransformer({
         name,
         outSpec,
+        inSpec,
         getCtorTransform: (ctor) => {
             const variantName = ctor.name;
             const handler = handlers[variantName];

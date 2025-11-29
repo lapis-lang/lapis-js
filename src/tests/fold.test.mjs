@@ -222,6 +222,42 @@ describe('Fold Operation (Catamorphism)', () => {
             assert.strictEqual(list.product(), 24);
             assert.strictEqual(List.Nil.product(), 1);
         });
+
+        test('List.append - should append element to end of list', () => {
+            const List = data(({ Family }) => ({
+                Nil: {},
+                Cons: { head: Number, tail: Family }
+            }))
+                .fold('append', { in: Number }, {
+                    Nil(val) { 
+                        return List.Cons({ head: val, tail: List.Nil }); 
+                    },
+                    Cons({ head, tail }, val) { 
+                        // tail is a partially applied function: tail(val) appends val to the tail
+                        return List.Cons({ head, tail: tail(val) }); 
+                    }
+                });
+
+            // Empty list
+            const empty = List.Nil;
+            const list1 = empty.append(1);
+            assert.ok(list1.constructor.name === 'Cons');
+            assert.strictEqual(list1.head, 1);
+            assert.ok(list1.tail === List.Nil);
+
+            // Single element list
+            const list2 = list1.append(2);
+            assert.strictEqual(list2.head, 1);
+            assert.strictEqual(list2.tail.head, 2);
+            assert.ok(list2.tail.tail === List.Nil);
+
+            // Multiple elements
+            const list3 = list2.append(3);
+            assert.strictEqual(list3.head, 1);
+            assert.strictEqual(list3.tail.head, 2);
+            assert.strictEqual(list3.tail.tail.head, 3);
+            assert.ok(list3.tail.tail.tail === List.Nil);
+        });
     });
 
     describe('Multiple Recursive Fields', () => {
@@ -518,7 +554,7 @@ describe('Fold Operation (Catamorphism)', () => {
                 });
 
             // Build number 10
-            let ten= Peano.Zero;
+            let ten = Peano.Zero;
             for (let i = 0; i < 10; i++) {
                 ten = Peano.Succ({ pred: ten });
             }
@@ -537,7 +573,7 @@ describe('Fold Operation (Catamorphism)', () => {
                 });
 
             // Build list of 100 elements
-            let list= List.Nil;
+            let list = List.Nil;
             for (let i = 0; i < 100; i++) {
                 list = List.Cons({ head: i, tail: list });
             }

@@ -532,11 +532,7 @@ const List = data(({ Family }) => ({
     Cons({ head, tail }) { return head + tail; }  // tail is the sum of remaining elements
 });
 
-const list = List.Cons({ head: 1,
-    tail: List.Cons({ head: 2,
-        tail: List.Cons({ head: 3, tail: List.Nil })
-    })
-});
+const list = List.Cons(1, List.Cons(2, List.Cons(3, List.Nil)));
 console.log(list.sum()); // 6 (1 + (2 + (3 + 0)))
 
 // For trees: processes from leaves to root
@@ -548,6 +544,75 @@ const Tree = data(({ Family }) => ({
     Leaf({ value }) { return value; },
     Node({ left, right, value }) { return left + right + value; }
 });
+```
+
+### Parameterized Folds
+
+Fold operations can accept a single input parameter, enabling operations like `append`, `insert`, or `map` that transform structures based on additional input.
+
+**How parameterized folds differ from simple folds:**
+
+In a **simple fold** (without parameter), `Family` fields are replaced with their already-computed folded values:
+
+```ts
+.fold('length', { out: Number }, {
+    Nil() { return 0; },
+    Cons({ tail }) { return 1 + tail; }  // tail is a Number (already computed)
+});
+```
+
+In a **parameterized fold** (with parameter), `Family` fields become **partially-applied functions** that accept the parameter:
+
+```ts
+.fold('append', { in: Number }, ({Nil, Cons}) => ({
+    Nil(val) {
+        return Cons(val, Nil);
+    },
+    Cons({ head, tail }, val) {
+        // tail is a function: tail(val) continues the fold with the parameter
+        return Cons(head, tail(val));
+    }
+}));
+
+const list = List.Cons(1, List.Cons(2, List.Nil));
+const extended = list.append(3);
+// Result: Cons(1, Cons(2, Cons(3, Nil)))
+```
+
+**Why the difference?**
+
+Both traverse bottom-up (leaves to root), but:
+
+- **Simple fold**: Eagerly computes values during traversal. By the time a handler runs, recursive fields contain final results.
+- **Parameterized fold**: Delays computation until the parameter is provided. Recursive fields become functions that continue the fold when given the parameter.
+
+The parameter is threaded through the entire structure, allowing each level to use it in its computation.
+
+**Key points for parameterized folds:**
+
+- Fold operations accept **at most one input parameter**
+- `spec.in` provides optional runtime type validation for the parameter
+- For recursive ADTs, `Family` fields become **partially applied functions** that accept the input parameter
+- **Use callback form `(ADT) => ({ handlers })` to enable polymorphism** over parameterized ADT instances
+- Handler signature for singleton variants: `Variant(inputArg) => result`
+- Handler signature for structured variants: `Variant({ field1, field2, ... }, inputArg) => result`
+- The input parameter is threaded through all recursive calls automatically
+- Both forms still process structures bottom-up (catamorphic recursion)
+
+```ts
+// Callback form enables polymorphism for generic ADTs
+const List = data(({ Family, T }) => ({
+    Nil: {},
+    Cons: { head: T, tail: Family(T) }
+}))
+.fold('append', { in: Object }, (List) => ({  // List parameter receives the actual ADT
+    Nil(val) { return List.Cons(val, List.Nil); },
+    Cons({ head, tail }, val) { return List.Cons(head, tail(val)); }
+}));
+
+const NumList = List(Number);
+const nums = NumList.Cons(1, NumList.Cons(2, NumList.Nil));
+const result = nums.append(3);  // Returns NumList instance, not generic List
 ```
 
 **Note:** Both object literal form `{ ... }` and callback form `() => ({ ... })` are supported for fold operations. The object literal form is preferred for readability.
@@ -727,7 +792,7 @@ const List = data(({ Family }) => ({
 // This works for arbitrarily large lists without stack overflow
 let bigList = List.Nil;
 for (let i = 100000; i > 0; i--) {
-    bigList = List.Cons({ head: 1, tail: bigList });
+    bigList = List.Cons(1, bigList);
 }
 
 console.log(bigList.sum()); // 100000 - no stack overflow
@@ -873,10 +938,7 @@ const List = data(({ Family, T }) => ({
 .map('increment', {}, { T: (x) => x + 1 })
 .map('stringify', (Family) => ({ out: Family(String) }), { T: (x) => String(x) });
 
-const list = List.Cons({
-    head: 1,
-    tail: List.Cons({ head: 2, tail: List.Cons({ head: 3, tail: List.Nil }) })
-});
+const list = List.Cons(1, List.Cons(2, List.Cons(3, List.Nil)));
 
 const incremented = list.increment();
 console.log(incremented.head); // 2 (structure preserved)
@@ -952,9 +1014,9 @@ const nums = NumList.Range(3);  // Works
 // GenericList(String).Range(3);  // Error: Range not defined
 ```
 
-### Binary Operations with Unfold
+### Binary Operations with Fold
 
-Unfold operations support **object literal guards** in the `in` spec, enabling clean binary and n-ary operations:
+Fold operations with parameterized input enable clean binary and n-ary operations:
 
 ```ts
 const List = data(({ Family, T }) => ({
@@ -969,40 +1031,28 @@ const Pair = data(({ T, U }) => ({
 // Instantiate types
 const NumList = List(Number);
 const StrList = List(String);
-const PairList = List(Object);
 
-// Define zip as an unfold with object literal guard
-NumList.unfold('Zip', {
-    in: { xs: NumList, ys: StrList },
-    out: PairList
-}, {
-    Nil: ({ xs, ys }) => {
-        // If either list is empty, produce Nil
-        return (!xs || xs.constructor.name === 'Nil' ||
-                !ys || ys.constructor.name === 'Nil') ? {} : null;
-    },
-    Cons: ({ xs, ys }) => {
-        // If both lists have elements, produce Cons
-        if (xs && xs.constructor.name === 'Cons' &&
-            ys && ys.constructor.name === 'Cons') {
-            return {
-                head: Pair(Number, String).MakePair({
-                    first: xs.head,
-                    second: ys.head
-                }),
-                tail: { xs: xs.tail, ys: ys.tail }  // Seeds for recursive unfold
-            };
-        }
-        return null;
+// Define zip as a fold with input guard
+NumList.fold('zip', { in: StrList, out: List(Object) }, (List) => ({
+    Nil(other) { return List.Nil; },
+    Cons({ head, tail }, other) {
+        // If other list is empty, stop
+        if (!other || other.constructor.name === 'Nil')
+            return List.Nil;
+
+        const PairType = Pair(Number, String);
+        return List.Cons(
+            PairType.MakePair(head, other.head),
+            tail(other.tail)  // tail is a partially applied function
+        );
     }
-});
+}));
 
 // Usage
 const nums = NumList.Cons(1, NumList.Cons(2, NumList.Cons(3, NumList.Nil)));
 const strs = StrList.Cons("a", StrList.Cons("b", StrList.Cons("c", StrList.Nil)));
-const zipped = NumList.Zip({ xs: nums, ys: strs });
+const zipped = nums.zip(strs);
 
-// zipped is PairList: Cons((1,"a"), Cons((2,"b"), Cons((3,"c"), Nil)))
 ```
 
 ### Object Literal Guards in Specs
