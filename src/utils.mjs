@@ -6,6 +6,9 @@
  * @module utils
  */
 
+// Import IsSingleton from Data.mjs to avoid symbol mismatch
+import { IsSingleton } from './Data.mjs';
+
 // Symbols for parameterized ADT/Codata instances
 export const IsParameterizedInstance = Symbol('IsParameterizedInstance');
 export const ParentADTSymbol = Symbol('ParentADT');
@@ -33,7 +36,7 @@ export function callable(Class) {
         apply(target, thisArg, argumentsList) {
             // Check if this is a variant constructor (has _fieldNames or is a singleton)
             // Variants should use their constructor, not _call
-            const isVariant = '_fieldNames' in target || target[Symbol.for('IsSingleton')] === true;
+            const isVariant = '_fieldNames' in target || target[IsSingleton] === true;
 
             // When called as a function, check if it has a _call method (for ADT parameterization)
             // But only use _call if this is not a variant

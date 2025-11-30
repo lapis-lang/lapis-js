@@ -23,7 +23,7 @@ import {
 export const parent = Symbol('parent');
 
 // Symbol to mark singleton variants (vs structured variants with fields)
-const IsSingleton = Symbol('IsSingleton');
+export const IsSingleton = Symbol('IsSingleton');
 
 // Symbol to store reference to the ADT that owns a variant
 const DataTypeSymbol = Symbol('DataType');
