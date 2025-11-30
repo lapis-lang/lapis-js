@@ -89,7 +89,7 @@ function isSimpleObserver(spec) {
     if (isSelfRef(spec)) {
         return false;
     }
-    
+
     // Simple observer: just a type parameter or primitive constructor
     // NOT an object literal with 'in' and/or 'out' properties
     return !isObjectLiteral(spec) || (!('in' in spec) && !('out' in spec));
@@ -133,7 +133,7 @@ export function codata(declFn) {
     // Extract type parameter names from callback function
     let typeParamNames = [];
     const fnStr = declFn.toString();
-    
+
     // Match destructured parameters: ({ Self, T, U }) =>
     const destructuredMatch = fnStr.match(/^\s*(?:function\s*[^(]*)?\(\s*\{\s*([^}]+)\s*\}/);
 
@@ -198,7 +198,7 @@ export function codata(declFn) {
 
         // Store observer definitions in registry
         const observerMap = new Map();
-        
+
         for (const [observerName, observerSpec] of Object.entries(observerDecl)) {
             // Classify observer type
             const isSimple = isSimpleObserver(observerSpec);
@@ -259,7 +259,7 @@ export function codata(declFn) {
     codataObservers.set(callableCodata, observerMap);
 
     // Add unfold method to codata type
-    callableCodata.unfold = function(name, spec, handlers) {
+    callableCodata.unfold = function (name, spec, handlers) {
         return addUnfoldOperation(callableCodata, observerMap, name, spec, handlers);
     };
 
@@ -296,16 +296,19 @@ function addUnfoldOperation(CodataType, observerMap, name, spec, handlers) {
     }
 
     // Parse spec - can be function or object
-    let inSpec, outSpec;
     if (typeof spec === 'function') {
         // Callback form: (Codata) => ({ in: Type, out: Codata })
+        // Validate that spec returns an object
         const specResult = spec(CodataType);
-        inSpec = specResult.in;
-        outSpec = specResult.out;
+        if (!specResult || typeof specResult !== 'object') {
+            throw new TypeError(
+                `Unfold operation '${name}' spec callback must return an object with optional 'in' and 'out' properties`
+            );
+        }
+        // TODO: Use inSpec and outSpec for runtime validation
     } else if (isObjectLiteral(spec)) {
         // Object literal form: { in: Type, out: Codata }
-        inSpec = spec.in;
-        outSpec = spec.out;
+        // TODO: Use spec.in and spec.out for runtime validation
     } else {
         throw new TypeError(
             `Unfold operation '${name}' spec must be a function or object literal`
@@ -320,7 +323,7 @@ function addUnfoldOperation(CodataType, observerMap, name, spec, handlers) {
     }
 
     // Validate that all observers have handlers
-    for (const [observerName, observer] of observerMap.entries()) {
+    for (const observerName of observerMap.keys()) {
         if (!(observerName in handlers)) {
             throw new Error(
                 `Unfold operation '${name}' missing handler for observer '${observerName}'`
@@ -337,10 +340,20 @@ function addUnfoldOperation(CodataType, observerMap, name, spec, handlers) {
         }
     }
 
+    // Validate that all handlers correspond to actual observers (catch typos)
+    for (const handlerName of Object.keys(handlers)) {
+        if (!observerMap.has(handlerName)) {
+            throw new Error(
+                `Unfold operation '${name}' has handler '${handlerName}' which does not correspond to any observer. ` +
+                `Valid observers are: ${Array.from(observerMap.keys()).join(', ')}`
+            );
+        }
+    }
+
     // Create the static factory method
-    CodataType[name] = function(seed) {
-        // TODO: Validate seed against inSpec
-        
+    CodataType[name] = function (seed) {
+        // TODO: Validate seed against spec.in when runtime validation is implemented
+
         // Create and return Proxy-wrapped codata instance
         return createCodataInstance(CodataType, observerMap, seed, handlers);
     };
@@ -366,19 +379,19 @@ function addUnfoldOperation(CodataType, observerMap, name, spec, handlers) {
 function createCodataInstance(CodataType, observerMap, seed, unfoldHandlers) {
     // Create base instance (plain object to be wrapped by Proxy)
     const instance = Object.create(CodataType.prototype || Object.prototype);
-    
+
     // Mark as codata instance
     instance[CodataSymbol] = true;
     instance[CodataTypeSymbol] = CodataType;
     instance[ObserverMapSymbol] = observerMap;
     instance[SeedSymbol] = seed;
-    
+
     // Initialize instance state in WeakMap
     codataInstanceState.set(instance, {
         seed,
         memo: new Map()  // For memoizing Self continuations
     });
-    
+
     // Create Proxy with lazy evaluation
     const proxy = new Proxy(instance, {
         get(target, prop, receiver) {
@@ -386,25 +399,25 @@ function createCodataInstance(CodataType, observerMap, seed, unfoldHandlers) {
             if (typeof prop === 'symbol') {
                 return Reflect.get(target, prop, receiver);
             }
-            
+
             // Handle standard object properties
             if (prop === 'constructor' || prop === 'toString' || prop === 'valueOf') {
                 return Reflect.get(target, prop, receiver);
             }
-            
+
             // Get observer definition
             const observer = observerMap.get(prop);
             if (!observer) {
                 // Not an observer - return undefined or default behavior
                 return Reflect.get(target, prop, receiver);
             }
-            
+
             // Get instance state
             const state = codataInstanceState.get(target);
             if (!state) {
                 throw new Error(`Codata instance state not found for property '${prop}'`);
             }
-            
+
             // Get unfold handler for this observer
             const handler = unfoldHandlers?.[prop];
             if (!handler) {
@@ -413,17 +426,17 @@ function createCodataInstance(CodataType, observerMap, seed, unfoldHandlers) {
                     `Did you forget to call .unfold() to define how this codata is constructed?`
                 );
             }
-            
+
             // Handle different observer types
             if (observer.isContinuation) {
                 // Self continuation - memoize the result
                 if (state.memo.has(prop)) {
                     return state.memo.get(prop);
                 }
-                
+
                 // Compute continuation: handler returns next seed value
                 const nextSeed = handler(state.seed);
-                
+
                 // Create next codata instance with same type and handlers
                 const nextInstance = createCodataInstance(
                     CodataType,
@@ -431,15 +444,19 @@ function createCodataInstance(CodataType, observerMap, seed, unfoldHandlers) {
                     nextSeed,
                     unfoldHandlers
                 );
-                
+
                 // Memoize and return
                 state.memo.set(prop, nextInstance);
                 return nextInstance;
-                
+
             } else if (observer.isParametric) {
                 // Parametric observer - return a function that takes input and computes output
-                // Do NOT memoize - recompute on each call
-                return function(...args) {
+                // Memoize the function wrapper (but not the results of calling it)
+                if (state.memo.has(prop)) {
+                    return state.memo.get(prop);
+                }
+
+                const observerFn = function (...args) {
                     // Handler for parametric observer: (seed) => (param) => value
                     const fn = handler(state.seed);
                     if (typeof fn !== 'function') {
@@ -449,7 +466,11 @@ function createCodataInstance(CodataType, observerMap, seed, unfoldHandlers) {
                     }
                     return fn(...args);
                 };
-                
+
+                // Memoize the function wrapper (not the call results)
+                state.memo.set(prop, observerFn);
+                return observerFn;
+
             } else if (observer.isSimple) {
                 // Simple observer - recompute on each access (no memoization)
                 return handler(state.seed);
@@ -457,7 +478,17 @@ function createCodataInstance(CodataType, observerMap, seed, unfoldHandlers) {
                 throw new Error(`Unknown observer type for '${prop}'`);
             }
         },
-        
+
+        // Support property existence checks (in operator, hasOwnProperty)
+        has(target, prop) {
+            // Check if it's an observer
+            if (observerMap.has(prop)) {
+                return true;
+            }
+            // Fall back to default behavior for other properties
+            return Reflect.has(target, prop);
+        },
+
         // Prevent setting properties on codata instances
         set(target, prop, value) {
             throw new Error(
@@ -465,6 +496,6 @@ function createCodataInstance(CodataType, observerMap, seed, unfoldHandlers) {
             );
         }
     });
-    
+
     return proxy;
 }

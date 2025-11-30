@@ -121,7 +121,7 @@ describe('Codata - Proxy-Based Lazy Evaluation', () => {
                 }
             });
 
-        const console = Console.Create(null);
+        const console = Console.Create();
 
         // log should be a function
         assert.equal(typeof console.log, 'function', 'log should be a function');
@@ -134,6 +134,11 @@ describe('Codata - Proxy-Based Lazy Evaluation', () => {
         assert.equal(typeof console.read, 'function', 'read should be a function');
         const input = console.read();
         assert.equal(input, 'mock input');
+        
+        // Verify that accessing the same parametric observer returns the same function (memoized)
+        const logFn1 = console.log;
+        const logFn2 = console.log;
+        assert.strictEqual(logFn1, logFn2, 'Parametric observer function should be memoized');
     });
 
     it('should prevent setting properties on codata instances', () => {
@@ -206,15 +211,22 @@ describe('Codata - Proxy-Based Lazy Evaluation', () => {
         );
     });
 
-    it('should throw error when accessing observer without unfold', () => {
-        const Stream = codata(({ Self }) => ({
-            head: Number,
-            tail: Self
-        }));
-
-        // Cannot create instance without unfold
-        // This would require manually creating an instance, which isn't exposed
-        // So we'll skip this test for now
+    it('should validate no extra handlers are provided', () => {
+        assert.throws(
+            () => {
+                codata(({ Self }) => ({
+                    head: Number,
+                    tail: Self
+                }))
+                    .unfold('From', (Stream) => ({ in: Number }), {
+                        head: (n) => n,
+                        tail: (n) => n + 1,
+                        taill: (n) => n + 2  // Typo - extra 'l'
+                    });
+            },
+            /Unfold operation 'From' has handler 'taill' which does not correspond to any observer/,
+            'Should detect extra handlers that do not match observers'
+        );
     });
 
     it('should support multiple type parameters', () => {
@@ -295,5 +307,25 @@ describe('Codata - Proxy-Based Lazy Evaluation', () => {
 
         // Verify memoization: accessing left twice returns same instance
         assert.strictEqual(tree.left, tree.left);
+    });
+
+    it('should support property existence checks with in operator', () => {
+        const Stream = codata(({ Self }) => ({
+            head: Number,
+            tail: Self
+        }))
+            .unfold('From', (Stream) => ({ in: Number, out: Stream }), {
+                head: (n) => n,
+                tail: (n) => n + 1
+            });
+
+        const stream = Stream.From(0);
+
+        // Observer properties should be reported as existing
+        assert.ok('head' in stream, 'head should exist in stream');
+        assert.ok('tail' in stream, 'tail should exist in stream');
+
+        // Non-observer properties should return false
+        assert.ok(!('nonExistent' in stream), 'nonExistent should not exist in stream');
     });
 });
