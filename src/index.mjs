@@ -7,6 +7,7 @@ import {
 } from './Transformer.mjs';
 
 export { createTransformer, composeTransformers, composeMultipleTransformers } from './Transformer.mjs';
+export { createObserver, composeObservers, composeMultipleObservers, createFoldObserver, codataObservers } from './Observer.mjs';
 
 // Symbol for parent callback in extendMatch handlers
 export const parent = Symbol('parent');
