@@ -14,15 +14,15 @@ describe('Codata - Unfold Chaining', () => {
             head: T,
             tail: Self(T)
         }))
-            .unfold('From', (Stream) => ({ in: Number, out: Stream }), {
+            .unfold('From', (Stream) => ({ in: Number, out: Stream(Number) }), {
                 head: (n) => n,
                 tail: (n) => n + 1
             })
-            .unfold('Constant', (Stream) => ({ in: Number, out: Stream }), {
+            .unfold('Constant', (Stream) => ({ in: Number, out: Stream(Number) }), {
                 head: (n) => n,
                 tail: (n) => n  // Always the same value
             })
-            .unfold('Range', (Stream) => ({ in: { start: Number, end: Number }, out: Stream }), {
+            .unfold('Range', (Stream) => ({ in: { start: Number, end: Number }, out: Stream(Number) }), {
                 head: ({ start }) => start,
                 tail: ({ start, end }) => ({ start: start + 1, end })
             });
@@ -52,7 +52,7 @@ describe('Codata - Unfold Chaining', () => {
             nth: { in: Number, out: T },
             tail: Self(T)
         }))
-            .unfold('From', (Stream) => ({ in: Number, out: Stream }), {
+            .unfold('From', (Stream) => ({ in: Number, out: Stream(Number) }), {
                 head: (n) => n,
                 nth: (n) => (index) => n + index,
                 tail: (n) => n + 1
@@ -113,11 +113,11 @@ describe('Codata - Unfold Chaining', () => {
             head: Number,
             tail: Self
         }))
-            .unfold('From', (Stream) => ({ in: Number, out: Stream }), {
+            .unfold('From', (Stream) => ({ in: Number, out: Stream(Number) }), {
                 head: (n) => n,
                 tail: (n) => n + 1
             })
-            .unfold('Constant', (Stream) => ({ in: Number, out: Stream }), {
+            .unfold('Constant', (Stream) => ({ in: Number, out: Stream(Number) }), {
                 head: (n) => n,
                 tail: (n) => n
             });
@@ -161,19 +161,25 @@ describe('Codata - Unfold Chaining', () => {
             head: Number,
             tail: Self
         }))
-            .unfold('From', (Stream) => ({ in: Number, out: Stream }), {
+            .unfold('From', (Stream) => ({ in: Number, out: Stream(Number) }), {
                 head: (n) => n,
                 tail: (n) => n + 1
             });
 
         // Should be able to chain more unfolds
-        const StreamWithMore = Stream.unfold('Zeros', (Stream) => ({ out: Stream }), {
+        const StreamWithMore = Stream.unfold('Zeros', (Stream) => ({ out: Stream(Number) }), {
             head: () => 0,
-            tail: () => undefined  // Would need proper seed, but demonstrates chainability
+            tail: () => 0  // Always return 0 as seed (constant zero stream)
         });
 
         assert.ok(StreamWithMore);
         assert.ok(typeof StreamWithMore.From === 'function', 'Should still have From');
         assert.ok(typeof StreamWithMore.Zeros === 'function', 'Should have new Zeros');
+
+        // Verify the new unfold actually works
+        const zeros = StreamWithMore.Zeros();
+        assert.equal(zeros.head, 0);
+        assert.equal(zeros.tail.head, 0);
+        assert.equal(zeros.tail.tail.head, 0);
     });
 });
