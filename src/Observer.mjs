@@ -13,13 +13,13 @@
  * @module Observer
  */
 
-import { composeFunctions } from './utils.mjs';
+import { composeFunctions, HandlerMapSymbol } from './utils.mjs';
 
 /**
- * Symbol for storing handler map on fold observers.
- * Used internally to detect wildcard handlers and case structure.
+ * Re-export HandlerMapSymbol for backward compatibility.
+ * The symbol is now defined in utils.mjs and shared with Transformer.mjs.
  */
-export const HandlerMapSymbol = Symbol('HandlerMap');
+export { HandlerMapSymbol };
 
 /**
  * Observer abstraction that enables composition of codata operations.
@@ -89,7 +89,7 @@ export function createObserver(config) {
     }
 
     // Validate that at least one transformation is provided
-    if (!config.generator && !config.cases && 
+    if (!config.generator && !config.cases &&
         !config.getObserverTransform && !config.getAtomTransform) {
         throw new Error(
             `Observer '${config.name}' must provide at least one of: generator, cases, getObserverTransform, or getAtomTransform`
@@ -97,7 +97,12 @@ export function createObserver(config) {
     }
 
     // Validate fold-specific requirements
-    if (config.type === 'fold' && config.cases) {
+    if (config.type === 'fold') {
+        if (!config.cases) {
+            throw new Error(
+                `Observer '${config.name}' is a fold operation but missing required 'cases' object with Done and Step handlers`
+            );
+        }
         if (!config.cases.Done || typeof config.cases.Done !== 'function') {
             throw new Error(
                 `Observer '${config.name}' is a fold operation but missing required 'Done' case (termination predicate)`
@@ -151,19 +156,38 @@ export function composeObservers(o1, o2) {
         );
     }
 
-    // Determine merged type
-    let mergedType = 'merge';
-    if (o1.type === 'unfold' || o2.type === 'unfold') {
-        mergedType = 'unfold';
-    } else if (o1.type === 'fold' || o2.type === 'fold') {
+    // Determine merged type based on composition artifacts
+    // Precedence: fold > unfold > map > merge
+    // - If composed has cases: type is 'fold' (consuming operation)
+    // - Else if composed has generator: type is 'unfold' (generating operation)
+    // - Else if either has observer transform: type is 'map' (transformation operation)
+    // - Else: type is 'merge' (generic composition)
+    const composedCases = o1.cases || o2.cases;
+    const composedGenerator = o1.generator || o2.generator;
+    const hasObserverTransform = o1.getObserverTransform || o2.getObserverTransform;
+
+    let mergedType;
+    if (composedCases) {
         mergedType = 'fold';
-    } else if (o1.type === 'map' || o2.type === 'map') {
+    } else if (composedGenerator) {
+        mergedType = 'unfold';
+    } else if (hasObserverTransform) {
         mergedType = 'map';
+    } else {
+        mergedType = 'merge';
     }
+
+    // Infer specs from composition (same logic as composeMultipleObservers)
+    // - Input spec: from observer with generator (unfold operation)
+    // - Output spec: prefer o2's outSpec (later in pipeline), fallback to o1
+    const inSpec = (o1.generator ? o1.inSpec : o2.inSpec) || o1.inSpec || o2.inSpec;
+    const outSpec = o2.outSpec || o1.outSpec;
 
     return createObserver({
         name: `${o1.name}_${o2.name}`,
         type: mergedType,
+        inSpec,
+        outSpec,
         generator: o1.generator || o2.generator,
         cases: o1.cases || o2.cases,
         getObserverTransform: o1.getObserverTransform && o2.getObserverTransform
@@ -249,13 +273,21 @@ export function composeMultipleObservers(observers, mergeName) {
     const inSpec = firstWithGenerator?.inSpec;
     const outSpec = lastWithOutSpec?.outSpec;
 
-    // Determine merged type based on operations present
-    let mergedType = 'merge';
-    if (observers.some(o => o.type === 'unfold')) {
-        mergedType = 'unfold';
-    }
-    if (observers.some(o => o.type === 'fold')) {
+    // Determine merged type based on composed artifacts (not individual types)
+    // Precedence: fold > unfold > map > merge
+    // - If composed has cases: type is 'fold' (consuming operation)
+    // - Else if composed has generator: type is 'unfold' (generating operation)
+    // - Else if composed has observer transform: type is 'map' (transformation operation)
+    // - Else: type is 'merge' (generic composition)
+    let mergedType;
+    if (composed.cases) {
         mergedType = 'fold';
+    } else if (composed.generator) {
+        mergedType = 'unfold';
+    } else if (composed.getObserverTransform) {
+        mergedType = 'map';
+    } else {
+        mergedType = 'merge';
     }
 
     // Create final merged observer with inferred spec

@@ -7,6 +7,13 @@
  */
 
 /**
+ * Symbol for storing handler maps on transformers and observers.
+ * Used internally to detect wildcard handlers and case structure.
+ * Shared between Transformer.mjs (match handlers) and Observer.mjs (fold cases).
+ */
+export const HandlerMapSymbol = Symbol('HandlerMap');
+
+/**
  * Compose two transformation functions.
  * Returns a function that applies f then g: g(f(x))
  * 

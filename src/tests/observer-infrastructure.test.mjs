@@ -22,9 +22,9 @@ describe('Observer Infrastructure', () => {
                 generator: () => 42
             });
 
-            assert.equal(observer.name, 'testOp');
-            assert.equal(observer.type, 'unfold');
-            assert.equal(typeof observer.generator, 'function');
+            assert.strictEqual(observer.name, 'testOp');
+            assert.strictEqual(observer.type, 'unfold');
+            assert.strictEqual(typeof observer.generator, 'function');
         });
 
         it('should throw error if name is missing', () => {
@@ -75,6 +75,17 @@ describe('Observer Infrastructure', () => {
             );
         });
 
+        it('should throw error if fold operation has no cases at all', () => {
+            assert.throws(
+                () => createObserver({
+                    name: 'test',
+                    type: 'fold',
+                    getObserverTransform: (x) => x
+                }),
+                { message: /missing required 'cases' object/ }
+            );
+        });
+
         it('should accept valid fold operation with Done and Step', () => {
             const observer = createObserver({
                 name: 'testFold',
@@ -85,8 +96,8 @@ describe('Observer Infrastructure', () => {
                 }
             });
 
-            assert.equal(observer.name, 'testFold');
-            assert.equal(observer.type, 'fold');
+            assert.strictEqual(observer.name, 'testFold');
+            assert.strictEqual(observer.type, 'fold');
             assert.ok(observer.cases.Done);
             assert.ok(observer.cases.Step);
         });
@@ -104,10 +115,10 @@ describe('Observer Infrastructure', () => {
                 Number
             );
 
-            assert.equal(observer.name, 'take');
-            assert.equal(observer.type, 'fold');
-            assert.equal(observer.outSpec, Array);
-            assert.equal(observer.inSpec, Number);
+            assert.strictEqual(observer.name, 'take');
+            assert.strictEqual(observer.type, 'fold');
+            assert.strictEqual(observer.outSpec, Array);
+            assert.strictEqual(observer.inSpec, Number);
         });
 
         it('should throw error if cases are missing', () => {
@@ -148,7 +159,8 @@ describe('Observer Infrastructure', () => {
 
             const composed = composeObservers(o1, o2);
 
-            assert.equal(composed.name, 'unfold1_map1');
+            assert.strictEqual(composed.name, 'unfold1_map1');
+            assert.strictEqual(composed.type, 'unfold');
             assert.ok(composed.generator);
             assert.ok(composed.getObserverTransform);
         });
@@ -194,6 +206,29 @@ describe('Observer Infrastructure', () => {
                 { message: /both have fold cases/ }
             );
         });
+
+        it('should prioritize fold type over unfold in composition', () => {
+            const unfold = createObserver({
+                name: 'unfold1',
+                type: 'unfold',
+                generator: () => 0
+            });
+
+            const fold = createFoldObserver(
+                'fold1',
+                {
+                    Done: () => true,
+                    Step: () => ({ emit: 1, nextState: 0, nextSelf: null })
+                }
+            );
+
+            const composed = composeObservers(unfold, fold);
+
+            // Fold should take precedence as it's the consuming operation
+            assert.strictEqual(composed.type, 'fold');
+            assert.ok(composed.generator);
+            assert.ok(composed.cases);
+        });
     });
 
     describe('composeMultipleObservers', () => {
@@ -206,8 +241,8 @@ describe('Observer Infrastructure', () => {
 
             const composed = composeMultipleObservers([observer], 'renamed');
 
-            assert.equal(composed.name, 'renamed');
-            assert.equal(composed.type, 'unfold');
+            assert.strictEqual(composed.name, 'renamed');
+            assert.strictEqual(composed.type, 'unfold');
             assert.ok(composed.generator);
         });
 
@@ -227,7 +262,8 @@ describe('Observer Infrastructure', () => {
 
             const composed = composeMultipleObservers([unfold, map], 'FromDoubled');
 
-            assert.equal(composed.name, 'FromDoubled');
+            assert.strictEqual(composed.name, 'FromDoubled');
+            assert.strictEqual(composed.type, 'unfold');
             assert.ok(composed.generator);
             assert.ok(composed.getObserverTransform);
         });
@@ -262,9 +298,33 @@ describe('Observer Infrastructure', () => {
 
             const composed = composeMultipleObservers([unfold, map, fold], 'SumOfDoubles');
 
-            assert.equal(composed.name, 'SumOfDoubles');
+            assert.strictEqual(composed.name, 'SumOfDoubles');
+            assert.strictEqual(composed.type, 'fold');
             assert.ok(composed.generator);
             assert.ok(composed.getObserverTransform);
+            assert.ok(composed.cases);
+        });
+
+        it('should prioritize fold type over unfold when both present', () => {
+            const unfold = createObserver({
+                name: 'unfold1',
+                type: 'unfold',
+                generator: () => 0
+            });
+
+            const fold = createFoldObserver(
+                'fold1',
+                {
+                    Done: () => true,
+                    Step: () => ({ emit: 1, nextState: 0, nextSelf: null })
+                }
+            );
+
+            const composed = composeMultipleObservers([unfold, fold], 'Combined');
+
+            // Fold should take precedence as it's the consuming operation
+            assert.strictEqual(composed.type, 'fold');
+            assert.ok(composed.generator);
             assert.ok(composed.cases);
         });
 
@@ -318,9 +378,9 @@ describe('Observer Infrastructure', () => {
         });
 
         it('should allow storing and retrieving observers', () => {
-            class TestCodata {}
+            class TestCodata { }
             const registry = new Map();
-            
+
             const observer = createObserver({
                 name: 'test',
                 type: 'unfold',
@@ -331,7 +391,7 @@ describe('Observer Infrastructure', () => {
             codataObservers.set(TestCodata, registry);
 
             const retrieved = codataObservers.get(TestCodata);
-            assert.equal(retrieved.get('test').name, 'test');
+            assert.strictEqual(retrieved.get('test').name, 'test');
         });
     });
 });

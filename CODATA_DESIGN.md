@@ -193,23 +193,26 @@ const Point = codata({
 
 ## Internal Representation
 
-### Observer Transformer
+### Observer Abstraction
 
-Analogous to the existing `Transformer` class for data operations:
+Analogous to the existing `Transformer` abstraction for data operations, observers are created using factory functions rather than classes:
 
 ```javascript
-class Observer {
-  constructor({ name, inSpec, outSpec, cases, type }) {
-    this.name = name;                              // Observer name
-    this.inSpec = inSpec;                          // Input type (for parametric observers)
-    this.outSpec = outSpec;                        // Output type
-    this.cases = cases;                            // For fold: { Done, Step } cases
-    this.type = type;                              // 'unfold' | 'fold' | 'map' | 'merge'
+// Observer objects created by factory function
+const observer = createObserver({
+  name: 'take',                              // Observer name
+  type: 'fold',                              // 'unfold' | 'fold' | 'map' | 'merge'
+  inSpec: Number,                            // Input type (for parametric observers)
+  outSpec: Array,                            // Output type
+  cases: {                                   // For fold: { Done, Step } cases
+    Done: (self, n) => n <= 0,
+    Step: (self, n) => ({ emit: self.head, nextState: n - 1, nextSelf: self.tail })
   }
+});
 
-  // Composition for fusion
-  static compose(observers) { /* ... */ }
-}
+// Composition functions for fusion
+composeObservers(observer1, observer2);           // Compose two observers
+composeMultipleObservers([obs1, obs2, obs3], 'merged');  // Compose multiple observers
 ```
 
 ### Codata Registry

@@ -8,13 +8,13 @@
  * @module Transformer
  */
 
-import { composeFunctions } from './utils.mjs';
+import { composeFunctions, HandlerMapSymbol } from './utils.mjs';
 
 /**
- * Symbol for storing handler map on match transformers.
- * Used internally to detect wildcard handlers.
+ * Re-export HandlerMapSymbol for backward compatibility.
+ * The symbol is now defined in utils.mjs and shared with Observer.mjs.
  */
-export const HandlerMapSymbol = Symbol('HandlerMap');
+export { HandlerMapSymbol };
 
 /**
  * Transformer abstraction that enables composition of operations.
@@ -66,7 +66,7 @@ export const adtTransformers = new WeakMap();
  */
 export function createTransformer(
     config
-){
+) {
     if (!config.name) {
         throw new Error('Transformer must have a name');
     }
@@ -106,7 +106,7 @@ export function createTransformer(
 export function composeTransformers(
     t1,
     t2
-){
+) {
     // Validate composition rules
     if (t1.generator && t2.generator) {
         throw new Error(
@@ -259,7 +259,7 @@ export function createFoldTransformer(
     handlers,
     outSpec,
     inSpec
-){
+) {
     const transformer = createTransformer({
         name,
         outSpec,
