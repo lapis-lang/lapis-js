@@ -451,6 +451,9 @@ function createCodataInstance(CodataType, observerMap, seed, unfoldHandlers) {
 
             } else if (observer.isParametric) {
                 // Parametric observer - return a function that takes input and computes output
+                // Check if the output type is Self (continuation)
+                const outputIsSelf = isSelfRef(observer.spec.out);
+
                 // Memoize the function wrapper (but not the results of calling it)
                 if (state.memo.has(prop)) {
                     return state.memo.get(prop);
@@ -464,7 +467,19 @@ function createCodataInstance(CodataType, observerMap, seed, unfoldHandlers) {
                             `Parametric observer '${prop}' handler must return a function, got ${typeof fn}`
                         );
                     }
-                    return fn(...args);
+                    const result = fn(...args);
+
+                    // If output type is Self, create a new codata instance from the result (next seed)
+                    if (outputIsSelf) {
+                        return createCodataInstance(
+                            CodataType,
+                            observerMap,
+                            result,  // result is the next seed
+                            unfoldHandlers
+                        );
+                    }
+
+                    return result;
                 };
 
                 // Memoize the function wrapper (not the call results)
