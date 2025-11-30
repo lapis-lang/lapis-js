@@ -1157,6 +1157,194 @@ Merged operations follow specific naming rules:
 - Static methods (with unfold): Must be PascalCase (e.g., `'Factorial'`, `'Range'`)
 - Instance methods (without unfold): Must be camelCase (e.g., `'doubleSum'`, `'sumOfSquares'`)
 
+## Codata (Coalgebras)
+
+Codata is the categorical dual of data (algebraic data types). While data is defined by **constructors** (how to build it), codata is defined by **observers** or **destructors** (how to observe or consume it).
+
+### Key Differences: Data vs Codata
+
+| Aspect | Data (Initial Algebras) | Codata (Final Coalgebras) |
+|--------|------------------------|---------------------------|
+| **Definition** | Defined by constructors | Defined by observers/destructors |
+| **Construction** | Builders (unfold/anamorphism) | Builders (unfold/anamorphism) |
+| **Destruction** | Eliminators (fold/catamorphism) | Eliminators (fold/catamorphism) |
+| **Structure** | Finite, inductive | Potentially infinite, coinductive |
+| **Evaluation** | Eager (constructed fully) | Lazy (observed on-demand) |
+| **Instances** | Immutable (frozen) | Mutable state for memoization |
+| **Example** | Lists, trees, Peano numbers | Streams, infinite sequences, event sources |
+
+### Basic Codata Declaration
+
+Codata types are defined using the `codata()` function with a callback that receives `Self` (for continuations) and type parameters:
+
+```js
+import { codata } from '@lapis-lang/lapis-js';
+
+const Stream = codata(({ Self, T }) => ({
+    head: T,           // Simple observer: returns current value
+    tail: Self(T)      // Continuation: returns next stream
+}));
+```
+
+**Observer types:**
+
+- **Simple observer**: `head: T` - Returns a value of type T
+- **Parametric observer**: `{ in: Input, out: Output }` - Takes input parameter, returns output
+- **Continuation**: `tail: Self(T)` - Returns next codata instance (potentially infinite)
+
+### Unfold Operations (Constructing Codata)
+
+The `.unfold()` operation defines how to construct codata instances from seed values:
+
+```js
+const Stream = codata(({ Self, T }) => ({
+    head: T,
+    tail: Self(T)
+}))
+.unfold('From', (Stream) => ({ in: Number, out: Stream(Number) }), {
+    head: (n) => n,           // Simple observer: return seed value
+    tail: (n) => n + 1        // Continuation: return next seed
+});
+
+// Usage
+const nums = Stream.From(0);
+console.log(nums.head);        // 0
+console.log(nums.tail.head);   // 1
+console.log(nums.tail.tail.head); // 2
+```
+
+**Handler signatures for unfold:**
+
+- **Simple observers**: `(seed) => value`
+- **Parametric observers**: `(seed) => (param) => value`
+- **Continuations**: `(seed) => nextSeed`
+
+### Multiple Unfold Constructors
+
+Chain multiple `.unfold()` calls to define different ways to construct codata:
+
+```js
+const Stream = codata(({ Self, T }) => ({
+    head: T,
+    tail: Self(T)
+}))
+.unfold('From', (Stream) => ({ in: Number, out: Stream(Number) }), {
+    head: (n) => n,
+    tail: (n) => n + 1
+})
+.unfold('Constant', (Stream) => ({ in: Number, out: Stream(Number) }), {
+    head: (n) => n,
+    tail: (n) => n          // Same seed = constant stream
+})
+.unfold('Fibonacci', (Stream) => ({ in: { a: Number, b: Number }, out: Stream(Number) }), {
+    head: ({ a }) => a,
+    tail: ({ a, b }) => ({ a: b, b: a + b })
+});
+
+const ones = Stream.Constant(1);
+const fib = Stream.Fibonacci({ a: 0, b: 1 });
+```
+
+### Parametric Observers
+
+Observers can accept parameters for computation:
+
+```js
+const Stream = codata(({ Self, T }) => ({
+    head: T,
+    tail: Self(T),
+    nth: { in: Number, out: T }  // Parametric observer
+}))
+.unfold('From', (Stream) => ({ in: Number, out: Stream(Number) }), {
+    head: (n) => n,
+    tail: (n) => n + 1,
+    nth: (n) => (index) => n + index  // Returns function taking index
+});
+
+const nums = Stream.From(0);
+console.log(nums.nth(5));      // 5
+console.log(nums.nth(10));     // 10
+```
+
+### Lazy Evaluation and Memoization
+
+Codata instances use Proxy-based lazy evaluation:
+
+- **Simple observers**: Recomputed on each access (no memoization)
+- **Parametric observers**: Function wrapper is memoized
+- **Continuations (Self)**: Instances are memoized (same instance on repeated access)
+
+```js
+const stream = Stream.From(0);
+
+// Accessing tail multiple times returns the same memoized instance
+const tail1 = stream.tail;
+const tail2 = stream.tail;
+console.log(tail1 === tail2);  // true (memoized)
+
+// Simple observers are recomputed each time
+stream.head;  // Computed
+stream.head;  // Computed again (no memoization)
+```
+
+### Infinite Structures
+
+Codata naturally represents potentially infinite structures:
+
+```js
+// Infinite binary tree
+const Tree = codata(({ Self }) => ({
+    value: Number,
+    left: Self,
+    right: Self
+}))
+.unfold('Create', (Tree) => ({ in: Number, out: Tree }), {
+    value: (n) => n,
+    left: (n) => n * 2,
+    right: (n) => n * 2 + 1
+});
+
+const tree = Tree.Create(1);
+console.log(tree.value);              // 1
+console.log(tree.left.value);         // 2
+console.log(tree.right.value);        // 3
+console.log(tree.left.left.value);    // 4
+```
+
+### Effect-like Codata
+
+Codata with parametric observers can model effects like IO:
+
+```js
+const Console = codata(() => ({
+    log: { in: String, out: undefined },
+    read: { out: String }
+}))
+.unfold('Create', (Console) => ({ out: Console }), {
+    log: () => (msg) => { console.log(msg); },
+    read: () => () => Promise.resolve('input')
+});
+
+const io = Console.Create();
+io.log('Hello, world!');
+const input = await io.read();
+```
+
+**Key points:**
+
+- Codata is defined by observers (destructors), not constructors
+- `.unfold()` creates static factory methods (PascalCase required)
+- Observers can be simple (direct value), parametric (with input), or continuations (Self)
+- Lazy evaluation via Proxy enables infinite structures
+- Continuations are memoized for performance
+- Multiple unfold constructors can be chained
+- Natural representation of streams, infinite sequences, and effects
+
+**See also:**
+
+- `examples/codata-stream.mjs` - Comprehensive codata examples
+- `CODATA_DESIGN.md` - Detailed design document for codata features
+
 ## References, Inspirations, and Further Reading
 
 - [Algebraic Data Types in JavaScript (2008)](https://w3future.com/weblog/stories/2008/06/16/adtinjs.xml)
