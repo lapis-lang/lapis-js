@@ -185,7 +185,7 @@ const TimeSeries = codata(({ Self }) => ({
             }
             return result;
         },
-        derivative: ({ a, b }) => ({ slope: b, intercept: 2 * a })
+        derivative: ({ a, b }) => ({ slope: 2 * a, intercept: b })
     });
 
 console.log('\n=== Time Series with Interpolation ===');
