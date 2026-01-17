@@ -160,6 +160,39 @@ When an object literal guard is used, it validates structured inputs with multip
 { in: { list1: List(Number), list2: List(String) }, out: ResultType }
 ```
 
+### Invariants
+
+Invariants allow you to specify relationships and constraints between multiple fields in a structured variant. Unlike guards which validate individual fields independently, invariants validate the constructed instance as a whole.
+
+Use the `invariant` symbol to define predicates that assert properties about the entire variant:
+
+```ts
+import { data, invariant } from '@lapis-lang/lapis-js';
+
+const isChar = (s) => typeof s === 'string' && s.length === 1;
+
+const Range = data({
+    CharRange: {
+        [invariant]: ({ start, end }) => start <= end,
+        start: isChar,
+        end: isChar
+    }
+});
+
+const r = Range.CharRange({ start: 'a', end: 'z' }); // Valid
+console.log(r.start); // 'a'
+
+Range.CharRange({ start: 'z', end: 'a' }); // Throws TypeError
+// TypeError: Invariant violation in variant 'CharRange'
+```
+
+**Key points:**
+
+- Invariants are defined using the `[invariant]` symbol as a field key
+- The invariant predicate receives the fully constructed instance and returns a boolean
+- Invariants are checked **after** all field guards pass, but **before** the instance is frozen
+- If the invariant returns `false`, a `TypeError` is thrown with a descriptive message
+
 ## Parameterized and Recursive ADTs
 
 Recursive data structures and parameterized (generic) data types can be defined using the callback form of the `data` function `data(({Family, ...}) => ({ ... }))`.
@@ -331,7 +364,7 @@ Lapis JS follows the **Uniform Access Principle (UAP)**: parameterless operation
 - **Parameterized operations** (accept input parameter): called as methods
   - Example: `list.append(3)` (requires parentheses and argument)
 
-This design eliminates visual noise for pure computations while making it clear when operations require input. Since data operations shouldbe pure (no side effects), treating parameterless computations as properties is semantically appropriate.
+This design eliminates visual noise for pure computations while making it clear when operations require input. Since data operations should be pure (no side effects), treating parameterless computations as properties is semantically appropriate.
 
 ### Fold on Structured Variants
 

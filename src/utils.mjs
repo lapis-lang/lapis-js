@@ -90,6 +90,24 @@ export function isConstructable(fn) {
 }
 
 /**
+ * Omit a symbol property from an object, returning a new object without that symbol.
+ * Used to filter out the invariant symbol when extracting field specifications.
+ * 
+ * @param {Object} obj - The object to filter
+ * @param {Symbol} symbol - The symbol to omit
+ * @returns {Object} New object without the symbol property
+ */
+export function omitSymbol(obj, symbol) {
+    const result = {};
+    for (const key of Reflect.ownKeys(obj)) {
+        if (key !== symbol) {
+            result[key] = obj[key];
+        }
+    }
+    return result;
+}
+
+/**
  * Compose two transformation functions.
  * Returns a function that applies f then g: g(f(x))
  * 
