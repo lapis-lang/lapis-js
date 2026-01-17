@@ -15,7 +15,7 @@
         "lint": "eslint .",
         "lint:fix": "eslint . --fix",
         "pretest": "npm run build",
-        "test": "globstar -- node --test ./src/tests/*.test.mjs"
+        "test": "globstar -- node --experimental-test-coverage --test ./src/tests/*.test.mjs"
     },
     "repository": {
         "type": "git",

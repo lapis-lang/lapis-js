@@ -16,11 +16,15 @@ import {
     isPascalCase,
     isCamelCase,
     isObjectLiteral,
-    isConstructable
+    isConstructable,
+    omitSymbol
 } from './utils.mjs';
 
 // Symbol for parent callback in extendMatch handlers
 export const parent = Symbol('parent');
+
+// Symbol for invariant predicates on structured variants
+export const invariant = Symbol('invariant');
 
 // Symbol to mark singleton variants (vs structured variants with fields)
 export const IsSingleton = Symbol('IsSingleton');
@@ -136,7 +140,8 @@ function createStructuredVariant(
     BaseConstructor,
     variantName,
     fieldSpecObj,
-    dataType
+    dataType,
+    invariantFn = null
 ) {
     const fieldNames = Object.keys(fieldSpecObj);
 
@@ -145,6 +150,7 @@ function createStructuredVariant(
     class VariantConstructor {
         static _fieldNames = fieldNames;
         static _fieldSpecs = fieldSpecObj;
+        static _invariant = invariantFn;
         static [IsSingleton] = false;
         static [DataTypeSymbol] = dataType;
 
@@ -157,6 +163,16 @@ function createStructuredVariant(
             }
 
             Object.assign(this, namedArgs);
+
+            if (invariantFn) {
+                const isValid = invariantFn(this);
+                if (!isValid) {
+                    throw new TypeError(
+                        `Invariant violation in variant '${variantName}'${invariantFn.name ? `: ${invariantFn.name}` : ''}`
+                    );
+                }
+            }
+
             Object.freeze(this);
         }
     }
@@ -1789,12 +1805,19 @@ export function data(declOrFn) {
                 let variantValue;
 
                 if (isStructuredVariant(value)) {
+                    // Extract invariant if present
+                    const invariantFn = value[invariant] || null;
+
+                    // Create field specs without the invariant symbol
+                    const fieldSpecs = omitSymbol(value, invariant);
+
                     // Structured variant with field definitions (object literal)
                     variantValue = createStructuredVariant(
                         ExtendedADT,
                         variantName,
-                        value,
-                        extendedResult
+                        fieldSpecs,
+                        extendedResult,
+                        invariantFn
                     );
                 } else {
                     // Simple enumerated variant (empty object {})
@@ -1851,7 +1874,11 @@ export function data(declOrFn) {
                     const fieldSpecs = parentVariant._fieldSpecs;
 
                     // Create new variant constructor for extended ADT
-                    const newConstructor = createStructuredVariant(ExtendedADT, variantName, fieldSpecs, extendedResult);
+                    // Extract invariant from original variant if present
+                    const originalVariant = ParentADT[variantName];
+                    const invariantFn = originalVariant && originalVariant._invariant ? originalVariant._invariant : null;
+
+                    const newConstructor = createStructuredVariant(ExtendedADT, variantName, fieldSpecs, extendedResult, invariantFn);
 
                     Object.defineProperty(extendedResult, key, {
                         value: newConstructor,
@@ -1905,7 +1932,14 @@ export function data(declOrFn) {
 
         for (const [variantName, value] of Object.entries(decl)) {
             if (isStructuredVariant(value)) {
-                for (const name of Object.keys(value)) {
+                // Extract invariant if present
+                const invariantFn = value[invariant] || null;
+
+                // Create field specs without the invariant symbol
+                const fieldSpecs = omitSymbol(value, invariant);
+
+                // Validate field names are camelCase
+                for (const name of Object.keys(fieldSpecs)) {
                     if (!isCamelCase(name)) {
                         throw new TypeError(
                             `Field '${name}' in variant '${variantName}' must be camelCase (start with lowercase, no underscore prefix)`
@@ -1916,8 +1950,9 @@ export function data(declOrFn) {
                 const variantClass = createStructuredVariant(
                     ADT,
                     variantName,
-                    value,
-                    result
+                    fieldSpecs,
+                    result,
+                    invariantFn
                 );
 
                 Object.defineProperty(result, variantName, {
@@ -1945,12 +1980,17 @@ export function data(declOrFn) {
             // Create new variant classes that extend this parameterized ADT
             for (const [variantName, value] of Object.entries(parentDecl)) {
                 if (isStructuredVariant(value)) {
+                    // Extract invariant from parent variant if present
+                    const parentVariant = ADT[variantName];
+                    const invariantFn = parentVariant && parentVariant._invariant ? parentVariant._invariant : null;
+
                     // Create a new variant class that extends the parameterized ADT
                     const parameterizedVariant = createStructuredVariant(
                         result,  // Use the parameterized ADT as the base
                         variantName,
                         value,
-                        result
+                        result,
+                        invariantFn
                     );
 
                     // Override the inherited variant with the parameterized one
