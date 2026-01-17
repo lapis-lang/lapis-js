@@ -89,7 +89,7 @@ describe('Merge Operation (Deforestation)', () => {
             const list = NumList.Cons(1, NumList.Cons(2, NumList.Cons(3, NumList.Nil)));
             
             // Should double each element then sum: (1*2) + (2*2) + (3*2) = 12
-            assert.strictEqual(list.doubleSum(), 12);
+            assert.strictEqual(list.doubleSum, 12);
         });
 
         test('should validate camelCase name for merged instance operations', () => {
@@ -189,7 +189,7 @@ describe('Merge Operation (Deforestation)', () => {
             
             // Transform each: (1*2)+1=3, (2*2)+1=5, (3*2)+1=7
             // Product: 3 * 5 * 7 = 105
-            assert.strictEqual(list.transformProduct(), 105);
+            assert.strictEqual(list.transformProduct, 105);
         });
     });
 
@@ -365,7 +365,7 @@ describe('Merge Operation (Deforestation)', () => {
             const startSequential = performance.now();
             for (let i = 0; i < iterations; i++) {
                 const list = List.Counter(n);
-                list.sum();
+                list.sum;
             }
             const sequentialTime = performance.now() - startSequential;
 
@@ -405,7 +405,7 @@ describe('Merge Operation (Deforestation)', () => {
 
             // Sequential: creates intermediate list, then counts it
             const list = List.Range(100);
-            const lengthSequential = list.length();
+            const lengthSequential = list.length;
 
             // Merged: no intermediate list created (deforestation)
             const lengthMerged = List.Count(100);

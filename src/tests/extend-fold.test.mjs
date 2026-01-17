@@ -29,20 +29,20 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
             const five = IntBoolExpr.IntLit({ value: 5 });
             const three = IntBoolExpr.IntLit({ value: 3 });
             const sum = IntBoolExpr.Add({ left: five, right: three });
-            assert.strictEqual(sum.eval(), 8);
+            assert.strictEqual(sum.eval, 8);
 
             // Test new variants work
             const trueLit = IntBoolExpr.BoolLit({ value: true });
             const falseLit = IntBoolExpr.BoolLit({ value: false });
-            assert.strictEqual(trueLit.eval(), 1);
-            assert.strictEqual(falseLit.eval(), 0);
+            assert.strictEqual(trueLit.eval, 1);
+            assert.strictEqual(falseLit.eval, 0);
 
             // Test new recursive variant
             const lessThan = IntBoolExpr.LessThan({ left: three, right: five });
-            assert.strictEqual(lessThan.eval(), 1);
+            assert.strictEqual(lessThan.eval, 1);
 
             const notLessThan = IntBoolExpr.LessThan({ left: five, right: three });
-            assert.strictEqual(notLessThan.eval(), 0);
+            assert.strictEqual(notLessThan.eval, 0);
         });
 
         test('should support callback form with Family', () => {
@@ -67,7 +67,7 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
             const five = IntBoolExpr.IntLit({ value: 5 });
             const three = IntBoolExpr.IntLit({ value: 3 });
             const lessThan = IntBoolExpr.LessThan({ left: three, right: five });
-            assert.strictEqual(lessThan.eval(), 1);
+            assert.strictEqual(lessThan.eval, 1);
         });
 
         test('should extend fold on List ADT', () => {
@@ -97,8 +97,8 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
             });
 
             const labeled = LabeledList.Labeled({ label: 'mylist', list });
-            assert.strictEqual(labeled.sum(), 6);
-            assert.strictEqual(list.sum(), 6);
+            assert.strictEqual(labeled.sum, 6);
+            assert.strictEqual(list.sum, 6);
         });
     });
 
@@ -124,15 +124,15 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
 
             // Base instances use base handler
             const baseTwo = Peano.Succ({ pred: Peano.Succ({ pred: Peano.Zero }) });
-            assert.strictEqual(baseTwo.toValue(), 2);
+            assert.strictEqual(baseTwo.toValue, 2);
 
             // Extended instances use override
             const extTwo = ExtendedPeano.Succ({ pred: ExtendedPeano.Succ({ pred: ExtendedPeano.Zero }) });
-            assert.strictEqual(extTwo.toValue(), 4); // 2 + 2 + 0
+            assert.strictEqual(extTwo.toValue, 4); // 2 + 2 + 0
 
             // New variant works
             const negOne = ExtendedPeano.NegSucc({ pred: ExtendedPeano.Zero });
-            assert.strictEqual(negOne.toValue(), -1);
+            assert.strictEqual(negOne.toValue, -1);
         });
 
         test('should override parent handler with parent access', () => {
@@ -160,12 +160,12 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
 
             // Extended instances use override with parent
             const extOne = ExtendedPeano.Succ({ pred: ExtendedPeano.Zero });
-            assert.strictEqual(extOne.toValue(), 10); // (1 + 0) * 10
+            assert.strictEqual(extOne.toValue, 10); // (1 + 0) * 10
 
             const extTwo = ExtendedPeano.Succ({
                 pred: ExtendedPeano.Succ({ pred: ExtendedPeano.Zero })
             });
-            assert.strictEqual(extTwo.toValue(), 110); // (1 + (1 + 0) * 10) * 10 = 110
+            assert.strictEqual(extTwo.toValue, 110); // (1 + (1 + 0) * 10) * 10 = 110
         });
 
         test('should support override with singleton variants', () => {
@@ -191,14 +191,14 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                     }
                 }));
 
-            assert.strictEqual(ExtendedPeano.Zero.toValue(), 100); // 0 + 100
+            assert.strictEqual(ExtendedPeano.Zero.toValue, 100); // 0 + 100
 
             // Base Zero uses original
-            assert.strictEqual(Peano.Zero.toValue(), 0);
+            assert.strictEqual(Peano.Zero.toValue, 0);
 
             // Verify recursive behavior with extended Zero
             const one = ExtendedPeano.Succ({ pred: ExtendedPeano.Zero });
-            assert.strictEqual(one.toValue(), 101); // 1 + 100
+            assert.strictEqual(one.toValue, 101); // 1 + 100
         });
     });
 
@@ -231,7 +231,7 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
             const sum = ExtendedExpr.Add({ left: two, right: three });
             const product = ExtendedExpr.Mul({ left: sum, right: four });
 
-            assert.strictEqual(product.eval(), 20); // (2 + 3) * 4 = 20
+            assert.strictEqual(product.eval, 20); // (2 + 3) * 4 = 20
         });
 
         test('should handle deep polymorphic recursion', () => {
@@ -270,7 +270,7 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
             const mul = MulExpr.Mul({ left: sub, right: two }); // 14
             const result = MulExpr.Add({ left: mul, right: five }); // 19
 
-            assert.strictEqual(result.eval(), 19);
+            assert.strictEqual(result.eval, 19);
         });
 
         test('should maintain polymorphic recursion with overrides', () => {
@@ -306,8 +306,8 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
             const sum = LogExpr.Add({ left: two, right: three }); // (2 + 3) * 2 = 10
             const product = LogExpr.Mul({ left: sum, right: four }); // 10 * 4 = 40
 
-            assert.strictEqual(sum.eval(), 10);
-            assert.strictEqual(product.eval(), 40);
+            assert.strictEqual(sum.eval, 10);
+            assert.strictEqual(product.eval, 40);
         });
     });
 
@@ -359,7 +359,7 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
             const quot = L4.Div({ left: sum, right: diff }); // 5
             const result = L4.Mul({ left: quot, right: two }); // 10
 
-            assert.strictEqual(result.eval(), 10);
+            assert.strictEqual(result.eval, 10);
         });
 
         test('should handle overrides across multiple levels', () => {
@@ -400,17 +400,17 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
             const l1Two = L1.IntLit({ value: 2 });
             const l1Three = L1.IntLit({ value: 3 });
             const l1Sum = L1.Add({ left: l1Two, right: l1Three });
-            assert.strictEqual(l1Sum.eval(), 5); // Normal: 2 + 3 = 5
+            assert.strictEqual(l1Sum.eval, 5); // Normal: 2 + 3 = 5
 
             const l2Two = L2.IntLit({ value: 2 });
             const l2Three = L2.IntLit({ value: 3 });
             const l2Sum = L2.Add({ left: l2Two, right: l2Three });
-            assert.strictEqual(l2Sum.eval(), -5); // Negated: -2 + -3 = -5
+            assert.strictEqual(l2Sum.eval, -5); // Negated: -2 + -3 = -5
 
             const l3Two = L3.IntLit({ value: 2 });
             const l3Three = L3.IntLit({ value: 3 });
             const l3Sum = L3.Add({ left: l3Two, right: l3Three });
-            assert.strictEqual(l3Sum.eval(), -10); // Negated then doubled: (-2 + -3) * 2 = -10
+            assert.strictEqual(l3Sum.eval, -10); // Negated then doubled: (-2 + -3) * 2 = -10
         });
     });
 
@@ -434,7 +434,7 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 BoolLit({ value }) { return value; }
             });
 
-            const result = Extended.BoolLit({ value: true }).toBool();
+            const result = Extended.BoolLit({ value: true }).toBool;
             assert.strictEqual(result, true);
         });
 
@@ -489,7 +489,7 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 right: L3.IntLit({ value: 2 })
             });
 
-            assert.strictEqual(result.eval(), 6); // (5 + 3) - 2 = 6
+            assert.strictEqual(result.eval, 6); // (5 + 3) - 2 = 6
         });
     });
 
@@ -510,17 +510,17 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 });
 
             // IntLit uses base handler
-            assert.strictEqual(Extended.IntLit({ value: 5 }).eval(), 5);
+            assert.strictEqual(Extended.IntLit({ value: 5 }).eval, 5);
 
             // Add uses wildcard from base
             const sum = Extended.Add({
                 left: Extended.IntLit({ value: 2 }),
                 right: Extended.IntLit({ value: 3 })
             });
-            assert.strictEqual(sum.eval(), -999);
+            assert.strictEqual(sum.eval, -999);
 
             // BoolLit uses new handler
-            assert.strictEqual(Extended.BoolLit({ value: true }).eval(), 1);
+            assert.strictEqual(Extended.BoolLit({ value: true }).eval, 1);
         });
 
         test('should override wildcard handler', () => {
@@ -548,7 +548,7 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 left: Extended.IntLit({ value: 2 }),
                 right: Extended.IntLit({ value: 3 })
             });
-            assert.strictEqual(sum.eval(), -1998); // -999 * 2
+            assert.strictEqual(sum.eval, -1998); // -999 * 2
         });
     });
 });

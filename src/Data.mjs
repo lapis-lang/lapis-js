@@ -49,6 +49,57 @@ function isTypeParam(value) {
 }
 
 /**
+ * Checks if an operation exists on a value without triggering getters.
+ * Checks both instance properties and prototype chain.
+ * 
+ * @param value - The object to check
+ * @param opName - The operation name to look for
+ * @returns true if operation exists, false otherwise
+ */
+function hasOperation(value, opName) {
+    return value && (
+        opName in value ||
+        (value.constructor && opName in value.constructor.prototype)
+    );
+}
+
+/**
+ * Determines if handlers represent a parameterless operation.
+ * Parameterless handlers have at most 1 parameter.
+ * 
+ * @param handlers - Object map of variant names to handler functions
+ * @returns true if operation is parameterless, false otherwise
+ */
+function isParameterlessHandlers(handlers) {
+    if (!handlers) return true;
+    return !Object.values(handlers).some(
+        fn => typeof fn === 'function' && fn.length > 1
+    );
+}
+
+/**
+ * Installs an operation implementation as either a getter (parameterless) or method (parameterized).
+ * 
+ * @param target - The prototype or object to install on
+ * @param opName - The operation name
+ * @param operationImpl - The implementation function
+ * @param isParameterless - Whether this is a parameterless operation
+ */
+function installOperation(target, opName, operationImpl, isParameterless) {
+    if (isParameterless) {
+        Object.defineProperty(target, opName, {
+            get() {
+                return operationImpl.call(this);
+            },
+            enumerable: false,
+            configurable: true
+        });
+    } else {
+        target[opName] = operationImpl;
+    }
+}
+
+/**
  * Helper to create a singleton variant (ES6 class-based)
  */
 function createSingletonVariant(
@@ -286,15 +337,19 @@ function validateSpecGuard(spec, specType, opName) {
  */
 function installOperationOnADT(adtClass, opName, transformer, skipIfExists = true) {
     // Skip if no prototype or if method already exists and we should skip
-    if (!adtClass?.prototype) {
+    if (!adtClass?.prototype)
         return;
-    }
 
-    if (skipIfExists && adtClass.prototype[opName]) {
+    if (skipIfExists && Object.getOwnPropertyDescriptor(adtClass.prototype, opName))
         return;
-    }
 
-    adtClass.prototype[opName] = function (...args) {
+    // Determine if this is a parameterless operation by checking handler signatures
+    // For structured variants: parameterless handlers have 1 arg (fields), parameterized have 2 (fields, input)
+    // For singletons: parameterless handlers have 0 args, parameterized have 1 arg (input)
+    const handlers = transformer[HandlerMapSymbol];
+    const isParameterless = isParameterlessHandlers(handlers);
+
+    const operationImpl = function (...args) {
         // Stack-safe fold implementation using explicit stack
         // This avoids deep recursion by using an iterative post-order traversal
 
@@ -308,9 +363,8 @@ function installOperationOnADT(adtClass, opName, transformer, skipIfExists = tru
         const inputArg = args[0];
 
         // Validate input if spec.in is provided (optional validation)
-        if (transformer.inSpec !== undefined && args.length > 0) {
+        if (transformer.inSpec !== undefined && args.length > 0)
             validateInputType(inputArg, transformer.inSpec, opName);
-        }
 
         // Check if this fold accepts input parameters (has argument)
         const hasInputParam = args.length > 0;
@@ -441,7 +495,7 @@ function installOperationOnADT(adtClass, opName, transformer, skipIfExists = tru
                     // Intentionally skips Family fields that do not have the operation defined.
                     // This allows for extended ADTs where not all variants/fields implement all operations.
                     if (fieldSpecs && isFamilyRef(fieldSpecs[fieldNames[i]])) {
-                        if (fieldValue && typeof fieldValue[opName] !== 'undefined' && !memoCache.has(fieldValue)) {
+                        if (hasOperation(fieldValue, opName) && !memoCache.has(fieldValue)) {
                             stack.push({ instance: fieldValue, processed: false });
                         }
                     }
@@ -459,6 +513,8 @@ function installOperationOnADT(adtClass, opName, transformer, skipIfExists = tru
 
         return result;
     };
+
+    installOperation(adtClass.prototype, opName, operationImpl, isParameterless);
 }
 
 /**
@@ -472,12 +528,12 @@ function installOperationOnADT(adtClass, opName, transformer, skipIfExists = tru
  * @param outSpec - Optional output type spec for runtime validation
  */
 function installMapOperationOnADT(adtClass, opName, transforms, outSpec) {
-    // Skip if no prototype
-    if (!adtClass?.prototype) {
+    if (!adtClass?.prototype)
         return;
-    }
 
-    adtClass.prototype[opName] = function (...args) {
+    const isParameterless = isParameterlessHandlers(transforms);
+
+    const operationImpl = function (...args) {
         // eslint-disable-next-line @typescript-eslint/no-this-alias
         const instance = this;
 
@@ -517,8 +573,10 @@ function installMapOperationOnADT(adtClass, opName, transforms, outSpec) {
             // Check if this field is a Family reference (recursive)
             else if (isFamilyRef(fieldSpec)) {
                 // Recursively transform Family fields, passing arguments
-                if (fieldValue && typeof fieldValue[opName] === 'function') {
-                    transformedFields[fieldName] = fieldValue[opName](...args);
+                if (hasOperation(fieldValue, opName)) {
+                    // Access the operation - for getters this triggers computation, for methods we need to call
+                    const opValue = fieldValue[opName];
+                    transformedFields[fieldName] = typeof opValue === 'function' ? opValue.call(fieldValue, ...args) : opValue;
                 } else {
                     transformedFields[fieldName] = fieldValue;
                 }
@@ -539,6 +597,8 @@ function installMapOperationOnADT(adtClass, opName, transforms, outSpec) {
 
         return result;
     };
+
+    installOperation(adtClass.prototype, opName, operationImpl, isParameterless);
 }
 
 /**
@@ -1659,8 +1719,10 @@ export function data(declOrFn) {
                             const mapIndex = transformers.findIndex(t => t.getParamTransform && !t.getCtorTransform);
                             if (mapIndex !== -1) {
                                 const mapOpName = operationNames[mapIndex];
-                                if (result && typeof result[mapOpName] === 'function') {
-                                    result = result[mapOpName]();
+                                if (result && hasOperation(result, mapOpName)) {
+                                    // Access the operation - for getters this triggers computation, for methods we need to call
+                                    const opValue = result[mapOpName];
+                                    result = typeof opValue === 'function' ? opValue.call(result) : opValue;
                                 }
                             }
                         }

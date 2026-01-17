@@ -307,9 +307,9 @@ const Color = data({ Red: {}, Green: {}, Blue: {} })
         Blue() { return '#0000FF'; }
     });
 
-console.log(Color.Red.toHex());   // '#FF0000'
-console.log(Color.Green.toHex()); // '#00FF00'
-console.log(Color.Blue.toHex());  // '#0000FF'
+console.log(Color.Red.toHex);   // '#FF0000'
+console.log(Color.Green.toHex); // '#00FF00'
+console.log(Color.Blue.toHex);  // '#0000FF'
 ```
 
 ### Specs
@@ -321,6 +321,17 @@ The second parameter to `.fold()` is the **operation spec** that describes the o
 
 If the guards are not provided, they default to `any` (no validation). The object literal still
 needs to be provided if empty: `{}`.
+
+### Uniform Access Principle
+
+Lapis JS follows the **Uniform Access Principle (UAP)**: parameterless operations are accessed as properties, not methods. This provides a consistent interface where:
+
+- **Parameterless operations** (no input parameter): accessed as properties
+  - Example: `Color.Red.toHex` (not `Color.Red.toHex()`)
+- **Parameterized operations** (accept input parameter): called as methods
+  - Example: `list.append(3)` (requires parentheses and argument)
+
+This design eliminates visual noise for pure computations while making it clear when operations require input. Since data operations shouldbe pure (no side effects), treating parameterless computations as properties is semantically appropriate.
 
 ### Fold on Structured Variants
 
@@ -344,10 +355,10 @@ const Point = data(() => ({
 }));
 
 const p = Point.Point2D({ x: 5, y: 10 }));
-console.log(p.quadrant()); // 'Q1'
+console.log(p.quadrant); // 'Q1'
 
 const p3d = Point.Point3D({ x: -1, y: 2, z: 3 }));
-console.log(p3d.quadrant()); // 'Octant(false, true, true)'
+console.log(p3d.quadrant); // 'Octant(false, true, true)'
 ```
 
 **Handler parameter form:**
@@ -367,9 +378,9 @@ const Color = data({ Red: {}, Green: {}, Blue: {} })
         _(instance) { return '#UNKNOWN'; }
     });
 
-console.log(Color.Red.toHex());   // '#FF0000'
-console.log(Color.Green.toHex()); // '#UNKNOWN' (wildcard)
-console.log(Color.Blue.toHex());  // '#UNKNOWN' (wildcard)
+console.log(Color.Red.toHex);   // '#FF0000'
+console.log(Color.Green.toHex); // '#UNKNOWN' (wildcard)
+console.log(Color.Blue.toHex);  // '#UNKNOWN' (wildcard)
 ```
 
 **Wildcard handler signature:**
@@ -404,8 +415,8 @@ const Incomplete = data({ Red: {}, Green: {}, Blue: {} })
         // Missing handlers - will throw at runtime when Green or Blue is encountered
     });
 
-// Color.Red.toHex() works fine
-// Color.Green.toHex() throws: Error: No handler for variant 'Green' in operation 'toHex'
+// Color.Red.toHex works fine
+// Color.Green.toHex throws: Error: No handler for variant 'Green' in operation 'toHex'
 ```
 
 #### Option 2: Partial handlers with wildcard
@@ -418,7 +429,7 @@ const Color = data({ Red: {}, Green: {}, Blue: {} })
         _(instance) { return '#UNKNOWN'; }
     });
 
-// Color.Green.toHex() returns '#UNKNOWN' (wildcard handler)
+// Color.Green.toHex returns '#UNKNOWN' (wildcard handler)
 ```
 
 #### Extended ADTs and Exhaustiveness
@@ -453,7 +464,7 @@ const ExtendedColor = Color.extend({ Yellow: {}, Orange: {} })
         // Missing Yellow and Orange - will throw at runtime when encountered
     });
 
-// ExtendedColor.Yellow.toRGB() throws: Error: No handler for variant 'Yellow' in operation 'toRGB'
+// ExtendedColor.Yellow.toRGB throws: Error: No handler for variant 'Yellow' in operation 'toRGB'
 
 // All 5 variants handled
 const Complete = Color.extend({ Yellow: {}, Orange: {} })
@@ -501,8 +512,8 @@ const Color = data({ Red: {}, Green: {}, Blue: {} })
         Blue() { return 'rgb(0, 0, 255)'; }
     }));
 
-console.log(Color.Red.toHex()); // '#FF0000'
-console.log(Color.Red.toRGB()); // 'rgb(255, 0, 0)'
+console.log(Color.Red.toHex); // '#FF0000'
+console.log(Color.Red.toRGB); // 'rgb(255, 0, 0)'
 ```
 
 ### Structural Recursion (Catamorphisms)
@@ -520,7 +531,7 @@ const Peano = data(({ Family }) => ({
 });
 
 const three = Peano.Succ({ pred: Peano.Succ({ pred: Peano.Succ({ pred: Peano.Zero }) }) });
-console.log(three.toValue()); // 3
+console.log(three.toValue); // 3
 
 // For lists: right fold (processes tail to head)
 const List = data(({ Family }) => ({
@@ -533,7 +544,7 @@ const List = data(({ Family }) => ({
 });
 
 const list = List.Cons(1, List.Cons(2, List.Cons(3, List.Nil)));
-console.log(list.sum()); // 6 (1 + (2 + (3 + 0)))
+console.log(list.sum); // 6 (1 + (2 + (3 + 0)))
 
 // For trees: processes from leaves to root
 const Tree = data(({ Family }) => ({
@@ -631,10 +642,10 @@ const Color = data({ Red: {}, Green: {}, Blue: {} })
 const ExtendedColor = Color.extend({ Yellow: {}, Orange: {} });
 
 // Inherited variants have the operation
-console.log(ExtendedColor.Red.toHex()); // '#FF0000'
+console.log(ExtendedColor.Red.toHex); // '#FF0000'
 
 // New variants without handlers throw error
-ExtendedColor.Yellow.toHex(); // ✗ Error: No handler for variant 'Yellow'
+ExtendedColor.Yellow.toHex; // ✗ Error: No handler for variant 'Yellow'
 ```
 
 **Use wildcard for open extension:**
@@ -648,8 +659,8 @@ const Color = data({ Red: {}, Green: {}, Blue: {} })
 
 const ExtendedColor = Color.extend({ Yellow: {}, Orange: {} });
 
-console.log(ExtendedColor.Red.toHex());    // '#FF0000'
-console.log(ExtendedColor.Yellow.toHex()); // '#UNKNOWN' (wildcard)
+console.log(ExtendedColor.Red.toHex);    // '#FF0000'
+console.log(ExtendedColor.Yellow.toHex); // '#UNKNOWN' (wildcard)
 ```
 
 **Add operations to extended ADTs:**
@@ -665,9 +676,9 @@ const ExtendedColor = Color.extend({ Yellow: {}, Orange: {} })
     });
 
 // Both operations available
-console.log(ExtendedColor.Red.toHex());  // '#FF0000' (inherited)
-console.log(ExtendedColor.Red.isWarm()); // true (new operation)
-console.log(ExtendedColor.Yellow.isWarm()); // true
+console.log(ExtendedColor.Red.toHex);  // '#FF0000' (inherited)
+console.log(ExtendedColor.Red.isWarm); // true (new operation)
+console.log(ExtendedColor.Yellow.isWarm); // true
 ```
 
 ### Extending Fold Operations
@@ -690,10 +701,10 @@ const ExtendedColor = Color.extend({ Yellow: {}, Orange: {} })
     });
 
 // Inherited variants use parent handlers
-console.log(ExtendedColor.Red.toHex()); // '#FF0000'
+console.log(ExtendedColor.Red.toHex); // '#FF0000'
 
 // New variants use extended handlers
-console.log(ExtendedColor.Yellow.toHex()); // '#FFFF00'
+console.log(ExtendedColor.Yellow.toHex); // '#FFFF00'
 ```
 
 **Override parent handlers:**
@@ -712,7 +723,7 @@ const ExtendedColor = Color.extend({ Yellow: {} })
         }
     });
 
-console.log(ExtendedColor.Red.toHex()); // '#EE0000' (overridden)
+console.log(ExtendedColor.Red.toHex); // '#EE0000' (overridden)
 ```
 
 **Replacing parent handlers (ignoring parent):**
@@ -739,7 +750,7 @@ const ExtendedColor = Color.extend({ Blue: {} })
         // Blue not specified - inherits wildcard from parent
     });
 
-console.log(ExtendedColor.Blue.toHex()); // '#UNKNOWN' (wildcard from parent)
+console.log(ExtendedColor.Blue.toHex); // '#UNKNOWN' (wildcard from parent)
 ```
 
 **Overriding wildcard handler:**
@@ -754,7 +765,7 @@ const ExtendedColor = Color.extend({ Blue: {} })
         }
     });
 
-console.log(ExtendedColor.Blue.toHex()); // '#EXTENDED-Blue'
+console.log(ExtendedColor.Blue.toHex); // '#EXTENDED-Blue'
 ```
 
 **Key points:**
@@ -795,7 +806,7 @@ for (let i = 100000; i > 0; i--) {
     bigList = List.Cons(1, bigList);
 }
 
-console.log(bigList.sum()); // 100000 - no stack overflow
+console.log(bigList.sum); // 100000 - no stack overflow
 ```
 
 The fold mechanism automatically:
@@ -859,7 +870,7 @@ const Peano = data(({ Family }) => ({
 
 // Stack-safe for arbitrarily deep structures
 const big = Peano.FromValue(100000);
-console.log(big.isEven()); // Works without overflow
+console.log(big.isEven); // Works without overflow
 ```
 
 ### Polymorphic Recursion in Extended Folds
@@ -894,7 +905,7 @@ const product = ExtendedExpr.Mul({
     }),
     right: ExtendedExpr.IntLit({ value: 4 })
 });
-console.log(product.eval()); // 20
+console.log(product.eval); // 20
 ```
 
 **Override parent handlers:**
@@ -922,8 +933,8 @@ const ExtendedPeano = Peano.extend(({ Family }) => ({
     }
 });
 
-console.log(ExtendedPeano.Succ({ pred: ExtendedPeano.Zero }).toValue()); // 10
-console.log(Peano.Succ({ pred: Peano.Zero }).toValue()); // 1 (original)
+console.log(ExtendedPeano.Succ({ pred: ExtendedPeano.Zero }).toValue); // 10
+console.log(Peano.Succ({ pred: Peano.Zero }).toValue); // 1 (original)
 ```
 
 ## Type Parameter Transformations with Map
@@ -940,10 +951,10 @@ const List = data(({ Family, T }) => ({
 
 const list = List.Cons(1, List.Cons(2, List.Cons(3, List.Nil)));
 
-const incremented = list.increment();
+const incremented = list.increment;
 console.log(incremented.head); // 2 (structure preserved)
 
-const strings = list.stringify();
+const strings = list.stringify;
 console.log(typeof strings.head); // 'string' (type changed)
 
 // Multiple type parameters
@@ -977,6 +988,7 @@ const scaled = list.scale(10); // All values multiplied by 10
 - Transform functions can accept arguments (passed through recursive calls)
 - Partial transforms allowed (missing transforms leave values unchanged)
 - Operation names must be camelCase
+- **Map operations follow UAP**: parameterless maps are properties, parameterized maps are methods
 
 ## Unfold Operations (Corecursion/Anamorphisms)
 

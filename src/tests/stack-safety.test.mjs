@@ -20,7 +20,7 @@ describe('Stack Safety Investigation', () => {
                 list = List.Cons({ head: i, tail: list });
             }
 
-            const result = list.sum();
+            const result = list.sum;
             assert.strictEqual(result, 5050); // sum of 1..100
         });
 
@@ -40,7 +40,7 @@ describe('Stack Safety Investigation', () => {
                 list = List.Cons({ head: i, tail: list });
             }
 
-            const result = list.length();
+            const result = list.length;
             assert.strictEqual(result, 1000);
         });
 
@@ -63,7 +63,7 @@ describe('Stack Safety Investigation', () => {
             }
 
             try {
-                const result = list.length();
+                const result = list.length;
                 assert.strictEqual(result, size);
             } catch (error) {
                 if (error instanceof RangeError && error.message.includes('stack')) {
@@ -93,7 +93,7 @@ describe('Stack Safety Investigation', () => {
             }
 
             try {
-                const result = list.length();
+                const result = list.length;
                 assert.strictEqual(result, size);
             } catch (error) {
                 if (error instanceof RangeError && error.message.includes('stack')) {
@@ -127,7 +127,7 @@ describe('Stack Safety Investigation', () => {
             }
 
             try {
-                const result = tree.sum();
+                const result = tree.sum;
                 const expected = (1000 * 1001) / 2; // sum of 0..1000
                 assert.strictEqual(result, expected);
             } catch (error) {
@@ -160,7 +160,7 @@ describe('Stack Safety Investigation', () => {
                 }
 
                 try {
-                    const result = list.sum();
+                    const result = list.sum;
 
                     assert.strictEqual(result, size);
                 } catch (error) {

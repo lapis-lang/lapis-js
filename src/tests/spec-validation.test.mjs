@@ -15,7 +15,7 @@ describe('Spec Validation - Runtime Type Checking', () => {
                 });
 
             const list = List.Cons({ head: 1, tail: List.Cons({ head: 2, tail: List.Nil }) });
-            const result = list.length();
+            const result = list.length;
 
             assert.strictEqual(typeof result, 'number');
             assert.strictEqual(result, 2);
@@ -48,7 +48,7 @@ describe('Spec Validation - Runtime Type Checking', () => {
                     Cons() { return false; }
                 });
 
-            const result = List.Nil.isEmpty();
+            const result = List.Nil.isEmpty;
             assert.strictEqual(typeof result, 'boolean');
             assert.strictEqual(result, true);
         });
@@ -79,7 +79,7 @@ describe('Spec Validation - Runtime Type Checking', () => {
                     Node() { return 'Node'; }
                 });
 
-            const result = Tree.Leaf({ value: 42 }).describe();
+            const result = Tree.Leaf({ value: 42 }).describe;
             assert.strictEqual(typeof result, 'string');
             assert.strictEqual(result, 'Leaf(42)');
         });
@@ -114,7 +114,7 @@ describe('Spec Validation - Runtime Type Checking', () => {
                     Succ({ pred }) { return new Result(pred.value + 1); }
                 });
 
-            const result = Peano.Zero.toResult();
+            const result = Peano.Zero.toResult;
             assert.ok(result instanceof Result);
             assert.strictEqual(result.value, 0);
         });
@@ -149,7 +149,7 @@ describe('Spec Validation - Runtime Type Checking', () => {
                     Blue() { return true; }
                 });
 
-            const result = Color.Red.isPrimary();
+            const result = Color.Red.isPrimary;
             assert.strictEqual(typeof result, 'boolean');
             assert.strictEqual(result, true);
         });
@@ -176,7 +176,7 @@ describe('Spec Validation - Runtime Type Checking', () => {
                     Blue() { return '#0000FF'; }
                 });
 
-            const result = Color.Red.toHex();
+            const result = Color.Red.toHex;
             assert.strictEqual(typeof result, 'string');
             assert.strictEqual(result, '#FF0000');
         });
@@ -189,7 +189,7 @@ describe('Spec Validation - Runtime Type Checking', () => {
                     Point2D({ x, y }) { return Math.sqrt(x * x + y * y); }
                 });
 
-            const result = Point.Point2D({ x: 3, y: 4 }).magnitude();
+            const result = Point.Point2D({ x: 3, y: 4 }).magnitude;
             assert.strictEqual(typeof result, 'number');
             assert.strictEqual(result, 5);
         });
@@ -216,9 +216,9 @@ describe('Spec Validation - Runtime Type Checking', () => {
 
             const list = List.Cons({ head: 1, tail: List.Cons({ head: 2, tail: List.Nil }) });
 
-            const isEmpty = list.isEmpty();
-            const length = list.length();
-            const description = list.describe();
+            const isEmpty = list.isEmpty;
+            const length = list.length;
+            const description = list.describe;
 
             assert.strictEqual(typeof isEmpty, 'boolean');
             assert.strictEqual(typeof length, 'number');
@@ -244,7 +244,7 @@ describe('Spec Validation - Runtime Type Checking', () => {
                 });
 
             // Good operation works
-            assert.strictEqual(List.Nil.goodOp(), true);
+            assert.strictEqual(List.Nil.goodOp, true);
 
             // Bad operation throws
             assert.throws(
@@ -261,7 +261,7 @@ describe('Spec Validation - Runtime Type Checking', () => {
                     Value() { return 42; }
                 });
 
-            const result = ADT.Value.getValue();
+            const result = ADT.Value.getValue;
             assert.strictEqual(typeof result, 'number');
             assert.strictEqual(result, 42);
         });
@@ -272,7 +272,7 @@ describe('Spec Validation - Runtime Type Checking', () => {
                     Value() { return 'hello'; }
                 });
 
-            const result = ADT.Value.getValue();
+            const result = ADT.Value.getValue;
             assert.strictEqual(typeof result, 'string');
             assert.strictEqual(result, 'hello');
         });
@@ -283,7 +283,7 @@ describe('Spec Validation - Runtime Type Checking', () => {
                     Value() { return true; }
                 });
 
-            const result = ADT.Value.getValue();
+            const result = ADT.Value.getValue;
             assert.strictEqual(typeof result, 'boolean');
             assert.strictEqual(result, true);
         });
@@ -370,8 +370,8 @@ describe('Spec Validation - Runtime Type Checking', () => {
                 });
 
             // Both return different types - should work fine without spec.out
-            assert.strictEqual(List.Nil.anything(), 'string');
-            assert.strictEqual(List.Cons({ head: 1, tail: List.Nil }).anything(), 42);
+            assert.strictEqual(List.Nil.anything, 'string');
+            assert.strictEqual(List.Cons({ head: 1, tail: List.Nil }).anything, 42);
         });
 
         test('unfold without spec.in allows any input type', () => {

@@ -19,7 +19,7 @@ describe('Map Operations', () => {
                 })
             });
 
-            const incremented = list.increment();
+            const incremented = list.increment;
 
             assert.strictEqual(incremented.head, 2);
             assert.strictEqual(incremented.tail.head, 3);
@@ -41,7 +41,7 @@ describe('Map Operations', () => {
                 })
             });
 
-            const stringified = list.stringify();
+            const stringified = list.stringify;
 
             assert.strictEqual(stringified.head, '42');
             assert.strictEqual(stringified.tail.head, '100');
@@ -57,12 +57,12 @@ describe('Map Operations', () => {
                 .map('double', (Family) => ({ out: Family }), { T: (x) => x * 2 });
 
             const just = Maybe.Just({ value: 5 });
-            const doubled = just.double();
+            const doubled = just.double;
 
             assert.strictEqual(doubled.value, 10);
 
             const nothing = Maybe.Nothing;
-            const stillNothing = nothing.double();
+            const stillNothing = nothing.double;
 
             assert.strictEqual(stillNothing, nothing); // Singleton unchanged
         });
@@ -82,7 +82,7 @@ describe('Map Operations', () => {
                 value: 10
             });
 
-            const incremented = tree.increment();
+            const incremented = tree.increment;
 
             assert.strictEqual(incremented.value, 11);
             assert.strictEqual(incremented.left.value, 2);
@@ -106,7 +106,7 @@ describe('Map Operations', () => {
                 value: 11
             });
 
-            const squared = tree.square();
+            const squared = tree.square;
 
             assert.strictEqual(squared.value, 121);
             assert.strictEqual(squared.left.value, 25);
@@ -133,7 +133,7 @@ describe('Map Operations', () => {
                 });
 
             const pair = Pair.MakePair({ first: 5, second: 'hello' });
-            const transformed = pair.transform();
+            const transformed = pair.transform;
 
             assert.strictEqual(transformed.first, 10);
             assert.strictEqual(transformed.second, 'HELLO');
@@ -149,8 +149,8 @@ describe('Map Operations', () => {
             const left = Either.Left({ value: 5 });
             const right = Either.Right({ value: 10 });
 
-            const negatedLeft = left.negate();
-            const negatedRight = right.negate();
+            const negatedLeft = left.negate;
+            const negatedRight = right.negate;
 
             assert.strictEqual(negatedLeft.value, -5);
             assert.strictEqual(negatedRight.value, -10);
@@ -169,8 +169,8 @@ describe('Map Operations', () => {
             const left = Either.Left({ value: 42 });
             const right = Either.Right({ value: 'hello' });
 
-            const convertedLeft = left.convert();
-            const convertedRight = right.convert();
+            const convertedLeft = left.convert;
+            const convertedRight = right.convert;
 
             assert.strictEqual(convertedLeft.value, '42');
             assert.strictEqual(typeof convertedLeft.value, 'string');
@@ -195,7 +195,7 @@ describe('Map Operations', () => {
                 tail: List.Cons({ head: 4, tail: List.Nil })
             });
 
-            const doubled = list.double();
+            const doubled = list.double;
 
             assert.strictEqual(doubled.head, 6);
             assert.strictEqual(doubled.tail.head, 8);
@@ -237,7 +237,7 @@ describe('Map Operations', () => {
                 });
 
             const pair = Pair.MakePair({ first: 5, second: 'hello' });
-            const transformed = pair.transformFirst();
+            const transformed = pair.transformFirst;
 
             // First is transformed, second passes through
             assert.strictEqual(transformed.first, 10);
@@ -249,8 +249,8 @@ describe('Map Operations', () => {
                 .map('identity', (Family) => ({ out: Family }), {});
 
             // Map on non-parameterized ADT returns same instances
-            assert.strictEqual(Color.Red.identity(), Color.Red);
-            assert.strictEqual(Color.Green.identity(), Color.Green);
+            assert.strictEqual(Color.Red.identity, Color.Red);
+            assert.strictEqual(Color.Green.identity, Color.Green);
         });
 
         test('supports arguments passed to transform functions', () => {
@@ -299,7 +299,7 @@ describe('Map Operations', () => {
                 .map('increment', (Family) => ({ out: Family }), { T: (x) => x + 1 });
 
             const original = List.Cons({ head: 1, tail: List.Nil });
-            const transformed = original.increment();
+            const transformed = original.increment;
 
             assert.ok(transformed instanceof List);
             assert.ok(transformed instanceof List.Cons);
@@ -314,7 +314,7 @@ describe('Map Operations', () => {
                 .map('increment', (Family) => ({ out: Family }), { T: (x) => x + 1 });
 
             const original = Maybe.Just({ value: 5 });
-            const transformed = original.increment();
+            const transformed = original.increment;
 
             assert.notStrictEqual(original, transformed);
             assert.strictEqual(original.value, 5); // Original unchanged
@@ -328,7 +328,7 @@ describe('Map Operations', () => {
                 .map('double', (Family) => ({ out: Family }), { T: (x) => x * 2 });
 
             const tagged = Tagged.Value({ tag: 'number', value: 5 });
-            const doubled = tagged.double();
+            const doubled = tagged.double;
 
             assert.strictEqual(doubled.tag, 'number'); // String field unchanged
             assert.strictEqual(doubled.value, 10); // T field transformed
@@ -350,7 +350,7 @@ describe('Map Operations', () => {
                 tail: List.Cons({ head: 10, tail: List.Nil })
             });
 
-            const result = list.increment().double().stringify();
+            const result = list.increment.double.stringify;
 
             // ((5 + 1) * 2).toString() = "12"
             // ((10 + 1) * 2).toString() = "22"
@@ -370,7 +370,7 @@ describe('Map Operations', () => {
                 tail: List.Cons({ head: 10, tail: List.Nil })
             });
 
-            const doubled = list.double();
+            const doubled = list.double;
 
             assert.strictEqual(doubled.head, 10);
             assert.strictEqual(doubled.tail.head, 20);
