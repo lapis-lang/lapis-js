@@ -12,9 +12,9 @@ describe('Fold Operation (Catamorphism)', () => {
                     Blue() { return '#0000FF'; }
                 });
 
-            assert.strictEqual(Color.Red.toHex(), '#FF0000');
-            assert.strictEqual(Color.Green.toHex(), '#00FF00');
-            assert.strictEqual(Color.Blue.toHex(), '#0000FF');
+            assert.strictEqual(Color.Red.toHex, '#FF0000');
+            assert.strictEqual(Color.Green.toHex, '#00FF00');
+            assert.strictEqual(Color.Blue.toHex, '#0000FF');
         });
 
         test('should fold on simple variants with callback form (non-recursive)', () => {
@@ -25,9 +25,9 @@ describe('Fold Operation (Catamorphism)', () => {
                     Blue() { return '#0000FF'; }
                 });
 
-            assert.strictEqual(Color.Red.toHex(), '#FF0000');
-            assert.strictEqual(Color.Green.toHex(), '#00FF00');
-            assert.strictEqual(Color.Blue.toHex(), '#0000FF');
+            assert.strictEqual(Color.Red.toHex, '#FF0000');
+            assert.strictEqual(Color.Green.toHex, '#00FF00');
+            assert.strictEqual(Color.Blue.toHex, '#0000FF');
         });
 
         test('should support multiple fold operations on same ADT (non-recursive)', () => {
@@ -43,8 +43,8 @@ describe('Fold Operation (Catamorphism)', () => {
                     Blue() { return 'rgb(0, 0, 255)'; }
                 });
 
-            assert.strictEqual(Color.Red.toHex(), '#FF0000');
-            assert.strictEqual(Color.Red.toRGB(), 'rgb(255, 0, 0)');
+            assert.strictEqual(Color.Red.toHex, '#FF0000');
+            assert.strictEqual(Color.Red.toRGB, 'rgb(255, 0, 0)');
         });
 
         test('should fold on structured variants with named destructuring (non-recursive)', () => {
@@ -64,10 +64,10 @@ describe('Fold Operation (Catamorphism)', () => {
             const p3 = Point.Point2D({ x: -5, y: -10 });
             const p4 = Point.Point2D({ x: 5, y: -10 });
 
-            assert.strictEqual(p1.quadrant(), 'Q1');
-            assert.strictEqual(p2.quadrant(), 'Q2');
-            assert.strictEqual(p3.quadrant(), 'Q3');
-            assert.strictEqual(p4.quadrant(), 'Q4');
+            assert.strictEqual(p1.quadrant, 'Q1');
+            assert.strictEqual(p2.quadrant, 'Q2');
+            assert.strictEqual(p3.quadrant, 'Q3');
+            assert.strictEqual(p4.quadrant, 'Q4');
         });
 
         test('should work with positional construction (non-recursive)', () => {
@@ -81,11 +81,11 @@ describe('Fold Operation (Catamorphism)', () => {
 
             // Positional construction
             const p1 = Point.Point2D(3, 4);
-            assert.strictEqual(p1.toString(), '(3, 4)');
+            assert.strictEqual(p1.toString, '(3, 4)');
 
             // Named construction
             const p2 = Point.Point2D({ x: 5, y: 6 });
-            assert.strictEqual(p2.toString(), '(5, 6)');
+            assert.strictEqual(p2.toString, '(5, 6)');
         });
 
         test('should support partial field destructuring (non-recursive)', () => {
@@ -98,7 +98,7 @@ describe('Fold Operation (Catamorphism)', () => {
             });
 
             const p = Point3D.Point3D({ x: 1, y: 2, z: 3 });
-            assert.strictEqual(p.sumXY(), 3);
+            assert.strictEqual(p.sumXY, 3);
         });
 
         test('should work with mixed simple and structured variants (non-recursive)', () => {
@@ -116,9 +116,9 @@ describe('Fold Operation (Catamorphism)', () => {
             const square = Shape.Square({ side: 4 });
             const unknown = Shape.Unknown;
 
-            assert.strictEqual(circle.area(), Math.PI * 25);
-            assert.strictEqual(square.area(), 16);
-            assert.strictEqual(unknown.area(), 0);
+            assert.strictEqual(circle.area, Math.PI * 25);
+            assert.strictEqual(square.area, 16);
+            assert.strictEqual(unknown.area, 0);
         });
     });
 
@@ -138,10 +138,10 @@ describe('Fold Operation (Catamorphism)', () => {
             const two = Peano.Succ({ pred: one });
             const three = Peano.Succ({ pred: two });
 
-            assert.strictEqual(zero.toValue(), 0);
-            assert.strictEqual(one.toValue(), 1);
-            assert.strictEqual(two.toValue(), 2);
-            assert.strictEqual(three.toValue(), 3);
+            assert.strictEqual(zero.toValue, 0);
+            assert.strictEqual(one.toValue, 1);
+            assert.strictEqual(two.toValue, 2);
+            assert.strictEqual(three.toValue, 3);
         });
 
         test('Peano with callback form - should support Family parameter', () => {
@@ -155,7 +155,7 @@ describe('Fold Operation (Catamorphism)', () => {
                 });
 
             const two = Peano.Succ({ pred: Peano.Succ({ pred: Peano.Zero }) });
-            assert.strictEqual(two.toValue(), 2);
+            assert.strictEqual(two.toValue, 2);
         });
 
         test('List.length - should count elements in a list', () => {
@@ -173,10 +173,10 @@ describe('Fold Operation (Catamorphism)', () => {
             const list2 = List.Cons({ head: 2, tail: list1 });
             const list3 = List.Cons({ head: 3, tail: list2 });
 
-            assert.strictEqual(empty.length(), 0);
-            assert.strictEqual(list1.length(), 1);
-            assert.strictEqual(list2.length(), 2);
-            assert.strictEqual(list3.length(), 3);
+            assert.strictEqual(empty.length, 0);
+            assert.strictEqual(list1.length, 1);
+            assert.strictEqual(list2.length, 2);
+            assert.strictEqual(list3.length, 3);
         });
 
         test('List.sum - should sum all elements', () => {
@@ -197,8 +197,8 @@ describe('Fold Operation (Catamorphism)', () => {
                 })
             });
 
-            assert.strictEqual(list.sum(), 6);
-            assert.strictEqual(List.Nil.sum(), 0);
+            assert.strictEqual(list.sum, 6);
+            assert.strictEqual(List.Nil.sum, 0);
         });
 
         test('List.product - should multiply all elements', () => {
@@ -219,8 +219,8 @@ describe('Fold Operation (Catamorphism)', () => {
                 })
             });
 
-            assert.strictEqual(list.product(), 24);
-            assert.strictEqual(List.Nil.product(), 1);
+            assert.strictEqual(list.product, 24);
+            assert.strictEqual(List.Nil.product, 1);
         });
 
         test('List.append - should append element to end of list', () => {
@@ -229,12 +229,12 @@ describe('Fold Operation (Catamorphism)', () => {
                 Cons: { head: Number, tail: Family }
             }))
                 .fold('append', { in: Number }, {
-                    Nil(val) { 
-                        return List.Cons({ head: val, tail: List.Nil }); 
+                    Nil(val) {
+                        return List.Cons({ head: val, tail: List.Nil });
                     },
-                    Cons({ head, tail }, val) { 
+                    Cons({ head, tail }, val) {
                         // tail is a partially applied function: tail(val) appends val to the tail
-                        return List.Cons({ head, tail: tail(val) }); 
+                        return List.Cons({ head, tail: tail(val) });
                     }
                 });
 
@@ -281,8 +281,8 @@ describe('Fold Operation (Catamorphism)', () => {
                 value: 20
             });
 
-            assert.strictEqual(leaf1.height(), 1);
-            assert.strictEqual(tree.height(), 3);
+            assert.strictEqual(leaf1.height, 1);
+            assert.strictEqual(tree.height, 3);
         });
 
         test('Binary tree sum - should sum all node values', () => {
@@ -301,7 +301,7 @@ describe('Fold Operation (Catamorphism)', () => {
                 value: 10
             });
 
-            assert.strictEqual(tree.sum(), 13);
+            assert.strictEqual(tree.sum, 13);
         });
     });
 
@@ -317,9 +317,9 @@ describe('Fold Operation (Catamorphism)', () => {
                     _(_instance) { return -999; } // Wildcard for unknown variants
                 });
 
-            assert.strictEqual(Peano.Zero.toValue(), 0);
-            assert.strictEqual(Peano.Succ({ pred: Peano.Zero }).toValue(), -999);
-            assert.strictEqual(Peano.NegSucc({ pred: Peano.Zero }).toValue(), -999);
+            assert.strictEqual(Peano.Zero.toValue, 0);
+            assert.strictEqual(Peano.Succ({ pred: Peano.Zero }).toValue, -999);
+            assert.strictEqual(Peano.NegSucc({ pred: Peano.Zero }).toValue, -999);
         });
 
         test('wildcard should receive full instance', () => {
@@ -335,8 +335,8 @@ describe('Fold Operation (Catamorphism)', () => {
                     }
                 });
 
-            assert.strictEqual(Tree.Leaf({ value: 1 }).getType(), 'leaf');
-            assert.strictEqual(Tree.Node({ left: Tree.Leaf({ value: 1 }), right: Tree.Leaf({ value: 2 }) }).getType(), 'unknown');
+            assert.strictEqual(Tree.Leaf({ value: 1 }).getType, 'leaf');
+            assert.strictEqual(Tree.Node({ left: Tree.Leaf({ value: 1 }), right: Tree.Leaf({ value: 2 }) }).getType, 'unknown');
         });
     });
 
@@ -367,9 +367,9 @@ describe('Fold Operation (Catamorphism)', () => {
                 })
             });
 
-            assert.strictEqual(list.length(), 3);
-            assert.strictEqual(list.sum(), 9);
-            assert.strictEqual(list.product(), 24);
+            assert.strictEqual(list.length, 3);
+            assert.strictEqual(list.sum, 9);
+            assert.strictEqual(list.product, 24);
         });
     });
 
@@ -394,8 +394,8 @@ describe('Fold Operation (Catamorphism)', () => {
                 tail: List.Cons({ head: 'b', tail: List.Nil })
             });
 
-            assert.strictEqual(numList.length(), 2);
-            assert.strictEqual(strList.length(), 2);
+            assert.strictEqual(numList.length, 2);
+            assert.strictEqual(strList.length, 2);
         });
     });
 
@@ -448,7 +448,7 @@ describe('Fold Operation (Catamorphism)', () => {
                 right: Expr.Lit({ value: 4 })
             });
 
-            assert.strictEqual(expr.eval(), 20);
+            assert.strictEqual(expr.eval, 20);
         });
     });
 
@@ -469,8 +469,8 @@ describe('Fold Operation (Catamorphism)', () => {
             // Named construction
             const list2 = List.Cons({ head: 1, tail: List.Cons({ head: 2, tail: List.Nil }) });
 
-            assert.strictEqual(list1.sum(), 3);
-            assert.strictEqual(list2.sum(), 3);
+            assert.strictEqual(list1.sum, 3);
+            assert.strictEqual(list2.sum, 3);
         });
     });
 
@@ -492,7 +492,7 @@ describe('Fold Operation (Catamorphism)', () => {
                 });
 
             assert.throws(() => {
-                Peano.Succ({ pred: Peano.Zero }).partial();
+                Peano.Succ({ pred: Peano.Zero }).partial;
             }, /No handler for variant 'Succ'/);
         });
     });
@@ -514,10 +514,10 @@ describe('Fold Operation (Catamorphism)', () => {
 
             const list = List.Cons({ head: 1, tail: List.Nil });
 
-            assert.strictEqual(list.isEmpty(), false);
-            assert.strictEqual(list.length(), 1);
-            assert.strictEqual(List.Nil.isEmpty(), true);
-            assert.strictEqual(List.Nil.length(), 0);
+            assert.strictEqual(list.isEmpty, false);
+            assert.strictEqual(list.length, 1);
+            assert.strictEqual(List.Nil.isEmpty, true);
+            assert.strictEqual(List.Nil.length, 0);
         });
     });
 
@@ -538,7 +538,7 @@ describe('Fold Operation (Catamorphism)', () => {
                 });
 
             const list = List.Cons({ head: 5, tail: List.Cons({ head: 3, tail: List.Nil }) });
-            assert.strictEqual(list.sum(), 8);
+            assert.strictEqual(list.sum, 8);
         });
     });
 
@@ -559,7 +559,7 @@ describe('Fold Operation (Catamorphism)', () => {
                 ten = Peano.Succ({ pred: ten });
             }
 
-            assert.strictEqual(ten.toValue(), 10);
+            assert.strictEqual(ten.toValue, 10);
         });
 
         test('should handle large lists', () => {
@@ -578,7 +578,7 @@ describe('Fold Operation (Catamorphism)', () => {
                 list = List.Cons({ head: i, tail: list });
             }
 
-            assert.strictEqual(list.length(), 100);
+            assert.strictEqual(list.length, 100);
         });
     });
 });

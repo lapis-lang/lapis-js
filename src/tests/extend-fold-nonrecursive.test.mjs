@@ -19,13 +19,13 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
                 });
 
             // Inherited variants should still work
-            assert.strictEqual(ExtendedColor.Red.toHex(), '#FF0000');
-            assert.strictEqual(ExtendedColor.Green.toHex(), '#00FF00');
-            assert.strictEqual(ExtendedColor.Blue.toHex(), '#0000FF');
+            assert.strictEqual(ExtendedColor.Red.toHex, '#FF0000');
+            assert.strictEqual(ExtendedColor.Green.toHex, '#00FF00');
+            assert.strictEqual(ExtendedColor.Blue.toHex, '#0000FF');
 
             // New variants should work
-            assert.strictEqual(ExtendedColor.Yellow.toHex(), '#FFFF00');
-            assert.strictEqual(ExtendedColor.Orange.toHex(), '#FFA500');
+            assert.strictEqual(ExtendedColor.Yellow.toHex, '#FFFF00');
+            assert.strictEqual(ExtendedColor.Orange.toHex, '#FFA500');
         });
 
         test('should extend fold operation with structured variants', () => {
@@ -46,8 +46,8 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
             const p2 = Point3D.Point2D({ x: 1, y: 2 });
             const p3 = Point3D.Point3D({ x: 1, y: 2, z: 3 });
 
-            assert.strictEqual(p2.describe(), '2D point at (1, 2)');
-            assert.strictEqual(p3.describe(), '3D point at (1, 2, 3)');
+            assert.strictEqual(p2.describe, '2D point at (1, 2)');
+            assert.strictEqual(p3.describe, '3D point at (1, 2, 3)');
         });
 
         test('should support callback form with Family', () => {
@@ -64,8 +64,8 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
                     Orange() { return '#FFA500'; }
                 });
 
-            assert.strictEqual(ExtendedColor.Yellow.toHex(), '#FFFF00');
-            assert.strictEqual(ExtendedColor.Orange.toHex(), '#FFA500');
+            assert.strictEqual(ExtendedColor.Yellow.toHex, '#FFFF00');
+            assert.strictEqual(ExtendedColor.Orange.toHex, '#FFA500');
         });
     });
 
@@ -86,14 +86,14 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
                 });
 
             // Overridden variant returns new value
-            assert.strictEqual(ExtendedColor.Red.brightness(), 150);
+            assert.strictEqual(ExtendedColor.Red.brightness, 150);
 
             // Non-overridden variants return original value
-            assert.strictEqual(ExtendedColor.Green.brightness(), 100);
-            assert.strictEqual(ExtendedColor.Blue.brightness(), 100);
+            assert.strictEqual(ExtendedColor.Green.brightness, 100);
+            assert.strictEqual(ExtendedColor.Blue.brightness, 100);
 
             // New variants work
-            assert.strictEqual(ExtendedColor.Yellow.brightness(), 200);
+            assert.strictEqual(ExtendedColor.Yellow.brightness, 200);
         });
 
         test('should override parent handler with parent access', () => {
@@ -112,14 +112,14 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
                 }));
 
             // Overridden variants use parent values
-            assert.strictEqual(ExtendedColor.Red.brightness(), 200); // 100 * 2
-            assert.strictEqual(ExtendedColor.Green.brightness(), 100); // 50 + 50
+            assert.strictEqual(ExtendedColor.Red.brightness, 200); // 100 * 2
+            assert.strictEqual(ExtendedColor.Green.brightness, 100); // 50 + 50
 
             // Non-overridden variant returns original
-            assert.strictEqual(ExtendedColor.Blue.brightness(), 75);
+            assert.strictEqual(ExtendedColor.Blue.brightness, 75);
 
             // New variant works
-            assert.strictEqual(ExtendedColor.Yellow.brightness(), 200);
+            assert.strictEqual(ExtendedColor.Yellow.brightness, 200);
         });
 
         test('should support override with structured variants', () => {
@@ -139,13 +139,13 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
             const p3 = Point3D.Point3D({ x: 1, y: 2, z: 2 });
 
             // Base ADT instance uses base handler
-            assert.strictEqual(p2Base.magnitude(), 5);
+            assert.strictEqual(p2Base.magnitude, 5);
 
             // Extended ADT instance uses override handler (scales parent by 10)
-            assert.strictEqual(p2Extended.magnitude(), 50);
+            assert.strictEqual(p2Extended.magnitude, 50);
 
             // New variant uses its own handler
-            assert.strictEqual(p3.magnitude(), 3);
+            assert.strictEqual(p3.magnitude, 3);
         });
 
         test('should mix new handlers and overrides', () => {
@@ -164,14 +164,14 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
                 }));
 
             // Override applied
-            assert.strictEqual(ExtendedColor.Red.toRGB(), 'rgb(200, 0, 0)');
+            assert.strictEqual(ExtendedColor.Red.toRGB, 'rgb(200, 0, 0)');
 
             // No override
-            assert.strictEqual(ExtendedColor.Green.toRGB(), 'rgb(0, 255, 0)');
+            assert.strictEqual(ExtendedColor.Green.toRGB, 'rgb(0, 255, 0)');
 
             // New handlers
-            assert.strictEqual(ExtendedColor.Yellow.toRGB(), 'rgb(255, 255, 0)');
-            assert.strictEqual(ExtendedColor.Orange.toRGB(), 'rgb(255, 165, 0)');
+            assert.strictEqual(ExtendedColor.Yellow.toRGB, 'rgb(255, 255, 0)');
+            assert.strictEqual(ExtendedColor.Orange.toRGB, 'rgb(255, 165, 0)');
         });
 
         test('handlers should have access to this context', () => {
@@ -187,8 +187,8 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
                     Yellow() { return this.constructor.name; }
                 });
 
-            assert.strictEqual(ExtendedColor.Red.identify(), 'Red');
-            assert.strictEqual(ExtendedColor.Yellow.identify(), 'Yellow');
+            assert.strictEqual(ExtendedColor.Red.identify, 'Red');
+            assert.strictEqual(ExtendedColor.Yellow.identify, 'Yellow');
         });
 
         test('override handlers should have access to this context', () => {
@@ -206,8 +206,8 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
                     }
                 }));
 
-            assert.strictEqual(ExtendedColor.Red.describe(), 'Red: red');
-            assert.strictEqual(ExtendedColor.Blue.describe(), 'blue');
+            assert.strictEqual(ExtendedColor.Red.describe, 'Red: red');
+            assert.strictEqual(ExtendedColor.Blue.describe, 'blue');
         });
 
         test('handlers can call other operations via this', () => {
@@ -223,19 +223,19 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
                     Blue() { return 'rgb(0, 0, 255)'; }
                 })
                 .fold('describe', { out: String }, {
-                    Red() { return `${this.toHex()}`; },
-                    Green() { return `${this.toRGB()}`; },
-                    Blue() { return `${this.toHex()}`; }
+                    Red() { return `${this.toHex}`; },
+                    Green() { return `${this.toRGB}`; },
+                    Blue() { return `${this.toHex}`; }
                 });
 
             const ExtendedColor = Color.extend({ Yellow: {} })
                 .fold('toHex', { out: String }, { Yellow() { return '#FFFF00'; } })
                 .fold('toRGB', { out: String }, { Yellow() { return 'rgb(255, 255, 0)'; } })
                 .fold('describe', { out: String }, {
-                    Yellow() { return `Yellow: ${this.toHex()} or ${this.toRGB()}`; }
+                    Yellow() { return `Yellow: ${this.toHex} or ${this.toRGB}`; }
                 });
 
-            assert.strictEqual(ExtendedColor.Yellow.describe(), 'Yellow: #FFFF00 or rgb(255, 255, 0)');
+            assert.strictEqual(ExtendedColor.Yellow.describe, 'Yellow: #FFFF00 or rgb(255, 255, 0)');
         });
 
         test('override handlers can call parent and other operations', () => {
@@ -254,11 +254,11 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
                 .fold('describe', { out: String }, (_Family, ParentFamily) => ({
                     Blue() { return 'blue'; },
                     _(_instance) {
-                        return `Enhanced ${ParentFamily._(this)} with hex ${this.toHex()}`;
+                        return `Enhanced ${ParentFamily._(this)} with hex ${this.toHex}`;
                     }
                 }));
 
-            assert.strictEqual(ExtendedColor.Red.describe(), 'Enhanced red with hex #FF0000');
+            assert.strictEqual(ExtendedColor.Red.describe, 'Enhanced red with hex #FF0000');
         });
     });
 
@@ -276,9 +276,9 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
                     // Orange not specified - should use wildcard from parent
                 });
 
-            assert.strictEqual(ExtendedColor.Red.toHex(), '#FF0000');
-            assert.strictEqual(ExtendedColor.Yellow.toHex(), '#FFFF00');
-            assert.strictEqual(ExtendedColor.Orange.toHex(), '#UNKNOWN'); // Wildcard
+            assert.strictEqual(ExtendedColor.Red.toHex, '#FF0000');
+            assert.strictEqual(ExtendedColor.Yellow.toHex, '#FFFF00');
+            assert.strictEqual(ExtendedColor.Orange.toHex, '#UNKNOWN'); // Wildcard
         });
 
         test('should override wildcard handler', () => {
@@ -295,9 +295,9 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
                 });
 
             // Child wildcard overrides parent specific handlers
-            assert.strictEqual(ExtendedColor.Red.toHex(), '#EXTENDED-Red');
-            assert.strictEqual(ExtendedColor.Yellow.toHex(), '#FFFF00');
-            assert.strictEqual(ExtendedColor.Orange.toHex(), '#EXTENDED-Orange');
+            assert.strictEqual(ExtendedColor.Red.toHex, '#EXTENDED-Red');
+            assert.strictEqual(ExtendedColor.Yellow.toHex, '#FFFF00');
+            assert.strictEqual(ExtendedColor.Orange.toHex, '#EXTENDED-Orange');
         });
 
         test('should support new wildcard in extension', () => {
@@ -314,11 +314,11 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
                 });
 
             // Child wildcard overrides all parent specific handlers
-            assert.strictEqual(ExtendedColor.Red.toHex(), '#NEW-Red');
+            assert.strictEqual(ExtendedColor.Red.toHex, '#NEW-Red');
 
             // New variants also use wildcard
-            assert.strictEqual(ExtendedColor.Yellow.toHex(), '#NEW-Yellow');
-            assert.strictEqual(ExtendedColor.Orange.toHex(), '#NEW-Orange');
+            assert.strictEqual(ExtendedColor.Yellow.toHex, '#NEW-Yellow');
+            assert.strictEqual(ExtendedColor.Orange.toHex, '#NEW-Orange');
         });
     });
 
@@ -341,9 +341,9 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
                 });
 
             // All levels work
-            assert.strictEqual(Extended2.Red.family(), 'primary');
-            assert.strictEqual(Extended2.Blue.family(), 'primary');
-            assert.strictEqual(Extended2.Yellow.family(), 'secondary');
+            assert.strictEqual(Extended2.Red.family, 'primary');
+            assert.strictEqual(Extended2.Blue.family, 'primary');
+            assert.strictEqual(Extended2.Yellow.family, 'secondary');
         });
 
         test('should support override at multiple levels', () => {
@@ -355,7 +355,7 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
                     Red() { return 'primary'; }
                 });
 
-            const Level1 = Color.extend({ Green: {} })  
+            const Level1 = Color.extend({ Green: {} })
                 .fold('category', { out: String }, {
                     Green() { return 'secondary'; }
                 });
@@ -366,14 +366,14 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
                 });
 
             // All use the same inherited Red constructor
-            assert.strictEqual(Color.Red.category(), 'primary');
-            assert.strictEqual(Level1.Red.category(), 'primary');
-            assert.strictEqual(Level2.Red.category(), 'primary');
+            assert.strictEqual(Color.Red.category, 'primary');
+            assert.strictEqual(Level1.Red.category, 'primary');
+            assert.strictEqual(Level2.Red.category, 'primary');
 
             // New variants use their respective operations
-            assert.strictEqual(Level1.Green.category(), 'secondary');
-            assert.strictEqual(Level2.Green.category(), 'secondary');
-            assert.strictEqual(Level2.Blue.category(), 'primary');
+            assert.strictEqual(Level1.Green.category, 'secondary');
+            assert.strictEqual(Level2.Green.category, 'secondary');
+            assert.strictEqual(Level2.Blue.category, 'primary');
         });
     });
 });
@@ -400,12 +400,12 @@ describe('Chaining', () => {
                 Yellow() { return 200; }
             });
         // Both operations work on inherited variants
-        assert.strictEqual(ExtendedColor.Red.toHex(), '#FF0000');
-        assert.strictEqual(ExtendedColor.Red.brightness(), 100);
+        assert.strictEqual(ExtendedColor.Red.toHex, '#FF0000');
+        assert.strictEqual(ExtendedColor.Red.brightness, 100);
 
         // Both operations work on new variants
-        assert.strictEqual(ExtendedColor.Blue.toHex(), '#0000FF');
-        assert.strictEqual(ExtendedColor.Blue.brightness(), 75);
+        assert.strictEqual(ExtendedColor.Blue.toHex, '#0000FF');
+        assert.strictEqual(ExtendedColor.Blue.brightness, 75);
     });
 
     test('should chain extend and fold multiple times', () => {
@@ -419,9 +419,9 @@ describe('Chaining', () => {
             .fold('op', { out: Number }, { B() { return 2; } })
             .extend({ C: {} })
             .fold('op', { out: Number }, { C() { return 3; } });
-        assert.strictEqual(Result.A.op(), 1);
-        assert.strictEqual(Result.B.op(), 2);
-        assert.strictEqual(Result.C.op(), 3);
+        assert.strictEqual(Result.A.op, 1);
+        assert.strictEqual(Result.B.op, 2);
+        assert.strictEqual(Result.C.op, 3);
     });
 });
 
@@ -437,9 +437,9 @@ describe('Error Handling', () => {
             });
 
         // All variants get the new operation
-        assert.strictEqual(ExtendedColor.Red.newOp(), 'color');
-        assert.strictEqual(ExtendedColor.Green.newOp(), 'color');
-        assert.strictEqual(ExtendedColor.Blue.newOp(), 'blue');
+        assert.strictEqual(ExtendedColor.Red.newOp, 'color');
+        assert.strictEqual(ExtendedColor.Green.newOp, 'color');
+        assert.strictEqual(ExtendedColor.Blue.newOp, 'blue');
     });
 
     test('should allow handlers for new variants even when parent operation exists', () => {
@@ -457,7 +457,7 @@ describe('Error Handling', () => {
             Blue() { return '#0000FF'; }
         });
 
-        assert.strictEqual(ExtendedColor.Blue.toHex(), '#0000FF');
+        assert.strictEqual(ExtendedColor.Blue.toHex, '#0000FF');
     });
 
     test('should work on both base and extended ADTs', () => {
@@ -473,7 +473,7 @@ describe('Error Handling', () => {
             Blue() { return '#0000FF'; }
         });
 
-        assert.strictEqual(result.Blue.toHex(), '#0000FF');
+        assert.strictEqual(result.Blue.toHex, '#0000FF');
     });
 });
 
@@ -491,7 +491,7 @@ test('should throw error if calling fold twice on same operation at same ADT lev
         Blue() { return '#0000FF'; }
     });
 
-    assert.strictEqual((AfterFirst.Blue).toHex(), '#0000FF');
+    assert.strictEqual((AfterFirst.Blue).toHex, '#0000FF');
 
     // Second fold on same operation should throw
     assert.throws(
@@ -526,9 +526,9 @@ describe('Recursive ADTs', () => {
         const cons = ExtendedList.Cons({ head: 1, tail: ExtendedList.Nil });
         const single = ExtendedList.Single({ value: 42 });
 
-        assert.strictEqual(empty.isEmpty(), true);
-        assert.strictEqual(cons.isEmpty(), false);
-        assert.strictEqual(single.isEmpty(), false);
+        assert.strictEqual(empty.isEmpty, true);
+        assert.strictEqual(cons.isEmpty, false);
+        assert.strictEqual(single.isEmpty, false);
     });
 });
 

@@ -48,9 +48,9 @@ describe('Match Exhaustiveness Checking', () => {
             });
 
             // All explicit handlers are used
-            assert.strictEqual(C.Red.toHex(), '#FF0000');
-            assert.strictEqual(C.Green.toHex(), '#00FF00');
-            assert.strictEqual(C.Blue.toHex(), '#0000FF');
+            assert.strictEqual(C.Red.toHex, '#FF0000');
+            assert.strictEqual(C.Green.toHex, '#00FF00');
+            assert.strictEqual(C.Blue.toHex, '#0000FF');
         });
 
         test('should work with structured variants', () => {
@@ -127,9 +127,9 @@ describe('Match Exhaustiveness Checking', () => {
                     Blue() { return '#0000FF'; }
                 });
 
-            assert.strictEqual(Color.Red.toHex(), '#FF0000');
-            assert.strictEqual(Color.Green.toHex(), '#00FF00');
-            assert.strictEqual(Color.Blue.toHex(), '#0000FF');
+            assert.strictEqual(Color.Red.toHex, '#FF0000');
+            assert.strictEqual(Color.Green.toHex, '#00FF00');
+            assert.strictEqual(Color.Blue.toHex, '#0000FF');
         });
 
         test('should throw when handler missing and no wildcard at runtime', () => {
@@ -139,9 +139,9 @@ describe('Match Exhaustiveness Checking', () => {
                     Red() { return '#FF0000'; }
                 });
 
-            assert.strictEqual(Color.Red.toHex(), '#FF0000');
+            assert.strictEqual(Color.Red.toHex, '#FF0000');
             assert.throws(
-                () => Color.Green.toHex(),
+                () => Color.Green.toHex,
                 /No handler for variant 'Green'/
             );
         });
@@ -153,9 +153,9 @@ describe('Match Exhaustiveness Checking', () => {
                     _() { return '#UNKNOWN'; }
                 });
 
-            assert.strictEqual(Color.Red.toHex(), '#FF0000');
-            assert.strictEqual(Color.Green.toHex(), '#UNKNOWN');
-            assert.strictEqual(Color.Blue.toHex(), '#UNKNOWN');
+            assert.strictEqual(Color.Red.toHex, '#FF0000');
+            assert.strictEqual(Color.Green.toHex, '#UNKNOWN');
+            assert.strictEqual(Color.Blue.toHex, '#UNKNOWN');
         });
 
         test('should work with only wildcard handler', () => {
@@ -164,9 +164,9 @@ describe('Match Exhaustiveness Checking', () => {
                     _(instance) { return instance.constructor.name; }
                 });
 
-            assert.strictEqual(Color.Red.getName(), 'Red');
-            assert.strictEqual(Color.Green.getName(), 'Green');
-            assert.strictEqual(Color.Blue.getName(), 'Blue');
+            assert.strictEqual(Color.Red.getName, 'Red');
+            assert.strictEqual(Color.Green.getName, 'Green');
+            assert.strictEqual(Color.Blue.getName, 'Blue');
         });
     });
 
@@ -204,8 +204,8 @@ describe('Match Exhaustiveness Checking', () => {
                 _() { return '#UNKNOWN'; }
             });
 
-            assert.strictEqual(Color.Yellow.toHex(), '#UNKNOWN');
-            assert.strictEqual(Color.Orange.toHex(), '#UNKNOWN');
+            assert.strictEqual(Color.Yellow.toHex, '#UNKNOWN');
+            assert.strictEqual(Color.Orange.toHex, '#UNKNOWN');
         });
     });
 
@@ -237,9 +237,9 @@ describe('Match Exhaustiveness Checking', () => {
                 _() { return true; }
             });
 
-            assert.strictEqual(Status.OK.isError(), false);
-            assert.strictEqual(Status.BadRequest.isError(), true);
-            assert.strictEqual(Status.NotFound.isError(), true);
+            assert.strictEqual(Status.OK.isError, false);
+            assert.strictEqual(Status.BadRequest.isError, true);
+            assert.strictEqual(Status.NotFound.isError, true);
         });
     });
 });

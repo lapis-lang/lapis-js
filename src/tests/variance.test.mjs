@@ -29,7 +29,7 @@ describe('Variance Investigation', () => {
 
             const dog = new Dog();
             const list = AnimalList.Cons({ head: dog, tail: AnimalList.Nil });
-            const result = list.first();
+            const result = list.first;
 
             assert.ok(result instanceof Animal);
             console.log('Returning Dog where Animal expected works (covariant)');
@@ -52,7 +52,7 @@ describe('Variance Investigation', () => {
                     Dog() { return new Dog(); } // Dog <: Animal
                 });
 
-            const result = Pet.Dog.create();
+            const result = Pet.Dog.create;
             assert.ok(result instanceof Animal);
             assert.ok(result instanceof Dog);
             console.log('Returning Dog where Animal expected works (covariant)');
@@ -90,8 +90,8 @@ describe('Variance Investigation', () => {
                     RectVariant() { return new Rectangle(3, 4); }
                 });
 
-            const circle = ShapeData.CircleVariant.makeShape();
-            const rect = ShapeData.RectVariant.makeShape();
+            const circle = ShapeData.CircleVariant.makeShape;
+            const rect = ShapeData.RectVariant.makeShape;
 
             assert.ok(circle instanceof Shape);
             assert.ok(circle instanceof Circle);
@@ -131,7 +131,7 @@ describe('Variance Investigation', () => {
 
             const dog = new Dog('Buddy', 'Labrador');
             const list = Option.Cons({ head: dog, tail: Option.Nil });
-            const result = list.describe();
+            const result = list.describe;
 
             assert.strictEqual(result, 'Dog: Buddy, breed: Labrador');
             console.log('Handler parameters maintain exact type (safe)');
@@ -150,7 +150,7 @@ describe('Variance Investigation', () => {
                 });
 
             const list = List.Cons({ head: 1, tail: List.Nil });
-            const result = list.sum();
+            const result = list.sum;
 
             // If InferType works, result should be typed
             assert.strictEqual(typeof result, 'number');
@@ -176,7 +176,7 @@ describe('Variance Investigation', () => {
                 head: 'hello',
                 tail: List.Cons({ head: ' world', tail: List.Nil })
             });
-            const result = list.concat();
+            const result = list.concat;
 
             assert.strictEqual(typeof result, 'string');
             assert.strictEqual(result, 'hello world');
@@ -193,8 +193,8 @@ describe('Variance Investigation', () => {
                     False() { return false; }
                 });
 
-            const t = Data.True.toBool();
-            const f = Data.False.toBool();
+            const t = Data.True.toBool;
+            const f = Data.False.toBool;
 
             assert.strictEqual(typeof t, 'boolean');
             assert.strictEqual(typeof f, 'boolean');
@@ -225,7 +225,7 @@ describe('Variance Investigation', () => {
 
             const dog = new Dog();
             const list = List.Cons({ head: dog, tail: List.Nil });
-            const result = list.getFirst();
+            const result = list.getFirst;
 
             // Runtime check - this should be Dog
             assert.strictEqual(result.type, 'dog');
@@ -257,8 +257,8 @@ describe('Variance Investigation', () => {
                     CatVariant() { return new Cat(); }
                 });
 
-            const dogResult = AnimalData.DogVariant.getAnimal();
-            const catResult = AnimalData.CatVariant.getAnimal();
+            const dogResult = AnimalData.DogVariant.getAnimal;
+            const catResult = AnimalData.CatVariant.getAnimal;
 
             // These are Animals, not specifically Dog or Cat
             assert.ok(dogResult instanceof Animal);
@@ -295,11 +295,11 @@ describe('Variance Investigation', () => {
             const bi = Data.BigIntVariant({ val: BigInt(123) });
             const sym = Data.SymVariant({ val: Symbol('test') });
 
-            assert.strictEqual(n.getType(), 'number');
-            assert.strictEqual(s.getType(), 'string');
-            assert.strictEqual(b.getType(), 'boolean');
-            assert.strictEqual(bi.getType(), 'bigint');
-            assert.strictEqual(sym.getType(), 'symbol');
+            assert.strictEqual(n.getType, 'number');
+            assert.strictEqual(s.getType, 'string');
+            assert.strictEqual(b.getType, 'boolean');
+            assert.strictEqual(bi.getType, 'bigint');
+            assert.strictEqual(sym.getType, 'symbol');
 
             console.log('InferType handles all primitive constructors correctly');
         });
@@ -319,7 +319,7 @@ describe('Variance Investigation', () => {
 
             const instance = new CustomClass(42);
             const v = Data.Variant({ val: instance });
-            const result = v.getValue();
+            const result = v.getValue;
 
             assert.strictEqual(result, 42);
             console.log('InferType handles custom classes correctly');
@@ -341,9 +341,9 @@ describe('Variance Investigation', () => {
             const r = Data.RegExpVariant({ val: /test/ });
             const a = Data.ArrayVariant({ val: [1, 2, 3] });
 
-            assert.strictEqual(d.getTypeName(), 'Date');
-            assert.strictEqual(r.getTypeName(), 'RegExp');
-            assert.strictEqual(a.getTypeName(), 'Array');
+            assert.strictEqual(d.getTypeName, 'Date');
+            assert.strictEqual(r.getTypeName, 'RegExp');
+            assert.strictEqual(a.getTypeName, 'Array');
 
             console.log('InferType handles Date, RegExp, Array correctly');
         });
@@ -363,11 +363,11 @@ describe('Variance Investigation', () => {
             const list = List.Cons({ head: 1, tail: List.Nil });
 
             // Can we assign to any? (widening)
-            const anyResult = list.sum();
+            const anyResult = list.sum;
             assert.strictEqual(typeof anyResult, 'number');
 
             // Can we assign to unknown? (widening)
-            const unknownResult = list.sum();
+            const unknownResult = list.sum;
             assert.strictEqual(typeof unknownResult, 'number');
 
             console.log('Widening to any/unknown works (expected)');
@@ -387,8 +387,8 @@ describe('Variance Investigation', () => {
                     }
                 });
 
-            const success = Computation.Success({ value: 42 }).toResult();
-            const failure = Computation.Failure({ error: 'oops' }).toResult();
+            const success = Computation.Success({ value: 42 }).toResult;
+            const failure = Computation.Failure({ error: 'oops' }).toResult;
 
             assert.ok('success' in success);
             assert.ok('success' in failure);
@@ -442,8 +442,8 @@ describe('Variance Investigation', () => {
                     Nothing() { return null; }
                 });
 
-            const justResult = Maybe.Just({ value: 42 }).toNullable();
-            const nothingResult = Maybe.Nothing.toNullable();
+            const justResult = Maybe.Just({ value: 42 }).toNullable;
+            const nothingResult = Maybe.Nothing.toNullable;
 
             assert.strictEqual(justResult, 42);
             assert.strictEqual(nothingResult, null);
@@ -484,9 +484,9 @@ describe('Variance Investigation', () => {
 
             const p = Point.Point2D({ x: 3, y: 4 });
 
-            const str = p.asString();
-            const mag = p.magnitude();
-            const arr = p.asArray();
+            const str = p.asString;
+            const mag = p.magnitude;
+            const arr = p.asArray;
 
             assert.strictEqual(typeof str, 'string');
             assert.strictEqual(typeof mag, 'number');
