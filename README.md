@@ -466,10 +466,17 @@ console.log(Color.Blue.toHex);  // '#UNKNOWN' (wildcard)
 **Wildcard handler signature:**
 
 ```ts
+// Parameterless fold
 _(instance) {
     // Access variant information
     console.log(instance.constructor.name); // Variant name
     return someValue;
+}
+
+// Parameterized fold
+_(instance, inputArg) {
+    // Access both instance and input parameter
+    return computeWithBoth(instance, inputArg);
 }
 ```
 
@@ -687,6 +694,7 @@ The parameter is threaded through the entire structure, allowing each level to u
 - **Use callback form `(ADT) => ({ handlers })` to enable polymorphism** over parameterized ADT instances
 - Handler signature for singleton variants: `Variant(inputArg) => result`
 - Handler signature for structured variants: `Variant({ field1, field2, ... }, inputArg) => result`
+- **Wildcard handler signature**: `_(instance, inputArg) => result` (receives both instance and input parameter)
 - The input parameter is threaded through all recursive calls automatically
 - Both forms still process structures bottom-up (catamorphic recursion)
 
@@ -704,6 +712,23 @@ const List = data(({ Family, T }) => ({
 const NumList = List(Number);
 const nums = NumList.Cons(1, NumList.Cons(2, NumList.Nil));
 const result = nums.append(3);  // Returns NumList instance, not generic List
+```
+
+**Wildcard handlers with parameterized folds:**
+
+```ts
+const Color = data({ Red: {}, Green: {}, Blue: {} })
+    .fold('matches', { in: String, out: Boolean }, {
+        Red(text) { return text.toLowerCase() === 'red'; },
+        _(instance, text) {
+            // Wildcard receives both instance and input parameter
+            return instance.constructor.name.toLowerCase().includes(text.toLowerCase());
+        }
+    });
+
+console.log(Color.Red.matches('red'));    // true (specific handler)
+console.log(Color.Green.matches('green')); // true (wildcard handler)
+console.log(Color.Blue.matches('blue'));    // true (wildcard handler)
 ```
 
 **Note:** Both object literal form `{ ... }` and callback form `() => ({ ... })` are supported for fold operations. The object literal form is preferred for readability.

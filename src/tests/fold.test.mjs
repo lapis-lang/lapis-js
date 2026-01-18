@@ -258,6 +258,31 @@ describe('Fold Operation (Catamorphism)', () => {
             assert.strictEqual(list3.tail.tail.head, 3);
             assert.ok(list3.tail.tail.tail === List.Nil);
         });
+
+        test('Parameterized fold with wildcard handler', () => {
+            const Color = data({ Red: {}, Green: {}, Blue: {} })
+                .fold('matches', { in: String, out: Boolean }, {
+                    Red(text) { return text.toLowerCase() === 'red'; },
+                    _(instance, text) {
+                        // Wildcard handler receives both instance and input parameter
+                        return instance.constructor.name.toLowerCase().includes(text.toLowerCase());
+                    }
+                });
+
+            // Red uses specific handler
+            assert.strictEqual(Color.Red.matches('red'), true);
+            assert.strictEqual(Color.Red.matches('Red'), true);
+            assert.strictEqual(Color.Red.matches('blue'), false);
+
+            // Green and Blue use wildcard handler
+            assert.strictEqual(Color.Green.matches('green'), true);
+            assert.strictEqual(Color.Green.matches('reen'), true);
+            assert.strictEqual(Color.Green.matches('blue'), false);
+
+            assert.strictEqual(Color.Blue.matches('blue'), true);
+            assert.strictEqual(Color.Blue.matches('Blue'), true);
+            assert.strictEqual(Color.Blue.matches('red'), false);
+        });
     });
 
     describe('Multiple Recursive Fields', () => {
