@@ -422,8 +422,10 @@ function installOperationOnADT(adtClass, opName, transformer, skipIfExists = tru
                 const isWildcard = wildcardHandler && ctorTransform === wildcardHandler;
 
                 if (isWildcard) {
-                    // Wildcard handler receives the full instance
-                    const result = ctorTransform.call(frame.instance, frame.instance);
+                    // Wildcard handler receives the full instance (and input parameter if parameterized)
+                    const result = hasInputParam 
+                        ? ctorTransform.call(frame.instance, frame.instance, inputArg)
+                        : ctorTransform.call(frame.instance, frame.instance);
                     memoCache.set(frame.instance, result);
                     continue;
                 }
