@@ -6,6 +6,49 @@ This is best described informally as a Bialgebraic programming language with sup
 This should feel familiar to users of functional programming languages like Haskell, OCaml, F#, and Scala, but here
 there is an emphasis on the Bird-Meertens Formalism (BMF) (Squiggol) of making programs by combining data and codata through folds and unfolds (and their various duals and combinations).
 
+## Table of Contents
+
+- [Installation](#installation)
+- [Algebraic Data Types (ADTs)](#algebraic-data-types-adts)
+  - [Simple Enumerated Types](#simple-enumerated-types)
+  - [Structured Data](#structured-data)
+  - [Guards and Validation](#guards-and-validation)
+  - [Invariants](#invariants)
+- [Parameterized and Recursive ADTs](#parameterized-and-recursive-adts)
+- [ADT Extension (Subtyping)](#adt-extension-subtyping)
+  - [Extending recursive ADTs](#extending-recursive-adts)
+- [Fold Operations](#fold-operations)
+  - [Basic Fold Operations](#basic-fold-operations)
+  - [Specs](#specs)
+  - [Uniform Access Principle](#uniform-access-principle)
+  - [Fold on Structured Variants](#fold-on-structured-variants)
+  - [Wildcard Handlers](#wildcard-handlers)
+  - [Exhaustiveness Checking](#exhaustiveness-checking)
+  - [Multiple Fold Operations](#multiple-fold-operations)
+  - [Structural Recursion (Catamorphisms)](#structural-recursion-catamorphisms)
+  - [Parameterized Folds](#parameterized-folds)
+  - [Integration with ADT Extension](#integration-with-adt-extension)
+  - [Extending Fold Operations](#extending-fold-operations)
+  - [Recursion and Stack Safety](#recursion-and-stack-safety)
+  - [Polymorphic Recursion in Extended Folds](#polymorphic-recursion-in-extended-folds)
+- [Type Parameter Transformations with Map](#type-parameter-transformations-with-map)
+- [Unfold Operations (Corecursion/Anamorphisms)](#unfold-operations-corecursionanamorphisms)
+  - [Basic Unfold Operations](#basic-unfold-operations)
+  - [Binary Operations with Fold](#binary-operations-with-fold)
+  - [Object Literal Guards in Specs](#object-literal-guards-in-specs)
+- [Merge Operations (Deforestation)](#merge-operations-deforestation)
+  - [Recursion Schemes](#recursion-schemes)
+- [Codata (Coalgebras)](#codata-coalgebras)
+  - [Key Differences: Data vs Codata](#key-differences-data-vs-codata)
+  - [Basic Codata Declaration](#basic-codata-declaration)
+  - [Unfold Operations (Constructing Codata)](#unfold-operations-constructing-codata)
+  - [Multiple Unfold Constructors](#multiple-unfold-constructors)
+  - [Parametric Observers](#parametric-observers)
+  - [Lazy Evaluation and Memoization](#lazy-evaluation-and-memoization)
+  - [Infinite Structures](#infinite-structures)
+  - [Effect-like Codata](#effect-like-codata)
+- [References, Inspirations, and Further Reading](#references-inspirations-and-further-reading)
+
 ## Installation
 
 The latest version:
