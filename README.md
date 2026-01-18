@@ -1,5 +1,9 @@
 # Lapis JS
 
+[![Build](https://github.com/lapis-lang/lapis-js/workflows/Build/badge.svg?branch=master)](https://github.com/lapis-lang/lapis-js/actions?query=workflow%3ABuild%2FRelease)
+[![npm version](https://badge.fury.io/js/%40lapis-lang%2Flapis-js.svg)](https://www.npmjs.com/package/@lapis-lang/lapis-js)
+[![Downloads](https://img.shields.io/npm/dm/@lapis-lang/lapis-js.svg)](https://www.npmjs.com/package/@lapis-lang/lapis-js)
+
 Lapis JS is an embedded DSL for experimentation of the semantics for the upcoming Lapis programming language.
 This is best described informally as a Bialgebraic programming language with support for Algebraic Data Types (ADTs), Subtyping, Codata, Protocols, Effects, and Contracts.
 
