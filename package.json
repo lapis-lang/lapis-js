@@ -1,14 +1,26 @@
 {
     "name": "@lapis-lang/lapis-js",
-    "version": "0.0.1",
+    "version": "0.34.0",
     "description": "An embedded DSL for experimentation of Lapis Semantics",
     "type": "module",
     "exports": {
         ".": {
-            "types": "./dist/index.d.mjs",
             "import": "./dist/index.mjs"
         }
     },
+    "main": "./dist/index.mjs",
+    "keywords": [
+        "algebraic-data-types",
+        "adt",
+        "codata",
+        "functional-programming",
+        "pattern-matching",
+        "fold",
+        "unfold",
+        "catamorphism",
+        "anamorphism",
+        "lapis"
+    ],
     "scripts": {
         "prebuild": "npm run lint:fix",
         "build": "webpack",
