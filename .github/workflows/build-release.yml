@@ -5,6 +5,10 @@ on:
   release:
     types: [created]
 
+permissions:
+  id-token: write  # Required for OIDC trusted publishing
+  contents: read
+
 jobs:
   build:
     name: Build
@@ -65,9 +69,5 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
           registry-url: https://registry.npmjs.org
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_AUTH_TOKEN }}
-      - name: Publish
+      - name: Publish to npm with provenance
         run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_AUTH_TOKEN }}

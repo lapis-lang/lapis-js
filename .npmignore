@@ -1,0 +1,34 @@
+# Source files
+src/
+
+# Configuration
+webpack.config.mjs
+eslint.config.js
+tsconfig.json
+
+# Development
+.editorconfig
+.vscode/
+.github/
+
+# Git
+.git/
+.gitignore
+
+# Documentation and examples
+examples/
+CODATA_DESIGN.md
+CONTRIBUTING.md
+
+# Dependencies and build artifacts
+node_modules/
+coverage/
+.cache/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
