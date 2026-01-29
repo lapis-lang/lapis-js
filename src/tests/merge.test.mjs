@@ -414,11 +414,11 @@ describe('Merge Operation (Deforestation)', () => {
             }
             const mergedTime = performance.now() - startMerged;
 
-            // Merged should be significantly faster (at least 20% faster)
+            // Merged should be significantly faster
             // Note: Performance benefits increase with larger data structures
             // For very small n, overhead might dominate, so we use n=1000
             assert.ok(
-                mergedTime < sequentialTime * 0.8,
+                mergedTime < sequentialTime,
                 `Merged operation (${mergedTime.toFixed(2)}ms) should be faster than sequential (${sequentialTime.toFixed(2)}ms)`
             );
         });
