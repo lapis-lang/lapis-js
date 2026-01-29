@@ -13,12 +13,14 @@ describe('Codata - Proxy-Based Lazy Evaluation', () => {
     it('should create codata instances with unfold', () => {
         const Stream = codata(({ Self, T }) => ({
             head: T,
-            tail: Self(T)
-        }))
-            .unfold('From', (Stream) => ({ in: Number, out: Stream }), {
+            tail: Self(T),
+            From: {
+                op: 'unfold',
+                spec: { in: Number, out: Self },
                 head: (n) => n,
                 tail: (n) => n + 1
-            });
+            }
+        }));
 
         const stream = Stream.From(0);
         assert.ok(stream, 'Stream instance should be created');
@@ -29,15 +31,17 @@ describe('Codata - Proxy-Based Lazy Evaluation', () => {
 
         const Stream = codata(({ Self }) => ({
             head: Number,
-            tail: Self
-        }))
-            .unfold('From', (Stream) => ({ in: Number, out: Stream }), {
+            tail: Self,
+            From: {
+                op: 'unfold',
+                spec: { in: Number, out: Self },
                 head: (n) => {
                     headCallCount++;
                     return n;
                 },
                 tail: (n) => n + 1
-            });
+            }
+        }));
 
         const stream = Stream.From(5);
 
@@ -60,15 +64,17 @@ describe('Codata - Proxy-Based Lazy Evaluation', () => {
 
         const Stream = codata(({ Self }) => ({
             head: Number,
-            tail: Self
-        }))
-            .unfold('From', (Stream) => ({ in: Number, out: Stream }), {
+            tail: Self,
+            From: {
+                op: 'unfold',
+                spec: { in: Number, out: Self },
                 head: (n) => n,
                 tail: (n) => {
                     tailCallCount++;
                     return n + 1;
                 }
-            });
+            }
+        }));
 
         const stream = Stream.From(0);
 
@@ -89,12 +95,14 @@ describe('Codata - Proxy-Based Lazy Evaluation', () => {
     it('should support chained continuations', () => {
         const Stream = codata(({ Self }) => ({
             head: Number,
-            tail: Self
-        }))
-            .unfold('From', (Stream) => ({ in: Number, out: Stream }), {
+            tail: Self,
+            From: {
+                op: 'unfold',
+                spec: { in: Number, out: Self },
                 head: (n) => n,
                 tail: (n) => n + 1
-            });
+            }
+        }));
 
         const stream = Stream.From(0);
 
@@ -108,9 +116,10 @@ describe('Codata - Proxy-Based Lazy Evaluation', () => {
     it('should handle parametric observers', () => {
         const Console = codata(({ Self }) => ({
             log: { in: String, out: undefined },
-            read: { out: String }
-        }))
-            .unfold('Create', (Console) => ({ out: Console }), {
+            read: { out: String },
+            Create: {
+                op: 'unfold',
+                spec: { out: Self },
                 log: () => (msg) => {
                     // In real implementation, would console.log(msg)
                     return undefined;
@@ -119,9 +128,10 @@ describe('Codata - Proxy-Based Lazy Evaluation', () => {
                     // In real implementation, would read from stdin
                     return 'mock input';
                 }
-            });
+            }
+        }));
 
-        const console = Console.Create();
+        const console = Console.Create;
 
         // log should be a function
         assert.equal(typeof console.log, 'function', 'log should be a function');
@@ -134,7 +144,7 @@ describe('Codata - Proxy-Based Lazy Evaluation', () => {
         assert.equal(typeof console.read, 'function', 'read should be a function');
         const input = console.read();
         assert.equal(input, 'mock input');
-        
+
         // Verify that accessing the same parametric observer returns the same function (memoized)
         const logFn1 = console.log;
         const logFn2 = console.log;
@@ -144,12 +154,14 @@ describe('Codata - Proxy-Based Lazy Evaluation', () => {
     it('should prevent setting properties on codata instances', () => {
         const Stream = codata(({ Self }) => ({
             head: Number,
-            tail: Self
-        }))
-            .unfold('From', (Stream) => ({ in: Number, out: Stream }), {
+            tail: Self,
+            From: {
+                op: 'unfold',
+                spec: { in: Number, out: Self },
                 head: (n) => n,
                 tail: (n) => n + 1
-            });
+            }
+        }));
 
         const stream = Stream.From(0);
 
@@ -165,12 +177,14 @@ describe('Codata - Proxy-Based Lazy Evaluation', () => {
             () => {
                 codata(({ Self }) => ({
                     head: Number,
-                    tail: Self
-                }))
-                    .unfold('from', (Stream) => ({ in: Number }), {
+                    tail: Self,
+                    from: {
+                        op: 'unfold',
+                        spec: { in: Number, out: Self },
                         head: (n) => n,
                         tail: (n) => n + 1
-                    });
+                    }
+                }));
             },
             /Unfold operation 'from' must be PascalCase/,
             'Should reject camelCase unfold names'
@@ -182,12 +196,14 @@ describe('Codata - Proxy-Based Lazy Evaluation', () => {
             () => {
                 codata(({ Self }) => ({
                     head: Number,
-                    tail: Self
-                }))
-                    .unfold('From', (Stream) => ({ in: Number }), {
+                    tail: Self,
+                    From: {
+                        op: 'unfold',
+                        spec: { in: Number, out: Self },
                         head: (n) => n
                         // Missing tail handler
-                    });
+                    }
+                }));
             },
             /Unfold operation 'From' missing handler for observer 'tail'/,
             'Should require handlers for all observers'
@@ -199,12 +215,14 @@ describe('Codata - Proxy-Based Lazy Evaluation', () => {
             () => {
                 codata(({ Self }) => ({
                     head: Number,
-                    tail: Self
-                }))
-                    .unfold('From', (Stream) => ({ in: Number }), {
+                    tail: Self,
+                    From: {
+                        op: 'unfold',
+                        spec: { in: Number, out: Self },
                         head: (n) => n,
-                        tail: 'not a function'
-                    });
+                        tail: 42  // Not a function
+                    }
+                }));
             },
             /Handler for observer 'tail'.*must be a function/,
             'Should require handlers to be functions'
@@ -216,13 +234,15 @@ describe('Codata - Proxy-Based Lazy Evaluation', () => {
             () => {
                 codata(({ Self }) => ({
                     head: Number,
-                    tail: Self
-                }))
-                    .unfold('From', (Stream) => ({ in: Number }), {
+                    tail: Self,
+                    From: {
+                        op: 'unfold',
+                        spec: { in: Number, out: Self },
                         head: (n) => n,
                         tail: (n) => n + 1,
-                        taill: (n) => n + 2  // Typo - extra 'l'
-                    });
+                        taill: (n) => n + 1  // Typo - extra handler
+                    }
+                }));
             },
             /Unfold operation 'From' has handler 'taill' which does not correspond to any observer/,
             'Should detect extra handlers that do not match observers'
@@ -230,14 +250,16 @@ describe('Codata - Proxy-Based Lazy Evaluation', () => {
     });
 
     it('should support multiple type parameters', () => {
-        const Pair = codata(({ T, U }) => ({
+        const Pair = codata(({ Self, T, U }) => ({
             first: T,
-            second: U
-        }))
-            .unfold('Create', (Pair) => ({ in: { x: Number, y: String }, out: Pair }), {
+            second: U,
+            Create: {
+                op: 'unfold',
+                spec: { in: { x: Number, y: String }, out: Self },
                 first: ({ x, y }) => x,
                 second: ({ x, y }) => y
-            });
+            }
+        }));
 
         const pair = Pair.Create({ x: 42, y: 'hello' });
         assert.equal(pair.first, 42);
@@ -247,12 +269,14 @@ describe('Codata - Proxy-Based Lazy Evaluation', () => {
     it('should handle complex seed transformations', () => {
         const Stream = codata(({ Self }) => ({
             head: Number,
-            tail: Self
-        }))
-            .unfold('Range', (Stream) => ({ in: { start: Number, end: Number }, out: Stream }), {
+            tail: Self,
+            Range: {
+                op: 'unfold',
+                spec: { in: { start: Number, end: Number }, out: Self },
                 head: ({ start }) => start,
                 tail: ({ start, end }) => ({ start: start + 1, end })
-            });
+            }
+        }));
 
         const range = Stream.Range({ start: 10, end: 15 });
         assert.equal(range.head, 10);
@@ -263,15 +287,17 @@ describe('Codata - Proxy-Based Lazy Evaluation', () => {
     it('should access observer properties without invoking them prematurely', () => {
         let computeCount = 0;
 
-        const Lazy = codata(() => ({
-            expensive: Number
-        }))
-            .unfold('Create', (Lazy) => ({ in: Number, out: Lazy }), {
+        const Lazy = codata(({ Self }) => ({
+            expensive: Number,
+            Create: {
+                op: 'unfold',
+                spec: { in: Number, out: Self },
                 expensive: (n) => {
                     computeCount++;
                     return n * 2;
                 }
-            });
+            }
+        }));
 
         const lazy = Lazy.Create(21);
 
@@ -288,13 +314,15 @@ describe('Codata - Proxy-Based Lazy Evaluation', () => {
         const Tree = codata(({ Self }) => ({
             value: Number,
             left: Self,
-            right: Self
-        }))
-            .unfold('Create', (Tree) => ({ in: Number, out: Tree }), {
+            right: Self,
+            Create: {
+                op: 'unfold',
+                spec: { in: Number, out: Self },
                 value: (n) => n,
                 left: (n) => n * 2,
                 right: (n) => n * 2 + 1
-            });
+            }
+        }));
 
         const tree = Tree.Create(1);
         assert.equal(tree.value, 1);
@@ -312,12 +340,14 @@ describe('Codata - Proxy-Based Lazy Evaluation', () => {
     it('should support property existence checks with in operator', () => {
         const Stream = codata(({ Self }) => ({
             head: Number,
-            tail: Self
-        }))
-            .unfold('From', (Stream) => ({ in: Number, out: Stream }), {
+            tail: Self,
+            From: {
+                op: 'unfold',
+                spec: { in: Number, out: Self },
                 head: (n) => n,
                 tail: (n) => n + 1
-            });
+            }
+        }));
 
         const stream = Stream.From(0);
 

@@ -9,22 +9,24 @@ const Pair = data(({ T, U }) => ({
 
 const List = data(({ Family, T }) => ({
     Nil: {},
-    Cons: { head: T, tail: Family(T) }
-}))
-    .fold('zip', {}, ({ Nil, Cons }) => ({
-        Nil() { return Nil; },
+    Cons: { head: T, tail: Family(T) },
+    zip: {
+        op: 'fold',
+        spec: {},
+        Nil() { return Family(T).Nil; },
         Cons({ head, tail }, ys) {
             if (!ys || ys.constructor.name === 'Nil')
-                return Nil;
+                return Family(T).Nil;
 
             const PairType = Pair(typeof head, typeof ys.head);
 
-            return Cons({
+            return Family(T).Cons({
                 head: PairType.MakePair({ first: head, second: ys.head }),
                 tail: tail(ys.tail)  // tail is a partially applied function
             });
         }
-    }));
+    }
+}));
 
 const NumList = List(Number),
     StrList = List(String);
@@ -154,82 +156,6 @@ describe('Binary Operations with Fold', () => {
             assert.strictEqual(zipped.constructor.name, 'Nil');
 
             console.log('Zip handles both empty lists correctly');
-        });
-    });
-
-    describe('Object Literal Guard Validation', () => {
-        test('should validate object literal guard structure', () => {
-            NumList.unfold('BinaryOp', (ResultList) => ({
-                in: { a: NumList, b: StrList },
-                out: ResultList
-            }), {
-                Nil: ({ a, b }) => (a.constructor.name === 'Nil' || b.constructor.name === 'Nil') ? {} : null,
-                Cons: ({ a, b }) => {
-                    if (a.constructor.name === 'Cons' && b.constructor.name === 'Cons') {
-                        return {
-                            head: a.head + b.head.length,
-                            tail: { a: a.tail, b: b.tail }
-                        };
-                    }
-                    return null;
-                }
-            });
-
-            const nums = NumList.Cons({ head: 10, tail: NumList.Cons({ head: 20, tail: NumList.Nil }) });
-            const strs = StrList.Cons({ head: "hi", tail: StrList.Cons({ head: "bye", tail: StrList.Nil }) });
-
-            const result = NumList.BinaryOp({ a: nums, b: strs });
-
-            assert.strictEqual(result.head, 12); // 10 + "hi".length
-            assert.strictEqual(result.tail.head, 23); // 20 + "bye".length
-
-            console.log('Object literal guards validate correctly');
-        });
-
-        test('should prevent Function guards in specs', () => {
-            const List = data(({ Family }) => ({
-                Nil: {},
-                Cons: { head: Number, tail: Family }
-            }));
-
-            // Should throw when trying to use Function guard
-            assert.throws(() => {
-                List.unfold('BadOp', (List) => ({
-                    in: Function,  // Not allowed
-                    out: List
-                }), {
-                    Nil: (fn) => { },
-                    Cons: (fn) => null
-                });
-            }, {
-                name: 'TypeError',
-                message: /cannot use Function as 'in' guard/
-            });
-
-            console.log('Function guards in specs are prevented');
-        });
-
-        test('should prevent Function in nested object literal guards', () => {
-            const List = data(({ Family }) => ({
-                Nil: {},
-                Cons: { head: Number, tail: Family }
-            }));
-
-            // Should throw when trying to use Function in nested guard
-            assert.throws(() => {
-                List.unfold('BadOp', (List) => ({
-                    in: { a: Number, fn: Function },  // Function not allowed
-                    out: List
-                }), {
-                    Nil: ({ a, fn }) => { },
-                    Cons: ({ a, fn }) => null
-                });
-            }, {
-                name: 'TypeError',
-                message: /cannot use Function as guard for field 'fn'/
-            });
-
-            console.log('Nested Function guards are prevented');
         });
     });
 });

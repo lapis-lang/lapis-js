@@ -123,3 +123,15 @@ export function composeFunctions(f, g) {
     if (g) return g;
     return (x) => x; // identity
 }
+
+/**
+ * Set of built-in type constructors used for field validation
+ */
+export const BUILT_IN_TYPES = new Set([Number, String, Boolean, Symbol, BigInt]);
+
+/**
+ * Check if a value is a built-in type constructor
+ */
+export function isBuiltInType(value) {
+    return BUILT_IN_TYPES.has(value);
+}

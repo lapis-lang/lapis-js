@@ -16,28 +16,34 @@ const CodataSet = codata(({ Self }) => ({
     isEmpty: Boolean,
     lookup: { in: Number, out: Boolean },
     insert: { in: Number, out: Self },
-    remove: { in: Number, out: Self }
-}));
-
-const NumSet = CodataSet
-    .unfold('Evens', (CodataSet) => ({ out: CodataSet }), {
+    remove: { in: Number, out: Self },
+    Evens: {
+        op: 'unfold',
+        spec: { out: Self },
         isEmpty: () => false,  // Infinite set is never empty
         lookup: () => (n) => n % 2 === 0,
         insert: () => () => undefined,  // Can't modify infinite sets
         remove: () => () => undefined
-    })
-    .unfold('Odds', (CodataSet) => ({ out: CodataSet }), {
+    },
+    Odds: {
+        op: 'unfold',
+        spec: { out: Self },
         isEmpty: () => false,
         lookup: () => (n) => n % 2 !== 0,
         insert: () => () => undefined,
         remove: () => () => undefined
-    })
-    .unfold('Multiples', (CodataSet) => ({ in: Number, out: CodataSet }), {
+    },
+    Multiples: {
+        op: 'unfold',
+        spec: { in: Number, out: Self },
         isEmpty: () => false,
         lookup: (divisor) => (n) => n % divisor === 0,
         insert: () => () => undefined,
         remove: () => () => undefined
-    });
+    }
+}));
+
+const NumSet = CodataSet;
 
 console.log('\n=== Basic Infinite Sets ===');
 
@@ -62,12 +68,13 @@ console.log('multiplesOf3.lookup(15):', multiplesOf3.lookup(15));   // true
 // Example 2: Prime Numbers Set
 // =============================================================================
 
-const PrimeSet = codata(() => ({
+const PrimeSet = codata(({ Self }) => ({
     isEmpty: Boolean,
     contains: { in: Number, out: Boolean },
-    nthPrime: { in: Number, out: Number }
-}))
-    .unfold('Create', (PrimeSet) => ({ out: PrimeSet }), {
+    nthPrime: { in: Number, out: Number },
+    Create: {
+        op: 'unfold',
+        spec: { out: Self },
         isEmpty: () => false,
         contains: () => (n) => {
             if (n < 2) return false;
@@ -91,7 +98,8 @@ const PrimeSet = codata(() => ({
             }
             return -1;
         }
-    });
+    }
+}));
 
 function isPrime(n) {
     if (n < 2) return false;
@@ -121,24 +129,28 @@ for (let i = 0; i < 10; i++) {
 // Example 3: Range Set (Intervals)
 // =============================================================================
 
-const RangeSet = codata(() => ({
+const RangeSet = codata(({ Self }) => ({
     contains: { in: Number, out: Boolean },
     min: Number,
     max: Number,
-    isEmpty: Boolean
-}))
-    .unfold('Create', (RangeSet) => ({ in: { min: Number, max: Number }, out: RangeSet }), {
+    isEmpty: Boolean,
+    Create: {
+        op: 'unfold',
+        spec: { in: { min: Number, max: Number }, out: Self },
         contains: ({ min, max }) => (n) => n >= min && n <= max,
         min: ({ min }) => min,
         max: ({ max }) => max,
         isEmpty: ({ min, max }) => min > max
-    })
-    .unfold('Infinite', (RangeSet) => ({ out: RangeSet }), {
+    },
+    Infinite: {
+        op: 'unfold',
+        spec: { out: Self },
         contains: () => () => true,
         min: () => -Infinity,
         max: () => Infinity,
         isEmpty: () => false
-    });
+    }
+}));
 
 console.log('\n=== Range Sets ===');
 
@@ -157,22 +169,27 @@ console.log('all.isEmpty:', all.isEmpty);                     // false
 // Example 4: Characteristic Functions
 // =============================================================================
 
-const CharSet = codata(() => ({
+const CharSet = codata(({ Self }) => ({
     member: { in: Number, out: Boolean },
-    cardinality: String  // "finite", "countably infinite", etc.
-}))
-    .unfold('Squares', (CharSet) => ({ out: CharSet }), {
+    cardinality: String,  // "finite", "countably infinite", etc.
+    Squares: {
+        op: 'unfold',
+        spec: { out: Self },
         member: () => (n) => {
             const sqrt = Math.sqrt(n);
             return sqrt === Math.floor(sqrt);
         },
         cardinality: () => 'countably infinite'
-    })
-    .unfold('Positive', (CharSet) => ({ out: CharSet }), {
+    },
+    Positive: {
+        op: 'unfold',
+        spec: { out: Self },
         member: () => (n) => n > 0,
         cardinality: () => 'countably infinite'
-    })
-    .unfold('Fibonacci', (CharSet) => ({ out: CharSet }), {
+    },
+    Fibonacci: {
+        op: 'unfold',
+        spec: { out: Self },
         member: () => (n) => {
             // Check if n is a Fibonacci number
             // A number is Fibonacci if one of (5*n^2 + 4) or (5*n^2 - 4) is a perfect square
@@ -186,7 +203,8 @@ const CharSet = codata(() => ({
             return isPerfectSquare(test1) || isPerfectSquare(test2);
         },
         cardinality: () => 'countably infinite'
-    });
+    }
+}));
 
 console.log('\n=== Characteristic Functions ===');
 

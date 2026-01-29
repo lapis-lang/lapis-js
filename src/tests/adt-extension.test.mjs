@@ -1,12 +1,12 @@
-import { data } from '@lapis-lang/lapis-js'
+import { data, extend } from '@lapis-lang/lapis-js'
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
 describe('ADT Extension', () => {
     test('basic extension with simple variants', () => {
-        const Color = data({ Red: {}, Green: {}, Blue: {} });
+        const Color = data(() => ({ Red: {}, Green: {}, Blue: {} }));
 
-        const ExtendedColor = Color.extend({ Yellow: {}, Orange: {} });
+        const ExtendedColor = data(() => ({ [extend]: Color, Yellow: {}, Orange: {} }));
 
         // Extended ADT should have all variants accessible
         assert.ok(ExtendedColor.Red);
@@ -28,13 +28,14 @@ describe('ADT Extension', () => {
     });
 
     test('extension with structured variants', () => {
-        const Point = data({
+        const Point = data(() => ({
             Point2D: { x: Number, y: Number }
-        });
+        }));
 
-        const Point3DExtended = Point.extend({
+        const Point3DExtended = data(() => ({
+            [extend]: Point,
             Point3D: { x: Number, y: Number, z: Number }
-        });
+        }));
 
         // Create instances
         const p2 = Point3DExtended.Point2D({ x: 10, y: 20 });
@@ -63,7 +64,8 @@ describe('ADT Extension', () => {
             Add: { left: Family, right: Family }
         }));
 
-        const IntBoolAlgebra = IntAlgebra.extend(({ Family }) => ({
+        const IntBoolAlgebra = data(({ Family }) => ({
+            [extend]: IntAlgebra,
             BoolLit: { value: Boolean },
             Iff: { cond: Family, thenBranch: Family, elseBranch: Family }
         }));
@@ -111,7 +113,8 @@ describe('ADT Extension', () => {
             Base2: { ref: Family }
         }));
 
-        const Extended = Base.extend(({ Family }) => ({
+        const Extended = data(({ Family }) => ({
+            [extend]: Base,
             Extended1: { value: String },
             Extended2: { ref: Family }
         }));
@@ -134,9 +137,9 @@ describe('ADT Extension', () => {
     });
 
     test('deep extension (multiple levels)', () => {
-        const A = data({ A1: {}, A2: {} });
-        const B = A.extend({ B1: {}, B2: {} });
-        const C = B.extend({ C1: {}, C2: {} });
+        const A = data(() => ({ A1: {}, A2: {} }));
+        const B = data(() => ({ [extend]: A, B1: {}, B2: {} }));
+        const C = data(() => ({ [extend]: B, C1: {}, C2: {} }));
 
         // C should have all variants accessible
         assert.ok(C.A1);
@@ -184,17 +187,17 @@ describe('ADT Extension', () => {
     });
 
     test('variant name collision throws error', () => {
-        const Color = data({ Red: {}, Green: {} });
+        const Color = data(() => ({ Red: {}, Green: {} }));
 
         assert.throws(
-            () => Color.extend({ Red: {}, Yellow: {} }),
+            () => data(() => ({ [extend]: Color, Red: {}, Yellow: {} })),
             /Variant name collision: 'Red' already exists in base ADT/
         );
     });
 
     test('extension preserves property immutability', () => {
-        const Color = data({ Red: {}, Green: {} });
-        const ExtendedColor = Color.extend({ Blue: {} });
+        const Color = data(() => ({ Red: {}, Green: {} }));
+        const ExtendedColor = data(() => ({ [extend]: Color, Blue: {} }));
 
         // Properties should be non-writable
         assert.throws(() => {
@@ -212,12 +215,13 @@ describe('ADT Extension', () => {
     });
 
     test('mixed simple and structured variants', () => {
-        const Shape = data({ Circle: { radius: Number } });
+        const Shape = data(() => ({ Circle: { radius: Number } }));
 
-        const ExtendedShape = Shape.extend({
+        const ExtendedShape = data(() => ({
+            [extend]: Shape,
             Square: { side: Number },
             Unknown: {}
-        });
+        }));
 
         const square = ExtendedShape.Square({ side: 10 });
         const unknown = ExtendedShape.Unknown;
@@ -233,11 +237,12 @@ describe('ADT Extension', () => {
         const isPositive = (x) =>
             typeof x === 'number' && x > 0;
 
-        const Base = data({ Value: { amount: Number } });
+        const Base = data(() => ({ Value: { amount: Number } }));
 
-        const Extended = Base.extend({
+        const Extended = data(() => ({
+            [extend]: Base,
             PositiveValue: { amount: isPositive }
-        });
+        }));
 
         const posValue = Extended.PositiveValue({ amount: 10 });
 
@@ -253,13 +258,14 @@ describe('ADT Extension', () => {
     });
 
     test('callable without new for extended structured variants', () => {
-        const Point = data({
+        const Point = data(() => ({
             Point2D: { x: Number, y: Number }
-        });
+        }));
 
-        const Point3DExtended = Point.extend({
+        const Point3DExtended = data(() => ({
+            [extend]: Point,
             Point3D: { x: Number, y: Number, z: Number }
-        });
+        }));
 
         // Should work without 'new'
         const p3 = Point3DExtended.Point3D({ x: 1, y: 2, z: 3 });
@@ -276,7 +282,8 @@ describe('ADT Extension', () => {
             Just: { value: T }
         }));
 
-        const Result = Maybe.extend(({ T }) => ({
+        const Result = data(({ T }) => ({
+            [extend]: Maybe,
             Error: { message: String, value: T }
         }));
 
@@ -309,14 +316,16 @@ describe('ADT Extension', () => {
         }));
 
         // Extend with boolean expressions
-        const IntBoolExpr = IntExpr.extend(({ Family }) => ({
+        const IntBoolExpr = data(({ Family }) => ({
+            [extend]: IntExpr,
             BoolLit: { value: Boolean },
             LessThan: { left: Family, right: Family },
             And: { left: Family, right: Family }
         }));
 
         // Extend further with variables
-        const FullExpr = IntBoolExpr.extend(({ Family }) => ({
+        const FullExpr = data(({ Family }) => ({
+            [extend]: IntBoolExpr,
             Var: { name: String },
             Let: { name: String, value: Family, body: Family }
         }));

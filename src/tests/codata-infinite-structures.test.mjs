@@ -25,12 +25,14 @@ describe('Codata - Infinite Structures', () => {
         it('should create infinite streams with lazy evaluation', () => {
             const Stream = codata(({ Self, T }) => ({
                 head: T,
-                tail: Self(T)
-            }))
-                .unfold('From', (Stream) => ({ in: Number, out: Stream(Number) }), {
+                tail: Self(T),
+                From: {
+                    op: 'unfold',
+                    spec: { in: Number, out: Self },
                     head: (n) => n,
                     tail: (n) => n + 1
-                });
+                }
+            }));
 
             const nums = Stream.From(0);
 
@@ -52,12 +54,14 @@ describe('Codata - Infinite Structures', () => {
         it('should memoize continuation instances', () => {
             const Stream = codata(({ Self, T }) => ({
                 head: T,
-                tail: Self(T)
-            }))
-                .unfold('From', (Stream) => ({ in: Number, out: Stream(Number) }), {
+                tail: Self(T),
+                From: {
+                    op: 'unfold',
+                    spec: { in: Number, out: Self },
                     head: (n) => n,
                     tail: (n) => n + 1
-                });
+                }
+            }));
 
             const nums = Stream.From(0);
 
@@ -75,15 +79,17 @@ describe('Codata - Infinite Structures', () => {
 
             const Stream = codata(({ Self, T }) => ({
                 head: T,
-                tail: Self(T)
-            }))
-                .unfold('From', (Stream) => ({ in: Number, out: Stream(Number) }), {
+                tail: Self(T),
+                From: {
+                    op: 'unfold',
+                    spec: { in: Number },
                     head: (n) => {
                         headCallCount++;
                         return n;
                     },
                     tail: (n) => n + 1
-                });
+                }
+            }));
 
             const nums = Stream.From(0);
 
@@ -104,9 +110,10 @@ describe('Codata - Infinite Structures', () => {
 
             const Stream = codata(({ Self, T }) => ({
                 head: T,
-                tail: Self(T)
-            }))
-                .unfold('From', (Stream) => ({ in: Number, out: Stream(Number) }), {
+                tail: Self(T),
+                From: {
+                    op: 'unfold',
+                    spec: { in: Number },
                     head: (n) => {
                         headCallCount++;
                         return n;
@@ -115,7 +122,8 @@ describe('Codata - Infinite Structures', () => {
                         tailCallCount++;
                         return n + 1;
                     }
-                });
+                }
+            }));
 
             const nums = Stream.From(0);
 
@@ -141,12 +149,14 @@ describe('Codata - Infinite Structures', () => {
         it('should create infinite constant streams via corecursion', () => {
             const Stream = codata(({ Self, T }) => ({
                 head: T,
-                tail: Self(T)
-            }))
-                .unfold('Repeat', (Stream) => ({ in: Number, out: Stream(Number) }), {
+                tail: Self(T),
+                Repeat: {
+                    op: 'unfold',
+                    spec: { in: Number },
                     head: (n) => n,
                     tail: (n) => n  // Same seed = constant stream
-                });
+                }
+            }));
 
             const ones = Stream.Repeat(1);
 
@@ -167,12 +177,14 @@ describe('Codata - Infinite Structures', () => {
         it('should work with different constant values', () => {
             const Stream = codata(({ Self, T }) => ({
                 head: T,
-                tail: Self(T)
-            }))
-                .unfold('Repeat', (Stream) => ({ in: Number, out: Stream(Number) }), {
+                tail: Self(T),
+                Repeat: {
+                    op: 'unfold',
+                    spec: { in: Number, out: Self },
                     head: (n) => n,
                     tail: (n) => n
-                });
+                }
+            }));
 
             const zeros = Stream.Repeat(0);
             const fives = Stream.Repeat(5);
@@ -191,12 +203,14 @@ describe('Codata - Infinite Structures', () => {
         it('should memoize constant stream continuations', () => {
             const Stream = codata(({ Self, T }) => ({
                 head: T,
-                tail: Self(T)
-            }))
-                .unfold('Repeat', (Stream) => ({ in: Number, out: Stream(Number) }), {
+                tail: Self(T),
+                Repeat: {
+                    op: 'unfold',
+                    spec: { in: Number, out: Self },
                     head: (n) => n,
                     tail: (n) => n
-                });
+                }
+            }));
 
             const ones = Stream.Repeat(1);
 
@@ -216,12 +230,14 @@ describe('Codata - Infinite Structures', () => {
         it('should create lazy rose trees with on-demand children generation', () => {
             const RoseTree = codata(({ Self, T }) => ({
                 value: T,
-                children: Array  // Array of children (could be lazy generators)
-            }))
-                .unfold('Node', (RoseTree) => ({ in: { value: Number, childGen: Function }, out: RoseTree(Number) }), {
+                children: Array,  // Array of children (could be lazy generators)
+                Node: {
+                    op: 'unfold',
+                    spec: { in: { value: Number, childGen: Function } },
                     value: ({ value }) => value,
                     children: ({ value, childGen }) => childGen(value)
-                });
+                }
+            }));
 
             // Create a tree where each node generates children lazily
             const tree = RoseTree.Node({
@@ -244,13 +260,15 @@ describe('Codata - Infinite Structures', () => {
             const RoseTree = codata(({ Self, T }) => ({
                 value: T,
                 left: Self(T),
-                right: Self(T)
-            }))
-                .unfold('Create', (RoseTree) => ({ in: Number, out: RoseTree(Number) }), {
+                right: Self(T),
+                Create: {
+                    op: 'unfold',
+                    spec: { in: Number, out: Self },
                     value: (n) => n,
                     left: (n) => n * 2,
                     right: (n) => n * 2 + 1
-                });
+                }
+            }));
 
             const tree = RoseTree.Create(1);
 
@@ -276,13 +294,15 @@ describe('Codata - Infinite Structures', () => {
             const RoseTree = codata(({ Self, T }) => ({
                 value: T,
                 left: Self(T),
-                right: Self(T)
-            }))
-                .unfold('Create', (RoseTree) => ({ in: Number, out: RoseTree(Number) }), {
+                right: Self(T),
+                Create: {
+                    op: 'unfold',
+                    spec: { in: Number, out: Self },
                     value: (n) => n,
                     left: (n) => n * 2,
                     right: (n) => n * 2 + 1
-                });
+                }
+            }));
 
             const tree = RoseTree.Create(1);
 
@@ -304,9 +324,10 @@ describe('Codata - Infinite Structures', () => {
                 isEmpty: Boolean,
                 lookup: { in: Number, out: Boolean },
                 insert: { in: Number, out: Self },
-                remove: { in: Number, out: Self }
-            }))
-                .unfold('Evens', (CodataSet) => ({ out: CodataSet }), {
+                remove: { in: Number, out: Self },
+                Evens: {
+                    op: 'unfold',
+                    spec: {},
                     isEmpty: () => false,  // Infinite set is never empty
                     lookup: () => (n) => n % 2 === 0,
                     insert: () => (n) => {
@@ -318,9 +339,10 @@ describe('Codata - Infinite Structures', () => {
                         // Removing from evens doesn't change the infinite set
                         return undefined;
                     }
-                });
+                }
+            }));
 
-            const evens = CodataSet.Evens();
+            const evens = CodataSet.Evens;
 
             // Infinite set is never empty
             assert.equal(evens.isEmpty, false);
@@ -337,17 +359,22 @@ describe('Codata - Infinite Structures', () => {
         it('should support multiple infinite set types', () => {
             const CodataSet = codata(({ Self }) => ({
                 isEmpty: Boolean,
-                lookup: { in: Number, out: Boolean }
-            }))
-                .unfold('Evens', (CodataSet) => ({ out: CodataSet }), {
+                lookup: { in: Number, out: Boolean },
+                Evens: {
+                    op: 'unfold',
+                    spec: {},
                     isEmpty: () => false,
                     lookup: () => (n) => n % 2 === 0
-                })
-                .unfold('Odds', (CodataSet) => ({ out: CodataSet }), {
+                },
+                Odds: {
+                    op: 'unfold',
+                    spec: {},
                     isEmpty: () => false,
                     lookup: () => (n) => n % 2 !== 0
-                })
-                .unfold('Primes', (CodataSet) => ({ out: CodataSet }), {
+                },
+                Primes: {
+                    op: 'unfold',
+                    spec: {},
                     isEmpty: () => false,
                     lookup: () => (n) => {
                         // Simple primality test (not efficient, just for demo)
@@ -359,11 +386,12 @@ describe('Codata - Infinite Structures', () => {
                         }
                         return true;
                     }
-                });
+                }
+            }));
 
-            const evens = CodataSet.Evens();
-            const odds = CodataSet.Odds();
-            const primes = CodataSet.Primes();
+            const evens = CodataSet.Evens;
+            const odds = CodataSet.Odds;
+            const primes = CodataSet.Primes;
 
             // Test evens
             assert.equal(evens.lookup(4), true);
@@ -385,14 +413,16 @@ describe('Codata - Infinite Structures', () => {
         it('should memoize parametric observer functions', () => {
             const CodataSet = codata(({ Self }) => ({
                 isEmpty: Boolean,
-                lookup: { in: Number, out: Boolean }
-            }))
-                .unfold('Evens', (CodataSet) => ({ out: CodataSet }), {
+                lookup: { in: Number, out: Boolean },
+                Evens: {
+                    op: 'unfold',
+                    spec: {},
                     isEmpty: () => false,
                     lookup: () => (n) => n % 2 === 0
-                });
+                }
+            }));
 
-            const evens = CodataSet.Evens();
+            const evens = CodataSet.Evens;
 
             // Access lookup multiple times - should return same function
             const lookup1 = evens.lookup;
@@ -411,13 +441,15 @@ describe('Codata - Infinite Structures', () => {
             const Stream = codata(({ Self, T }) => ({
                 head: T,
                 tail: Self(T),
-                nth: { in: Number, out: T }
-            }))
-                .unfold('From', (Stream) => ({ in: Number, out: Stream(Number) }), {
+                nth: { in: Number, out: T },
+                From: {
+                    op: 'unfold',
+                    spec: { in: Number, out: Self },
                     head: (n) => n,
                     tail: (n) => n + 1,
                     nth: (n) => (index) => n + index
-                });
+                }
+            }));
 
             const nums = Stream.From(0);
 
@@ -438,9 +470,10 @@ describe('Codata - Infinite Structures', () => {
                 head: T,
                 tail: Self(T),
                 nth: { in: Number, out: T },
-                take: { in: Number, out: Array }
-            }))
-                .unfold('From', (Stream) => ({ in: Number, out: Stream(Number) }), {
+                take: { in: Number, out: Array },
+                From: {
+                    op: 'unfold',
+                    spec: { in: Number },
                     head: (n) => n,
                     tail: (n) => n + 1,
                     nth: (n) => (index) => n + index,
@@ -451,7 +484,8 @@ describe('Codata - Infinite Structures', () => {
                         }
                         return result;
                     }
-                });
+                }
+            }));
 
             const nums = Stream.From(0);
 
@@ -467,27 +501,29 @@ describe('Codata - Infinite Structures', () => {
             const Stream = codata(({ Self, T }) => ({
                 head: T,
                 tail: Self(T),
-                nth: { in: Number, out: T }
-            }))
-                .unfold('From', (Stream) => ({ in: Number, out: Stream(Number) }), {
+                nth: { in: Number, out: T },
+                From: {
+                    op: 'unfold',
+                    spec: { in: Number, out: Self },
                     head: (n) => n,
                     tail: (n) => n + 1,
                     nth: (n) => (index) => n + index
-                });
+                }
+            }));
 
             const nums = Stream.From(0);
 
             // Access nth multiple times - should return same function (memoized)
             const nth1 = nums.nth;
             const nth2 = nums.nth;
-            
+
             assert.strictEqual(nth1, nth2, 'parametric observer function should be memoized');
 
             // But calling the function with different args computes fresh results
             assert.equal(nth1(5), 5);
             assert.equal(nth1(10), 10);
             assert.equal(nth2(3), 3);
-            
+
             // Verify results are computed correctly
             assert.equal(nums.nth(0), 0);
             assert.equal(nums.tail.nth(0), 1);
@@ -499,12 +535,14 @@ describe('Codata - Infinite Structures', () => {
         it('should support Fibonacci sequence as infinite stream', () => {
             const Stream = codata(({ Self }) => ({
                 current: Number,
-                next: Self
-            }))
-                .unfold('Fibonacci', (Stream) => ({ in: { a: Number, b: Number }, out: Stream }), {
+                next: Self,
+                Fibonacci: {
+                    op: 'unfold',
+                    spec: { in: { a: Number, b: Number } },
                     current: ({ a }) => a,
                     next: ({ a, b }) => ({ a: b, b: a + b })
-                });
+                }
+            }));
 
             const fib = Stream.Fibonacci({ a: 0, b: 1 });
 
@@ -522,9 +560,10 @@ describe('Codata - Infinite Structures', () => {
         it('should support prime number stream', () => {
             const Stream = codata(({ Self }) => ({
                 head: Number,
-                tail: Self
-            }))
-                .unfold('Primes', (Stream) => ({ in: Number, out: Stream }), {
+                tail: Self,
+                Primes: {
+                    op: 'unfold',
+                    spec: { in: Number },
                     head: (n) => n,
                     tail: (n) => {
                         // Find next prime after n
@@ -546,7 +585,8 @@ describe('Codata - Infinite Structures', () => {
                             candidate++;
                         }
                     }
-                });
+                }
+            }));
 
             const primes = Stream.Primes(2);
 
@@ -566,9 +606,10 @@ describe('Codata - Infinite Structures', () => {
                 value: Number,
                 left: Self,
                 right: Self,
-                depth: { in: Number, out: Array }  // Get all values at depth
-            }))
-                .unfold('Create', (Tree) => ({ in: Number, out: Tree }), {
+                depth: { in: Number, out: Array },  // Get all values at depth
+                Create: {
+                    op: 'unfold',
+                    spec: { in: Number },
                     value: (n) => n,
                     left: (n) => n * 2,
                     right: (n) => n * 2 + 1,
@@ -580,7 +621,8 @@ describe('Codata - Infinite Structures', () => {
                         const start = n * level;
                         return Array.from({ length: level }, (_, i) => start + i);
                     }
-                });
+                }
+            }));
 
             const tree = Tree.Create(1);
 
@@ -607,12 +649,14 @@ describe('Codata - Infinite Structures', () => {
         it('should handle deep continuation chains without stack overflow', () => {
             const Stream = codata(({ Self }) => ({
                 head: Number,
-                tail: Self
-            }))
-                .unfold('From', (Stream) => ({ in: Number, out: Stream }), {
+                tail: Self,
+                From: {
+                    op: 'unfold',
+                    spec: { in: Number },
                     head: (n) => n,
                     tail: (n) => n + 1
-                });
+                }
+            }));
 
             const nums = Stream.From(0);
 
@@ -632,15 +676,17 @@ describe('Codata - Infinite Structures', () => {
 
             const Stream = codata(({ Self }) => ({
                 head: Number,
-                tail: Self
-            }))
-                .unfold('From', (Stream) => ({ in: Number, out: Stream }), {
+                tail: Self,
+                From: {
+                    op: 'unfold',
+                    spec: { in: Number },
                     head: (n) => n,
                     tail: (n) => {
                         tailCallCount++;
                         return n + 1;
                     }
-                });
+                }
+            }));
 
             const nums = Stream.From(0);
 
@@ -656,14 +702,16 @@ describe('Codata - Infinite Structures', () => {
         it('should support wide tree structures', () => {
             const Tree = codata(({ Self }) => ({
                 value: Number,
-                children: Array  // Array of seeds for children
-            }))
-                .unfold('Create', (Tree) => ({ in: { value: Number, fanout: Number }, out: Tree }), {
+                children: Array,  // Array of seeds for children
+                Create: {
+                    op: 'unfold',
+                    spec: { in: { value: Number, fanout: Number } },
                     value: ({ value }) => value,
                     children: ({ value, fanout }) => {
                         return Array.from({ length: fanout }, (_, i) => value * fanout + i);
                     }
-                });
+                }
+            }));
 
             // Create a tree with high fanout
             const wideTree = Tree.Create({ value: 1, fanout: 10 });
@@ -671,7 +719,7 @@ describe('Codata - Infinite Structures', () => {
             assert.equal(wideTree.value, 1);
             assert.ok(Array.isArray(wideTree.children));
             assert.equal(wideTree.children.length, 10);
-            
+
             // Verify children values
             for (let i = 0; i < 10; i++) {
                 assert.equal(wideTree.children[i], 10 + i);

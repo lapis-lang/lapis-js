@@ -48,13 +48,13 @@ describe('Parameterized ADTs', () => {
         // Runtime type safety: string not valid for Number list
         assert.throws(
             () => NumList.Cons({ head: 'bad', tail: NumList.Nil }),
-            /Field 'head' must be an instance of Number/
+            /Field 'head' must be a Number/
         );
 
         // Runtime type safety: number not valid for String list
         assert.throws(
             () => StrList.Cons({ head: 42, tail: StrList.Nil }),
-            /Field 'head' must be an instance of String/
+            /Field 'head' must be a String/
         );
     });
 
@@ -79,7 +79,7 @@ describe('Parameterized ADTs', () => {
         // Runtime type safety: string not valid for Number Maybe
         assert.throws(
             () => NumMaybe.Just({ value: 'bad' }),
-            /Field 'value' must be an instance of Number/
+            /Field 'value' must be a Number/
         );
     });
 
@@ -281,7 +281,7 @@ describe('Parameterized ADTs', () => {
         // Runtime type safety for Number list
         assert.throws(
             () => NumList.Cons({ head: 'bad', tail: NumList.Nil }),
-            /Field 'head' must be an instance of Number/
+            /Field 'head' must be a Number/
         );
 
         // Instantiated Maybe with validation
@@ -292,7 +292,7 @@ describe('Parameterized ADTs', () => {
         // Runtime type safety for Number Maybe
         assert.throws(
             () => NumMaybe.Just({ value: 'string' }),
-            /Field 'value' must be an instance of Number/
+            /Field 'value' must be a Number/
         );
     });
 });

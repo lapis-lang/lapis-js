@@ -1,22 +1,34 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { data } from '../index.mjs';
+import { data, extend, parent } from '../index.mjs';
 
 describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
     describe('Basic Extension', () => {
         test('should extend fold operation with new variant handlers', () => {
-            const Color = data({ Red: {}, Green: {}, Blue: {} })
-                .fold('toHex', { out: String }, {
+            const Color = data(() => ({
+                Red: {},
+                Green: {},
+                Blue: {},
+                toHex: {
+                    op: 'fold',
+                    spec: { out: String },
                     Red() { return '#FF0000'; },
                     Green() { return '#00FF00'; },
                     Blue() { return '#0000FF'; }
-                });
+                }
+            }));
 
-            const ExtendedColor = Color.extend({ Yellow: {}, Orange: {} })
-                .fold('toHex', { out: String }, {
+            const ExtendedColor = data(() => ({
+                [extend]: Color,
+                Yellow: {},
+                Orange: {},
+                toHex: {
+                    op: 'fold',
+                    spec: { out: String },
                     Yellow() { return '#FFFF00'; },
                     Orange() { return '#FFA500'; }
-                });
+                }
+            }));
 
             // Inherited variants should still work
             assert.strictEqual(ExtendedColor.Red.toHex, '#FF0000');
@@ -29,19 +41,24 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
         });
 
         test('should extend fold operation with structured variants', () => {
-            const Point = data({
-                Point2D: { x: Number, y: Number }
-            })
-                .fold('describe', { out: String }, {
+            const Point = data(() => ({
+                Point2D: { x: Number, y: Number },
+                describe: {
+                    op: 'fold',
+                    spec: { out: String },
                     Point2D({ x, y }) { return `2D point at (${x}, ${y})`; }
-                });
+                }
+            }));
 
-            const Point3D = Point.extend({
-                Point3D: { x: Number, y: Number, z: Number }
-            })
-                .fold('describe', { out: String }, {
+            const Point3D = data(() => ({
+                [extend]: Point,
+                Point3D: { x: Number, y: Number, z: Number },
+                describe: {
+                    op: 'fold',
+                    spec: { out: String },
                     Point3D({ x, y, z }) { return `3D point at (${x}, ${y}, ${z})`; }
-                });
+                }
+            }));
 
             const p2 = Point3D.Point2D({ x: 1, y: 2 });
             const p3 = Point3D.Point3D({ x: 1, y: 2, z: 3 });
@@ -51,18 +68,30 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
         });
 
         test('should support callback form with Family', () => {
-            const Color = data({ Red: {}, Green: {}, Blue: {} })
-                .fold('toHex', { out: String }, {
+            const Color = data(() => ({
+                Red: {},
+                Green: {},
+                Blue: {},
+                toHex: {
+                    op: 'fold',
+                    spec: { out: String },
                     Red() { return '#FF0000'; },
                     Green() { return '#00FF00'; },
                     Blue() { return '#0000FF'; }
-                });
+                }
+            }));
 
-            const ExtendedColor = Color.extend({ Yellow: {}, Orange: {} })
-                .fold('toHex', { out: String }, {
+            const ExtendedColor = data(() => ({
+                [extend]: Color,
+                Yellow: {},
+                Orange: {},
+                toHex: {
+                    op: 'fold',
+                    spec: { out: String },
                     Yellow() { return '#FFFF00'; },
                     Orange() { return '#FFA500'; }
-                });
+                }
+            }));
 
             assert.strictEqual(ExtendedColor.Yellow.toHex, '#FFFF00');
             assert.strictEqual(ExtendedColor.Orange.toHex, '#FFA500');
@@ -71,19 +100,31 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
 
     describe('Override Semantics', () => {
         test('should override parent handler ignoring parent parameter', () => {
-            const Color = data({ Red: {}, Green: {}, Blue: {} })
-                .fold('brightness', { out: Number }, {
+            const Color = data(() => ({
+                Red: {},
+                Green: {},
+                Blue: {},
+                brightness: {
+                    op: 'fold',
+                    spec: { out: Number },
                     Red() { return 100; },
                     Green() { return 100; },
                     Blue() { return 100; }
-                });
+                }
+            }));
 
-            const ExtendedColor = Color.extend({ Yellow: {}, Orange: {} })
-                .fold('brightness', { out: Number }, {
+            const ExtendedColor = data(() => ({
+                [extend]: Color,
+                Yellow: {},
+                Orange: {},
+                brightness: {
+                    op: 'fold',
+                    spec: { out: Number },
                     Yellow() { return 200; },
                     Orange() { return 200; },
                     Red() { return 150; } // Override ignores parent
-                });
+                }
+            }));
 
             // Overridden variant returns new value
             assert.strictEqual(ExtendedColor.Red.brightness, 150);
@@ -97,19 +138,31 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
         });
 
         test('should override parent handler with parent access', () => {
-            const Color = data({ Red: {}, Green: {}, Blue: {} })
-                .fold('brightness', { out: Number }, {
+            const Color = data(() => ({
+                Red: {},
+                Green: {},
+                Blue: {},
+                brightness: {
+                    op: 'fold',
+                    spec: { out: Number },
                     Red() { return 100; },
                     Green() { return 50; },
                     Blue() { return 75; }
-                });
+                }
+            }));
 
-            const ExtendedColor = Color.extend({ Yellow: {}, Orange: {} })
-                .fold('brightness', { out: Number }, (_Family, ParentFamily) => ({
+            const ExtendedColor = data(() => ({
+                [extend]: Color,
+                Yellow: {},
+                Orange: {},
+                brightness: {
+                    op: 'fold',
+                    spec: { out: Number },
                     Yellow() { return 200; },
-                    Red() { return ParentFamily.Red() * 2; }, // Double parent value
-                    Green() { return ParentFamily.Green() + 50; } // Add to parent value
-                }));
+                    Red() { return this[parent] * 2; }, // Double parent value
+                    Green() { return this[parent] + 50; } // Add to parent value
+                }
+            }));
 
             // Overridden variants use parent values
             assert.strictEqual(ExtendedColor.Red.brightness, 200); // 100 * 2
@@ -123,16 +176,25 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
         });
 
         test('should support override with structured variants', () => {
-            const Point = data({ Point2D: { x: Number, y: Number } })
-                .fold('magnitude', { out: Number }, {
+            const Point = data(() => ({
+                Point2D: { x: Number, y: Number },
+                magnitude: {
+                    op: 'fold',
+                    spec: { out: Number },
                     Point2D({ x, y }) { return Math.sqrt(x * x + y * y); }
-                });
+                }
+            }));
 
-            const Point3D = Point.extend({ Point3D: { x: Number, y: Number, z: Number } })
-                .fold('magnitude', { out: Number }, (_Family, ParentFamily) => ({
+            const Point3D = data(() => ({
+                [extend]: Point,
+                Point3D: { x: Number, y: Number, z: Number },
+                magnitude: {
+                    op: 'fold',
+                    spec: { out: Number },
                     Point3D({ x, y, z }) { return Math.sqrt(x * x + y * y + z * z); },
-                    Point2D({ x, y }) { return (ParentFamily.Point2D({ x, y })) * 10; } // Scale parent result
-                }));
+                    Point2D({ x, y }) { return this[parent] * 10; } // Scale parent result
+                }
+            }));
 
             const p2Base = Point.Point2D({ x: 3, y: 4 });
             const p2Extended = Point3D.Point2D({ x: 3, y: 4 });
@@ -149,19 +211,31 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
         });
 
         test('should mix new handlers and overrides', () => {
-            const Color = data({ Red: {}, Green: {}, Blue: {} })
-                .fold('toRGB', { out: String }, {
+            const Color = data(() => ({
+                Red: {},
+                Green: {},
+                Blue: {},
+                toRGB: {
+                    op: 'fold',
+                    spec: { out: String },
                     Red() { return 'rgb(255, 0, 0)'; },
                     Green() { return 'rgb(0, 255, 0)'; },
                     Blue() { return 'rgb(0, 0, 255)'; }
-                });
+                }
+            }));
 
-            const ExtendedColor = Color.extend({ Yellow: {}, Orange: {} })
-                .fold('toRGB', { out: String }, (_Family, ParentFamily) => ({
+            const ExtendedColor = data(() => ({
+                [extend]: Color,
+                Yellow: {},
+                Orange: {},
+                toRGB: {
+                    op: 'fold',
+                    spec: { out: String },
                     Yellow() { return 'rgb(255, 255, 0)'; }, // New handler
                     Orange() { return 'rgb(255, 165, 0)'; }, // New handler
-                    Red() { return ParentFamily.Red().replace('255', '200'); } // Override
-                }));
+                    Red() { return this[parent].replace('255', '200'); } // Override
+                }
+            }));
 
             // Override applied
             assert.strictEqual(ExtendedColor.Red.toRGB, 'rgb(200, 0, 0)');
@@ -175,88 +249,148 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
         });
 
         test('handlers should have access to this context', () => {
-            const Color = data({ Red: {}, Green: {}, Blue: {} })
-                .fold('identify', { out: String }, {
+            const Color = data(() => ({
+                Red: {},
+                Green: {},
+                Blue: {},
+                identify: {
+                    op: 'fold',
+                    spec: { out: String },
                     Red() { return this.constructor.name; },
                     Green() { return this.constructor.name; },
                     Blue() { return this.constructor.name; }
-                });
+                }
+            }));
 
-            const ExtendedColor = Color.extend({ Yellow: {} })
-                .fold('identify', { out: String }, {
+            const ExtendedColor = data(() => ({
+                [extend]: Color,
+                Yellow: {},
+                identify: {
+                    op: 'fold',
+                    spec: { out: String },
                     Yellow() { return this.constructor.name; }
-                });
+                }
+            }));
 
             assert.strictEqual(ExtendedColor.Red.identify, 'Red');
             assert.strictEqual(ExtendedColor.Yellow.identify, 'Yellow');
         });
 
         test('override handlers should have access to this context', () => {
-            const Color = data({ Red: {}, Green: {} })
-                .fold('describe', { out: String }, {
+            const Color = data(() => ({
+                Red: {},
+                Green: {},
+                describe: {
+                    op: 'fold',
+                    spec: { out: String },
                     Red() { return 'red'; },
                     Green() { return 'green'; }
-                });
+                }
+            }));
 
-            const ExtendedColor = Color.extend({ Blue: {} })
-                .fold('describe', { out: String }, (_Family, ParentFamily) => ({
+            const ExtendedColor = data(() => ({
+                [extend]: Color,
+                Blue: {},
+                describe: {
+                    op: 'fold',
+                    spec: { out: String },
                     Blue() { return 'blue'; },
-                    _(_instance) {
-                        return `${this.constructor.name}: ${ParentFamily._(this)}`;
+                    _() {
+                        return `${this.constructor.name}: ${this[parent]}`;
                     }
-                }));
+                }
+            }));
 
             assert.strictEqual(ExtendedColor.Red.describe, 'Red: red');
             assert.strictEqual(ExtendedColor.Blue.describe, 'blue');
         });
 
         test('handlers can call other operations via this', () => {
-            const Color = data({ Red: {}, Green: {}, Blue: {} })
-                .fold('toHex', { out: String }, {
+            const Color = data(() => ({
+                Red: {},
+                Green: {},
+                Blue: {},
+                toHex: {
+                    op: 'fold',
+                    spec: { out: String },
                     Red() { return '#FF0000'; },
                     Green() { return '#00FF00'; },
                     Blue() { return '#0000FF'; }
-                })
-                .fold('toRGB', { out: String }, {
+                },
+                toRGB: {
+                    op: 'fold',
+                    spec: { out: String },
                     Red() { return 'rgb(255, 0, 0)'; },
                     Green() { return 'rgb(0, 255, 0)'; },
                     Blue() { return 'rgb(0, 0, 255)'; }
-                })
-                .fold('describe', { out: String }, {
+                },
+                describe: {
+                    op: 'fold',
+                    spec: { out: String },
                     Red() { return `${this.toHex}`; },
                     Green() { return `${this.toRGB}`; },
                     Blue() { return `${this.toHex}`; }
-                });
+                }
+            }));
 
-            const ExtendedColor = Color.extend({ Yellow: {} })
-                .fold('toHex', { out: String }, { Yellow() { return '#FFFF00'; } })
-                .fold('toRGB', { out: String }, { Yellow() { return 'rgb(255, 255, 0)'; } })
-                .fold('describe', { out: String }, {
+            const ExtendedColor = data(() => ({
+                [extend]: Color,
+                Yellow: {},
+                toHex: {
+                    op: 'fold',
+                    spec: { out: String },
+                    Yellow() { return '#FFFF00'; }
+                },
+                toRGB: {
+                    op: 'fold',
+                    spec: { out: String },
+                    Yellow() { return 'rgb(255, 255, 0)'; }
+                },
+                describe: {
+                    op: 'fold',
+                    spec: { out: String },
                     Yellow() { return `Yellow: ${this.toHex} or ${this.toRGB}`; }
-                });
+                }
+            }));
 
             assert.strictEqual(ExtendedColor.Yellow.describe, 'Yellow: #FFFF00 or rgb(255, 255, 0)');
         });
 
         test('override handlers can call parent and other operations', () => {
-            const Color = data({ Red: {}, Green: {} })
-                .fold('toHex', { out: String }, {
+            const Color = data(() => ({
+                Red: {},
+                Green: {},
+                toHex: {
+                    op: 'fold',
+                    spec: { out: String },
                     Red() { return '#FF0000'; },
                     Green() { return '#00FF00'; }
-                })
-                .fold('describe', { out: String }, {
+                },
+                describe: {
+                    op: 'fold',
+                    spec: { out: String },
                     Red() { return 'red'; },
                     Green() { return 'green'; }
-                });
+                }
+            }));
 
-            const ExtendedColor = Color.extend({ Blue: {} })
-                .fold('toHex', { out: String }, { Blue() { return '#0000FF'; } })
-                .fold('describe', { out: String }, (_Family, ParentFamily) => ({
+            const ExtendedColor = data(() => ({
+                [extend]: Color,
+                Blue: {},
+                toHex: {
+                    op: 'fold',
+                    spec: { out: String },
+                    Blue() { return '#0000FF'; }
+                },
+                describe: {
+                    op: 'fold',
+                    spec: { out: String },
                     Blue() { return 'blue'; },
-                    _(_instance) {
-                        return `Enhanced ${ParentFamily._(this)} with hex ${this.toHex}`;
+                    _() {
+                        return `Enhanced ${this[parent]} with hex ${this.toHex}`;
                     }
-                }));
+                }
+            }));
 
             assert.strictEqual(ExtendedColor.Red.describe, 'Enhanced red with hex #FF0000');
         });
@@ -264,17 +398,29 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
 
     describe('Wildcard Handlers', () => {
         test('should inherit wildcard handler from parent', () => {
-            const Color = data({ Red: {}, Green: {}, Blue: {} })
-                .fold('toHex', { out: String }, {
+            const Color = data(() => ({
+                Red: {},
+                Green: {},
+                Blue: {},
+                toHex: {
+                    op: 'fold',
+                    spec: { out: String },
                     Red() { return '#FF0000'; },
                     _(_instance) { return '#UNKNOWN'; }
-                });
+                }
+            }));
 
-            const ExtendedColor = Color.extend({ Yellow: {}, Orange: {} })
-                .fold('toHex', { out: String }, {
+            const ExtendedColor = data(() => ({
+                [extend]: Color,
+                Yellow: {},
+                Orange: {},
+                toHex: {
+                    op: 'fold',
+                    spec: { out: String },
                     Yellow() { return '#FFFF00'; }
                     // Orange not specified - should use wildcard from parent
-                });
+                }
+            }));
 
             assert.strictEqual(ExtendedColor.Red.toHex, '#FF0000');
             assert.strictEqual(ExtendedColor.Yellow.toHex, '#FFFF00');
@@ -282,17 +428,29 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
         });
 
         test('should override wildcard handler', () => {
-            const Color = data({ Red: {}, Green: {}, Blue: {} })
-                .fold('toHex', { out: String }, {
+            const Color = data(() => ({
+                Red: {},
+                Green: {},
+                Blue: {},
+                toHex: {
+                    op: 'fold',
+                    spec: { out: String },
                     Red() { return '#FF0000'; },
                     _(_instance) { return '#UNKNOWN'; }
-                });
+                }
+            }));
 
-            const ExtendedColor = Color.extend({ Yellow: {}, Orange: {} })
-                .fold('toHex', { out: String }, {
+            const ExtendedColor = data(() => ({
+                [extend]: Color,
+                Yellow: {},
+                Orange: {},
+                toHex: {
+                    op: 'fold',
+                    spec: { out: String },
                     Yellow() { return '#FFFF00'; },
-                    _(instance) { return `#EXTENDED-${instance.constructor.name}`; }
-                });
+                    _() { return `#EXTENDED-${this.constructor.name}`; }
+                }
+            }));
 
             // Child wildcard overrides parent specific handlers
             assert.strictEqual(ExtendedColor.Red.toHex, '#EXTENDED-Red');
@@ -301,17 +459,29 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
         });
 
         test('should support new wildcard in extension', () => {
-            const Color = data({ Red: {}, Green: {}, Blue: {} })
-                .fold('toHex', { out: String }, {
+            const Color = data(() => ({
+                Red: {},
+                Green: {},
+                Blue: {},
+                toHex: {
+                    op: 'fold',
+                    spec: { out: String },
                     Red() { return '#FF0000'; },
                     Green() { return '#00FF00'; },
                     Blue() { return '#0000FF'; }
-                });
+                }
+            }));
 
-            const ExtendedColor = Color.extend({ Yellow: {}, Orange: {} })
-                .fold('toHex', { out: String }, {
-                    _(instance) { return `#NEW-${instance.constructor.name}`; }
-                });
+            const ExtendedColor = data(() => ({
+                [extend]: Color,
+                Yellow: {},
+                Orange: {},
+                toHex: {
+                    op: 'fold',
+                    spec: { out: String },
+                    _() { return `#NEW-${this.constructor.name}`; }
+                }
+            }));
 
             // Child wildcard overrides all parent specific handlers
             assert.strictEqual(ExtendedColor.Red.toHex, '#NEW-Red');
@@ -324,21 +494,36 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
 
     describe('Multiple Extension Levels', () => {
         test('should support three levels of extension', () => {
-            const Color = data({ Red: {}, Green: {} })
-                .fold('family', { out: String }, {
+            const Color = data(() => ({
+                Red: {},
+                Green: {},
+                family: {
+                    op: 'fold',
+                    spec: { out: String },
                     Red() { return 'primary'; },
                     Green() { return 'primary'; }
-                });
+                }
+            }));
 
-            const Extended1 = Color.extend({ Blue: {} })
-                .fold('family', { out: String }, {
+            const Extended1 = data(() => ({
+                [extend]: Color,
+                Blue: {},
+                family: {
+                    op: 'fold',
+                    spec: { out: String },
                     Blue() { return 'primary'; }
-                });
+                }
+            }));
 
-            const Extended2 = Extended1.extend({ Yellow: {} })
-                .fold('family', { out: String }, {
+            const Extended2 = data(() => ({
+                [extend]: Extended1,
+                Yellow: {},
+                family: {
+                    op: 'fold',
+                    spec: { out: String },
                     Yellow() { return 'secondary'; }
-                });
+                }
+            }));
 
             // All levels work
             assert.strictEqual(Extended2.Red.family, 'primary');
@@ -350,20 +535,34 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
             // Test that operations can be extended at multiple levels
             // Note: Override only applies to new variants, not inherited ones
             // (due to constructor identity preservation)
-            const Color = data({ Red: {} })
-                .fold('category', { out: String }, {
+            const Color = data(() => ({
+                Red: {},
+                category: {
+                    op: 'fold',
+                    spec: { out: String },
                     Red() { return 'primary'; }
-                });
+                }
+            }));
 
-            const Level1 = Color.extend({ Green: {} })
-                .fold('category', { out: String }, {
+            const Level1 = data(() => ({
+                [extend]: Color,
+                Green: {},
+                category: {
+                    op: 'fold',
+                    spec: { out: String },
                     Green() { return 'secondary'; }
-                });
+                }
+            }));
 
-            const Level2 = Level1.extend({ Blue: {} })
-                .fold('category', { out: String }, {
+            const Level2 = data(() => ({
+                [extend]: Level1,
+                Blue: {},
+                category: {
+                    op: 'fold',
+                    spec: { out: String },
                     Blue() { return 'primary'; }
-                });
+                }
+            }));
 
             // All use the same inherited Red constructor
             assert.strictEqual(Color.Red.category, 'primary');
@@ -380,25 +579,40 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
 
 describe('Chaining', () => {
     test('should support chaining fold calls in extend mode', () => {
-        const Color = data({ Red: {}, Green: {} })
-            .fold('toHex', { out: String }, {
+        const Color = data(() => ({
+            Red: {},
+            Green: {},
+            toHex: {
+                op: 'fold',
+                spec: { out: String },
                 Red() { return '#FF0000'; },
                 Green() { return '#00FF00'; }
-            })
-            .fold('brightness', { out: Number }, {
+            },
+            brightness: {
+                op: 'fold',
+                spec: { out: Number },
                 Red() { return 100; },
                 Green() { return 50; }
-            });
+            }
+        }));
 
-        const ExtendedColor = Color.extend({ Blue: {}, Yellow: {} })
-            .fold('toHex', { out: String }, {
+        const ExtendedColor = data(() => ({
+            [extend]: Color,
+            Blue: {},
+            Yellow: {},
+            toHex: {
+                op: 'fold',
+                spec: { out: String },
                 Blue() { return '#0000FF'; },
                 Yellow() { return '#FFFF00'; }
-            })
-            .fold('brightness', { out: Number }, {
+            },
+            brightness: {
+                op: 'fold',
+                spec: { out: Number },
                 Blue() { return 75; },
                 Yellow() { return 200; }
-            });
+            }
+        }));
         // Both operations work on inherited variants
         assert.strictEqual(ExtendedColor.Red.toHex, '#FF0000');
         assert.strictEqual(ExtendedColor.Red.brightness, 100);
@@ -409,16 +623,32 @@ describe('Chaining', () => {
     });
 
     test('should chain extend and fold multiple times', () => {
-        const Base = data({ A: {} })
-            .fold('op', { out: Number }, {
+        const Base = data(() => ({
+            A: {},
+            op: {
+                op: 'fold',
+                spec: { out: Number },
                 A() { return 1; }
-            });
+            }
+        }));
 
-        const Result = Base
-            .extend({ B: {} })
-            .fold('op', { out: Number }, { B() { return 2; } })
-            .extend({ C: {} })
-            .fold('op', { out: Number }, { C() { return 3; } });
+        const Result = data(() => ({
+            [extend]: data(() => ({
+                [extend]: Base,
+                B: {},
+                op: {
+                    op: 'fold',
+                    spec: { out: Number },
+                    B() { return 2; }
+                }
+            })),
+            C: {},
+            op: {
+                op: 'fold',
+                spec: { out: Number },
+                C() { return 3; }
+            }
+        }));
         assert.strictEqual(Result.A.op, 1);
         assert.strictEqual(Result.B.op, 2);
         assert.strictEqual(Result.C.op, 3);
@@ -429,12 +659,20 @@ describe('Error Handling', () => {
     test('should create new operation when parent does not have it', () => {
         // With unified fold, calling fold() on extended ADT creates new operation
         // if parent doesn't have it
-        const Color = data({ Red: {}, Green: {} });
-        const ExtendedColor = Color.extend({ Blue: {} })
-            .fold('newOp', { out: String }, {
+        const Color = data(() => ({
+            Red: {},
+            Green: {}
+        }));
+        const ExtendedColor = data(() => ({
+            [extend]: Color,
+            Blue: {},
+            newOp: {
+                op: 'fold',
+                spec: { out: String },
                 Blue() { return 'blue'; },
                 _() { return 'color'; }
-            });
+            }
+        }));
 
         // All variants get the new operation
         assert.strictEqual(ExtendedColor.Red.newOp, 'color');
@@ -443,84 +681,120 @@ describe('Error Handling', () => {
     });
 
     test('should allow handlers for new variants even when parent operation exists', () => {
-        const Color = data({ Red: {}, Green: {} })
-            .fold('toHex', { out: String }, {
+        const Color = data(() => ({
+            Red: {},
+            Green: {},
+            toHex: {
+                op: 'fold',
+                spec: { out: String },
                 Red() { return '#FF0000'; },
                 Green() { return '#00FF00'; }
-            });
+            }
+        }));
 
-        const ExtendedColor = Color.extend({ Blue: {} });
-
-        // Blue doesn't exist in parent, so it's treated
-        // This shouldn't throw an error - it's just adding a new handler
-        ExtendedColor.fold('toHex', { out: String }, {
-            Blue() { return '#0000FF'; }
-        });
+        const ExtendedColor = data(() => ({
+            [extend]: Color,
+            Blue: {},
+            toHex: {
+                op: 'fold',
+                spec: { out: String },
+                Blue() { return '#0000FF'; }
+            }
+        }));
 
         assert.strictEqual(ExtendedColor.Blue.toHex, '#0000FF');
     });
 
     test('should work on both base and extended ADTs', () => {
-        const Color = data({ Red: {}, Green: {} })
-            .fold('toHex', { out: String }, {
+        const Color = data(() => ({
+            Red: {},
+            Green: {},
+            toHex: {
+                op: 'fold',
+                spec: { out: String },
                 Red() { return '#FF0000'; },
                 Green() { return '#00FF00'; }
-            });
+            }
+        }));
 
         // But it should work on extended ADTs
-        const ExtendedColor = Color.extend({ Blue: {} });
-        const result = ExtendedColor.fold('toHex', { out: String }, {
-            Blue() { return '#0000FF'; }
-        });
+        const ExtendedColor = data(() => ({
+            [extend]: Color,
+            Blue: {},
+            toHex: {
+                op: 'fold',
+                spec: { out: String },
+                Blue() { return '#0000FF'; }
+            }
+        }));
+        const result = ExtendedColor;
 
         assert.strictEqual(result.Blue.toHex, '#0000FF');
     });
 });
 
-test('should throw error if calling fold twice on same operation at same ADT level', () => {
-    const Color = data({ Red: {}, Green: {} })
-        .fold('toHex', { out: String }, {
+test('should allow overriding handlers at multiple levels', () => {
+    const Color = data(() => ({
+        Red: {},
+        Green: {},
+        toHex: {
+            op: 'fold',
+            spec: { out: String },
             Red() { return '#FF0000'; },
             Green() { return '#00FF00'; }
-        });
+        }
+    }));
 
-    const ExtendedColor = Color.extend({ Blue: {} });
+    const ExtendedColor = data(() => ({
+        [extend]: Color,
+        Blue: {},
+        toHex: {
+            op: 'fold',
+            spec: { out: String },
+            Blue() { return '#0000FF'; }
+        }
+    }));
 
-    // First fold (in extend mode) should succeed
-    const AfterFirst = ExtendedColor.fold('toHex', { out: String }, {
-        Blue() { return '#0000FF'; }
-    });
+    assert.strictEqual(ExtendedColor.Blue.toHex, '#0000FF');
 
-    assert.strictEqual((AfterFirst.Blue).toHex, '#0000FF');
+    // Override Blue handler at next level (like method overriding in OOP)
+    const FurtherExtended = data(() => ({
+        [extend]: ExtendedColor,
+        toHex: {
+            op: 'fold',
+            spec: { out: String },
+            Blue() { return '#0000AA'; } // Override Blue handler
+        }
+    }));
 
-    // Second fold on same operation should throw
-    assert.throws(
-        () => {
-            AfterFirst.fold('toHex', { out: String }, {
-                Blue() { return '#0000FF'; } // Try to add Blue again
-            });
-        },
-        /Operation 'toHex' has already been extended on this ADT/
-    );
+    // Overridden handler is used
+    assert.strictEqual(FurtherExtended.Blue.toHex, '#0000AA');
+    // Other handlers inherited
+    assert.strictEqual(FurtherExtended.Red.toHex, '#FF0000');
 });
 
 describe('Recursive ADTs', () => {
     test('should extend fold on recursive ADT', () => {
         const List = data(({ Family, T }) => ({
             Nil: {},
-            Cons: { head: T, tail: Family }
-        }))
-            .fold('isEmpty', { out: Boolean }, {
+            Cons: { head: T, tail: Family },
+            isEmpty: {
+                op: 'fold',
+                spec: { out: Boolean },
                 Nil() { return true; },
                 Cons() { return false; }
-            });
+            }
+        }));
 
-        const ExtendedList = List.extend(({ Family: _Family, T }) => ({
-            Single: { value: T }
-        }))
-            .fold('isEmpty', { out: Boolean }, {
+        const ExtendedList = data(({ Family: _Family, T }) => ({
+            [extend]: List,
+            Single: { value: T },
+            isEmpty: {
+                op: 'fold',
+                spec: { out: Boolean },
                 Single() { return false; }
-            });
+            }
+        }));
 
         const empty = ExtendedList.Nil;
         const cons = ExtendedList.Cons({ head: 1, tail: ExtendedList.Nil });

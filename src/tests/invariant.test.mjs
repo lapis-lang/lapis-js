@@ -1,17 +1,17 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { data, invariant } from '../index.mjs';
+import { data, invariant, extend } from '../index.mjs';
 
 describe('Invariant Support', () => {
     describe('Basic Invariant Validation', () => {
         it('should pass when invariant is satisfied', () => {
-            const Point = data({
+            const Point = data(() => ({
                 Point2D: {
                     [invariant]: ({ x, y }) => x >= 0 && y >= 0,
                     x: Number,
                     y: Number
                 }
-            });
+            }));
 
             const p = Point.Point2D({ x: 5, y: 10 });
             assert.equal(p.x, 5);
@@ -19,13 +19,13 @@ describe('Invariant Support', () => {
         });
 
         it('should throw TypeError when invariant is violated', () => {
-            const Point = data({
+            const Point = data(() => ({
                 Point2D: {
                     [invariant]: ({ x, y }) => x >= 0 && y >= 0,
                     x: Number,
                     y: Number
                 }
-            });
+            }));
 
             assert.throws(
                 () => Point.Point2D({ x: -5, y: 10 }),
@@ -38,14 +38,14 @@ describe('Invariant Support', () => {
 
         it('should include function name in error message when available', () => {
             const positiveCoordinates = ({ x, y }) => x >= 0 && y >= 0;
-            
-            const Point = data({
+
+            const Point = data(() => ({
                 Point2D: {
                     [invariant]: positiveCoordinates,
                     x: Number,
                     y: Number
                 }
-            });
+            }));
 
             assert.throws(
                 () => Point.Point2D({ x: -5, y: 10 }),
@@ -57,13 +57,13 @@ describe('Invariant Support', () => {
         });
 
         it('should work with positional arguments', () => {
-            const Point = data({
+            const Point = data(() => ({
                 Point2D: {
                     [invariant]: ({ x, y }) => x >= 0 && y >= 0,
                     x: Number,
                     y: Number
                 }
-            });
+            }));
 
             const p = Point.Point2D(5, 10);
             assert.equal(p.x, 5);
@@ -78,14 +78,14 @@ describe('Invariant Support', () => {
     describe('Complex Invariants', () => {
         it('should validate relationships between multiple fields', () => {
             const isChar = (s) => typeof s === 'string' && s.length === 1;
-            
-            const Range = data({
+
+            const Range = data(() => ({
                 CharRange: {
                     [invariant]: ({ start, end }) => start <= end,
                     start: isChar,
                     end: isChar
                 }
-            });
+            }));
 
             const r = Range.CharRange({ start: 'a', end: 'z' });
             assert.equal(r.start, 'a');
@@ -97,14 +97,14 @@ describe('Invariant Support', () => {
         });
 
         it('should validate multi-field constraints', () => {
-            const Rectangle = data({
+            const Rectangle = data(() => ({
                 Rect: {
                     [invariant]: ({ width, height, area }) => width * height === area,
                     width: Number,
                     height: Number,
                     area: Number
                 }
-            });
+            }));
 
             const rect = Rectangle.Rect({ width: 5, height: 10, area: 50 });
             assert.equal(rect.area, 50);
@@ -116,7 +116,7 @@ describe('Invariant Support', () => {
         });
 
         it('should apply different invariants to different variants', () => {
-            const Shape = data({
+            const Shape = data(() => ({
                 Circle: {
                     [invariant]: ({ radius }) => radius > 0,
                     radius: Number
@@ -127,7 +127,7 @@ describe('Invariant Support', () => {
                     b: Number,
                     c: Number
                 }
-            });
+            }));
 
             const circle = Shape.Circle({ radius: 5 });
             assert.equal(circle.radius, 5);
@@ -187,20 +187,21 @@ describe('Invariant Support', () => {
         });
 
         it('should work with extended ADTs', () => {
-            const Shape = data({
+            const Shape = data(() => ({
                 Circle: {
                     [invariant]: ({ radius }) => radius > 0,
                     radius: Number
                 }
-            });
+            }));
 
-            const ExtendedShape = Shape.extend({
+            const ExtendedShape = data(() => ({
+                [extend]: Shape,
                 Rectangle: {
                     [invariant]: ({ width, height }) => width > 0 && height > 0,
                     width: Number,
                     height: Number
                 }
-            });
+            }));
 
             const circle = ExtendedShape.Circle({ radius: 5 });
             assert.equal(circle.radius, 5);
@@ -224,13 +225,13 @@ describe('Invariant Support', () => {
 
     describe('Validation Order', () => {
         it('should validate fields before invariant', () => {
-            const Point = data({
+            const Point = data(() => ({
                 Point2D: {
                     [invariant]: ({ x, y }) => x >= 0 && y >= 0,
                     x: Number,
                     y: Number
                 }
-            });
+            }));
 
             // Field validation should fail first
             assert.throws(
@@ -244,8 +245,8 @@ describe('Invariant Support', () => {
 
         it('should only call invariant after all fields pass', () => {
             let invariantCalled = false;
-            
-            const Point = data({
+
+            const Point = data(() => ({
                 Point2D: {
                     [invariant]: ({ x, y }) => {
                         invariantCalled = true;
@@ -254,7 +255,7 @@ describe('Invariant Support', () => {
                     x: Number,
                     y: Number
                 }
-            });
+            }));
 
             // Field validation fails, invariant never called
             try {
@@ -276,13 +277,13 @@ describe('Invariant Support', () => {
 
     describe('Invariant Symbol Isolation', () => {
         it('should not be accessible via property access', () => {
-            const Point = data({
+            const Point = data(() => ({
                 Point2D: {
                     [invariant]: ({ x, y }) => x >= 0 && y >= 0,
                     x: Number,
                     y: Number
                 }
-            });
+            }));
 
             const p = Point.Point2D({ x: 5, y: 10 });
 
@@ -292,19 +293,19 @@ describe('Invariant Support', () => {
         });
 
         it('should not be included in property enumeration', () => {
-            const Point = data({
+            const Point = data(() => ({
                 Point2D: {
                     [invariant]: ({ x, y }) => x >= 0 && y >= 0,
                     x: Number,
                     y: Number
                 }
-            });
+            }));
 
             const p = Point.Point2D({ x: 5, y: 10 });
-            
+
             assert.deepEqual(Object.keys(p), ['x', 'y']);
-            assert.equal(Object.getOwnPropertySymbols(p).length, 0);
-            
+            assert.equal(Object.getOwnPropertySymbols(p).length, 1); // VariantName symbol
+
             const props = [];
             for (const prop in p) {
                 props.push(prop);
@@ -313,42 +314,44 @@ describe('Invariant Support', () => {
         });
 
         it('should not be copyable via destructuring or spread', () => {
-            const Point = data({
+            const Point = data(() => ({
                 Point2D: {
                     [invariant]: ({ x, y }) => x >= 0 && y >= 0,
                     x: Number,
                     y: Number
                 }
-            });
+            }));
 
             const p = Point.Point2D({ x: 5, y: 10 });
-            
+
             // Destructuring
             const { x, y, ...rest } = p;
             assert.equal(x, 5);
             assert.equal(y, 10);
-            assert.deepEqual(rest, {});
-            
+            assert.deepEqual(Object.keys(rest), []); // Only symbol property (VariantName)
+            assert.equal(Object.getOwnPropertySymbols(rest).length, 1); // VariantName symbol
+
             // Spread
             const copy = { ...p };
-            assert.deepEqual(copy, { x: 5, y: 10 });
+            assert.deepEqual(Object.keys(copy), ['x', 'y']);
+            assert.equal(Object.getOwnPropertySymbols(copy).length, 1); // VariantName preserved
             assert.equal(invariant in copy, false);
         });
 
         it('should be stored only on constructor, not instance', () => {
-            const Point = data({
+            const Point = data(() => ({
                 Point2D: {
                     [invariant]: ({ x, y }) => x >= 0 && y >= 0,
                     x: Number,
                     y: Number
                 }
-            });
+            }));
 
             const p = Point.Point2D({ x: 5, y: 10 });
-            
+
             // On constructor
             assert.equal(typeof p.constructor._invariant, 'function');
-            
+
             // Not on instance
             assert.equal(p[invariant], undefined);
         });

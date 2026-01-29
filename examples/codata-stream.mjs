@@ -13,23 +13,29 @@ import { codata } from '../src/index.mjs';
 
 const Stream = codata(({ Self, T }) => ({
     head: T,           // Simple observer: returns current value
-    tail: Self(T)      // Continuation: returns next stream
-}));
-
-// Multiple unfold constructors for different ways to create streams
-const StreamNum = Stream(Number)
-    .unfold('From', (Stream) => ({ in: Number, out: Stream }), {
+    tail: Self(T),     // Continuation: returns next stream
+    From: {
+        op: 'unfold',
+        spec: { in: Number, out: Self },
         head: (n) => n,
         tail: (n) => n + 1
-    })
-    .unfold('Constant', (Stream) => ({ in: Number, out: Stream }), {
+    },
+    Constant: {
+        op: 'unfold',
+        spec: { in: Number, out: Self },
         head: (n) => n,
         tail: (n) => n          // Same seed = constant stream
-    })
-    .unfold('Range', (Stream) => ({ in: { start: Number, end: Number }, out: Stream }), {
+    },
+    Range: {
+        op: 'unfold',
+        spec: { in: { start: Number, end: Number }, out: Self },
         head: ({ start }) => start,
         tail: ({ start, end }) => start < end ? { start: start + 1, end } : { start: end, end }
-    });
+    }
+}));
+
+// Instantiate for numbers
+const StreamNum = Stream(Number);
 
 console.log('\n=== Basic Stream Examples ===');
 
@@ -57,15 +63,17 @@ console.log('range.tail.head:', range.tail.head);  // 6
 const StreamWithNth = codata(({ Self, T }) => ({
     head: T,
     tail: Self(T),
-    nth: { in: Number, out: T }  // Parametric observer
-}));
-
-const StreamNumNth = StreamWithNth(Number)
-    .unfold('From', (Stream) => ({ in: Number, out: Stream }), {
+    nth: { in: Number, out: T },  // Parametric observer
+    From: {
+        op: 'unfold',
+        spec: { in: Number, out: Self },
         head: (n) => n,
         tail: (n) => n + 1,
         nth: (n) => (index) => n + index
-    });
+    }
+}));
+
+const StreamNumNth = StreamWithNth(Number);
 
 console.log('\n=== Parametric Observer Example ===');
 
@@ -80,12 +88,14 @@ console.log('numsWithNth.nth(100):', numsWithNth.nth(100)); // 100
 
 const FibStream = codata(({ Self }) => ({
     head: Number,
-    tail: Self
-}))
-    .unfold('Create', (FibStream) => ({ in: { a: Number, b: Number }, out: FibStream }), {
+    tail: Self,
+    Create: {
+        op: 'unfold',
+        spec: { in: { a: Number, b: Number }, out: Self },
         head: ({ a }) => a,
         tail: ({ a, b }) => ({ a: b, b: a + b })
-    });
+    }
+}));
 
 console.log('\n=== Fibonacci Stream ===');
 
@@ -103,13 +113,15 @@ console.log('fib[4]:', fib.tail.tail.tail.tail.head); // 3
 const Tree = codata(({ Self }) => ({
     value: Number,
     left: Self,
-    right: Self
-}))
-    .unfold('Create', (Tree) => ({ in: Number, out: Tree }), {
+    right: Self,
+    Create: {
+        op: 'unfold',
+        spec: { in: Number, out: Self },
         value: (n) => n,
         left: (n) => n * 2,
         right: (n) => n * 2 + 1
-    });
+    }
+}));
 
 console.log('\n=== Infinite Binary Tree ===');
 
@@ -133,9 +145,10 @@ let tailCallCount = 0;
 
 const LazyStream = codata(({ Self }) => ({
     head: Number,
-    tail: Self
-}))
-    .unfold('Create', (LazyStream) => ({ in: Number, out: LazyStream }), {
+    tail: Self,
+    Create: {
+        op: 'unfold',
+        spec: { in: Number, out: Self },
         head: (n) => {
             headCallCount++;
             console.log(`  Computing head for seed ${n}`);
@@ -146,7 +159,8 @@ const LazyStream = codata(({ Self }) => ({
             console.log(`  Computing tail for seed ${n}`);
             return n + 1;
         }
-    });
+    }
+}));
 
 const lazy = LazyStream.Create(0);
 
@@ -170,14 +184,16 @@ console.log(`Total tail calls: ${tailCallCount} (memoized continuations)`);
 // Example 6: Effect-like Codata (Console IO)
 // =============================================================================
 
-const Console = codata(() => ({
+const Console = codata(({ Self }) => ({
     log: { in: String, out: undefined },
-    read: { out: String }
-}))
-    .unfold('Create', (Console) => ({ out: Console }), {
+    read: { out: String },
+    Create: {
+        op: 'unfold',
+        spec: { out: Self },
         log: () => (msg) => { console.log(`  [Console.log] ${msg}`); },
         read: () => () => 'simulated input'
-    });
+    }
+}));
 
 console.log('\n=== Effect-like Codata (Console) ===');
 
@@ -193,12 +209,14 @@ console.log(`  [Console.read] Got: "${input}"`);
 
 const PowerStream = codata(({ Self }) => ({
     head: Number,
-    tail: Self
-}))
-    .unfold('Create', (PowerStream) => ({ in: { base: Number, exp: Number }, out: PowerStream }), {
+    tail: Self,
+    Create: {
+        op: 'unfold',
+        spec: { in: { base: Number, exp: Number }, out: Self },
         head: ({ base, exp }) => Math.pow(base, exp),
         tail: ({ base, exp }) => ({ base, exp: exp + 1 })
-    });
+    }
+}));
 
 console.log('\n=== Power Stream (2^n) ===');
 

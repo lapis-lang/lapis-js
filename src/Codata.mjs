@@ -15,6 +15,12 @@ import {
     isConstructable
 } from './utils.mjs';
 
+import {
+    validateTypeSpec,
+    validateSpecGuard,
+    isSelfRef as isSelfRefOps
+} from './operations.mjs';
+
 /**
  * Codata Infrastructure
  * 
@@ -187,12 +193,25 @@ export function codata(declFn) {
             );
         }
 
-        // Validate observer names (must be camelCase)
-        for (const observerName of Object.keys(observerDecl)) {
-            if (!isCamelCase(observerName)) {
-                throw new TypeError(
-                    `Observer '${observerName}' must be camelCase (start with lowercase letter, no underscore prefix)`
-                );
+        // Validate observer and operation names
+        for (const [observerName, observerSpec] of Object.entries(observerDecl)) {
+            // Check if this is an unfold operation
+            const isUnfoldOp = isObjectLiteral(observerSpec) && observerSpec.op === 'unfold';
+            
+            if (isUnfoldOp) {
+                // Unfold operations must be PascalCase
+                if (!isPascalCase(observerName)) {
+                    throw new TypeError(
+                        `Unfold operation '${observerName}' must be PascalCase (start with uppercase letter)`
+                    );
+                }
+            } else {
+                // Observers must be camelCase
+                if (!isCamelCase(observerName)) {
+                    throw new TypeError(
+                        `Observer '${observerName}' must be camelCase (start with lowercase letter, no underscore prefix)`
+                    );
+                }
             }
         }
 
@@ -200,6 +219,11 @@ export function codata(declFn) {
         const observerMap = new Map();
 
         for (const [observerName, observerSpec] of Object.entries(observerDecl)) {
+            // Skip unfold operations - they are processed separately
+            if (isObjectLiteral(observerSpec) && observerSpec.op === 'unfold') {
+                continue;
+            }
+            
             // Classify observer type
             const isSimple = isSimpleObserver(observerSpec);
             const isParametric = isParametricObserver(observerSpec);
@@ -220,12 +244,12 @@ export function codata(declFn) {
         // Mark as codata type
         result[CodataSymbol] = true;
 
-        // Return both the class and the observer map for external registration
-        return { class: result, observers: observerMap };
+        // Return the class, observer map, and original observer decl for unfold processing
+        return { class: result, observers: observerMap, observerDecl };
     }
 
     // For callback-style codata, return a callable class
-    const { class: codata, observers: observerMap } = createCodata();
+    const { class: codata, observers: observerMap, observerDecl } = createCodata();
 
     // Add static _call method for parameterization
     codata._call = function (...typeArgs) {
@@ -258,10 +282,19 @@ export function codata(declFn) {
     // This allows codataObservers.get(Point) to work where Point is the returned value
     codataObservers.set(callableCodata, observerMap);
 
-    // Add unfold method to codata type
-    callableCodata.unfold = function (name, spec, handlers) {
-        return addUnfoldOperation(callableCodata, observerMap, name, spec, handlers);
-    };
+    // Process inline unfold operations (declarative syntax)
+    const unfoldDeclarations = [];
+    for (const [observerName, observerSpec] of Object.entries(observerDecl)) {
+        if (isObjectLiteral(observerSpec) && observerSpec.op === 'unfold') {
+            unfoldDeclarations.push({ name: observerName, spec: observerSpec });
+        }
+    }
+
+    // Register inline unfold operations
+    for (const { name, spec } of unfoldDeclarations) {
+        const { spec: opSpec, op, ...handlers } = spec;
+        addUnfoldOperation(callableCodata, observerMap, name, opSpec, handlers);
+    }
 
     return callableCodata;
 }
@@ -269,6 +302,9 @@ export function codata(declFn) {
 /**
  * Add an unfold operation to a codata type.
  * Unfold (anamorphism) generates codata instances from seed values.
+ * 
+ * This is called internally during codata creation when unfold operations
+ * are declared inline in the observer specification.
  * 
  * @param {*} CodataType - The codata type to add the operation to
  * @param {Map} observerMap - Map of observer definitions
@@ -278,14 +314,17 @@ export function codata(declFn) {
  * @returns {*} The codata type (for chaining)
  * 
  * @example
+ * // Unfold operations are declared inline:
  * const Stream = codata(({ Self, T }) => ({
  *   head: T,
- *   tail: Self(T)
- * }))
- * .unfold('From', (Stream) => ({ in: Number, out: Stream(Number) }), {
- *   head: (n) => n,
- *   tail: (n) => n + 1
- * });
+ *   tail: Self(T),
+ *   From: {
+ *     op: 'unfold',
+ *     spec: { in: Number, out: Self },
+ *     head: (n) => n,
+ *     tail: (n) => n + 1
+ *   }
+ * }));
  */
 function addUnfoldOperation(CodataType, observerMap, name, spec, handlers) {
     // Validate name is PascalCase (unfold creates static factory methods)
@@ -295,24 +334,32 @@ function addUnfoldOperation(CodataType, observerMap, name, spec, handlers) {
         );
     }
 
-    // Parse spec - can be function or object
+    // Parse and validate spec
+    let parsedSpec;
     if (typeof spec === 'function') {
         // Callback form: (Codata) => ({ in: Type, out: Codata })
-        // Validate that spec returns an object
         const specResult = spec(CodataType);
         if (!specResult || typeof specResult !== 'object') {
             throw new TypeError(
                 `Unfold operation '${name}' spec callback must return an object with optional 'in' and 'out' properties`
             );
         }
-        // TODO: Use inSpec and outSpec for runtime validation
+        parsedSpec = specResult;
     } else if (isObjectLiteral(spec)) {
         // Object literal form: { in: Type, out: Codata }
-        // TODO: Use spec.in and spec.out for runtime validation
+        parsedSpec = spec;
     } else {
         throw new TypeError(
             `Unfold operation '${name}' spec must be a function or object literal`
         );
+    }
+
+    // Validate spec guards (prevent Function as guard)
+    if ('in' in parsedSpec) {
+        validateSpecGuard(parsedSpec.in, 'in', name);
+    }
+    if ('out' in parsedSpec) {
+        validateSpecGuard(parsedSpec.out, 'out', name);
     }
 
     // Validate handlers is an object
@@ -350,13 +397,29 @@ function addUnfoldOperation(CodataType, observerMap, name, spec, handlers) {
         }
     }
 
-    // Create the static factory method
-    CodataType[name] = function (seed) {
-        // TODO: Validate seed against spec.in when runtime validation is implemented
+    // Create the static factory method or property (UAP)
+    const hasInput = 'in' in parsedSpec && parsedSpec.in !== undefined;
+    
+    if (hasInput) {
+        // Parameterized unfold: create as method
+        CodataType[name] = function (seed) {
+            // Validate seed against spec.in
+            validateTypeSpec(seed, parsedSpec.in, name, 'input of type');
 
-        // Create and return Proxy-wrapped codata instance
-        return createCodataInstance(CodataType, observerMap, seed, handlers);
-    };
+            // Create and return Proxy-wrapped codata instance
+            return createCodataInstance(CodataType, observerMap, seed, handlers);
+        };
+    } else {
+        // Parameterless unfold: create as property (getter) per UAP
+        Object.defineProperty(CodataType, name, {
+            get() {
+                // Create and return Proxy-wrapped codata instance with undefined seed
+                return createCodataInstance(CodataType, observerMap, undefined, handlers);
+            },
+            enumerable: true,
+            configurable: true
+        });
+    }
 
     // Return CodataType for chaining
     return CodataType;
@@ -423,7 +486,7 @@ function createCodataInstance(CodataType, observerMap, seed, unfoldHandlers) {
             if (!handler) {
                 throw new Error(
                     `No unfold handler defined for observer '${prop}'. ` +
-                    `Did you forget to call .unfold() to define how this codata is constructed?`
+                    `Define an unfold operation (e.g., 'From: { op: \"unfold\", spec: {...}, ...handlers }') to construct codata instances.`
                 );
             }
 

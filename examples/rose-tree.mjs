@@ -11,21 +11,25 @@ import { codata } from '../src/index.mjs';
 // Example 1: Basic Rose Tree with Lazy Children
 // =============================================================================
 
-const RoseTree = codata(() => ({
+const RoseTree = codata(({ Self }) => ({
     value: Number,
-    children: Array  // Array of child trees
-}))
-    .unfold('Node', (RoseTree) => ({ in: { value: Number, childGen: Function }, out: RoseTree }), {
+    children: Array,  // Array of child trees
+    Node: {
+        op: 'unfold',
+        spec: { in: { value: Number, childGen: Function }, out: Self },
         value: ({ value }) => value,
         children: ({ value, childGen }) => {
             const childValues = childGen(value);
             return childValues.map(v => RoseTree.Node({ value: v, childGen }));
         }
-    })
-    .unfold('Leaf', (RoseTree) => ({ in: Number, out: RoseTree }), {
+    },
+    Leaf: {
+        op: 'unfold',
+        spec: { in: Number, out: Self },
         value: (n) => n,
         children: () => []
-    });
+    }
+}));
 
 console.log('\n=== Basic Rose Tree ===');
 
@@ -51,11 +55,12 @@ console.log('leaf.children.length:', leaf.children.length);    // 0
 // Example 2: N-ary Tree (Variable Number of Children)
 // =============================================================================
 
-const NaryTree = codata(() => ({
+const NaryTree = codata(({ Self }) => ({
     value: Number,
-    children: Array
-}))
-    .unfold('Create', (NaryTree) => ({ in: { value: Number, arity: Number }, out: NaryTree }), {
+    children: Array,
+    Create: {
+        op: 'unfold',
+        spec: { in: { value: Number, arity: Number }, out: Self },
         value: ({ value }) => value,
         children: ({ value, arity }) => {
             const result = [];
@@ -67,7 +72,8 @@ const NaryTree = codata(() => ({
             }
             return result;
         }
-    });
+    }
+}));
 
 console.log('\n=== N-ary Tree (3 children per node) ===');
 
@@ -75,33 +81,37 @@ const ternary = NaryTree.Create({ value: 1, arity: 3 });
 console.log('ternary.value:', ternary.value);                  // 1
 console.log('ternary.children.length:', ternary.children.length); // 3
 console.log('Children values:', ternary.children.map(c => c.value)); // [10, 11, 12]
-console.log('Grandchildren of first child:', 
+console.log('Grandchildren of first child:',
     ternary.children[0].children.map(c => c.value)); // [100, 101, 102]
 
 // =============================================================================
 // Example 3: Directory Tree (File System)
 // =============================================================================
 
-const FileTree = codata(() => ({
+const FileTree = codata(({ Self }) => ({
     name: String,
     isDirectory: Boolean,
     children: Array,
-    size: Number
-}))
-    .unfold('Directory', (FileTree) => ({ in: { name: String, contents: Array }, out: FileTree }), {
+    size: Number,
+    Directory: {
+        op: 'unfold',
+        spec: { in: { name: String, contents: Array }, out: Self },
         name: ({ name }) => name,
         isDirectory: () => true,
         children: ({ contents }) => contents,
         size: ({ contents }) => {
             return contents.reduce((sum, child) => sum + child.size, 0);
         }
-    })
-    .unfold('File', (FileTree) => ({ in: { name: String, size: Number }, out: FileTree }), {
+    },
+    File: {
+        op: 'unfold',
+        spec: { in: { name: String, size: Number }, out: Self },
         name: ({ name }) => name,
         isDirectory: () => false,
         children: () => [],
         size: ({ size }) => size
-    });
+    }
+}));
 
 console.log('\n=== File System Tree ===');
 
@@ -134,12 +144,13 @@ root.children.forEach(child => {
 // Example 4: Game Tree (Tic-Tac-Toe Moves)
 // =============================================================================
 
-const GameTree = codata(() => ({
+const GameTree = codata(({ Self }) => ({
     state: String,
     isTerminal: Boolean,
-    moves: Array  // Array of possible next states
-}))
-    .unfold('Create', (GameTree) => ({ in: { state: String, moveGen: Function }, out: GameTree }), {
+    moves: Array,  // Array of possible next states
+    Create: {
+        op: 'unfold',
+        spec: { in: { state: String, moveGen: Function }, out: Self },
         state: ({ state }) => state,
         isTerminal: ({ state, moveGen }) => {
             const nextStates = moveGen(state);
@@ -149,7 +160,8 @@ const GameTree = codata(() => ({
             const nextStates = moveGen(state);
             return nextStates.map(s => GameTree.Create({ state: s, moveGen }));
         }
-    });
+    }
+}));
 
 console.log('\n=== Game Tree (Simple Example) ===');
 
@@ -176,12 +188,13 @@ console.log('Possible moves from 5:', gameState.moves.map(m => m.state)); // ['4
 // Example 5: Factor Tree (Prime Factorization)
 // =============================================================================
 
-const FactorTree = codata(() => ({
+const FactorTree = codata(({ Self }) => ({
     value: Number,
     isPrime: Boolean,
-    factors: Array  // Empty if prime, otherwise [left, right] factors
-}))
-    .unfold('Create', (FactorTree) => ({ in: Number, out: FactorTree }), {
+    factors: Array,  // Empty if prime, otherwise [left, right] factors
+    Create: {
+        op: 'unfold',
+        spec: { in: Number, out: Self },
         value: (n) => n,
         isPrime: (n) => {
             if (n < 2) return false;
@@ -194,7 +207,7 @@ const FactorTree = codata(() => ({
         },
         factors: (n) => {
             if (n < 2) return [];
-            
+
             // Check if prime
             for (let i = 2; i <= Math.sqrt(n); i++) {
                 if (n % i === 0) {
@@ -208,7 +221,8 @@ const FactorTree = codata(() => ({
             // Prime - no factors
             return [];
         }
-    });
+    }
+}));
 
 console.log('\n=== Factor Tree ===');
 
@@ -225,32 +239,38 @@ console.log('17 factors:', factor17.factors);                  // []
 // Example 6: Expression Tree with Lazy Evaluation
 // =============================================================================
 
-const ExprTree = codata(() => ({
+const ExprTree = codata(({ Self }) => ({
     type: String,
     value: Number,
-    children: Array
-}))
-    .unfold('Constant', (ExprTree) => ({ in: Number, out: ExprTree }), {
+    children: Array,
+    Constant: {
+        op: 'unfold',
+        spec: { in: Number, out: Self },
         type: () => 'const',
         value: (n) => n,
         children: () => []
-    })
-    .unfold('Add', (ExprTree) => ({ in: { left: Number, right: Number }, out: ExprTree }), {
+    },
+    Add: {
+        op: 'unfold',
+        spec: { in: { left: Number, right: Number }, out: Self },
         type: () => 'add',
         value: ({ left, right }) => left + right,
         children: ({ left, right }) => [
             ExprTree.Constant(left),
             ExprTree.Constant(right)
         ]
-    })
-    .unfold('Multiply', (ExprTree) => ({ in: { left: Number, right: Number }, out: ExprTree }), {
+    },
+    Multiply: {
+        op: 'unfold',
+        spec: { in: { left: Number, right: Number }, out: Self },
         type: () => 'mul',
         value: ({ left, right }) => left * right,
         children: ({ left, right }) => [
             ExprTree.Constant(left),
             ExprTree.Constant(right)
         ]
-    });
+    }
+}));
 
 console.log('\n=== Expression Tree ===');
 

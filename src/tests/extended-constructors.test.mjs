@@ -4,9 +4,9 @@ import assert from 'node:assert/strict';
 
 describe('Extended Constructors', () => {
     test('supports Array fields', () => {
-        const Collection = data({
+        const Collection = data(() => ({
             Items: { items: Array }
-        });
+        }));
 
         const col = Collection.Items({ items: [1, 2, 3] });
         assert.ok(Array.isArray(col.items));
@@ -14,9 +14,9 @@ describe('Extended Constructors', () => {
     });
 
     test('supports Date fields', () => {
-        const Event = data({
+        const Event = data(() => ({
             Scheduled: { name: String, date: Date }
-        });
+        }));
 
         const now = new Date();
         const event = Event.Scheduled({ name: 'Meeting', date: now });
@@ -25,9 +25,9 @@ describe('Extended Constructors', () => {
     });
 
     test('supports RegExp fields', () => {
-        const Pattern = data({
+        const Pattern = data(() => ({
             Matcher: { pattern: RegExp, flags: String }
-        });
+        }));
 
         const regex = /test/i;
         const matcher = Pattern.Matcher({ pattern: regex, flags: 'i' });
@@ -35,9 +35,9 @@ describe('Extended Constructors', () => {
     });
 
     test('supports Symbol fields', () => {
-        const Tagged = data({
+        const Tagged = data(() => ({
             Item: { id: Symbol, name: String }
-        });
+        }));
 
         const sym = Symbol('unique');
         const item = Tagged.Item({ id: sym, name: 'Test' });
@@ -45,9 +45,9 @@ describe('Extended Constructors', () => {
     });
 
     test('supports BigInt fields', () => {
-        const LargeNumber = data({
+        const LargeNumber = data(() => ({
             Value: { amount: BigInt }
-        });
+        }));
 
         const big = 9007199254740991n;
         const value = LargeNumber.Value({ amount: big });
@@ -55,9 +55,9 @@ describe('Extended Constructors', () => {
     });
 
     test('supports mixing extended constructors', () => {
-        const ComplexData = data({
+        const ComplexData = data(() => ({
             Record: { id: Symbol, count: BigInt, tags: Array, pattern: RegExp, timestamp: Date, name: String, active: Boolean }
-        });
+        }));
 
         const record = ComplexData.Record({
             id: Symbol('test'),
@@ -79,9 +79,9 @@ describe('Extended Constructors', () => {
     });
 
     test('Date instances are allowed even though Date constructor is callable', () => {
-        const Event = data({
+        const Event = data(() => ({
             Scheduled: { name: String, date: Date }
-        });
+        }));
 
         // Date instances should be allowed
         const now = new Date();
@@ -91,9 +91,9 @@ describe('Extended Constructors', () => {
     });
 
     test('RegExp instances are allowed even though RegExp constructor is callable', () => {
-        const Pattern = data({
+        const Pattern = data(() => ({
             Matcher: { pattern: RegExp }
-        });
+        }));
 
         // RegExp instances should be allowed
         const regex = /test/i;
@@ -103,9 +103,9 @@ describe('Extended Constructors', () => {
     });
 
     test('Array instances are allowed even though Array constructor is callable', () => {
-        const Collection = data({
+        const Collection = data(() => ({
             Items: { items: Array }
-        });
+        }));
 
         // Array instances should be allowed
         const arr = [1, 2, 3];

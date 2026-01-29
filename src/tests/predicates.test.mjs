@@ -6,9 +6,9 @@ describe('Predicates', () => {
     test('supports predicate validation', () => {
         const isEven = (x) => typeof x === 'number' && x % 2 === 0;
 
-        const EvenPoint = data({
-            Point2: { x: isEven , y: isEven }
-    });
+        const EvenPoint = data(() => ({
+            Point2: { x: isEven, y: isEven }
+        }));
 
         const p = EvenPoint.Point2({ x: 2, y: 4 });
 
@@ -19,9 +19,9 @@ describe('Predicates', () => {
     test('throws error when predicate fails', () => {
         const isEven = (x) => typeof x === 'number' && x % 2 === 0;
 
-        const EvenPoint = data({
-            Point2: { x: isEven , y: isEven }
-    });
+        const EvenPoint = data(() => ({
+            Point2: { x: isEven, y: isEven }
+        }));
 
         assert.throws(
             () => EvenPoint.Point2({ x: 3, y: 4 }),
@@ -33,9 +33,9 @@ describe('Predicates', () => {
         const isEmail = (s) =>
             typeof s === 'string' && s.includes('@');
 
-        const User = data({
-            RegisteredUser: { email: isEmail , username: String }
-    });
+        const User = data(() => ({
+            RegisteredUser: { email: isEmail, username: String }
+        }));
 
         const user = User.RegisteredUser({ email: 'test@example.com', username: 'testuser' });
         assert.strictEqual(user.email, 'test@example.com');
@@ -50,9 +50,9 @@ describe('Predicates', () => {
         const inRange = (min, max) =>
             (x) => typeof x === 'number' && x >= min && x <= max;
 
-        const Percentage = data({
-            Value: { amount: inRange(0, 100)  }
-    });
+        const Percentage = data(() => ({
+            Value: { amount: inRange(0, 100) }
+        }));
 
         const valid = Percentage.Value({ amount: 50 });
         assert.strictEqual(valid.amount, 50);
@@ -66,9 +66,9 @@ describe('Predicates', () => {
     test('supports mixing predicates and constructors', () => {
         const isPositive = (x) => typeof x === 'number' && x > 0;
 
-        const Product = data({
-            Item: { name: String, price: isPositive , quantity: isPositive }
-    });
+        const Product = data(() => ({
+            Item: { name: String, price: isPositive, quantity: isPositive }
+        }));
 
         const item = Product.Item({ name: 'Widget', price: 9.99, quantity: 5 });
         assert.strictEqual(item.name, 'Widget');
@@ -81,12 +81,12 @@ describe('Predicates', () => {
     });
 
     test('supports predicates with ADT fields', () => {
-        const Color = data({ Red: {}, Green: {}, Blue: {} });
+        const Color = data(() => ({ Red: {}, Green: {}, Blue: {} }));
         const isEven = (x) => typeof x === 'number' && x % 2 === 0;
 
-        const ColorPoint = data({
-            EvenPoint: { x: isEven , y: isEven , color: Color }
-    });
+        const ColorPoint = data(() => ({
+            EvenPoint: { x: isEven, y: isEven, color: Color }
+        }));
 
         const p = ColorPoint.EvenPoint({ x: 2, y: 4, color: Color.Blue });
         assert.strictEqual(p.x, 2);
@@ -108,9 +108,9 @@ describe('Predicates', () => {
             return true;
         };
 
-        const PrimeNumber = data({
+        const PrimeNumber = data(() => ({
             Prime: { value: isPrime }
-    });
+        }));
 
         const prime = PrimeNumber.Prime({ value: 7 });
         assert.strictEqual(prime.value, 7);
@@ -125,9 +125,9 @@ describe('Predicates', () => {
         const isNonEmptyArray = (x) =>
             Array.isArray(x) && x.length > 0;
 
-        const Collection = data({
+        const Collection = data(() => ({
             Items: { items: isNonEmptyArray }
-    });
+        }));
 
         const collection = Collection.Items({ items: [1, 2, 3] });
         assert.ok(Array.isArray(collection.items));

@@ -7,17 +7,17 @@ describe('Unfold Operations', () => {
         it('should create a countdown list from a number', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family }
+                Cons: { head: Number, tail: Family },
+                Counter: {
+                    op: 'unfold',
+                    spec: { in: Number, out: Family },
+                    Nil: n => (n <= 0 ? {} : null),
+                    Cons: n => (n > 0 ? { head: n, tail: n - 1 } : null)
+                }
             }));
 
-            // Define Counter unfold: builds a list from n down to 1
-            const ListWithCounter = List.unfold('Counter', { in: Number, out: List }, {
-                Nil: n => (n <= 0 ? {} : null),
-                Cons: n => (n > 0 ? { head: n, tail: n - 1 } : null)
-            });
-
             // Test it
-            const result = ListWithCounter.Counter(5);
+            const result = List.Counter(5);
 
             assert.ok(result !== undefined);
             assert.strictEqual(result.head, 5);
@@ -32,15 +32,16 @@ describe('Unfold Operations', () => {
         it('should create an empty list when seed is 0', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family }
+                Cons: { head: Number, tail: Family },
+                Counter: {
+                    op: 'unfold',
+                    spec: { in: Number, out: Family },
+                    Nil: n => (n <= 0 ? {} : null),
+                    Cons: n => (n > 0 ? { head: n, tail: n - 1 } : null)
+                }
             }));
 
-            const ListWithCounter = List.unfold('Counter', { in: Number, out: List }, {
-                Nil: n => (n <= 0 ? {} : null),
-                Cons: n => (n > 0 ? { head: n, tail: n - 1 } : null)
-            });
-
-            const result = ListWithCounter.Counter(0);
+            const result = List.Counter(0);
             assert.ok(result instanceof List);
             assert.strictEqual(result.constructor.name, 'Nil');
         });
@@ -50,27 +51,27 @@ describe('Unfold Operations', () => {
         it('should support defining multiple unfold constructors', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family }
+                Cons: { head: Number, tail: Family },
+                Counter: {
+                    op: 'unfold',
+                    spec: { in: Number, out: Family },
+                    Nil: n => (n <= 0 ? {} : null),
+                    Cons: n => (n > 0 ? { head: n, tail: n - 1 } : null)
+                },
+                Range: {
+                    op: 'unfold',
+                    spec: { in: Number, out: Family },
+                    Nil: n => (n <= 0 ? {} : null),
+                    Cons: n => (n > 0 ? { head: 1, tail: n - 1 } : null)
+                }
             }));
 
-            // Countdown from n to 1
-            const ListWithCounter = List.unfold('Counter', { in: Number, out: List }, {
-                Nil: n => (n <= 0 ? {} : null),
-                Cons: n => (n > 0 ? { head: n, tail: n - 1 } : null)
-            });
-
-            // Count up from 1 to n - add
-            const ListWithRange = List.unfold('Range', { in: Number, out: List }, {
-                Nil: n => (n <= 0 ? {} : null),
-                Cons: n => (n > 0 ? { head: 1, tail: n - 1 } : null)
-            });
-
-            const countdown = ListWithCounter.Counter(3);
+            const countdown = List.Counter(3);
             assert.strictEqual(countdown.head, 3);
             assert.strictEqual(countdown.tail.head, 2);
             assert.strictEqual(countdown.tail.tail.head, 1);
 
-            const range = ListWithRange.Range(3);
+            const range = List.Range(3);
             assert.strictEqual(range.head, 1);
             assert.strictEqual(range.tail.head, 1);
             assert.strictEqual(range.tail.tail.head, 1);
@@ -79,64 +80,50 @@ describe('Unfold Operations', () => {
 
     describe('Error cases', () => {
         it('should reject lowercase unfold names', () => {
-            const List = data(({ Family }) => ({
-                Nil: {},
-                Cons: { head: Number, tail: Family }
-            }));
-
             assert.throws(
                 () => {
-                    List.unfold('counter', { in: Number, out: List }, {
-                        Nil: n => (n <= 0 ? {} : null),
-                        Cons: n => (n > 0 ? { head: n, tail: n - 1 } : null)
-                    });
+                    data(({ Family }) => ({
+                        Nil: {},
+                        Cons: { head: Number, tail: Family },
+                        counter: {
+                            op: 'unfold',
+                            spec: { in: Number, out: Family },
+                            Nil: n => (n <= 0 ? {} : null),
+                            Cons: n => (n > 0 ? { head: n, tail: n - 1 } : null)
+                        }
+                    }));
                 },
                 /must be PascalCase/
             );
         });
 
-        it('should reject unfold names that conflict with variants', () => {
-            const List = data(({ Family }) => ({
-                Nil: {},
-                Cons: { head: Number, tail: Family }
-            }));
-
-            assert.throws(
-                () => {
-                    List.unfold('Cons', { in: Number, out: List }, {
-                        Nil: n => (n <= 0 ? {} : null),
-                        Cons: n => (n > 0 ? { head: n, tail: n - 1 } : null)
-                    });
-                },
-                /conflicts with existing variant/
-            );
-        });
     });
 
     describe('Case evaluation order', () => {
         it('should evaluate cases in declaration order and use first non-null', () => {
-            const Num = data(() => ({
+            const Num = data(({ Family }) => ({
                 Zero: {},
                 Positive: { value: Number },
-                Negative: { value: Number }
+                Negative: { value: Number },
+                FromInt: {
+                    op: 'unfold',
+                    spec: { in: Number, out: Family },
+                    Zero: n => (n === 0 ? {} : null),
+                    Positive: n => (n > 0 ? { value: n } : null),
+                    Negative: n => (n < 0 ? { value: n } : null)
+                }
             }));
 
-            const NumWithFromInt = Num.unfold('FromInt', { in: Number, out: Num }, {
-                Zero: n => (n === 0 ? {} : null),
-                Positive: n => (n > 0 ? { value: n } : null),
-                Negative: n => (n < 0 ? { value: n } : null)
-            });
-
-            const zero = NumWithFromInt.FromInt(0);
+            const zero = Num.FromInt(0);
             assert.ok(zero instanceof Num);
             assert.strictEqual(zero.constructor.name, 'Zero');
 
-            const pos = NumWithFromInt.FromInt(5);
+            const pos = Num.FromInt(5);
             assert.ok(pos instanceof Num);
             assert.strictEqual(pos.constructor.name, 'Positive');
             assert.strictEqual(pos.value, 5);
 
-            const neg = NumWithFromInt.FromInt(-3);
+            const neg = Num.FromInt(-3);
             assert.ok(neg instanceof Num);
             assert.strictEqual(neg.constructor.name, 'Negative');
             assert.strictEqual(neg.value, -3);
