@@ -69,5 +69,9 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
           registry-url: https://registry.npmjs.org
+      - name: Upgrade npm to support OIDC
+        run: npm install -g npm@latest
+      - name: Verify npm version
+        run: npm --version
       - name: Publish to npm with provenance
         run: npm publish --access public

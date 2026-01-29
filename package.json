@@ -1,6 +1,6 @@
 {
     "name": "@lapis-lang/lapis-js",
-    "version": "0.35.1",
+    "version": "0.35.2",
     "description": "An embedded DSL for experimentation of Lapis Semantics",
     "type": "module",
     "exports": {
