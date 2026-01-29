@@ -82,6 +82,7 @@ export function createTransformer(
     return {
         name: config.name,
         outSpec: config.outSpec,
+        inSpec: config.inSpec,
         generator: config.generator,
         getCtorTransform: config.getCtorTransform,
         getParamTransform: config.getParamTransform,

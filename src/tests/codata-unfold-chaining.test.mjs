@@ -12,20 +12,26 @@ describe('Codata - Unfold Chaining', () => {
     it('should support chaining multiple unfold operations', () => {
         const Stream = codata(({ Self, T }) => ({
             head: T,
-            tail: Self(T)
-        }))
-            .unfold('From', (Stream) => ({ in: Number, out: Stream(Number) }), {
+            tail: Self(T),
+            From: {
+                op: 'unfold',
+                spec: { in: Number, out: Self },
                 head: (n) => n,
                 tail: (n) => n + 1
-            })
-            .unfold('Constant', (Stream) => ({ in: Number, out: Stream(Number) }), {
+            },
+            Constant: {
+                op: 'unfold',
+                spec: { in: Number, out: Self },
                 head: (n) => n,
                 tail: (n) => n  // Always the same value
-            })
-            .unfold('Range', (Stream) => ({ in: { start: Number, end: Number }, out: Stream(Number) }), {
+            },
+            Range: {
+                op: 'unfold',
+                spec: { in: { start: Number, end: Number }, out: Self },
                 head: ({ start }) => start,
                 tail: ({ start, end }) => ({ start: start + 1, end })
-            });
+            }
+        }));
 
         // Test From
         const nums = Stream.From(0);
@@ -50,13 +56,15 @@ describe('Codata - Unfold Chaining', () => {
         const Stream = codata(({ Self, T }) => ({
             head: T,
             nth: { in: Number, out: T },
-            tail: Self(T)
-        }))
-            .unfold('From', (Stream) => ({ in: Number, out: Stream(Number) }), {
+            tail: Self(T),
+            From: {
+                op: 'unfold',
+                spec: { in: Number, out: Self },
                 head: (n) => n,
                 nth: (n) => (index) => n + index,
                 tail: (n) => n + 1
-            });
+            }
+        }));
 
         const stream = Stream.From(0);
 
@@ -79,9 +87,10 @@ describe('Codata - Unfold Chaining', () => {
         const Console = codata(({ Self }) => ({
             log: { in: String, out: undefined },
             read: { out: String },
-            write: { in: { msg: String, level: Number }, out: Boolean }
-        }))
-            .unfold('Create', (Console) => ({ out: Console }), {
+            write: { in: { msg: String, level: Number }, out: Boolean },
+            Create: {
+                op: 'unfold',
+                spec: { out: Self },
                 log: () => (msg) => {
                     // Mock console.log
                     return undefined;
@@ -94,9 +103,10 @@ describe('Codata - Unfold Chaining', () => {
                     // Mock write with complex input
                     return level > 0;
                 }
-            });
+            }
+        }));
 
-        const console = Console.Create();
+        const console = Console.Create;
 
         assert.equal(typeof console.log, 'function');
         assert.equal(typeof console.read, 'function');
@@ -111,16 +121,20 @@ describe('Codata - Unfold Chaining', () => {
     it('should maintain separate instances for different unfold operations', () => {
         const Stream = codata(({ Self }) => ({
             head: Number,
-            tail: Self
-        }))
-            .unfold('From', (Stream) => ({ in: Number, out: Stream(Number) }), {
+            tail: Self,
+            From: {
+                op: 'unfold',
+                spec: { in: Number, out: Self },
                 head: (n) => n,
                 tail: (n) => n + 1
-            })
-            .unfold('Constant', (Stream) => ({ in: Number, out: Stream(Number) }), {
+            },
+            Constant: {
+                op: 'unfold',
+                spec: { in: Number, out: Self },
                 head: (n) => n,
                 tail: (n) => n
-            });
+            }
+        }));
 
         const nums = Stream.From(0);
         const ones = Stream.Constant(1);
@@ -139,12 +153,14 @@ describe('Codata - Unfold Chaining', () => {
     it('should support unfold with complex seed transformations', () => {
         const Fibonacci = codata(({ Self }) => ({
             current: Number,
-            next: Self
-        }))
-            .unfold('From', (Fibonacci) => ({ in: { a: Number, b: Number }, out: Fibonacci }), {
+            next: Self,
+            From: {
+                op: 'unfold',
+                spec: { in: { a: Number, b: Number }, out: Self },
                 current: ({ a }) => a,
                 next: ({ a, b }) => ({ a: b, b: a + b })
-            });
+            }
+        }));
 
         const fib = Fibonacci.From({ a: 0, b: 1 });
 
@@ -159,25 +175,22 @@ describe('Codata - Unfold Chaining', () => {
     it('should return codata type for chaining after unfold', () => {
         const Stream = codata(({ Self }) => ({
             head: Number,
-            tail: Self
-        }))
-            .unfold('From', (Stream) => ({ in: Number, out: Stream(Number) }), {
+            tail: Self,
+            From: {
+                op: 'unfold',
+                spec: { in: Number, out: Self },
                 head: (n) => n,
                 tail: (n) => n + 1
-            });
+            },
+            Zeros: {
+                op: 'unfold',
+                spec: { out: Self },
+                head: () => 0,
+                tail: () => 0  // Always return 0 as seed (constant zero stream)
+            }
+        }));
 
-        // Should be able to chain more unfolds
-        const StreamWithMore = Stream.unfold('Zeros', (Stream) => ({ out: Stream(Number) }), {
-            head: () => 0,
-            tail: () => 0  // Always return 0 as seed (constant zero stream)
-        });
-
-        assert.ok(StreamWithMore);
-        assert.ok(typeof StreamWithMore.From === 'function', 'Should still have From');
-        assert.ok(typeof StreamWithMore.Zeros === 'function', 'Should have new Zeros');
-
-        // Verify the new unfold actually works
-        const zeros = StreamWithMore.Zeros();
+        const zeros = Stream.Zeros;
         assert.equal(zeros.head, 0);
         assert.equal(zeros.tail.head, 0);
         assert.equal(zeros.tail.tail.head, 0);

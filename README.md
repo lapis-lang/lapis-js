@@ -39,7 +39,6 @@ there is an emphasis on the Bird-Meertens Formalism (BMF) (Squiggol) of making p
 - [Unfold Operations (Corecursion/Anamorphisms)](#unfold-operations-corecursionanamorphisms)
   - [Basic Unfold Operations](#basic-unfold-operations)
   - [Binary Operations with Fold](#binary-operations-with-fold)
-  - [Object Literal Guards in Specs](#object-literal-guards-in-specs)
 - [Merge Operations (Deforestation)](#merge-operations-deforestation)
   - [Recursion Schemes](#recursion-schemes)
 - [Codata (Coalgebras)](#codata-coalgebras)
@@ -93,7 +92,7 @@ Data types like simple enumerations can be defined as such:
 ```ts
 import { data } from '@lapis-lang/lapis-js';
 
-const Color = data({ Red: {}, Green: {}, Blue: {} });
+const Color = data(({Family}) => ({ Red: {}, Green: {}, Blue: {} }));
 
 // Color is the data type; Red, Green, Blue are singleton variants
 console.log(Color.Red instanceof Color); // true
@@ -106,6 +105,7 @@ if (Color.Red instanceof Color)
 
 - Variant names, being constructors, must be **PascalCase** (start with uppercase letter)
 - Variant definitions use empty object literals `{}` to indicate simple singleton variants
+- Singleton variants are accessed as properties (e.g., `Color.Red`), not called as functions
 
 Semantically you can think of the above as creating the following JavaScript:
 
@@ -122,10 +122,10 @@ abstract class Color {
 Structured data can be defined by utilizing the object literal associated with each variant:
 
 ```ts
-const Point = data({
+const Point = data((Family) => ({
     Point2D: { x: Number, y: Number },
     Point3D: { x: Number, y: Number, z: Number }
-});
+}));
 ```
 
 - Variant names must be **PascalCase**
@@ -133,7 +133,7 @@ const Point = data({
 - Field values specify the Guard of the field (e.g., `Number`, `String`, other ADTs, or predicates).
   - Guards are described below.
 
-Variants can be constructed by calling them as functions with named arguments (object form) or positional arguments (tuple form):
+Structured variants (with fields) are constructed by calling them as functions with named arguments (object form) or positional arguments (tuple form):
 
 ```ts
 const p1 = Point.Point2D({ x: 10, y: 20 });  // Named arguments
@@ -197,16 +197,6 @@ EvenPoint.Point2({ x: 3, y: 4 });  // Throws TypeError at runtime
 // TypeError: Field 'x' failed predicate validation
 ```
 
-When an object literal guard is used, it validates structured inputs with multiple named fields. This is particularly useful in operation specs (see Unfold Operations) for binary or n-ary operations:
-
-```ts
-// Object literal guard in a spec validates structured input
-{ in: { x: Number, y: Number }, out: SomeType }
-
-// Each field is validated against its guard
-{ in: { list1: List(Number), list2: List(String) }, out: ResultType }
-```
-
 ### Invariants
 
 Invariants allow you to specify relationships and constraints between multiple fields in a structured variant. Unlike guards which validate individual fields independently, invariants validate the constructed instance as a whole.
@@ -218,13 +208,13 @@ import { data, invariant } from '@lapis-lang/lapis-js';
 
 const isChar = (s) => typeof s === 'string' && s.length === 1;
 
-const Range = data({
+const Range = data(() => ({
     CharRange: {
         [invariant]: ({ start, end }) => start <= end,
         start: isChar,
         end: isChar
     }
-});
+}));
 
 const r = Range.CharRange({ start: 'a', end: 'z' }); // Valid
 console.log(r.start); // 'a'
@@ -257,8 +247,7 @@ const two = Peano.Succ({ pred: one });
 console.log(two.pred.pred === zero); // true
 ```
 
-In the above, `Family` is a reserved special reference to the ADT being defined, allowing recursive references. `Family` references are validated at **runtime** with `instanceof` checks against the ADT family. Since the `Peano` ADT is not parameterized, it can be used directly without instantiation.
-In other words `Family` is equivalent to `Family()` for non-parameterized recursive ADTs.
+In the above, `Family` is a reserved special reference to the ADT being defined, allowing recursive references. `Family` references are validated at **runtime** with `instanceof` checks against the ADT family. Since the `Peano` ADT is not parameterized, `Family` is used directly as a guard (it is not callable). In other words, `Family` is equivalent to `Family()` for non-parameterized recursive ADTs, but you write `Family` not `Family()`.
 
 For parameterized ADTs, arbitrary type parameter names can be used in the destructured callback:
 
@@ -298,33 +287,34 @@ Note that `List(Number)` in the above is equivalent to `List({ T: Number })` - b
 
 ## ADT Extension (Subtyping)
 
-Extend existing ADTs with new variants using the `.extend()` method. This enables open ADTs that can be incrementally extended while maintaining proper subtyping relationships.
-
-Like `data()`, `.extend()` supports both object literal and callback forms:
+Extend existing ADTs with new variants using the `[extend]` symbol within a new `data()` declaration. This enables open ADTs that can be incrementally extended while maintaining proper subtyping relationships.
 
 ```ts
+import { data, extend } from '@lapis-lang/lapis-js';
+
 // Base ADT
-const Color = data({ Red: {}, Green: {}, Blue: {} });
+const Color = data(() => ({ Red: {}, Green: {}, Blue: {} }));
 
-// Object literal form (for simple extensions without Family/type parameters)
-const ExtendedColor1 = Color.extend({ Yellow: {}, Orange: {} });
-
-// Callback form (required when using Family for recursive ADTs)
-const ExtendedColor2 = Color.extend(() => ({ Yellow: {}, Orange: {} }));
+// Extend with new variants using [extend] symbol
+const ExtendedColor = data(() => ({
+    [extend]: Color,
+    Yellow: {},
+    Orange: {}
+}));
 
 // Inherited variants accessible on extended ADT
-console.log(ExtendedColor1.Red);    // Inherited singleton
-console.log(ExtendedColor1.Yellow); // New singleton
+console.log(ExtendedColor.Red);    // Inherited singleton
+console.log(ExtendedColor.Yellow); // New singleton
 
 // Proper subtyping
-console.log(ExtendedColor1.Yellow instanceof Color); // true (new variants are instanceof base)
-console.log(ExtendedColor1.Red instanceof ExtendedColor1); // false (inherited variants maintain original type)
-console.log(ExtendedColor1.Red === Color.Red); // true (singleton identity preserved)
+console.log(ExtendedColor.Yellow instanceof Color); // true (new variants are instanceof base)
+console.log(ExtendedColor.Red instanceof ExtendedColor); // true (inherited variants are instanceof extended ADT)
+console.log(ExtendedColor.Red === Color.Red); // false (new singleton instance created)
 ```
 
 ### Extending recursive ADTs
 
-Use the callback style with `Family` to extend recursive ADTs. The `Family` reference in extended variants accepts instances from any level of the hierarchy:
+Use the callback form with `[extend]` and `Family` to extend recursive ADTs. The `Family` reference in extended variants accepts instances from any level of the hierarchy:
 
 ```ts
 // Base expression language
@@ -334,13 +324,15 @@ const IntExpr = data(({ Family }) => ({
 }));
 
 // Extend with boolean operations
-const IntBoolExpr = IntExpr.extend(({ Family }) => ({
+const IntBoolExpr = data(({ Family }) => ({
+    [extend]: IntExpr,
     BoolLit: { value: Boolean },
     LessThan: { left: Family, right: Family }
 }));
 
 // Extend further with variables
-const FullExpr = IntBoolExpr.extend(({ Family }) => ({
+const FullExpr = data(({ Family }) => ({
+    [extend]: IntBoolExpr,
     Var: { name: String },
     Let: { name: String, value: Family, body: Family }
 }));
@@ -377,15 +369,22 @@ Semantically you can think of folds as creating methods on each variant class th
 
 ### Basic Fold Operations
 
-Define operations that dispatch on variant types without recursing into structure:
+Fold operations are defined inline within the ADT declaration using the declarative syntax. Each operation includes an `op: 'fold'` property, a spec describing input/output types, and handler functions for each variant:
 
 ```ts
-const Color = data({ Red: {}, Green: {}, Blue: {} })
-    .fold('toHex', { out: String }, {
+const Color = data(() => ({
+    Red: {},
+    Green: {},
+    Blue: {},
+
+    toHex: {
+        op: 'fold',
+        spec: { out: String },
         Red() { return '#FF0000'; },
         Green() { return '#00FF00'; },
         Blue() { return '#0000FF'; }
-    });
+    }
+}));
 
 console.log(Color.Red.toHex);   // '#FF0000'
 console.log(Color.Green.toHex); // '#00FF00'
@@ -394,13 +393,25 @@ console.log(Color.Blue.toHex);  // '#0000FF'
 
 ### Specs
 
-The second parameter to `.fold()` is the **operation spec** that describes the operation's signature. The spec is an object with the following properties:
+The `spec` property within an operation is an **object literal** that describes the operation's signature. The `spec` property itself is **optional** - if omitted, no runtime type validation is performed on inputs or outputs.
+
+When provided, the spec can contain:
 
 - `out`: The return guard of the operation (e.g., `String`, `Number`, etc.)
-- `in`: The input guard for parameters (not used in basic folds)
+- `in`: The input guard for parameters (optional, for parameterized operations)
 
-If the guards are not provided, they default to `any` (no validation). The object literal still
-needs to be provided if empty: `{}`.
+For recursive ADTs, the spec can reference `Family` from the surrounding `data()` callback scope:
+
+```ts
+data(({ Family }) => ({
+    // ... variants ...
+    operationName: {
+        op: 'fold',
+        spec: { out: Family },  // References Family from callback
+        // ... handlers ...
+    }
+}))
+```
 
 ### Uniform Access Principle
 
@@ -420,17 +431,21 @@ Handlers use **named destructuring** to access variant fields:
 ```ts
 const Point = data(() => ({
     Point2D: { x: Number, y: Number },
-    Point3D: { x: Number, y: Number, z: Number }
-}).fold('quadrant', { out: String }, {
-    Point2D({ x, y }) {
-        if (x >= 0 && y >= 0) return 'Q1';
-        if (x < 0 && y >= 0) return 'Q2';
-        if (x < 0 && y < 0) return 'Q3';
-        return 'Q4';
-    },
-    Point3D({ x, y, z }) {
-        // 3D quadrant logic...
-        return `Octant(${x >= 0}, ${y >= 0}, ${z >= 0})`;
+    Point3D: { x: Number, y: Number, z: Number },
+
+    quadrant: {
+        op: 'fold',
+        spec: { out: String },
+        Point2D({ x, y }) {
+            if (x >= 0 && y >= 0) return 'Q1';
+            if (x < 0 && y >= 0) return 'Q2';
+            if (x < 0 && y < 0) return 'Q3';
+            return 'Q4';
+        },
+        Point3D({ x, y, z }) {
+            // 3D quadrant logic...
+            return `Octant(${x >= 0}, ${y >= 0}, ${z >= 0})`;
+        }
     }
 }));
 
@@ -452,11 +467,17 @@ console.log(p3d.quadrant); // 'Octant(false, true, true)'
 Use the `_` wildcard to handle unknown or unspecified variants:
 
 ```ts
-const Color = data({ Red: {}, Green: {}, Blue: {} })
-    .fold('toHex', { out: String }, {
+const Color = data(() => ({
+    Red: {},
+    Green: {},
+    Blue: {},
+    toHex: {
+        op: 'fold',
+        spec: { out: String },
         Red() { return '#FF0000'; },
-        _(instance) { return '#UNKNOWN'; }
-    });
+        _() { return '#UNKNOWN'; }
+    }
+}));
 
 console.log(Color.Red.toHex);   // '#FF0000'
 console.log(Color.Green.toHex); // '#UNKNOWN' (wildcard)
@@ -467,16 +488,16 @@ console.log(Color.Blue.toHex);  // '#UNKNOWN' (wildcard)
 
 ```ts
 // Parameterless fold
-_(instance) {
+_(fields) {
     // Access variant information
-    console.log(instance.constructor.name); // Variant name
+    console.log(this.constructor.name); // Variant name
     return someValue;
 }
 
 // Parameterized fold
-_(instance, inputArg) {
+_(fields, inputArg) {
     // Access both instance and input parameter
-    return computeWithBoth(instance, inputArg);
+    return computeWithBoth(this, inputArg);
 }
 ```
 
@@ -488,19 +509,31 @@ Exhaustive handler coverage is enforced at runtime:
 
 ```ts
 // Valid - all variants handled
-const Color = data({ Red: {}, Green: {}, Blue: {} })
-    .fold('toHex', { out: String }, {
+const Color = data(() => ({
+    Red: {},
+    Green: {},
+    Blue: {},
+
+    toHex: {
+        op: 'fold',
         Red() { return '#FF0000'; },
         Green() { return '#00FF00'; },
         Blue() { return '#0000FF'; }
-    });
+    }
+}));
 
 // Runtime Error - Green and Blue handlers missing
-const Incomplete = data({ Red: {}, Green: {}, Blue: {} })
-    .fold('toHex', { out: String }, {
+const Incomplete = data(() => ({
+    Red: {},
+    Green: {},
+    Blue: {},
+
+    toHex: {
+        op: 'fold',
         Red() { return '#FF0000'; }
         // Missing handlers - will throw at runtime when Green or Blue is encountered
-    });
+    }
+}));
 
 // Color.Red.toHex works fine
 // Color.Green.toHex throws: Error: No handler for variant 'Green' in operation 'toHex'
@@ -510,11 +543,18 @@ const Incomplete = data({ Red: {}, Green: {}, Blue: {} })
 
 ```ts
 // Valid - wildcard handles unspecified variants
-const Color = data({ Red: {}, Green: {}, Blue: {} })
-    .fold('toHex', { out: String }, {
+const Color = data(() => ({
+    Red: {},
+    Green: {},
+    Blue: {},
+
+    toHex: {
+        op: 'fold',
+
         Red() { return '#FF0000'; },
-        _(instance) { return '#UNKNOWN'; }
-    });
+        _() { return '#UNKNOWN'; }
+    }
+}));
 
 // Color.Green.toHex returns '#UNKNOWN' (wildcard handler)
 ```
@@ -524,53 +564,84 @@ const Color = data({ Red: {}, Green: {}, Blue: {} })
 **When extending an existing operation**: Only new variants need handlers (parent provides inherited handlers)
 
 ```ts
-const Color = data({ Red: {}, Green: {}, Blue: {} })
-    .fold('toHex', { out: String }, {
+const Color = data(() => ({
+    Red: {},
+    Green: {},
+    Blue: {},
+
+    toHex: {
+        op: 'fold',
         Red() { return '#FF0000'; },
         Green() { return '#00FF00'; },
         Blue() { return '#0000FF'; }
-    });
+    }
+}));
 
 // Valid - only new variants (Yellow, Orange) need handlers
-const ExtendedColor = Color.extend({ Yellow: {}, Orange: {} })
-    .fold('toHex', { out: String }, {
+const ExtendedColor = data(() => ({
+    [extend]: Color,
+    Yellow: {},
+    Orange: {},
+
+    toHex: {
+        op: 'fold',
         Yellow() { return '#FFFF00'; },
         Orange() { return '#FFA500'; }
-    });
+    }
+}));
 ```
 
 **When adding a new operation to an extended ADT**: All variants (parent + new) need handlers OR wildcard
 
 ```ts
 // Runtime Error - Yellow and Orange handlers missing
-const ExtendedColor = Color.extend({ Yellow: {}, Orange: {} })
-    .fold('toRGB', { out: String }, {
+const ExtendedColor = data(() => ({
+    [extend]: Color,
+    Yellow: {},
+    Orange: {},
+
+    toRGB: {
+        op: 'fold',
         Red() { return 'rgb(255,0,0)'; },
         Green() { return 'rgb(0,255,0)'; },
         Blue() { return 'rgb(0,0,255)'; }
         // Missing Yellow and Orange - will throw at runtime when encountered
-    });
+    }
+}));
 
 // ExtendedColor.Yellow.toRGB throws: Error: No handler for variant 'Yellow' in operation 'toRGB'
 
 // All 5 variants handled
-const Complete = Color.extend({ Yellow: {}, Orange: {} })
-    .fold('toRGB', { out: String }, {
+const Complete = data(() => ({
+    [extend]: Color,
+    Yellow: {},
+    Orange: {},
+
+    toRGB: {
+        op: 'fold',
         Red() { return 'rgb(255,0,0)'; },
         Green() { return 'rgb(0,255,0)'; },
         Blue() { return 'rgb(0,0,255)'; },
         Yellow() { return 'rgb(255,255,0)'; },
         Orange() { return 'rgb(255,165,0)'; }
-    });
+    }
+}));
 
 // Or use wildcard for unhandled variants
-const WithWildcard = Color.extend({ Yellow: {}, Orange: {} })
-    .fold('toRGB', { out: String }, {
+const WithWildcard = data(() => ({
+    [extend]: Color,
+    Yellow: {},
+    Orange: {},
+
+    toRGB: {
+        op: 'fold',
+
         Red() { return 'rgb(255,0,0)'; },
         Green() { return 'rgb(0,255,0)'; },
         Blue() { return 'rgb(0,0,255)'; },
-        _(instance) { return 'rgb(128,128,128)'; } // Handles Yellow, Orange
-    });
+        _() { return 'rgb(128,128,128)'; } // Handles Yellow, Orange
+    }
+}));
 ```
 
 **Key points:**
@@ -584,20 +655,27 @@ const WithWildcard = Color.extend({ Yellow: {}, Orange: {} })
 
 ### Multiple Fold Operations
 
-Chain `.fold()` calls to define multiple operations on the same ADT:
+Define multiple fold operations inline as separate properties within the ADT declaration:
 
 ```ts
-const Color = data({ Red: {}, Green: {}, Blue: {} })
-    .fold('toHex', { out: String }, {
+const Color = data(() => ({
+    Red: {},
+    Green: {},
+    Blue: {},
+
+    toHex: {
+        op: 'fold',
         Red() { return '#FF0000'; },
         Green() { return '#00FF00'; },
         Blue() { return '#0000FF'; }
-    })
-    .fold('toRGB', { out: String }, {
+    },
+    toRGB: {
+        op: 'fold',
         Red() { return 'rgb(255, 0, 0)'; },
         Green() { return 'rgb(0, 255, 0)'; },
         Blue() { return 'rgb(0, 0, 255)'; }
-    }));
+    }
+}));
 
 console.log(Color.Red.toHex); // '#FF0000'
 console.log(Color.Red.toRGB); // 'rgb(255, 0, 0)'
@@ -605,17 +683,19 @@ console.log(Color.Red.toRGB); // 'rgb(255, 0, 0)'
 
 ### Structural Recursion (Catamorphisms)
 
-For recursive ADTs, `.fold()` performs **catamorphisms** - structural recursion from leaves to root. The framework automatically recurses into `Family` fields, passing already-folded values to handlers.
+For recursive ADTs, fold operations perform **catamorphisms** - structural recursion from leaves to root. The framework automatically recurses into `Family` fields, passing already-folded values to handlers.
 
 ```ts
 const Peano = data(({ Family }) => ({
     Zero: {},
-    Succ: { pred: Family }
-}))
-.fold('toValue', { out: Number }, {
-    Zero() { return 0; },
-    Succ({ pred }) { return 1 + pred; }  // pred is already a Number
-});
+    Succ: { pred: Family },
+
+    toValue: {
+        op: 'fold',
+        Zero() { return 0; },
+        Succ({ pred }) { return 1 + pred; }  // pred is already a Number
+    }
+}));
 
 const three = Peano.Succ({ pred: Peano.Succ({ pred: Peano.Succ({ pred: Peano.Zero }) }) });
 console.log(three.toValue); // 3
@@ -623,12 +703,13 @@ console.log(three.toValue); // 3
 // For lists: right fold (processes tail to head)
 const List = data(({ Family }) => ({
     Nil: {},
-    Cons: { head: Number, tail: Family }
-}))
-.fold('sum', { out: Number }, {
-    Nil() { return 0; },
-    Cons({ head, tail }) { return head + tail; }  // tail is the sum of remaining elements
-});
+    Cons: { head: Number, tail: Family },
+    sum: {
+        op: 'fold',
+        Nil() { return 0; },
+        Cons({ head, tail }) { return head + tail; }  // tail is the sum of remaining elements
+    }
+}));
 
 const list = List.Cons(1, List.Cons(2, List.Cons(3, List.Nil)));
 console.log(list.sum); // 6 (1 + (2 + (3 + 0)))
@@ -636,12 +717,14 @@ console.log(list.sum); // 6 (1 + (2 + (3 + 0)))
 // For trees: processes from leaves to root
 const Tree = data(({ Family }) => ({
     Leaf: { value: Number },
-    Node: { left: Family, right: Family, value: Number }
-}))
-.fold('sum', { out: Number }, {
-    Leaf({ value }) { return value; },
-    Node({ left, right, value }) { return left + right + value; }
-});
+    Node: { left: Family, right: Family, value: Number },
+    sum: {
+        op: 'fold',
+        spec: { out: Number },
+        Leaf({ value }) { return value; },
+        Node({ left, right, value }) { return left + right + value; }
+    }
+}));
 ```
 
 ### Parameterized Folds
@@ -653,22 +736,34 @@ Fold operations can accept a single input parameter, enabling operations like `a
 In a **simple fold** (without parameter), `Family` fields are replaced with their already-computed folded values:
 
 ```ts
-.fold('length', { out: Number }, {
-    Nil() { return 0; },
-    Cons({ tail }) { return 1 + tail; }  // tail is a Number (already computed)
-});
+const List = data(({ Family }) => ({
+    Nil: {},
+    Cons: { head: Number, tail: Family },
+
+    length: {
+        op: 'fold',
+        Nil() { return 0; },
+        Cons({ tail }) { return 1 + tail; }  // tail is a Number (already computed)
+    }
+}));
 ```
 
 In a **parameterized fold** (with parameter), `Family` fields become **partially-applied functions** that accept the parameter:
 
 ```ts
-.fold('append', { in: Number }, ({Nil, Cons}) => ({
-    Nil(val) {
-        return Cons(val, Nil);
-    },
-    Cons({ head, tail }, val) {
-        // tail is a function: tail(val) continues the fold with the parameter
-        return Cons(head, tail(val));
+const List = data(({ Family }) => ({
+    Nil: {},
+    Cons: { head: Number, tail: Family },
+
+    append: {
+        op: 'fold',
+        Nil(val) {
+            return List.Cons(val, List.Nil);
+        },
+        Cons({ head, tail }, val) {
+            // tail is a function: tail(val) continues the fold with the parameter
+            return List.Cons(head, tail(val));
+        }
     }
 }));
 
@@ -691,22 +786,28 @@ The parameter is threaded through the entire structure, allowing each level to u
 - Fold operations accept **at most one input parameter**
 - `spec.in` provides optional runtime type validation for the parameter
 - For recursive ADTs, `Family` fields become **partially applied functions** that accept the input parameter
-- **Use callback form `(ADT) => ({ handlers })` to enable polymorphism** over parameterized ADT instances
 - Handler signature for singleton variants: `Variant(inputArg) => result`
 - Handler signature for structured variants: `Variant({ field1, field2, ... }, inputArg) => result`
-- **Wildcard handler signature**: `_(instance, inputArg) => result` (receives both instance and input parameter)
+- **Wildcard handler signature**: `_(fields, inputArg) => result` (receives both fields and input parameter)
 - The input parameter is threaded through all recursive calls automatically
 - Both forms still process structures bottom-up (catamorphic recursion)
 
 ```ts
-// Callback form enables polymorphism for generic ADTs
+// Polymorphic fold for generic ADTs
 const List = data(({ Family, T }) => ({
     Nil: {},
-    Cons: { head: T, tail: Family(T) }
-}))
-.fold('append', { in: Object }, (List) => ({  // List parameter receives the actual ADT
-    Nil(val) { return List.Cons(val, List.Nil); },
-    Cons({ head, tail }, val) { return List.Cons(head, tail(val)); }
+    Cons: { head: T, tail: Family },
+
+    append: {
+        op: 'fold',
+        spec: { in: Object, out: Family },  // spec is object literal, references Family from callback
+        Nil(val) {
+            return List.Cons(val, List.Nil);
+        },
+        Cons({ head, tail }, val) {
+            return List.Cons(head, tail(val));
+        }
+    }
 }));
 
 const NumList = List(Number);
@@ -717,34 +818,49 @@ const result = nums.append(3);  // Returns NumList instance, not generic List
 **Wildcard handlers with parameterized folds:**
 
 ```ts
-const Color = data({ Red: {}, Green: {}, Blue: {} })
-    .fold('matches', { in: String, out: Boolean }, {
+const Color = data(() => ({
+    Red: {},
+    Green: {},
+    Blue: {},
+
+    matches: {
+        op: 'fold',
+        spec: { in: String, out: Boolean },
         Red(text) { return text.toLowerCase() === 'red'; },
-        _(instance, text) {
-            // Wildcard receives both instance and input parameter
-            return instance.constructor.name.toLowerCase().includes(text.toLowerCase());
+        _(fields, text) {
+            return this.constructor.name.toLowerCase().includes(text.toLowerCase());
         }
-    });
+    }
+}));
 
 console.log(Color.Red.matches('red'));    // true (specific handler)
 console.log(Color.Green.matches('green')); // true (wildcard handler)
 console.log(Color.Blue.matches('blue'));    // true (wildcard handler)
 ```
 
-**Note:** Both object literal form `{ ... }` and callback form `() => ({ ... })` are supported for fold operations. The object literal form is preferred for readability.
-
 ### Integration with ADT Extension
 
 Operations defined on a base ADT are inherited by extended ADTs:
 
 ```ts
-const Color = data({ Red: {}, Green: {}, Blue: {} })
-    .fold('toHex', { out: String }, {
+const Color = data(() => ({
+    Red: {},
+    Green: {},
+    Blue: {},
+
+    toHex: {
+        op: 'fold',
         Red() { return '#FF0000'; },
         Green() { return '#00FF00'; },
         Blue() { return '#0000FF'; }
-    });
-const ExtendedColor = Color.extend({ Yellow: {}, Orange: {} });
+    }
+}));
+
+const ExtendedColor = data(() => ({
+    [extend]: Color,
+    Yellow: {},
+    Orange: {}
+}));
 
 // Inherited variants have the operation
 console.log(ExtendedColor.Red.toHex); // '#FF0000'
@@ -756,13 +872,22 @@ ExtendedColor.Yellow.toHex; // ✗ Error: No handler for variant 'Yellow'
 **Use wildcard for open extension:**
 
 ```ts
-const Color = data({ Red: {}, Green: {}, Blue: {} })
-    .fold('toHex', { out: String }, {
+const Color = data(() => ({
+    Red: {},
+    Green: {},
+    Blue: {},
+    toHex: {
+        op: 'fold',
         Red() { return '#FF0000'; },
-        _(instance) { return '#UNKNOWN'; }
-    });
+        _() { return '#UNKNOWN'; }
+    }
+}));
 
-const ExtendedColor = Color.extend({ Yellow: {}, Orange: {} });
+const ExtendedColor = data(() => ({
+    [extend]: Color,
+    Yellow: {},
+    Orange: {}
+}));
 
 console.log(ExtendedColor.Red.toHex);    // '#FF0000'
 console.log(ExtendedColor.Yellow.toHex); // '#UNKNOWN' (wildcard)
@@ -771,14 +896,20 @@ console.log(ExtendedColor.Yellow.toHex); // '#UNKNOWN' (wildcard)
 **Add operations to extended ADTs:**
 
 ```ts
-const ExtendedColor = Color.extend({ Yellow: {}, Orange: {} })
-    .fold('isWarm', { out: Boolean }, {
+const ExtendedColor = data(() => ({
+    [extend]: Color,
+    Yellow: {},
+    Orange: {},
+
+    isWarm: {
+        op: 'fold',
         Red() { return true; },
         Green() { return false; },
         Blue() { return false; },
         Yellow() { return true; },
         Orange() { return true; }
-    });
+    }
+}));
 
 // Both operations available
 console.log(ExtendedColor.Red.toHex);  // '#FF0000' (inherited)
@@ -788,22 +919,34 @@ console.log(ExtendedColor.Yellow.isWarm); // true
 
 ### Extending Fold Operations
 
-When calling `.fold()` on an extended ADT with an operation that exists on the parent, extend mode is automatically activated with **polymorphic recursion**.
+When defining a fold operation in an extended ADT with the same name as a parent operation, extend mode is automatically activated with **polymorphic recursion**.
 
 ```ts
-const Color = data({ Red: {}, Green: {}, Blue: {} })
-    .fold('toHex', { out: String }, {
+const Color = data(() => ({
+    Red: {},
+    Green: {},
+    Blue: {},
+
+    toHex: {
+        op: 'fold',
         Red() { return '#FF0000'; },
         Green() { return '#00FF00'; },
         Blue() { return '#0000FF'; }
-    });
+    }
+}));
 
-// .fold() auto-detects extend mode because parent has 'toHex' operation
-const ExtendedColor = Color.extend({ Yellow: {}, Orange: {} })
-    .fold('toHex', {
+// Extend mode auto-detected because parent has 'toHex' operation
+const ExtendedColor = data(() => ({
+    [extend]: Color,
+    Yellow: {},
+    Orange: {},
+
+    toHex: {
+        op: 'fold',
         Yellow() { return '#FFFF00'; },
         Orange() { return '#FFA500'; }
-    });
+    }
+}));
 
 // Inherited variants use parent handlers
 console.log(ExtendedColor.Red.toHex); // '#FF0000'
@@ -814,19 +957,25 @@ console.log(ExtendedColor.Yellow.toHex); // '#FFFF00'
 
 **Override parent handlers:**
 
-When extending an operation, you can override parent handlers while still accessing the parent's implementation. The `parent` symbol is a unique key that accesses the parent handler when used in the `fields` parameter:
+When extending an operation, you can override parent handlers while still accessing the parent's implementation. The `parent` symbol is a unique key that accesses the parent handler when used in the `this` context:
 
 ```ts
-import { data, parent } from '@lapis-lang/lapis-js';
+import { data, extend, parent } from '@lapis-lang/lapis-js';
 
-const ExtendedColor = Color.extend({ Yellow: {} })
-    .fold('toHex', {
+const ExtendedColor = data(() => ({
+    [extend]: Color,
+    Yellow: {},
+
+    toHex: {
+        op: 'fold',
+
         Yellow() { return '#FFFF00'; },
-        Red(fields) {
-            // fields[parent]!() calls the parent's Red handler
-            return fields[parent]!().replace('FF', 'EE');
+        Red() {
+            // this[parent]!() calls the parent's Red handler
+            return this[parent]!().replace('FF', 'EE');
         }
-    });
+    }
+}));
 
 console.log(ExtendedColor.Red.toHex); // '#EE0000' (overridden)
 ```
@@ -834,58 +983,59 @@ console.log(ExtendedColor.Red.toHex); // '#EE0000' (overridden)
 **Replacing parent handlers (ignoring parent):**
 
 ```ts
-const ExtendedColor = Color.extend({ Yellow: {} })
-    .fold('toHex', {
+const ExtendedColor = data(() => ({
+    [extend]: Color,
+    Yellow: {},
+
+    toHex: {
+        op: 'fold',
         Yellow() { return '#FFFF00'; },
         Red() { return '#EE0000'; } // Replace handler completely (no parent access)
-    });
+    }
+}));
 ```
 
 **Wildcard inheritance:**
 
 ```ts
-const Color = data({ Red: {}, Green: {} })
-    .fold('toHex', { out: String }, {
-        Red() { return '#FF0000'; },
-        _(_instance) { return '#UNKNOWN'; } // Wildcard for undefined variants
-    });
+const Color = data(() => ({
+    Red: {},
+    Green: {},
 
-const ExtendedColor = Color.extend({ Blue: {} })
-    .fold('toHex', {
-        // Blue not specified - inherits wildcard from parent
-    });
+    toHex: {
+        op: 'fold',
+        Red() { return '#FF0000'; },
+        _() { return '#UNKNOWN'; } // Wildcard for undefined variants
+    }
+}));
+
+const ExtendedColor = data(() => ({
+    [extend]: Color,
+    Blue: {},
+    // No toHex handler for Blue - inherits wildcard from parent
+}));
 
 console.log(ExtendedColor.Blue.toHex); // '#UNKNOWN' (wildcard from parent)
 ```
 
 **Overriding wildcard handler:**
 
-When you override a wildcard handler, it receives the `parent` parameter first (like any other override):
+When you override a wildcard handler, it replaces the parent's wildcard handler completely:
 
 ```ts
-const ExtendedColor = Color.extend({ Blue: {} })
-    .fold('toHex', {
-        _({ instance, [parent]: _parent }) {
-            return `#EXTENDED-${instance.constructor.name}`;
+const ExtendedColor = data(() => ({
+    [extend]: Color,
+    Blue: {},
+    toHex: {
+        op: 'fold',
+        _() {
+            return `#EXTENDED-${this.constructor.name}`;
         }
-    });
+    }
+}));
 
 console.log(ExtendedColor.Blue.toHex); // '#EXTENDED-Blue'
 ```
-
-**Key points:**
-
-- Handlers use **named destructuring**: `Variant({ field1, field2 }) => ...`
-- Wildcard `_` receives the variant instance for unhandled cases
-- Without wildcard: all variants must have handlers (runtime error if missing)
-- With wildcard: handlers are optional (wildcard catches unhandled cases)
-- **Extending existing operations**: Only new/overridden variants need handlers
-- **New operations on extended ADTs**: All variants need handlers OR wildcard
-- Override handlers access parent via `fields[parent]!()`
-- Import `parent` symbol: `import { data, parent } from '@lapis-lang/lapis-js'`
-- Only one `.fold()` per operation per ADT level
-- Operations inherited by extended ADTs
-- Chaining supported: `.fold(...).fold(...)`
 
 ### Recursion and Stack Safety
 
@@ -898,12 +1048,14 @@ The library implements fold operations using **iterative post-order traversal** 
 ```ts
 const List = data(({ Family }) => ({
     Nil: {},
-    Cons: { head: Number, tail: Family }
-}))
-.fold('sum', { out: Number }, {
-    Nil() { return 0; },
-    Cons({ head, tail }) { return head + tail; }
-});
+    Cons: { head: Number, tail: Family },
+    sum: {
+        op: 'fold',
+        spec: { out: Number },
+        Nil() { return 0; },
+        Cons({ head, tail }) { return head + tail; }
+    }
+}));
 
 // This works for arbitrarily large lists without stack overflow
 let bigList = List.Nil;
@@ -962,16 +1114,21 @@ Instead of writing mutually recursive functions, express computations as **struc
 // Idiomatic: single fold operation
 const Peano = data(({ Family }) => ({
     Zero: {},
-    Succ: { pred: Family }
-}))
-.fold('isEven', { out: Boolean }, {
-    Zero() { return true; },
-    Succ({ pred }) { return !pred; }  // pred is already a boolean
-})
-.unfold('FromValue', (Peano) => ({ in: Number, out: Peano }), {
-    Zero: (n) => (n <= 0 ? {} : null),
-    Succ: (n) => (n > 0 ? { pred: n - 1 } : null)
-});
+    Succ: { pred: Family },
+
+    FromValue: {
+        op: 'unfold',
+        spec: { in: Number, out: Family },
+        Zero: (n) => (n <= 0 ? {} : null),
+        Succ: (n) => (n > 0 ? { pred: n - 1 } : null)
+    },
+    isEven: {
+        op: 'fold',
+        spec: { out: Boolean },
+        Zero() { return true; },
+        Succ({ pred }) { return !pred; }  // pred is already a boolean
+    }
+}));
 
 // Stack-safe for arbitrarily deep structures
 const big = Peano.FromValue(100000);
@@ -987,20 +1144,26 @@ import { data } from '@lapis-lang/lapis-js';
 
 const IntExpr = data(({ Family }) => ({
     IntLit: { value: Number },
-    Add: { left: Family, right: Family }
-}))
-.fold('eval', { out: Number }, {
-    IntLit({ value }) { return value; },
-    Add({ left, right }) { return left + right; }
-});
+    Add: { left: Family, right: Family },
+
+    eval: {
+        op: 'fold',
+        spec: { out: Number },
+        IntLit({ value }) { return value; },
+        Add({ left, right }) { return left + right; }
+    }
+}));
 
 // Extend with multiplication - inherited Add works with new Mul
-const ExtendedExpr = IntExpr.extend(({ Family }) => ({
-    Mul: { left: Family, right: Family }
-}))
-.fold('eval', {
-    Mul({ left, right }) { return left * right; }
-});
+const ExtendedExpr = data(({ Family }) => ({
+    [extend]: IntExpr,
+    Mul: { left: Family, right: Family },
+    eval: {
+        op: 'fold',
+        spec: { out: Number },
+        Mul({ left, right }) { return left * right; }
+    }
+}));
 
 // Expression: (2 + 3) * 4
 const product = ExtendedExpr.Mul({
@@ -1020,23 +1183,28 @@ import { data, parent } from '@lapis-lang/lapis-js';
 
 const Peano = data(({ Family }) => ({
     Zero: {},
-    Succ: { pred: Family }
-}))
-.fold('toValue', { out: Number }, {
-    Zero() { return 0; },
-    Succ({ pred }) { return 1 + pred; }
-});
-
-const ExtendedPeano = Peano.extend(({ Family }) => ({
-    NegSucc: { pred: Family }
-}))
-.fold('toValue', {
-    NegSucc({ pred }) { return -1 + pred; },
-    Succ(fields) {
-        const parentResult = fields[parent]!() as number;
-        return parentResult * 10;  // Override: scale by 10
+    Succ: { pred: Family },
+    toValue: {
+        op: 'fold',
+        spec: { out: Number },
+        Zero() { return 0; },
+        Succ({ pred }) { return 1 + pred; }
     }
-});
+}));
+
+const ExtendedPeano = data(({ Family }) => ({
+    [extend]: Peano,
+    NegSucc: { pred: Family },
+    toValue: {
+        op: 'fold',
+        spec: { out: Number },
+        NegSucc({ pred }) { return -1 + pred; },
+        Succ() {
+            const parentResult = this[parent]!() as number;
+            return parentResult * 10;  // Override: scale by 10
+        }
+    }
+}));
 
 console.log(ExtendedPeano.Succ({ pred: ExtendedPeano.Zero }).toValue); // 10
 console.log(Peano.Succ({ pred: Peano.Zero }).toValue); // 1 (original)
@@ -1044,15 +1212,23 @@ console.log(Peano.Succ({ pred: Peano.Zero }).toValue); // 1 (original)
 
 ## Type Parameter Transformations with Map
 
-`.map()` transforms type parameter values while preserving ADT structure, unlike `.fold()` which collapses structures.
+Map operations transform type parameter values while preserving ADT structure. They are defined inline using the declarative syntax:
 
 ```ts
 const List = data(({ Family, T }) => ({
     Nil: {},
-    Cons: { head: T, tail: Family(T) }
-}))
-.map('increment', {}, { T: (x) => x + 1 })
-.map('stringify', (Family) => ({ out: Family(String) }), { T: (x) => String(x) });
+    Cons: { head: T, tail: Family(T) },
+    increment: {
+        op: 'map',
+        spec: { out: Family },
+        T: (x) => x + 1
+    },
+    stringify: {
+        op: 'map',
+        spec: { out: Family },
+        T: (x) => String(x)
+    }
+}));
 
 const list = List.Cons(1, List.Cons(2, List.Cons(3, List.Nil)));
 
@@ -1064,179 +1240,157 @@ console.log(typeof strings.head); // 'string' (type changed)
 
 // Multiple type parameters
 const Pair = data(({ T, U }) => ({
-    MakePair: { first: T, second: U }
-}))
-.map('transform', {}, {
-    T: (x) => x * 2,
-    U: (s) => s.toUpperCase()
-});
+    MakePair: { first: T, second: U },
+    transform: {
+        op: 'map',
+        spec: { out: Family },
+        T: (x) => x * 2,
+        U: (s) => s.toUpperCase()
+    }
+}));
 
 // Map with arguments
 const List2 = data(({ Family, T }) => ({
     Nil: {},
-    Cons: { head: T, tail: Family }
-}))
-.map('scale', (Family) => ({ out: Family }), { T: (x, factor) => x * factor });
+    Cons: { head: T, tail: Family },
+    scale: {
+        op: 'map',
+        spec: { out: Family },
+        T: (x, factor) => x * factor
+    }
+}));
 
 const scaled = list.scale(10); // All values multiplied by 10
 ```
 
-**Key points:**
-
-- Syntax: `.map(name, spec, { T: fn, U: fn })`
-- Spec parameter options:
-  - `{}` - No validation
-  - `{ out: ADT }` - Validates return type against fixed ADT
-  - `(Family) => ({ out: Family })` - Callback form for recursive ADTs, returns same family type with transformed parameters
-  - `(Family) => ({ out: Family(String) })` - Callback form specifying concrete type parameters for output validation
-- Returns new instances with same variant constructors
-- Transform functions can accept arguments (passed through recursive calls)
-- Partial transforms allowed (missing transforms leave values unchanged)
-- Operation names must be camelCase
-- **Map operations follow UAP**: parameterless maps are properties, parameterized maps are methods
-
 ## Unfold Operations (Corecursion/Anamorphisms)
 
-`.unfold()` generates ADT instances through corecursion (anamorphisms), the dual of fold. While fold consumes structures bottom-up, unfold produces structures top-down from a seed value.
+Unfold operations generate ADT instances through corecursion (anamorphisms), the dual of fold. While fold consumes structures bottom-up, unfold produces structures top-down from a seed value.
+
+Unfolds are defined inline within the ADT/codata declaration using the declarative syntax: `{ op: 'unfold', spec: {...}, handlers... }`. This co-locates type definitions with their constructors for clarity.
 
 ### Basic Unfold Operations
+
+Each unfold handler inspects the seed value and decides whether to produce its variant. Handlers return either:
+
+- An object `{ field: value, ... }` containing field values to construct that variant
+- `null` to indicate the handler doesn't match (try next variant)
+
+The first handler that returns a non-null object determines which variant gets constructed. For `Family` fields, the returned value becomes the seed for recursive unfolding.
 
 ```js
 const List = data(({ Family }) => ({
     Nil: {},
-    Cons: { head: Number, tail: Family }
-}))
-.unfold('Range', (List) => ({ in: Number, out: List }), {
-    Nil: (n) => (n <= 0 ? {} : null),
-    Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
-});
+    Cons: { head: Number, tail: Family },
+    Range: {
+        op: 'unfold',
+        spec: { in: Number, out: Family },
+        Nil: (n) => (n <= 0 ? {} : null),  // Return {} to produce Nil when n <=> 0
+        Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)  // Return fields for Cons, n-1 seeds tail
+    }
+}));
 
 const countdown = List.Range(5);
 // Creates: List.Cons(5, List.Cons(4, List.Cons(3, List.Cons(2, List.Cons(1, List.Nil)))))
 
-// Works with parameterized ADTs - operation installed on specific instantiation
+// Works with parameterized ADTs - operations defined inline
 const GenericList = data(({ Family, T }) => ({
     Nil: {},
-    Cons: { head: T, tail: Family }
-}));
-
-const NumList = GenericList(Number)
-    .unfold('Range', (NumList) => ({ in: Number, out: NumList }), {
+    Cons: { head: T, tail: Family },
+    // Unfold operation available on all instantiations
+    Range: {
+        op: 'unfold',
+        spec: { in: Number, out: Family },
         Nil: (n) => (n <= 0 ? {} : null),
         Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
-    });
+    }
+}));
 
-// Operation only available on NumList, not on GenericList or GenericList(String)
+const NumList = GenericList(Number);
+
+// Unfold operation available on all instantiations
 const nums = NumList.Range(3);  // Works
-// GenericList(String).Range(3);  // Error: Range not defined
+const strs = GenericList(String).Range(3);  // Also works
 ```
 
 ### Binary Operations with Fold
 
-Fold operations with parameterized input enable clean binary and n-ary operations:
+Fold operations with parameterized input enable binary operations:
 
 ```ts
-const List = data(({ Family, T }) => ({
-    Nil: {},
-    Cons: { head: T, tail: Family(T) }
-}));
-
 const Pair = data(({ T, U }) => ({
     MakePair: { first: T, second: U }
+}));
+
+const List = data(({ Family, T }) => ({
+    Nil: {},
+    Cons: { head: T, tail: Family(T) },
+    zip: {
+        op: 'fold',
+        Nil() { return Family(T).Nil; },
+        Cons({ head, tail }, ys) {
+            // If other list is empty, stop
+            if (!ys || ys.constructor.name === 'Nil')
+                return Family(T).Nil;
+
+            const PairType = Pair(typeof head, typeof ys.head);
+            return Family(T).Cons({
+                head: PairType.MakePair({ first: head, second: ys.head }),
+                tail: tail(ys.tail)  // tail is a partially applied function
+            });
+        }
+    }
 }));
 
 // Instantiate types
 const NumList = List(Number);
 const StrList = List(String);
 
-// Define zip as a fold with input guard
-NumList.fold('zip', { in: StrList, out: List(Object) }, (List) => ({
-    Nil(other) { return List.Nil; },
-    Cons({ head, tail }, other) {
-        // If other list is empty, stop
-        if (!other || other.constructor.name === 'Nil')
-            return List.Nil;
-
-        const PairType = Pair(Number, String);
-        return List.Cons(
-            PairType.MakePair(head, other.head),
-            tail(other.tail)  // tail is a partially applied function
-        );
-    }
-}));
-
 // Usage
-const nums = NumList.Cons(1, NumList.Cons(2, NumList.Cons(3, NumList.Nil)));
-const strs = StrList.Cons("a", StrList.Cons("b", StrList.Cons("c", StrList.Nil)));
+const nums = NumList.Cons({ head: 1, tail: NumList.Cons({ head: 2, tail: NumList.Cons({ head: 3, tail: NumList.Nil }) }) });
+const strs = StrList.Cons({ head: "a", tail: StrList.Cons({ head: "b", tail: StrList.Cons({ head: "c", tail: StrList.Nil }) }) });
 const zipped = nums.zip(strs);
 
+// zipped contains pairs: (1, "a"), (2, "b"), (3, "c")
 ```
-
-### Object Literal Guards in Specs
-
-The `in` property of a spec can use **object literal guards** to validate structured input:
-
-```ts
-// Single argument - simple guard
-{ in: Number, out: SomeType }
-
-// Multiple arguments - object literal guard
-{ in: { x: Number, y: String }, out: SomeType }
-
-// Nested structure validation
-{ in: { list1: List(Number), list2: List(String) }, out: List(Pair(Number, String)) }
-```
-
-Object literal guards validate that:
-
-- Input is an object with exactly the specified fields
-- Each field value matches its guard (primitive, ADT, predicate, etc.)
-- Runtime validation throws `TypeError` if validation fails
-
-**Key points:**
-
-- Syntax: `.unfold(name, spec, handlers)` where handlers return `{ field: value, ... }` or `null`
-- Spec: `(ADT) => ({ in: Guard, out: ADT })` specifies input and output types
-- Object literal guards `{ xs: Type1, ys: Type2 }` validate multi-argument inputs
-- Handlers return field object or `null` to terminate generation
-- Each handler returns field values as seeds for recursive construction
-- Return `null` to skip a variant (handler doesn't match current seed)
-- First non-null handler determines which variant to construct
-- Unfold creates static methods (PascalCase required)
-- Dual to fold: fold consumes (catamorphism), unfold produces (anamorphism)
-- Unfolds are stack-safe through iterative implementation
-- When called on parameterized ADT instantiation (e.g., `List(Number)`), operation is installed only on that specific instantiation
 
 ## Merge Operations (Deforestation)
 
-`.merge()` composes multiple operations (fold, map, unfold) into a single fused operation, eliminating intermediate allocations.
+Merge operations compose multiple operations (fold, map, unfold) into a single fused operation, eliminating intermediate allocations. They are defined inline using the declarative syntax:
 
 ### Recursion Schemes
 
 | Scheme | Operations | Direction | Use Case |
 |--------|-----------|-----------|----------|
-| **Catamorphism** | `.fold()` | Bottom-up (leaves → root) | Consume/reduce structures |
-| **Anamorphism** | `.unfold()` | Top-down (seed → structure) | Generate/produce structures |
-| **Hylomorphism** | `.unfold()` + `.fold()` | Generate then consume | Transform without intermediate structure |
-| **Paramorphism** | `.map()` + `.fold()` | Transform then consume | Process with transformations |
-| **Apomorphism** | `.unfold()` + `.map()` | Generate then transform | Produce with transformations |
+| **Catamorphism** | Fold operation | Bottom-up (leaves → root) | Consume/reduce structures |
+| **Anamorphism** | Unfold operation | Top-down (seed → structure) | Generate/produce structures |
+| **Hylomorphism** | Unfold + fold | Generate then consume | Transform without intermediate structure |
+| **Paramorphism** | Map + fold | Transform then consume | Process with transformations |
+| **Apomorphism** | Unfold + map | Generate then transform | Produce with transformations |
 
 ### Example
 
 ```js
 const List = data(({ Family }) => ({
     Nil: {},
-    Cons: { head: Number, tail: Family }
-}))
-.unfold('Range', (List) => ({ in: Number, out: List }), {
-    Nil: (n) => (n <= 0 ? {} : null),
-    Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
-})
-.fold('product', { out: Number }, {
-    Nil() { return 1; },
-    Cons({ head, tail }) { return head * tail; }
-})
-.merge('Factorial', ['Range', 'product']);
+    Cons: { head: Number, tail: Family },
+    Range: {
+        op: 'unfold',
+        spec: { in: Number, out: Family },
+        Nil: (n) => (n <= 0 ? {} : null),
+        Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
+    },
+    product: {
+        op: 'fold',
+        spec: { out: Number },
+        Nil() { return 1; },
+        Cons({ head, tail }) { return head * tail; }
+    },
+    Factorial: {
+        op: 'merge',
+        operations: ['Range', 'product']
+    }
+}));
 
 console.log(List.Factorial(5)); // 120 (5 * 4 * 3 * 2 * 1) - no intermediate list created
 ```
@@ -1253,18 +1407,18 @@ The merge operation validates composition to ensure correctness:
 
 ```ts
 // Valid compositions
-.merge('name', ['unfold1', 'fold1'])           // hylomorphism
-.merge('name', ['map1', 'fold1'])              // paramorphism
-.merge('name', ['unfold1', 'map1'])            // apomorphism
-.merge('name', ['map1', 'map2', 'fold1'])      // multiple maps
-.merge('name', ['unfold1', 'map1', 'fold1'])   // full pipeline
+Factorial: { op: 'merge', operations: ['unfold1', 'fold1'] }           // hylomorphism
+doubleSum: { op: 'merge', operations: ['map1', 'fold1'] }              // paramorphism
+generate: { op: 'merge', operations: ['unfold1', 'map1'] }             // apomorphism
+pipeline: { op: 'merge', operations: ['map1', 'map2', 'fold1'] }       // multiple maps
+full: { op: 'merge', operations: ['unfold1', 'map1', 'fold1'] }        // full pipeline
 
-// Invalid compositions
-.merge('name', ['fold1'])                      // ✗ Error: need at least 2 operations
-.merge('name', [])                             // ✗ Error: empty array
-.merge('name', ['unfold1', 'unfold2'])         // ✗ Error: multiple unfolds
-.merge('name', ['fold1', 'fold2'])             // ✗ Error: multiple folds
-.merge('name', ['unfold1', 'unfold2', 'fold1']) // ✗ Error: multiple unfolds
+// Invalid compositions (would throw errors)
+// { op: 'merge', operations: ['fold1'] }                      // ✗ Error: need at least 2 operations
+// { op: 'merge', operations: [] }                             // ✗ Error: empty array
+// { op: 'merge', operations: ['unfold1', 'unfold2'] }         // ✗ Error: multiple unfolds
+// { op: 'merge', operations: ['fold1', 'fold2'] }             // ✗ Error: multiple folds
+// { op: 'merge', operations: ['unfold1', 'unfold2', 'fold1'] } // ✗ Error: multiple unfolds
 ```
 
 **Naming Conventions:**
@@ -1311,17 +1465,19 @@ const Stream = codata(({ Self, T }) => ({
 
 ### Unfold Operations (Constructing Codata)
 
-The `.unfold()` operation defines how to construct codata instances from seed values:
+Unfold operations define how to construct codata instances from seed values. They are defined inline using the declarative syntax:
 
 ```js
 const Stream = codata(({ Self, T }) => ({
     head: T,
-    tail: Self(T)
-}))
-.unfold('From', (Stream) => ({ in: Number, out: Stream(Number) }), {
-    head: (n) => n,           // Simple observer: return seed value
-    tail: (n) => n + 1        // Continuation: return next seed
-});
+    tail: Self(T),
+    From: {
+        op: 'unfold',
+        spec: { in: Number, out: Self },
+        head: (n) => n,           // Simple observer: return seed value
+        tail: (n) => n + 1        // Continuation: return next seed
+    }
+}));
 
 // Usage
 const nums = Stream.From(0);
@@ -1338,25 +1494,31 @@ console.log(nums.tail.tail.head); // 2
 
 ### Multiple Unfold Constructors
 
-Chain multiple `.unfold()` calls to define different ways to construct codata:
+Define multiple unfold operations inline to provide different ways to construct codata:
 
 ```js
 const Stream = codata(({ Self, T }) => ({
     head: T,
-    tail: Self(T)
-}))
-.unfold('From', (Stream) => ({ in: Number, out: Stream(Number) }), {
-    head: (n) => n,
-    tail: (n) => n + 1
-})
-.unfold('Constant', (Stream) => ({ in: Number, out: Stream(Number) }), {
-    head: (n) => n,
-    tail: (n) => n          // Same seed = constant stream
-})
-.unfold('Fibonacci', (Stream) => ({ in: { a: Number, b: Number }, out: Stream(Number) }), {
-    head: ({ a }) => a,
-    tail: ({ a, b }) => ({ a: b, b: a + b })
-});
+    tail: Self(T),
+    From: {
+        op: 'unfold',
+        spec: { in: Number, out: Self },
+        head: (n) => n,
+        tail: (n) => n + 1
+    },
+    Constant: {
+        op: 'unfold',
+        spec: { in: Number, out: Self },
+        head: (n) => n,
+        tail: (n) => n          // Same seed = constant stream
+    },
+    Fibonacci: {
+        op: 'unfold',
+        spec: { in: { a: Number, b: Number }, out: Self },
+        head: ({ a }) => a,
+        tail: ({ a, b }) => ({ a: b, b: a + b })
+    }
+}));
 
 const ones = Stream.Constant(1);
 const fib = Stream.Fibonacci({ a: 0, b: 1 });
@@ -1370,13 +1532,15 @@ Observers can accept parameters for computation:
 const Stream = codata(({ Self, T }) => ({
     head: T,
     tail: Self(T),
-    nth: { in: Number, out: T }  // Parametric observer
-}))
-.unfold('From', (Stream) => ({ in: Number, out: Stream(Number) }), {
-    head: (n) => n,
-    tail: (n) => n + 1,
-    nth: (n) => (index) => n + index  // Returns function taking index
-});
+    nth: { in: Number, out: T },  // Parametric observer
+    From: {
+        op: 'unfold',
+        spec: { in: Number, out: Self },
+        head: (n) => n,
+        tail: (n) => n + 1,
+        nth: (n) => (index) => n + index  // Returns function taking index
+    }
+}));
 
 const nums = Stream.From(0);
 console.log(nums.nth(5));      // 5
@@ -1413,13 +1577,15 @@ Codata naturally represents potentially infinite structures:
 const Tree = codata(({ Self }) => ({
     value: Number,
     left: Self,
-    right: Self
-}))
-.unfold('Create', (Tree) => ({ in: Number, out: Tree }), {
-    value: (n) => n,
-    left: (n) => n * 2,
-    right: (n) => n * 2 + 1
-});
+    right: Self,
+    Create: {
+        op: 'unfold',
+        spec: { in: Number, out: Self },
+        value: (n) => n,
+        left: (n) => n * 2,
+        right: (n) => n * 2 + 1
+    }
+}));
 
 const tree = Tree.Create(1);
 console.log(tree.value);              // 1
@@ -1433,14 +1599,16 @@ console.log(tree.left.left.value);    // 4
 Codata with parametric observers can model effects like IO:
 
 ```js
-const Console = codata(() => ({
+const Console = codata(({ Self }) => ({
     log: { in: String, out: undefined },
-    read: { out: String }
-}))
-.unfold('Create', (Console) => ({ out: Console }), {
-    log: () => (msg) => { console.log(msg); },
-    read: () => () => Promise.resolve('input')
-});
+    read: { out: String },
+    Create: {
+        op: 'unfold',
+        spec: { out: Self },
+        log: () => (msg) => { console.log(msg); },
+        read: () => () => Promise.resolve('input')
+    }
+}));
 
 const io = Console.Create();
 io.log('Hello, world!');
@@ -1450,17 +1618,18 @@ const input = await io.read();
 **Key points:**
 
 - Codata is defined by observers (destructors), not constructors
-- `.unfold()` creates static factory methods (PascalCase required)
+- Unfold operations create static factory methods (PascalCase required)
 - Observers can be simple (direct value), parametric (with input), or continuations (Self)
+- Declarative syntax: `OperationName: { op: 'unfold', spec: {...}, handlers... }` defined inline
+- Spec uses `Self` reference for output type (not the codata type name)
 - Lazy evaluation via Proxy enables infinite structures
 - Continuations are memoized for performance
-- Multiple unfold constructors can be chained
+- Multiple unfold constructors defined as separate inline operations
 - Natural representation of streams, infinite sequences, and effects
 
 **See also:**
 
 - `examples/codata-stream.mjs` - Comprehensive codata examples
-- `CODATA_DESIGN.md` - Detailed design document for codata features
 
 ## References, Inspirations, and Further Reading
 

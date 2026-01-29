@@ -16,11 +16,10 @@ const Stream = codata(({ Self, T }) => ({
     tail: Self(T),
     nth: { in: Number, out: T },           // Random access
     take: { in: Number, out: Array },       // Take first n elements
-    drop: { in: Number, out: Self(T) }      // Skip first n elements
-}));
-
-const StreamNum = Stream(Number)
-    .unfold('From', (Stream) => ({ in: Number, out: Stream }), {
+    drop: { in: Number, out: Self(T) },      // Skip first n elements
+    From: {
+        op: 'unfold',
+        spec: { in: Number, out: Self },
         head: (n) => n,
         tail: (n) => n + 1,
         nth: (n) => (index) => n + index,
@@ -32,7 +31,10 @@ const StreamNum = Stream(Number)
             return result;
         },
         drop: (n) => (count) => n + count
-    });
+    }
+}));
+
+const StreamNum = Stream(Number);
 
 console.log('\n=== Stream with Parametric Observers ===');
 
@@ -56,12 +58,13 @@ console.log('nums.drop(10).take(3):', dropped.take(3));     // [10, 11, 12]
 // Example 2: Infinite Grid/Matrix
 // =============================================================================
 
-const Grid = codata(() => ({
+const Grid = codata(({ Self }) => ({
     at: { in: { x: Number, y: Number }, out: Number },
     row: { in: Number, out: Array },
-    col: { in: Number, out: Array }
-}))
-    .unfold('Create', (Grid) => ({ in: Function, out: Grid }), {
+    col: { in: Number, out: Array },
+    Create: {
+        op: 'unfold',
+        spec: { in: Function, out: Self },
         at: (fn) => ({ x, y }) => fn(x, y),
         row: (fn) => (y) => {
             const result = [];
@@ -77,7 +80,8 @@ const Grid = codata(() => ({
             }
             return result;
         }
-    });
+    }
+}));
 
 console.log('\n=== Infinite Grid ===');
 
@@ -100,9 +104,10 @@ const Sequence = codata(({ Self }) => ({
     current: Number,
     next: Self,
     window: { in: Number, out: Array },
-    skip: { in: Number, out: Self }
-}))
-    .unfold('From', (Sequence) => ({ in: Number, out: Sequence }), {
+    skip: { in: Number, out: Self },
+    From: {
+        op: 'unfold',
+        spec: { in: Number, out: Self },
         current: (n) => n,
         next: (n) => n + 1,
         window: (n) => (size) => {
@@ -113,7 +118,8 @@ const Sequence = codata(({ Self }) => ({
             return result;
         },
         skip: (n) => (count) => n + count
-    });
+    }
+}));
 
 console.log('\n=== Sequence with Window Operations ===');
 
@@ -128,18 +134,20 @@ console.log('seq.skip(10).current:', seq.skip(10).current); // 11
 // Example 4: Dictionary/Map as Codata
 // =============================================================================
 
-const Dictionary = codata(() => ({
+const Dictionary = codata(({ Self }) => ({
     get: { in: String, out: String },
     has: { in: String, out: Boolean },
     keys: Array,
-    size: Number
-}))
-    .unfold('Create', (Dictionary) => ({ in: Object, out: Dictionary }), {
+    size: Number,
+    Create: {
+        op: 'unfold',
+        spec: { in: Object, out: Self },
         get: (obj) => (key) => obj[key] || 'undefined',
         has: (obj) => (key) => key in obj,
         keys: (obj) => Object.keys(obj),
         size: (obj) => Object.keys(obj).length
-    });
+    }
+}));
 
 console.log('\n=== Dictionary as Codata ===');
 
@@ -163,9 +171,10 @@ console.log('dict.size:', dict.size);                      // 3
 const TimeSeries = codata(({ Self }) => ({
     valueAt: { in: Number, out: Number },
     range: { in: { from: Number, to: Number, step: Number }, out: Array },
-    derivative: Self
-}))
-    .unfold('Linear', (TimeSeries) => ({ in: { slope: Number, intercept: Number }, out: TimeSeries }), {
+    derivative: Self,
+    Linear: {
+        op: 'unfold',
+        spec: { in: { slope: Number, intercept: Number }, out: Self },
         valueAt: ({ slope, intercept }) => (t) => slope * t + intercept,
         range: ({ slope, intercept }) => ({ from, to, step }) => {
             const result = [];
@@ -175,8 +184,10 @@ const TimeSeries = codata(({ Self }) => ({
             return result;
         },
         derivative: ({ slope }) => ({ slope: 0, intercept: slope })
-    })
-    .unfold('Quadratic', (TimeSeries) => ({ in: { a: Number, b: Number, c: Number }, out: TimeSeries }), {
+    },
+    Quadratic: {
+        op: 'unfold',
+        spec: { in: { a: Number, b: Number, c: Number }, out: Self },
         valueAt: ({ a, b, c }) => (t) => a * t * t + b * t + c,
         range: ({ a, b, c }) => ({ from, to, step }) => {
             const result = [];
@@ -186,7 +197,8 @@ const TimeSeries = codata(({ Self }) => ({
             return result;
         },
         derivative: ({ a, b }) => ({ slope: 2 * a, intercept: b })
-    });
+    }
+}));
 
 console.log('\n=== Time Series with Interpolation ===');
 
@@ -194,33 +206,35 @@ console.log('\n=== Time Series with Interpolation ===');
 const linear = TimeSeries.Linear({ slope: 2, intercept: 3 });
 console.log('linear.valueAt(0):', linear.valueAt(0));      // 3
 console.log('linear.valueAt(5):', linear.valueAt(5));      // 13
-console.log('linear.range({from:0, to:4, step:1}):', 
+console.log('linear.range({from:0, to:4, step:1}):',
     linear.range({ from: 0, to: 4, step: 1 }));            // [3, 5, 7, 9, 11]
 
 // f(t) = t^2 + 2t + 1 = (t+1)^2
 const quadratic = TimeSeries.Quadratic({ a: 1, b: 2, c: 1 });
 console.log('\nquadratic.valueAt(0):', quadratic.valueAt(0));  // 1
 console.log('quadratic.valueAt(2):', quadratic.valueAt(2));    // 9
-console.log('quadratic.range({from:0, to:3, step:1}):', 
+console.log('quadratic.range({from:0, to:3, step:1}):',
     quadratic.range({ from: 0, to: 3, step: 1 }));             // [1, 4, 9, 16]
 
 // =============================================================================
 // Example 6: Graph as Codata
 // =============================================================================
 
-const Graph = codata(() => ({
+const Graph = codata(({ Self }) => ({
     neighbors: { in: Number, out: Array },
     hasEdge: { in: { from: Number, to: Number }, out: Boolean },
-    degree: { in: Number, out: Number }
-}))
-    .unfold('FromAdjacencyList', (Graph) => ({ in: Object, out: Graph }), {
+    degree: { in: Number, out: Number },
+    FromAdjacencyList: {
+        op: 'unfold',
+        spec: { in: Object, out: Self },
         neighbors: (adj) => (node) => adj[node] || [],
         hasEdge: (adj) => ({ from, to }) => {
             const nodeNeighbors = adj[from] || [];
             return nodeNeighbors.includes(to);
         },
         degree: (adj) => (node) => (adj[node] || []).length
-    });
+    }
+}));
 
 console.log('\n=== Graph as Codata ===');
 
@@ -248,9 +262,10 @@ let nthCallCount = 0;
 const MemoStream = codata(({ Self }) => ({
     head: Number,
     tail: Self,
-    nth: { in: Number, out: Number }
-}))
-    .unfold('From', (MemoStream) => ({ in: Number, out: MemoStream }), {
+    nth: { in: Number, out: Number },
+    From: {
+        op: 'unfold',
+        spec: { in: Number, out: Self },
         head: (n) => n,
         tail: (n) => n + 1,
         nth: (n) => {
@@ -258,7 +273,8 @@ const MemoStream = codata(({ Self }) => ({
             console.log(`  Creating nth function for seed ${n}`);
             return (index) => n + index;
         }
-    });
+    }
+}));
 
 const memoNums = MemoStream.From(0);
 

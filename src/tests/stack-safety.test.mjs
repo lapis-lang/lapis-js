@@ -7,15 +7,17 @@ describe('Stack Safety Investigation', () => {
         test('small list should work fine', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family }
-            }))
-                .fold('sum', { out: Number }, {
+                Cons: { head: Number, tail: Family },
+                sum: {
+                    op: 'fold',
+                    spec: { out: Number },
                     Nil() { return 0; },
                     Cons({ head, tail }) { return head + tail; }
-                });
+                }
+            }));
 
             // Build a small list
-            let list= List.Nil;
+            let list = List.Nil;
             for (let i = 100; i > 0; i--) {
                 list = List.Cons({ head: i, tail: list });
             }
@@ -27,15 +29,17 @@ describe('Stack Safety Investigation', () => {
         test('medium list to check stack depth', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family }
-            }))
-                .fold('length', { out: Number }, {
+                Cons: { head: Number, tail: Family },
+                length: {
+                    op: 'fold',
+                    spec: { out: Number },
                     Nil() { return 0; },
                     Cons({ tail }) { return 1 + tail; }
-                });
+                }
+            }));
 
             // Build a medium list
-            let list= List.Nil;
+            let list = List.Nil;
             for (let i = 1000; i > 0; i--) {
                 list = List.Cons({ head: i, tail: list });
             }
@@ -47,16 +51,18 @@ describe('Stack Safety Investigation', () => {
         test('large list - likely to cause stack overflow', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family }
-            }))
-                .fold('length', { out: Number }, {
+                Cons: { head: Number, tail: Family },
+                length: {
+                    op: 'fold',
+                    spec: { out: Number },
                     Nil() { return 0; },
                     Cons({ tail }) { return 1 + tail; }
-                });
+                }
+            }));
 
             // Build a large list - this will likely overflow the stack
             // JavaScript typically has stack limit around 10,000-15,000 frames
-            let list= List.Nil;
+            let list = List.Nil;
             const size = 10000;
             for (let i = size; i > 0; i--) {
                 list = List.Cons({ head: i, tail: list });
@@ -78,15 +84,17 @@ describe('Stack Safety Investigation', () => {
         test('very large list - definitely should overflow without optimization', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family }
-            }))
-                .fold('length', { out: Number }, {
+                Cons: { head: Number, tail: Family },
+                length: {
+                    op: 'fold',
+                    spec: { out: Number },
                     Nil() { return 0; },
                     Cons({ tail }) { return 1 + tail; }
-                });
+                }
+            }));
 
             // Build a very large list
-            let list= List.Nil;
+            let list = List.Nil;
             const size = 100000;
             for (let i = size; i > 0; i--) {
                 list = List.Cons({ head: i, tail: list });
@@ -109,15 +117,17 @@ describe('Stack Safety Investigation', () => {
         test('deep tree should not overflow with stack-safe implementation', () => {
             const Tree = data(({ Family }) => ({
                 Leaf: { value: Number },
-                Node: { left: Family, right: Family, value: Number }
-            }))
-                .fold('sum', { out: Number }, {
+                Node: { left: Family, right: Family, value: Number },
+                sum: {
+                    op: 'fold',
+                    spec: { out: Number },
                     Leaf({ value }) { return value; },
                     Node({ left, right, value }) { return left + right + value; }
-                });
+                }
+            }));
 
             // Build a deep unbalanced tree (essentially a list)
-            let tree= Tree.Leaf({ value: 0 });
+            let tree = Tree.Leaf({ value: 0 });
             for (let i = 1; i <= 1000; i++) {
                 tree = Tree.Node({
                     left: tree,
@@ -144,17 +154,19 @@ describe('Stack Safety Investigation', () => {
         test('measure recursion depth and performance', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family }
-            }))
-                .fold('sum', { out: Number }, {
+                Cons: { head: Number, tail: Family },
+                sum: {
+                    op: 'fold',
+                    spec: { out: Number },
                     Nil() { return 0; },
                     Cons({ head, tail }) { return head + tail; }
-                });
+                }
+            }));
 
             const sizes = [100, 500, 1000, 5000];
 
             for (const size of sizes) {
-                let list= List.Nil;
+                let list = List.Nil;
                 for (let i = size; i > 0; i--) {
                     list = List.Cons({ head: 1, tail: list });
                 }
