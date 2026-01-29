@@ -28,11 +28,8 @@ export const parent = Symbol('parent');
 export const invariant = Symbol('invariant');
 export const IsSingleton = Symbol('IsSingleton');
 
-// Symbols for internal tracking
-const ParentADTSymbol = Symbol('ParentADT');
 const TypeArgsSymbol = Symbol('TypeArgs');
 const VariantNameSymbol = Symbol('VariantName');
-const HandlersSymbol = Symbol('Handlers');
 
 // WeakMap to store parent ADT references (for Comb Inheritance parent chain)
 const parentADTMap = new WeakMap();
@@ -822,7 +819,7 @@ function createFoldOperation(ADT, variants, opName, opDef) {
         let currentSearchADT = ADT;
 
         // Search each level in the inheritance chain
-        while (currentSearchADT && !handler) {
+        while (currentSearchADT) {
             const registry = adtTransformers.get(currentSearchADT);
             const transformer = registry?.get(opName);
 
@@ -846,7 +843,7 @@ function createFoldOperation(ADT, variants, opName, opDef) {
         // Look for parent handler (from parent ADT) for this[parent] access
         if (foundAtADT) {
             let parentADT = parentADTMap.get(foundAtADT);
-            while (parentADT && !parentHandler) {
+            while (parentADT) {
                 const parentRegistry = adtTransformers.get(parentADT);
                 const parentTransformer = parentRegistry?.get(opName);
 

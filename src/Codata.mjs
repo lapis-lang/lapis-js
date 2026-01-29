@@ -18,7 +18,8 @@ import {
 import {
     validateTypeSpec,
     validateSpecGuard,
-    isSelfRef as isSelfRefOps
+    isSelfRef,
+    SelfRefSymbol
 } from './operations.mjs';
 
 /**
@@ -44,8 +45,7 @@ const CodataTypeSymbol = Symbol('CodataType');
 // Symbol to store observer definitions on codata instances
 const ObserverMapSymbol = Symbol('ObserverMap');
 
-// Symbol to mark Self references for recursive codata
-const SelfRefSymbol = Symbol('SelfRef');
+
 
 // Symbol to store the seed value for codata instances
 const SeedSymbol = Symbol('Seed');
@@ -77,13 +77,6 @@ function createSelf() {
     (fn)[SelfRefSymbol] = true;
 
     return fn;
-}
-
-/**
- * Checks if a value is a SelfRef
- */
-function isSelfRef(value) {
-    return (typeof value === 'object' || typeof value === 'function') && value !== null && SelfRefSymbol in value;
 }
 
 /**
@@ -197,7 +190,7 @@ export function codata(declFn) {
         for (const [observerName, observerSpec] of Object.entries(observerDecl)) {
             // Check if this is an unfold operation
             const isUnfoldOp = isObjectLiteral(observerSpec) && observerSpec.op === 'unfold';
-            
+
             if (isUnfoldOp) {
                 // Unfold operations must be PascalCase
                 if (!isPascalCase(observerName)) {
@@ -223,7 +216,7 @@ export function codata(declFn) {
             if (isObjectLiteral(observerSpec) && observerSpec.op === 'unfold') {
                 continue;
             }
-            
+
             // Classify observer type
             const isSimple = isSimpleObserver(observerSpec);
             const isParametric = isParametricObserver(observerSpec);
@@ -399,7 +392,7 @@ function addUnfoldOperation(CodataType, observerMap, name, spec, handlers) {
 
     // Create the static factory method or property (UAP)
     const hasInput = 'in' in parsedSpec && parsedSpec.in !== undefined;
-    
+
     if (hasInput) {
         // Parameterized unfold: create as method
         CodataType[name] = function (seed) {

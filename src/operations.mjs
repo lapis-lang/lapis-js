@@ -196,10 +196,10 @@ export function validateSpecGuard(spec, specType, opName) {
 
     // Recursively check object literal guards
     if (isObjectLiteral(spec)) {
-        for (const [fieldName, fieldSpec] of Object.entries(spec)) {
+        for (const [, fieldSpec] of Object.entries(spec)) {
             // Note: Function IS allowed as a field guard (predicate validation)
             // Only reject Function at top level to prevent currying patterns
-            
+
             // Recursively validate nested object literals
             if (isObjectLiteral(fieldSpec)) {
                 validateSpecGuard(fieldSpec, specType, opName);
