@@ -1,32 +1,32 @@
 #!/usr/bin/env node
 
-import { data } from '@lapis-lang/lapis-js';
+import { data , op, spec} from '@lapis-lang/lapis-js';
 
 // Recursive ADT for Peano natural numbers
 const Peano = data(({ Family }) => ({
     Zero: {},
     Succ: { pred: Family },
     toValue: {
-        op: 'fold',
+        [op]: 'fold',
         out: Number,
         Zero() { return 0; },
         Succ({ pred }) { return 1 + pred; }
     },
     add: {
-        op: 'fold',
+        [op]: 'fold',
         out: Number,
         Zero() { return 0; },
         Succ({ pred }) { return 1 + pred; }
     },
     show: {
-        op: 'fold',
+        [op]: 'fold',
         out: String,
         Zero() { return '0'; },
         Succ({ pred }) { return `S(${pred})`; }
     },
     FromValue: {
-        op: 'unfold',
-        spec: { in: Number },
+        [op]: 'unfold',
+        [spec]: { in: Number },
         Zero: (n) => (n <= 0 ? {} : null),
         Succ: (n) => (n > 0 ? { pred: n - 1 } : null)
     }
@@ -36,10 +36,10 @@ console.log('=== Peano ADT Example ===\n');
 
 // Manual construction
 console.log('Manual construction:');
-const zero = Peano.Zero;
-const one = Peano.Succ({ pred: zero });
-const two = Peano.Succ({ pred: one });
-const three = Peano.Succ({ pred: two });
+const zero = Peano.Zero,
+    one = Peano.Succ({ pred: zero }),
+    two = Peano.Succ({ pred: one }),
+    three = Peano.Succ({ pred: two });
 
 console.log(`zero = ${zero.show} = ${zero.toValue}`);
 console.log(`one = ${one.show} = ${one.toValue}`);
@@ -48,8 +48,8 @@ console.log(`three = ${three.show} = ${three.toValue}`);
 
 // Construction via unfold
 console.log('\nConstruction via unfold:');
-const five = Peano.FromValue(5);
-const ten = Peano.FromValue(10);
+const five = Peano.FromValue(5),
+    ten = Peano.FromValue(10);
 
 console.log(`FromValue(5) = ${five.show} = ${five.toValue}`);
 console.log(`FromValue(10) = ${ten.show} = ${ten.toValue}`);

@@ -1,22 +1,22 @@
 /**
- * Codata Lazy Evaluation Tests
+ * Behavior Lazy Evaluation Tests
  * 
- * Tests for Proxy-based lazy evaluation of codata instances.
- * Phase 2: Lazy evaluation with memoization.
+ * Tests for Proxy-based lazy evaluation of behavior instances.
+ * Lazy evaluation with memoization.
  */
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { codata } from '../index.mjs';
+import { behavior, op, spec, operations } from '../index.mjs';
 
-describe('Codata - Proxy-Based Lazy Evaluation', () => {
-    it('should create codata instances with unfold', () => {
-        const Stream = codata(({ Self, T }) => ({
+describe('Behavior - Proxy-Based Lazy Evaluation', () => {
+    it('should create behavior instances with unfold', () => {
+        const Stream = behavior(({ Self, T }) => ({
             head: T,
             tail: Self(T),
             From: {
-                op: 'unfold',
-                spec: { in: Number, out: Self },
+                [op]: 'unfold',
+                [spec]: { in: Number, out: Self },
                 head: (n) => n,
                 tail: (n) => n + 1
             }
@@ -29,12 +29,12 @@ describe('Codata - Proxy-Based Lazy Evaluation', () => {
     it('should lazily evaluate simple observers', () => {
         let headCallCount = 0;
 
-        const Stream = codata(({ Self }) => ({
+        const Stream = behavior(({ Self }) => ({
             head: Number,
             tail: Self,
             From: {
-                op: 'unfold',
-                spec: { in: Number, out: Self },
+                [op]: 'unfold',
+                [spec]: { in: Number, out: Self },
                 head: (n) => {
                     headCallCount++;
                     return n;
@@ -62,12 +62,12 @@ describe('Codata - Proxy-Based Lazy Evaluation', () => {
     it('should memoize Self continuations', () => {
         let tailCallCount = 0;
 
-        const Stream = codata(({ Self }) => ({
+        const Stream = behavior(({ Self }) => ({
             head: Number,
             tail: Self,
             From: {
-                op: 'unfold',
-                spec: { in: Number, out: Self },
+                [op]: 'unfold',
+                [spec]: { in: Number, out: Self },
                 head: (n) => n,
                 tail: (n) => {
                     tailCallCount++;
@@ -83,7 +83,7 @@ describe('Codata - Proxy-Based Lazy Evaluation', () => {
 
         // Access tail first time
         const tail1 = stream.tail;
-        assert.ok(tail1, 'tail should return a codata instance');
+        assert.ok(tail1, 'tail should return a behavior instance');
         assert.equal(tailCallCount, 1, 'tail handler should be called once');
 
         // Access tail again - should return memoized instance
@@ -93,12 +93,12 @@ describe('Codata - Proxy-Based Lazy Evaluation', () => {
     });
 
     it('should support chained continuations', () => {
-        const Stream = codata(({ Self }) => ({
+        const Stream = behavior(({ Self }) => ({
             head: Number,
             tail: Self,
             From: {
-                op: 'unfold',
-                spec: { in: Number, out: Self },
+                [op]: 'unfold',
+                [spec]: { in: Number, out: Self },
                 head: (n) => n,
                 tail: (n) => n + 1
             }
@@ -114,50 +114,49 @@ describe('Codata - Proxy-Based Lazy Evaluation', () => {
     });
 
     it('should handle parametric observers', () => {
-        const Console = codata(({ Self }) => ({
+        const logs = [];
+        const inputs = ['first line', 'second line'];
+
+        const Console = behavior(({ Self }) => ({
             log: { in: String, out: undefined },
             read: { out: String },
             Create: {
-                op: 'unfold',
-                spec: { out: Self },
-                log: () => (msg) => {
-                    // In real implementation, would console.log(msg)
-                    return undefined;
-                },
-                read: () => () => {
-                    // In real implementation, would read from stdin
-                    return 'mock input';
-                }
+                [op]: 'unfold',
+                [spec]: { in: { sink: Array, source: Array }, out: Self },
+                log: ({ sink }) => (msg) => { sink.push(msg); },
+                read: ({ source }) => () => source.shift() ?? ''
             }
         }));
 
-        const console = Console.Create;
+        const con = Console.Create({ sink: logs, source: inputs });
 
         // log should be a function
-        assert.equal(typeof console.log, 'function', 'log should be a function');
+        assert.equal(typeof con.log, 'function', 'log should be a function');
 
-        // Calling log should work
-        const result = console.log('Hello');
+        // Calling log should actually record to the sink
+        const result = con.log('Hello');
         assert.equal(result, undefined);
+        assert.deepEqual(logs, ['Hello'], 'log should write to sink');
 
-        // read should also be a function
-        assert.equal(typeof console.read, 'function', 'read should be a function');
-        const input = console.read();
-        assert.equal(input, 'mock input');
+        // read should return from the source
+        assert.equal(typeof con.read, 'function', 'read should be a function');
+        assert.equal(con.read(), 'first line');
+        assert.equal(con.read(), 'second line');
+        assert.equal(con.read(), '');  // exhausted
 
         // Verify that accessing the same parametric observer returns the same function (memoized)
-        const logFn1 = console.log;
-        const logFn2 = console.log;
+        const logFn1 = con.log;
+        const logFn2 = con.log;
         assert.strictEqual(logFn1, logFn2, 'Parametric observer function should be memoized');
     });
 
-    it('should prevent setting properties on codata instances', () => {
-        const Stream = codata(({ Self }) => ({
+    it('should prevent setting properties on behavior instances', () => {
+        const Stream = behavior(({ Self }) => ({
             head: Number,
             tail: Self,
             From: {
-                op: 'unfold',
-                spec: { in: Number, out: Self },
+                [op]: 'unfold',
+                [spec]: { in: Number, out: Self },
                 head: (n) => n,
                 tail: (n) => n + 1
             }
@@ -175,12 +174,12 @@ describe('Codata - Proxy-Based Lazy Evaluation', () => {
     it('should validate unfold operation name is PascalCase', () => {
         assert.throws(
             () => {
-                codata(({ Self }) => ({
+                behavior(({ Self }) => ({
                     head: Number,
                     tail: Self,
                     from: {
-                        op: 'unfold',
-                        spec: { in: Number, out: Self },
+                        [op]: 'unfold',
+                        [spec]: { in: Number, out: Self },
                         head: (n) => n,
                         tail: (n) => n + 1
                     }
@@ -194,12 +193,12 @@ describe('Codata - Proxy-Based Lazy Evaluation', () => {
     it('should validate all observers have handlers', () => {
         assert.throws(
             () => {
-                codata(({ Self }) => ({
+                behavior(({ Self }) => ({
                     head: Number,
                     tail: Self,
                     From: {
-                        op: 'unfold',
-                        spec: { in: Number, out: Self },
+                        [op]: 'unfold',
+                        [spec]: { in: Number, out: Self },
                         head: (n) => n
                         // Missing tail handler
                     }
@@ -213,12 +212,12 @@ describe('Codata - Proxy-Based Lazy Evaluation', () => {
     it('should validate handlers are functions', () => {
         assert.throws(
             () => {
-                codata(({ Self }) => ({
+                behavior(({ Self }) => ({
                     head: Number,
                     tail: Self,
                     From: {
-                        op: 'unfold',
-                        spec: { in: Number, out: Self },
+                        [op]: 'unfold',
+                        [spec]: { in: Number, out: Self },
                         head: (n) => n,
                         tail: 42  // Not a function
                     }
@@ -232,12 +231,12 @@ describe('Codata - Proxy-Based Lazy Evaluation', () => {
     it('should validate no extra handlers are provided', () => {
         assert.throws(
             () => {
-                codata(({ Self }) => ({
+                behavior(({ Self }) => ({
                     head: Number,
                     tail: Self,
                     From: {
-                        op: 'unfold',
-                        spec: { in: Number, out: Self },
+                        [op]: 'unfold',
+                        [spec]: { in: Number, out: Self },
                         head: (n) => n,
                         tail: (n) => n + 1,
                         taill: (n) => n + 1  // Typo - extra handler
@@ -250,12 +249,12 @@ describe('Codata - Proxy-Based Lazy Evaluation', () => {
     });
 
     it('should support multiple type parameters', () => {
-        const Pair = codata(({ Self, T, U }) => ({
+        const Pair = behavior(({ Self, T, U }) => ({
             first: T,
             second: U,
             Create: {
-                op: 'unfold',
-                spec: { in: { x: Number, y: String }, out: Self },
+                [op]: 'unfold',
+                [spec]: { in: { x: Number, y: String }, out: Self },
                 first: ({ x, y }) => x,
                 second: ({ x, y }) => y
             }
@@ -267,12 +266,12 @@ describe('Codata - Proxy-Based Lazy Evaluation', () => {
     });
 
     it('should handle complex seed transformations', () => {
-        const Stream = codata(({ Self }) => ({
+        const Stream = behavior(({ Self }) => ({
             head: Number,
             tail: Self,
             Range: {
-                op: 'unfold',
-                spec: { in: { start: Number, end: Number }, out: Self },
+                [op]: 'unfold',
+                [spec]: { in: { start: Number, end: Number }, out: Self },
                 head: ({ start }) => start,
                 tail: ({ start, end }) => ({ start: start + 1, end })
             }
@@ -287,11 +286,11 @@ describe('Codata - Proxy-Based Lazy Evaluation', () => {
     it('should access observer properties without invoking them prematurely', () => {
         let computeCount = 0;
 
-        const Lazy = codata(({ Self }) => ({
+        const Lazy = behavior(({ Self }) => ({
             expensive: Number,
             Create: {
-                op: 'unfold',
-                spec: { in: Number, out: Self },
+                [op]: 'unfold',
+                [spec]: { in: Number, out: Self },
                 expensive: (n) => {
                     computeCount++;
                     return n * 2;
@@ -311,13 +310,13 @@ describe('Codata - Proxy-Based Lazy Evaluation', () => {
     });
 
     it('should handle nested continuation access', () => {
-        const Tree = codata(({ Self }) => ({
+        const Tree = behavior(({ Self }) => ({
             value: Number,
             left: Self,
             right: Self,
             Create: {
-                op: 'unfold',
-                spec: { in: Number, out: Self },
+                [op]: 'unfold',
+                [spec]: { in: Number, out: Self },
                 value: (n) => n,
                 left: (n) => n * 2,
                 right: (n) => n * 2 + 1
@@ -338,12 +337,12 @@ describe('Codata - Proxy-Based Lazy Evaluation', () => {
     });
 
     it('should support property existence checks with in operator', () => {
-        const Stream = codata(({ Self }) => ({
+        const Stream = behavior(({ Self }) => ({
             head: Number,
             tail: Self,
             From: {
-                op: 'unfold',
-                spec: { in: Number, out: Self },
+                [op]: 'unfold',
+                [spec]: { in: Number, out: Self },
                 head: (n) => n,
                 tail: (n) => n + 1
             }

@@ -1,25 +1,25 @@
 /**
- * Basic Codata Tests
+ * Basic Behavior Tests
  * 
- * Tests for core codata() function declaration and parsing.
- * Phase 1: Basic infrastructure without unfold/fold/map operations.
+ * Tests for core behavior() function declaration and parsing.
+ * Basic infrastructure without unfold/fold/map operations.
  */
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { codata, codataObservers } from '../index.mjs';
+import { behavior, behaviorObservers } from '../index.mjs';
 
-describe('Codata - Basic Declaration', () => {
-    it('should create a codata type with simple observers', () => {
-        const Point = codata(({ Self }) => ({
+describe('Behavior - Basic Declaration', () => {
+    it('should create a behavior type with simple observers', () => {
+        const Point = behavior(() => ({
             x: Number,
             y: Number
         }));
 
-        assert.ok(Point, 'Point codata should be created');
+        assert.ok(Point, 'Point behavior should be created');
 
         // Check that observer definitions are stored
-        const observers = codataObservers.get(Point);
+        const observers = behaviorObservers.get(Point);
         assert.ok(observers, 'Observers should be registered');
         assert.equal(observers.size, 2, 'Should have 2 observers');
 
@@ -37,13 +37,13 @@ describe('Codata - Basic Declaration', () => {
         assert.ok(yObserver.isSimple, 'y should be a simple observer');
     });
 
-    it('should create a codata type with Self continuations', () => {
-        const Stream = codata(({ Self, T }) => ({
+    it('should create a behavior type with Self continuations', () => {
+        const Stream = behavior(({ Self, T }) => ({
             head: T,
             tail: Self
         }));
 
-        const observers = codataObservers.get(Stream);
+        const observers = behaviorObservers.get(Stream);
         assert.equal(observers.size, 2, 'Should have 2 observers');
 
         const headObserver = observers.get('head');
@@ -54,24 +54,24 @@ describe('Codata - Basic Declaration', () => {
         assert.ok(!tailObserver.isSimple, 'tail should not be simple');
     });
 
-    it('should create a codata type with parameterized Self', () => {
-        const Stream = codata(({ Self, T }) => ({
+    it('should create a behavior type with parameterized Self', () => {
+        const Stream = behavior(({ Self, T }) => ({
             head: T,
             tail: Self(T)
         }));
 
-        const observers = codataObservers.get(Stream);
+        const observers = behaviorObservers.get(Stream);
         const tailObserver = observers.get('tail');
         assert.ok(tailObserver.isContinuation, 'tail with Self(T) should be a continuation');
     });
 
-    it('should create a codata type with parametric observers', () => {
-        const Console = codata(({ Self }) => ({
+    it('should create a behavior type with parametric observers', () => {
+        const Console = behavior(() => ({
             log: { in: String, out: undefined },
             read: { out: String }
         }));
 
-        const observers = codataObservers.get(Console);
+        const observers = behaviorObservers.get(Console);
 
         const logObserver = observers.get('log');
         assert.ok(logObserver.isParametric, 'log should be parametric');
@@ -83,7 +83,7 @@ describe('Codata - Basic Declaration', () => {
 
     it('should reject non-camelCase observer names', () => {
         assert.throws(
-            () => codata(({ Self }) => ({
+            () => behavior(() => ({
                 Head: Number  // PascalCase - invalid
             })),
             /Observer 'Head' must be camelCase/,
@@ -91,7 +91,7 @@ describe('Codata - Basic Declaration', () => {
         );
 
         assert.throws(
-            () => codata(({ Self }) => ({
+            () => behavior(() => ({
                 _head: Number  // Underscore prefix - invalid
             })),
             /Observer '_head' must be camelCase/,
@@ -101,27 +101,27 @@ describe('Codata - Basic Declaration', () => {
 
     it('should reject non-function arguments', () => {
         assert.throws(
-            () => codata({ head: Number }),
-            /codata\(\) requires a callback function/,
+            () => behavior({ head: Number }),
+            /behavior\(\) requires a callback function/,
             'Should reject object literals'
         );
 
         assert.throws(
-            () => codata(null),
-            /codata\(\) requires a callback function/,
+            () => behavior(null),
+            /behavior\(\) requires a callback function/,
             'Should reject null'
         );
     });
 
     it('should reject callbacks that do not return objects', () => {
         assert.throws(
-            () => codata(() => null),
+            () => behavior(() => null),
             /callback must return an object/,
             'Should reject callbacks returning null'
         );
 
         assert.throws(
-            () => codata(() => 42),
+            () => behavior(() => 42),
             /callback must return an object/,
             'Should reject callbacks returning primitives'
         );
@@ -129,35 +129,35 @@ describe('Codata - Basic Declaration', () => {
 
     it('should extract type parameter names from callback', () => {
         // Single type parameter
-        const Stream1 = codata(({ Self, T }) => ({
+        const Stream1 = behavior(({ Self, T }) => ({
             head: T,
             tail: Self(T)
         }));
-        assert.ok(Stream1, 'Should create codata with single type param');
+        assert.ok(Stream1, 'Should create behavior with single type param');
 
         // Multiple type parameters
-        const Pair = codata(({ Self, T, U }) => ({
+        const Pair = behavior(({ Self, T, U }) => ({
             first: T,
             second: U
         }));
-        assert.ok(Pair, 'Should create codata with multiple type params');
+        assert.ok(Pair, 'Should create behavior with multiple type params');
 
         // Custom type parameter names
-        const CustomStream = codata(({ Self, ItemType }) => ({
+        const CustomStream = behavior(({ Self, ItemType }) => ({
             current: ItemType,
             next: Self(ItemType)
         }));
-        assert.ok(CustomStream, 'Should create codata with custom type param names');
+        assert.ok(CustomStream, 'Should create behavior with custom type param names');
     });
 
     it('should support mixed observer types', () => {
-        const MixedCodata = codata(({ Self, T }) => ({
+        const MixedBehavior = behavior(({ Self, T }) => ({
             simpleField: Number,
             parametricMethod: { in: String, out: Boolean },
             continuation: Self(T)
         }));
 
-        const observers = codataObservers.get(MixedCodata);
+        const observers = behaviorObservers.get(MixedBehavior);
         assert.equal(observers.size, 3, 'Should have 3 observers');
 
         assert.ok(observers.get('simpleField').isSimple);

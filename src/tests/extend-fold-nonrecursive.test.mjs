@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { data, extend, parent } from '../index.mjs';
+import { data, extend, parent , op, spec, operations} from '../index.mjs';
 
 describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
     describe('Basic Extension', () => {
@@ -10,8 +10,8 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
                 Green: {},
                 Blue: {},
                 toHex: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Red() { return '#FF0000'; },
                     Green() { return '#00FF00'; },
                     Blue() { return '#0000FF'; }
@@ -23,8 +23,8 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
                 Yellow: {},
                 Orange: {},
                 toHex: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Yellow() { return '#FFFF00'; },
                     Orange() { return '#FFA500'; }
                 }
@@ -44,8 +44,8 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
             const Point = data(() => ({
                 Point2D: { x: Number, y: Number },
                 describe: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Point2D({ x, y }) { return `2D point at (${x}, ${y})`; }
                 }
             }));
@@ -54,8 +54,8 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
                 [extend]: Point,
                 Point3D: { x: Number, y: Number, z: Number },
                 describe: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Point3D({ x, y, z }) { return `3D point at (${x}, ${y}, ${z})`; }
                 }
             }));
@@ -73,8 +73,8 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
                 Green: {},
                 Blue: {},
                 toHex: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Red() { return '#FF0000'; },
                     Green() { return '#00FF00'; },
                     Blue() { return '#0000FF'; }
@@ -86,8 +86,8 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
                 Yellow: {},
                 Orange: {},
                 toHex: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Yellow() { return '#FFFF00'; },
                     Orange() { return '#FFA500'; }
                 }
@@ -105,8 +105,8 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
                 Green: {},
                 Blue: {},
                 brightness: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Red() { return 100; },
                     Green() { return 100; },
                     Blue() { return 100; }
@@ -118,8 +118,8 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
                 Yellow: {},
                 Orange: {},
                 brightness: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Yellow() { return 200; },
                     Orange() { return 200; },
                     Red() { return 150; } // Override ignores parent
@@ -143,8 +143,8 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
                 Green: {},
                 Blue: {},
                 brightness: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Red() { return 100; },
                     Green() { return 50; },
                     Blue() { return 75; }
@@ -156,8 +156,8 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
                 Yellow: {},
                 Orange: {},
                 brightness: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Yellow() { return 200; },
                     Red() { return this[parent] * 2; }, // Double parent value
                     Green() { return this[parent] + 50; } // Add to parent value
@@ -179,8 +179,8 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
             const Point = data(() => ({
                 Point2D: { x: Number, y: Number },
                 magnitude: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Point2D({ x, y }) { return Math.sqrt(x * x + y * y); }
                 }
             }));
@@ -189,8 +189,8 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
                 [extend]: Point,
                 Point3D: { x: Number, y: Number, z: Number },
                 magnitude: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Point3D({ x, y, z }) { return Math.sqrt(x * x + y * y + z * z); },
                     Point2D({ x, y }) { return this[parent] * 10; } // Scale parent result
                 }
@@ -216,8 +216,8 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
                 Green: {},
                 Blue: {},
                 toRGB: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Red() { return 'rgb(255, 0, 0)'; },
                     Green() { return 'rgb(0, 255, 0)'; },
                     Blue() { return 'rgb(0, 0, 255)'; }
@@ -229,8 +229,8 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
                 Yellow: {},
                 Orange: {},
                 toRGB: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Yellow() { return 'rgb(255, 255, 0)'; }, // New handler
                     Orange() { return 'rgb(255, 165, 0)'; }, // New handler
                     Red() { return this[parent].replace('255', '200'); } // Override
@@ -254,8 +254,8 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
                 Green: {},
                 Blue: {},
                 identify: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Red() { return this.constructor.name; },
                     Green() { return this.constructor.name; },
                     Blue() { return this.constructor.name; }
@@ -266,8 +266,8 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
                 [extend]: Color,
                 Yellow: {},
                 identify: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Yellow() { return this.constructor.name; }
                 }
             }));
@@ -281,8 +281,8 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
                 Red: {},
                 Green: {},
                 describe: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Red() { return 'red'; },
                     Green() { return 'green'; }
                 }
@@ -292,8 +292,8 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
                 [extend]: Color,
                 Blue: {},
                 describe: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Blue() { return 'blue'; },
                     _() {
                         return `${this.constructor.name}: ${this[parent]}`;
@@ -311,22 +311,22 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
                 Green: {},
                 Blue: {},
                 toHex: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Red() { return '#FF0000'; },
                     Green() { return '#00FF00'; },
                     Blue() { return '#0000FF'; }
                 },
                 toRGB: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Red() { return 'rgb(255, 0, 0)'; },
                     Green() { return 'rgb(0, 255, 0)'; },
                     Blue() { return 'rgb(0, 0, 255)'; }
                 },
                 describe: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Red() { return `${this.toHex}`; },
                     Green() { return `${this.toRGB}`; },
                     Blue() { return `${this.toHex}`; }
@@ -337,18 +337,18 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
                 [extend]: Color,
                 Yellow: {},
                 toHex: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Yellow() { return '#FFFF00'; }
                 },
                 toRGB: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Yellow() { return 'rgb(255, 255, 0)'; }
                 },
                 describe: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Yellow() { return `Yellow: ${this.toHex} or ${this.toRGB}`; }
                 }
             }));
@@ -361,14 +361,14 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
                 Red: {},
                 Green: {},
                 toHex: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Red() { return '#FF0000'; },
                     Green() { return '#00FF00'; }
                 },
                 describe: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Red() { return 'red'; },
                     Green() { return 'green'; }
                 }
@@ -378,13 +378,13 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
                 [extend]: Color,
                 Blue: {},
                 toHex: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Blue() { return '#0000FF'; }
                 },
                 describe: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Blue() { return 'blue'; },
                     _() {
                         return `Enhanced ${this[parent]} with hex ${this.toHex}`;
@@ -403,8 +403,8 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
                 Green: {},
                 Blue: {},
                 toHex: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Red() { return '#FF0000'; },
                     _(_instance) { return '#UNKNOWN'; }
                 }
@@ -415,8 +415,8 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
                 Yellow: {},
                 Orange: {},
                 toHex: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Yellow() { return '#FFFF00'; }
                     // Orange not specified - should use wildcard from parent
                 }
@@ -433,8 +433,8 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
                 Green: {},
                 Blue: {},
                 toHex: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Red() { return '#FF0000'; },
                     _(_instance) { return '#UNKNOWN'; }
                 }
@@ -445,8 +445,8 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
                 Yellow: {},
                 Orange: {},
                 toHex: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Yellow() { return '#FFFF00'; },
                     _() { return `#EXTENDED-${this.constructor.name}`; }
                 }
@@ -464,8 +464,8 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
                 Green: {},
                 Blue: {},
                 toHex: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Red() { return '#FF0000'; },
                     Green() { return '#00FF00'; },
                     Blue() { return '#0000FF'; }
@@ -477,8 +477,8 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
                 Yellow: {},
                 Orange: {},
                 toHex: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     _() { return `#NEW-${this.constructor.name}`; }
                 }
             }));
@@ -498,8 +498,8 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
                 Red: {},
                 Green: {},
                 family: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Red() { return 'primary'; },
                     Green() { return 'primary'; }
                 }
@@ -509,8 +509,8 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
                 [extend]: Color,
                 Blue: {},
                 family: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Blue() { return 'primary'; }
                 }
             }));
@@ -519,8 +519,8 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
                 [extend]: Extended1,
                 Yellow: {},
                 family: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Yellow() { return 'secondary'; }
                 }
             }));
@@ -538,8 +538,8 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
             const Color = data(() => ({
                 Red: {},
                 category: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Red() { return 'primary'; }
                 }
             }));
@@ -548,8 +548,8 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
                 [extend]: Color,
                 Green: {},
                 category: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Green() { return 'secondary'; }
                 }
             }));
@@ -558,8 +558,8 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
                 [extend]: Level1,
                 Blue: {},
                 category: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Blue() { return 'primary'; }
                 }
             }));
@@ -583,14 +583,14 @@ describe('Chaining', () => {
             Red: {},
             Green: {},
             toHex: {
-                op: 'fold',
-                spec: { out: String },
+                [op]: 'fold',
+                [spec]: { out: String },
                 Red() { return '#FF0000'; },
                 Green() { return '#00FF00'; }
             },
             brightness: {
-                op: 'fold',
-                spec: { out: Number },
+                [op]: 'fold',
+                [spec]: { out: Number },
                 Red() { return 100; },
                 Green() { return 50; }
             }
@@ -601,14 +601,14 @@ describe('Chaining', () => {
             Blue: {},
             Yellow: {},
             toHex: {
-                op: 'fold',
-                spec: { out: String },
+                [op]: 'fold',
+                [spec]: { out: String },
                 Blue() { return '#0000FF'; },
                 Yellow() { return '#FFFF00'; }
             },
             brightness: {
-                op: 'fold',
-                spec: { out: Number },
+                [op]: 'fold',
+                [spec]: { out: Number },
                 Blue() { return 75; },
                 Yellow() { return 200; }
             }
@@ -626,8 +626,8 @@ describe('Chaining', () => {
         const Base = data(() => ({
             A: {},
             op: {
-                op: 'fold',
-                spec: { out: Number },
+                [op]: 'fold',
+                [spec]: { out: Number },
                 A() { return 1; }
             }
         }));
@@ -637,15 +637,15 @@ describe('Chaining', () => {
                 [extend]: Base,
                 B: {},
                 op: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     B() { return 2; }
                 }
             })),
             C: {},
             op: {
-                op: 'fold',
-                spec: { out: Number },
+                [op]: 'fold',
+                [spec]: { out: Number },
                 C() { return 3; }
             }
         }));
@@ -667,8 +667,8 @@ describe('Error Handling', () => {
             [extend]: Color,
             Blue: {},
             newOp: {
-                op: 'fold',
-                spec: { out: String },
+                [op]: 'fold',
+                [spec]: { out: String },
                 Blue() { return 'blue'; },
                 _() { return 'color'; }
             }
@@ -685,8 +685,8 @@ describe('Error Handling', () => {
             Red: {},
             Green: {},
             toHex: {
-                op: 'fold',
-                spec: { out: String },
+                [op]: 'fold',
+                [spec]: { out: String },
                 Red() { return '#FF0000'; },
                 Green() { return '#00FF00'; }
             }
@@ -696,8 +696,8 @@ describe('Error Handling', () => {
             [extend]: Color,
             Blue: {},
             toHex: {
-                op: 'fold',
-                spec: { out: String },
+                [op]: 'fold',
+                [spec]: { out: String },
                 Blue() { return '#0000FF'; }
             }
         }));
@@ -710,8 +710,8 @@ describe('Error Handling', () => {
             Red: {},
             Green: {},
             toHex: {
-                op: 'fold',
-                spec: { out: String },
+                [op]: 'fold',
+                [spec]: { out: String },
                 Red() { return '#FF0000'; },
                 Green() { return '#00FF00'; }
             }
@@ -722,8 +722,8 @@ describe('Error Handling', () => {
             [extend]: Color,
             Blue: {},
             toHex: {
-                op: 'fold',
-                spec: { out: String },
+                [op]: 'fold',
+                [spec]: { out: String },
                 Blue() { return '#0000FF'; }
             }
         }));
@@ -738,8 +738,8 @@ test('should allow overriding handlers at multiple levels', () => {
         Red: {},
         Green: {},
         toHex: {
-            op: 'fold',
-            spec: { out: String },
+            [op]: 'fold',
+            [spec]: { out: String },
             Red() { return '#FF0000'; },
             Green() { return '#00FF00'; }
         }
@@ -749,8 +749,8 @@ test('should allow overriding handlers at multiple levels', () => {
         [extend]: Color,
         Blue: {},
         toHex: {
-            op: 'fold',
-            spec: { out: String },
+            [op]: 'fold',
+            [spec]: { out: String },
             Blue() { return '#0000FF'; }
         }
     }));
@@ -761,8 +761,8 @@ test('should allow overriding handlers at multiple levels', () => {
     const FurtherExtended = data(() => ({
         [extend]: ExtendedColor,
         toHex: {
-            op: 'fold',
-            spec: { out: String },
+            [op]: 'fold',
+            [spec]: { out: String },
             Blue() { return '#0000AA'; } // Override Blue handler
         }
     }));
@@ -779,8 +779,8 @@ describe('Recursive ADTs', () => {
             Nil: {},
             Cons: { head: T, tail: Family },
             isEmpty: {
-                op: 'fold',
-                spec: { out: Boolean },
+                [op]: 'fold',
+                [spec]: { out: Boolean },
                 Nil() { return true; },
                 Cons() { return false; }
             }
@@ -790,8 +790,8 @@ describe('Recursive ADTs', () => {
             [extend]: List,
             Single: { value: T },
             isEmpty: {
-                op: 'fold',
-                spec: { out: Boolean },
+                [op]: 'fold',
+                [spec]: { out: Boolean },
                 Single() { return false; }
             }
         }));

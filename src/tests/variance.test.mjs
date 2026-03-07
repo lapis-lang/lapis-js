@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { data } from '../index.mjs';
+import { data , op, spec, operations} from '../index.mjs';
 
 describe('Variance Investigation', () => {
     describe('Return Type Covariance (should be safe)', () => {
@@ -16,8 +16,8 @@ describe('Variance Investigation', () => {
                 Nil: {},
                 Cons: { head: Animal, tail: Family },
                 first: {
-                    op: 'fold',
-                    spec: { out: Animal },
+                    [op]: 'fold',
+                    [spec]: { out: Animal },
                     Nil() { return new Animal(); },
                     Cons({ head }) {
                         // Can we return a more specific type?
@@ -49,8 +49,8 @@ describe('Variance Investigation', () => {
                 Cat: {},
                 Dog: {},
                 create: {
-                    op: 'fold',
-                    spec: { out: Animal },
+                    [op]: 'fold',
+                    [spec]: { out: Animal },
                     Cat() { return new Animal(); },
                     Dog() { return new Dog(); } // Dog <: Animal
                 }
@@ -89,8 +89,8 @@ describe('Variance Investigation', () => {
                 CircleVariant: {},
                 RectVariant: {},
                 makeShape: {
-                    op: 'fold',
-                    spec: { out: Shape },
+                    [op]: 'fold',
+                    [spec]: { out: Shape },
                     CircleVariant() { return new Circle(5); },
                     RectVariant() { return new Rectangle(3, 4); }
                 }
@@ -125,8 +125,8 @@ describe('Variance Investigation', () => {
                 Nil: {},
                 Cons: { head: Dog, tail: Family },
                 describe: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Nil() { return 'empty'; },
                     Cons({ head }) {
                         // head is typed
@@ -152,8 +152,8 @@ describe('Variance Investigation', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family },
                 sum: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Nil() { return 0; },
                     Cons({ head, tail }) { return head + tail; }
                 }
@@ -177,8 +177,8 @@ describe('Variance Investigation', () => {
                 Nil: {},
                 Cons: { head: String, tail: Family },
                 concat: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Nil() { return ''; },
                     Cons({ head, tail }) { return head + tail; }
                 }
@@ -200,8 +200,8 @@ describe('Variance Investigation', () => {
                 True: {},
                 False: {},
                 toBool: {
-                    op: 'fold',
-                    spec: { out: Boolean },
+                    [op]: 'fold',
+                    [spec]: { out: Boolean },
                     True() { return true; },
                     False() { return false; }
                 }
@@ -228,8 +228,8 @@ describe('Variance Investigation', () => {
                 Nil: {},
                 Cons: { head: Dog, tail: Family },
                 getFirst: {
-                    op: 'fold',
-                    spec: { out: Dog },
+                    [op]: 'fold',
+                    [spec]: { out: Dog },
                     Nil() {
                         // What if we return Animal instead of Dog?
                         // This would be UNSOUND because callers expect Dog
@@ -269,8 +269,8 @@ describe('Variance Investigation', () => {
                 DogVariant: {},
                 CatVariant: {},
                 getAnimal: {
-                    op: 'fold',
-                    spec: { out: Animal },
+                    [op]: 'fold',
+                    [spec]: { out: Animal },
                     DogVariant() { return new Dog(); },
                     CatVariant() { return new Cat(); }
                 }
@@ -299,8 +299,8 @@ describe('Variance Investigation', () => {
                 BoolVariant: { val: Boolean },
                 BigIntVariant: { val: BigInt },
                 getType: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     NumVariant() { return 'number'; },
                     StrVariant() { return 'string'; },
                     BoolVariant() { return 'boolean'; },
@@ -330,8 +330,8 @@ describe('Variance Investigation', () => {
             const Data = data(() => ({
                 Variant: { val: CustomClass },
                 getValue: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Variant({ val }) { return val.value; }
                 }
             }));
@@ -350,8 +350,8 @@ describe('Variance Investigation', () => {
                 RegExpVariant: { val: RegExp },
                 ArrayVariant: { val: Array },
                 getTypeName: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     DateVariant() { return 'Date'; },
                     RegExpVariant() { return 'RegExp'; },
                     ArrayVariant() { return 'Array'; }
@@ -376,8 +376,8 @@ describe('Variance Investigation', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family },
                 sum: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Nil() { return 0; },
                     Cons({ head, tail }) { return head + tail; }
                 }
@@ -401,8 +401,8 @@ describe('Variance Investigation', () => {
                 Success: { value: Number },
                 Failure: { error: String },
                 toResult: {
-                    op: 'fold',
-                    spec: { out: Object },
+                    [op]: 'fold',
+                    [spec]: { out: Object },
                     Success({ value }) {
                         return { success: true, value };
                     },
@@ -461,8 +461,8 @@ describe('Variance Investigation', () => {
                 Just: { value: Number },
                 Nothing: {},
                 toNullable: {
-                    op: 'fold',
-                    spec: {},
+                    [op]: 'fold',
+                    [spec]: {},
                     Just({ value }) { return value; },
                     Nothing() { return null; }
                 }
@@ -484,8 +484,8 @@ describe('Variance Investigation', () => {
                 const Lazy = data(() => ({
                     Thunk: { fn: Function },
                     toFunction: {
-                        op: 'fold',
-                        spec: { out: Function },
+                        [op]: 'fold',
+                        [spec]: { out: Function },
                         Thunk({ fn }) { return fn; }
                     }
                 }));
@@ -503,18 +503,18 @@ describe('Variance Investigation', () => {
             const Point = data(() => ({
                 Point2D: { x: Number, y: Number },
                 asString: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Point2D({ x, y }) { return `(${x}, ${y})`; }
                 },
                 magnitude: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Point2D({ x, y }) { return Math.sqrt(x * x + y * y); }
                 },
                 asArray: {
-                    op: 'fold',
-                    spec: { out: Array },
+                    [op]: 'fold',
+                    [spec]: { out: Array },
                     Point2D({ x, y }) { return [x, y]; }
                 }
             }));

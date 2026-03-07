@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { data } from '../index.mjs';
+import { data , op, spec, operations} from '../index.mjs';
 
 describe('Fold Operation - `this` Context and Open Recursion', () => {
     test('destructured parameters receive folded values', () => {
@@ -9,8 +9,8 @@ describe('Fold Operation - `this` Context and Open Recursion', () => {
             Cons: { head: Number, tail: Family },
 
             sum: {
-                op: 'fold',
-                spec: { out: Number },
+                [op]: 'fold',
+                [spec]: { out: Number },
                 Nil({ }) { return 0; },
                 Cons({ head, tail }) {
                     // tail is the already-folded result (a Number)
@@ -30,14 +30,14 @@ describe('Fold Operation - `this` Context and Open Recursion', () => {
             Push: { value: T, rest: Family(T) },
 
             peek: {
-                op: 'fold',
+                [op]: 'fold',
                 Empty({ }) { return null; },
                 Push({ value }) { return value; }
             },
 
             // pop needs raw fields, not folded - use `this`
             pop: {
-                op: 'fold',
+                [op]: 'fold',
                 Empty({ }) { return null; },
                 Push({ }) {
                     // this.peek accesses another operation
@@ -63,16 +63,16 @@ describe('Fold Operation - `this` Context and Open Recursion', () => {
             Cons: { head: Number, tail: Family },
 
             length: {
-                op: 'fold',
-                spec: { out: Number },
+                [op]: 'fold',
+                [spec]: { out: Number },
                 Nil({ }) { return 0; },
                 Cons({ tail }) { return 1 + tail; }
             },
 
             // Use `this` to access other operations
             describe: {
-                op: 'fold',
-                spec: { out: String },
+                [op]: 'fold',
+                [spec]: { out: String },
                 Nil({ }) { return 'empty list'; },
                 Cons({ head }) {
                     // Compose with length operation via `this`
@@ -91,8 +91,8 @@ describe('Fold Operation - `this` Context and Open Recursion', () => {
             Cons: { head: Number, tail: Family },
 
             contains: {
-                op: 'fold',
-                spec: { in: Number, out: Boolean },
+                [op]: 'fold',
+                [spec]: { in: Number, out: Boolean },
                 Nil({ }) { return false; },
                 Cons({ head, tail }, searchValue) {
                     // tail is a partially-applied function (not the result yet)
@@ -114,16 +114,16 @@ describe('Fold Operation - `this` Context and Open Recursion', () => {
             Node: { value: Number, left: Family, right: Family },
 
             size: {
-                op: 'fold',
-                spec: { out: Number },
+                [op]: 'fold',
+                [spec]: { out: Number },
                 Leaf({ }) { return 1; },
                 Node({ left, right }) { return 1 + left + right; }
             },
 
             // Find path to value using open recursion
             findPath: {
-                op: 'fold',
-                spec: { in: Number },
+                [op]: 'fold',
+                [spec]: { in: Number },
                 Leaf({ value }, target) {
                     return value === target ? [value] : null;
                 },
@@ -164,8 +164,8 @@ describe('Fold Operation - `this` Context and Open Recursion', () => {
             Blue: {},
 
             name: {
-                op: 'fold',
-                spec: { out: String },
+                [op]: 'fold',
+                [spec]: { out: String },
                 Red() { return 'red'; },
                 _() {
                     // Wildcard accesses instance via this
@@ -185,8 +185,8 @@ describe('Fold Operation - `this` Context and Open Recursion', () => {
             Err: { error: String },
 
             isOk: {
-                op: 'fold',
-                spec: { out: Boolean },
+                [op]: 'fold',
+                [spec]: { out: Boolean },
                 Ok({ }) {
                     // No destructuring - use `this` to access fields
                     assert.strictEqual(typeof this.value, 'number');

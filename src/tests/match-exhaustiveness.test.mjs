@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { data, extend } from '../index.mjs';
+import { data, extend , op, spec, operations} from '../index.mjs';
 
 describe('Match Exhaustiveness Checking', () => {
     describe('Compile-time exhaustiveness', () => {
@@ -10,15 +10,15 @@ describe('Match Exhaustiveness Checking', () => {
                 Green: {},
                 Blue: {},
                 toHex: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Red() { return '#FF0000'; },
                     Green() { return '#00FF00'; },
                     Blue() { return '#0000FF'; }
                 },
                 toHex2: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Red() { return '#FF0000'; }
                 }
             }));
@@ -30,14 +30,14 @@ describe('Match Exhaustiveness Checking', () => {
                 Green: {},
                 Blue: {},
                 toHex: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Red() { return '#FF0000'; },
                     _() { return '#UNKNOWN'; }
                 },
                 toHex2: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     _() { return '#UNKNOWN'; }
                 }
             }));
@@ -49,8 +49,8 @@ describe('Match Exhaustiveness Checking', () => {
                 Green: {},
                 Blue: {},
                 toHex: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Red() { return '#FF0000'; },
                     Green() { return '#00FF00'; },
                     Blue() { return '#0000FF'; },
@@ -69,14 +69,14 @@ describe('Match Exhaustiveness Checking', () => {
                 Circle: { radius: Number },
                 Square: { side: Number },
                 area: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Circle({ radius }) { return Math.PI * radius * radius; },
                     Square({ side }) { return side * side; }
                 },
                 area2: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Circle({ radius }) { return Math.PI * radius * radius; }
                 }
             }));
@@ -88,20 +88,20 @@ describe('Match Exhaustiveness Checking', () => {
                 Green: {},
                 Blue: {},
                 toHex: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Red() { return '#FF0000'; },
                     Green() { return '#00FF00'; },
                     Blue() { return '#0000FF'; }
                 },
                 toHex2: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Red() { return '#FF0000'; }
                 },
                 toHex3: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Red() { return '#FF0000'; },
                     _() { return '#UNKNOWN'; }
                 }
@@ -113,19 +113,19 @@ describe('Match Exhaustiveness Checking', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family },
                 isEmpty: {
-                    op: 'fold',
-                    spec: { out: Boolean },
+                    [op]: 'fold',
+                    [spec]: { out: Boolean },
                     Nil() { return true; },
                     Cons() { return false; }
                 },
                 isEmpty2: {
-                    op: 'fold',
-                    spec: { out: Boolean },
+                    [op]: 'fold',
+                    [spec]: { out: Boolean },
                     Nil() { return true; }
                 },
                 isEmpty3: {
-                    op: 'fold',
-                    spec: { out: Boolean },
+                    [op]: 'fold',
+                    [spec]: { out: Boolean },
                     Nil() { return true; },
                     _() { return false; }
                 }
@@ -140,8 +140,8 @@ describe('Match Exhaustiveness Checking', () => {
                 Green: {},
                 Blue: {},
                 toHex: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Red() { return '#FF0000'; },
                     Green() { return '#00FF00'; },
                     Blue() { return '#0000FF'; }
@@ -160,8 +160,8 @@ describe('Match Exhaustiveness Checking', () => {
                 Green: {},
                 Blue: {},
                 toHex: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Red() { return '#FF0000'; }
                 }
             }));
@@ -179,8 +179,8 @@ describe('Match Exhaustiveness Checking', () => {
                 Green: {},
                 Blue: {},
                 toHex: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Red() { return '#FF0000'; },
                     _() { return '#UNKNOWN'; }
                 }
@@ -197,8 +197,8 @@ describe('Match Exhaustiveness Checking', () => {
                 Green: {},
                 Blue: {},
                 getName: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     _() { return this.constructor.name; }
                 }
             }));
@@ -217,8 +217,8 @@ describe('Match Exhaustiveness Checking', () => {
                 Yellow: {},
                 Orange: {},
                 toHex: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Red() { return '#FF0000'; },
                     Green() { return '#00FF00'; },
                     Blue() { return '#0000FF'; },
@@ -226,8 +226,8 @@ describe('Match Exhaustiveness Checking', () => {
                     Orange() { return '#FFA500'; }
                 },
                 toHex2: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Red() { return '#FF0000'; },
                     Green() { return '#00FF00'; },
                     Blue() { return '#0000FF'; }
@@ -242,8 +242,8 @@ describe('Match Exhaustiveness Checking', () => {
                 Yellow: {},
                 Orange: {},
                 toHex: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Red() { return '#FF0000'; },
                     Green() { return '#00FF00'; },
                     Blue() { return '#0000FF'; },
@@ -266,8 +266,8 @@ describe('Match Exhaustiveness Checking', () => {
                 NotFound: {},
                 InternalServerError: {},
                 toCode: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     OK() { return 200; },
                     Created() { return 201; },
                     BadRequest() { return 400; },
@@ -276,8 +276,8 @@ describe('Match Exhaustiveness Checking', () => {
                     InternalServerError() { return 500; }
                 },
                 isError: {
-                    op: 'fold',
-                    spec: { out: Boolean },
+                    [op]: 'fold',
+                    [spec]: { out: Boolean },
                     OK() { return false; },
                     Created() { return false; },
                     _() { return true; }

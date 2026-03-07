@@ -1,4 +1,4 @@
-import { data } from '@lapis-lang/lapis-js'
+import { data , op, spec, operations} from '@lapis-lang/lapis-js'
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -9,8 +9,8 @@ describe('Map Operations', () => {
                 Nil: {},
                 Cons: { head: T, tail: Family(T) },
                 increment: {
-                    op: 'map',
-                    spec: { out: Family },
+                    [op]: 'map',
+                    [spec]: { out: Family },
                     T: (x) => x + 1
                 }
             }));
@@ -35,8 +35,8 @@ describe('Map Operations', () => {
                 Nil: {},
                 Cons: { head: T, tail: Family(T) },
                 stringify: {
-                    op: 'map',
-                    spec: { out: Family },
+                    [op]: 'map',
+                    [spec]: { out: Family },
                     T: (x) => String(x)
                 }
             }));
@@ -62,8 +62,8 @@ describe('Map Operations', () => {
                 Nothing: {},
                 Just: { value: T },
                 double: {
-                    op: 'map',
-                    spec: { out: Family },
+                    [op]: 'map',
+                    [spec]: { out: Family },
                     T: (x) => x * 2
                 }
             }));
@@ -86,8 +86,8 @@ describe('Map Operations', () => {
                 Leaf: { value: T },
                 Node: { left: Family(T), right: Family(T), value: T },
                 increment: {
-                    op: 'map',
-                    spec: { out: Family },
+                    [op]: 'map',
+                    [spec]: { out: Family },
                     T: (x) => x + 1
                 }
             }));
@@ -110,8 +110,8 @@ describe('Map Operations', () => {
                 Leaf: { value: T },
                 Node: { left: Family(T), right: Family(T), value: T },
                 square: {
-                    op: 'map',
-                    spec: { out: Family },
+                    [op]: 'map',
+                    [spec]: { out: Family },
                     T: (x) => x * x
                 }
             }));
@@ -147,8 +147,8 @@ describe('Map Operations', () => {
             const Pair = data(({ Family, T, U }) => ({
                 MakePair: { first: T, second: U },
                 transform: {
-                    op: 'map',
-                    spec: { out: Family },
+                    [op]: 'map',
+                    [spec]: { out: Family },
                     T: (x) => x * 2,
                     U: (s) => s.toUpperCase()
                 }
@@ -166,8 +166,8 @@ describe('Map Operations', () => {
                 Left: { value: T },
                 Right: { value: T },
                 negate: {
-                    op: 'map',
-                    spec: { out: Family },
+                    [op]: 'map',
+                    [spec]: { out: Family },
                     T: (x) => -x
                 }
             }));
@@ -187,8 +187,8 @@ describe('Map Operations', () => {
                 Left: { value: T },
                 Right: { value: U },
                 convert: {
-                    op: 'map',
-                    spec: { out: Family },
+                    [op]: 'map',
+                    [spec]: { out: Family },
                     T: (x) => String(x),
                     U: (s) => s.length
                 }
@@ -214,8 +214,8 @@ describe('Map Operations', () => {
                 Nil: {},
                 Cons: { head: T, tail: Family(T) },
                 double: {
-                    op: 'map',
-                    spec: { out: Family },
+                    [op]: 'map',
+                    [spec]: { out: Family },
                     T: (x) => x * 2
                 }
             }));
@@ -239,8 +239,8 @@ describe('Map Operations', () => {
                     Nil: {},
                     Cons: { head: T, tail: Family(T) },
                     Increment: {
-                        op: 'map',
-                        spec: { out: Family },
+                        [op]: 'map',
+                        [spec]: { out: Family },
                         T: (x) => x + 1
                     }
                 })),
@@ -253,8 +253,8 @@ describe('Map Operations', () => {
                 () => data(({ Family, T }) => ({
                     Point2D: { x: T, y: T },
                     x: {
-                        op: 'map',
-                        spec: { out: Family },
+                        [op]: 'map',
+                        [spec]: { out: Family },
                         T: (v) => v * 2
                     }
                 })),
@@ -266,8 +266,8 @@ describe('Map Operations', () => {
             const Pair = data(({ Family, T, U }) => ({
                 MakePair: { first: T, second: U },
                 transformFirst: {
-                    op: 'map',
-                    spec: { out: Family },
+                    [op]: 'map',
+                    [spec]: { out: Family },
                     T: (x) => x * 2
                     // U transform missing
                 }
@@ -287,8 +287,8 @@ describe('Map Operations', () => {
                 Green: {},
                 Blue: {},
                 identity: {
-                    op: 'map',
-                    spec: { out: Family }
+                    [op]: 'map',
+                    [spec]: { out: Family }
                 }
             }));
 
@@ -302,8 +302,8 @@ describe('Map Operations', () => {
                 Nil: {},
                 Cons: { head: T, tail: Family(T) },
                 scale: {
-                    op: 'map',
-                    spec: { out: Family },
+                    [op]: 'map',
+                    [spec]: { out: Family },
                     T: (x, factor) => x * factor
                 }
             }));
@@ -324,8 +324,8 @@ describe('Map Operations', () => {
                 Nil: {},
                 Cons: { head: T, tail: Family(T) },
                 combine: {
-                    op: 'map',
-                    spec: { out: Family },
+                    [op]: 'map',
+                    [spec]: { out: Family },
                     T: (x, a, b) => x + a + b
                 }
             }));
@@ -348,8 +348,8 @@ describe('Map Operations', () => {
                 Nil: {},
                 Cons: { head: T, tail: Family(T) },
                 increment: {
-                    op: 'map',
-                    spec: { out: Family },
+                    [op]: 'map',
+                    [spec]: { out: Family },
                     T: (x) => x + 1
                 }
             }));
@@ -367,8 +367,8 @@ describe('Map Operations', () => {
                 Nothing: {},
                 Just: { value: T },
                 increment: {
-                    op: 'map',
-                    spec: { out: Family },
+                    [op]: 'map',
+                    [spec]: { out: Family },
                     T: (x) => x + 1
                 }
             }));
@@ -385,8 +385,8 @@ describe('Map Operations', () => {
             const Tagged = data(({ Family, T }) => ({
                 Value: { tag: String, value: T },
                 double: {
-                    op: 'map',
-                    spec: { out: Family },
+                    [op]: 'map',
+                    [spec]: { out: Family },
                     T: (x) => x * 2
                 }
             }));
@@ -405,18 +405,18 @@ describe('Map Operations', () => {
                 Nil: {},
                 Cons: { head: T, tail: Family(T) },
                 increment: {
-                    op: 'map',
-                    spec: { out: Family },
+                    [op]: 'map',
+                    [spec]: { out: Family },
                     T: (x) => x + 1
                 },
                 double: {
-                    op: 'map',
-                    spec: { out: Family },
+                    [op]: 'map',
+                    [spec]: { out: Family },
                     T: (x) => x * 2
                 },
                 stringify: {
-                    op: 'map',
-                    spec: { out: Family },
+                    [op]: 'map',
+                    [spec]: { out: Family },
                     T: (x) => String(x)
                 }
             }));
@@ -439,8 +439,8 @@ describe('Map Operations', () => {
                 Nil: {},
                 Cons: { head: T, tail: Family },
                 double: {
-                    op: 'map',
-                    spec: {},
+                    [op]: 'map',
+                    [spec]: {},
                     T: (x) => x * 2
                 }
             }));

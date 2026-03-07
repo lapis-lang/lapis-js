@@ -1,33 +1,33 @@
 /**
- * Codata Unfold Chaining Tests
+ * Behavior Unfold Chaining Tests
  * 
- * Tests for chaining multiple unfold operations on the same codata type.
+ * Tests for chaining multiple unfold operations on the same behavior type.
  */
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { codata } from '../index.mjs';
+import { behavior, op, spec, operations } from '../index.mjs';
 
-describe('Codata - Unfold Chaining', () => {
+describe('Behavior - Unfold Chaining', () => {
     it('should support chaining multiple unfold operations', () => {
-        const Stream = codata(({ Self, T }) => ({
+        const Stream = behavior(({ Self, T }) => ({
             head: T,
             tail: Self(T),
             From: {
-                op: 'unfold',
-                spec: { in: Number, out: Self },
+                [op]: 'unfold',
+                [spec]: { in: Number, out: Self },
                 head: (n) => n,
                 tail: (n) => n + 1
             },
             Constant: {
-                op: 'unfold',
-                spec: { in: Number, out: Self },
+                [op]: 'unfold',
+                [spec]: { in: Number, out: Self },
                 head: (n) => n,
                 tail: (n) => n  // Always the same value
             },
             Range: {
-                op: 'unfold',
-                spec: { in: { start: Number, end: Number }, out: Self },
+                [op]: 'unfold',
+                [spec]: { in: { start: Number, end: Number }, out: Self },
                 head: ({ start }) => start,
                 tail: ({ start, end }) => ({ start: start + 1, end })
             }
@@ -53,13 +53,13 @@ describe('Codata - Unfold Chaining', () => {
     });
 
     it('should support parametric observers in unfold', () => {
-        const Stream = codata(({ Self, T }) => ({
+        const Stream = behavior(({ Self, T }) => ({
             head: T,
             nth: { in: Number, out: T },
             tail: Self(T),
             From: {
-                op: 'unfold',
-                spec: { in: Number, out: Self },
+                [op]: 'unfold',
+                [spec]: { in: Number, out: Self },
                 head: (n) => n,
                 nth: (n) => (index) => n + index,
                 tail: (n) => n + 1
@@ -84,53 +84,56 @@ describe('Codata - Unfold Chaining', () => {
     });
 
     it('should support multiple parametric observers', () => {
-        const Console = codata(({ Self }) => ({
+        const logs = [];
+        const inputs = ['mock input'];
+
+        const Console = behavior(({ Self }) => ({
             log: { in: String, out: undefined },
             read: { out: String },
             write: { in: { msg: String, level: Number }, out: Boolean },
             Create: {
-                op: 'unfold',
-                spec: { out: Self },
-                log: () => (msg) => {
-                    // Mock console.log
-                    return undefined;
-                },
-                read: () => () => {
-                    // Mock read
-                    return 'mock input';
-                },
-                write: () => ({ msg, level }) => {
-                    // Mock write with complex input
-                    return level > 0;
+                [op]: 'unfold',
+                [spec]: { in: { sink: Array, source: Array }, out: Self },
+                log: ({ sink }) => (msg) => { sink.push(msg); },
+                read: ({ source }) => () => source.shift() ?? '',
+                write: ({ sink }) => ({ msg, level }) => {
+                    if (level > 0) { sink.push(msg); return true; }
+                    return false;
                 }
             }
         }));
 
-        const console = Console.Create;
+        const con = Console.Create({ sink: logs, source: inputs });
 
-        assert.equal(typeof console.log, 'function');
-        assert.equal(typeof console.read, 'function');
-        assert.equal(typeof console.write, 'function');
+        assert.equal(typeof con.log, 'function');
+        assert.equal(typeof con.read, 'function');
+        assert.equal(typeof con.write, 'function');
 
-        assert.equal(console.log('test'), undefined);
-        assert.equal(console.read(), 'mock input');
-        assert.equal(console.write({ msg: 'error', level: 1 }), true);
-        assert.equal(console.write({ msg: 'debug', level: 0 }), false);
+        assert.equal(con.log('test'), undefined);
+        assert.deepEqual(logs, ['test'], 'log should append to sink');
+
+        assert.equal(con.read(), 'mock input');
+        assert.equal(con.read(), '', 'exhausted source returns empty string');
+
+        assert.equal(con.write({ msg: 'error', level: 1 }), true);
+        assert.deepEqual(logs, ['test', 'error'], 'write at level>0 appends to sink');
+        assert.equal(con.write({ msg: 'debug', level: 0 }), false);
+        assert.deepEqual(logs, ['test', 'error'], 'write at level=0 does not append');
     });
 
     it('should maintain separate instances for different unfold operations', () => {
-        const Stream = codata(({ Self }) => ({
+        const Stream = behavior(({ Self }) => ({
             head: Number,
             tail: Self,
             From: {
-                op: 'unfold',
-                spec: { in: Number, out: Self },
+                [op]: 'unfold',
+                [spec]: { in: Number, out: Self },
                 head: (n) => n,
                 tail: (n) => n + 1
             },
             Constant: {
-                op: 'unfold',
-                spec: { in: Number, out: Self },
+                [op]: 'unfold',
+                [spec]: { in: Number, out: Self },
                 head: (n) => n,
                 tail: (n) => n
             }
@@ -151,12 +154,12 @@ describe('Codata - Unfold Chaining', () => {
     });
 
     it('should support unfold with complex seed transformations', () => {
-        const Fibonacci = codata(({ Self }) => ({
+        const Fibonacci = behavior(({ Self }) => ({
             current: Number,
             next: Self,
             From: {
-                op: 'unfold',
-                spec: { in: { a: Number, b: Number }, out: Self },
+                [op]: 'unfold',
+                [spec]: { in: { a: Number, b: Number }, out: Self },
                 current: ({ a }) => a,
                 next: ({ a, b }) => ({ a: b, b: a + b })
             }
@@ -172,19 +175,19 @@ describe('Codata - Unfold Chaining', () => {
         assert.equal(fib.next.next.next.next.next.current, 5);
     });
 
-    it('should return codata type for chaining after unfold', () => {
-        const Stream = codata(({ Self }) => ({
+    it('should return behavior type for chaining after unfold', () => {
+        const Stream = behavior(({ Self }) => ({
             head: Number,
             tail: Self,
             From: {
-                op: 'unfold',
-                spec: { in: Number, out: Self },
+                [op]: 'unfold',
+                [spec]: { in: Number, out: Self },
                 head: (n) => n,
                 tail: (n) => n + 1
             },
             Zeros: {
-                op: 'unfold',
-                spec: { out: Self },
+                [op]: 'unfold',
+                [spec]: { out: Self },
                 head: () => 0,
                 tail: () => 0  // Always return 0 as seed (constant zero stream)
             }

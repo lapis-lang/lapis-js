@@ -26,13 +26,13 @@ export default {
         },
         module: true,
         filename: 'index.mjs',
-        path: path.resolve(dirName, 'dist'),
+        path: path.resolve(dirName, 'dist')
     },
     plugins: [
         new ESLintWebpackPlugin({
             extensions: ['.mjs', '.js', '.json'],
             exclude: ['node_modules', 'dist', 'coverage'],
             fix: true
-        })
+        }),
     ]
 };

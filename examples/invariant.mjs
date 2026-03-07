@@ -3,17 +3,16 @@ import { data, invariant, extend } from '../src/index.mjs';
 // Example 1: Character range with ordering constraint
 console.log('=== Character Range Example ===');
 
-const isChar = (s) => typeof s === 'string' && s.length === 1;
+const isChar = (s) => typeof s === 'string' && s.length === 1,
+    CharRange = data(() => ({
+        Range: {
+            [invariant]: ({ start, end }) => start <= end,
+            start: isChar,
+            end: isChar
+        }
+    })),
+    lowercaseRange = CharRange.Range({ start: 'a', end: 'z' });
 
-const CharRange = data(() => ({
-    Range: {
-        [invariant]: ({ start, end }) => start <= end,
-        start: isChar,
-        end: isChar
-    }
-}));
-
-const lowercaseRange = CharRange.Range({ start: 'a', end: 'z' });
 console.log('Lowercase range:', lowercaseRange);
 
 try {
@@ -26,15 +25,15 @@ try {
 console.log('\n=== Rectangle Example ===');
 
 const Rectangle = data(() => ({
-    Rect: {
-        [invariant]: ({ width, height, area }) => width * height === area,
-        width: Number,
-        height: Number,
-        area: Number
-    }
-}));
+        Rect: {
+            [invariant]: ({ width, height, area }) => width * height === area,
+            width: Number,
+            height: Number,
+            area: Number
+        }
+    })),
 
-const validRect = Rectangle.Rect({ width: 5, height: 10, area: 50 });
+    validRect = Rectangle.Rect({ width: 5, height: 10, area: 50 });
 console.log('Valid rectangle:', validRect);
 
 try {
@@ -47,18 +46,18 @@ try {
 console.log('\n=== Triangle Example ===');
 
 const triangleInequality = ({ a, b, c }) =>
-    a + b > c && b + c > a && c + a > b;
+        a + b > c && b + c > a && c + a > b,
 
-const Triangle = data(() => ({
-    Triangle: {
-        [invariant]: triangleInequality,
-        a: Number,
-        b: Number,
-        c: Number
-    }
-}));
+    Triangle = data(() => ({
+        Triangle: {
+            [invariant]: triangleInequality,
+            a: Number,
+            b: Number,
+            c: Number
+        }
+    })),
+    validTriangle = Triangle.Triangle({ a: 3, b: 4, c: 5 });
 
-const validTriangle = Triangle.Triangle({ a: 3, b: 4, c: 5 });
 console.log('Valid triangle (3-4-5):', validTriangle);
 
 try {
@@ -71,17 +70,17 @@ try {
 console.log('\n=== Date Range Example ===');
 
 const DateRange = data(() => ({
-    Range: {
-        [invariant]: ({ startDate, endDate }) => startDate <= endDate,
-        startDate: Date,
-        endDate: Date
-    }
-}));
+        Range: {
+            [invariant]: ({ startDate, endDate }) => startDate <= endDate,
+            startDate: Date,
+            endDate: Date
+        }
+    })),
+    validDateRange = DateRange.Range({
+        startDate: new Date('2024-01-01'),
+        endDate: new Date('2024-12-31')
+    });
 
-const validDateRange = DateRange.Range({
-    startDate: new Date('2024-01-01'),
-    endDate: new Date('2024-12-31')
-});
 console.log('Valid date range:', validDateRange);
 
 try {
@@ -97,22 +96,23 @@ try {
 console.log('\n=== Regular Language Example ===');
 
 const RegularLanguage = data(() => ({
-    Empty: {},
-    Epsilon: {},
-    Symbol: { symbol: isChar }
-}));
+        Empty: {},
+        Epsilon: {},
+        Symbol: { symbol: isChar }
+    })),
 
-const ExtendedRegularLanguage = data(() => ({
-    [extend]: RegularLanguage,
-    Any: {},
-    Range: {
-        [invariant]: ({ start, end }) => start <= end,
-        start: isChar,
-        end: isChar
-    }
-}));
+    ExtendedRegularLanguage = data(() => ({
+        [extend]: RegularLanguage,
+        Any: {},
+        Range: {
+            [invariant]: ({ start, end }) => start <= end,
+            start: isChar,
+            end: isChar
+        }
+    })),
 
-const anyPattern = ExtendedRegularLanguage.Any;
+    anyPattern = ExtendedRegularLanguage.Any;
+
 console.log('Any pattern (wildcard):', anyPattern);
 
 const digitRange = ExtendedRegularLanguage.Range({ start: '0', end: '9' });

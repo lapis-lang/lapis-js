@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { data } from '../index.mjs';
+import { data , op, spec, operations} from '../index.mjs';
 
 describe('Spec Validation - Runtime Type Checking', () => {
     describe('spec.out - Fold Return Type Validation', () => {
@@ -9,8 +9,8 @@ describe('Spec Validation - Runtime Type Checking', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family },
                 length: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Nil() { return 0; },
                     Cons({ tail }) { return 1 + tail; }
                 }
@@ -28,8 +28,8 @@ describe('Spec Validation - Runtime Type Checking', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family },
                 badLength: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Nil() { return 'zero'; }, // Wrong: returns string instead of number
                     Cons({ tail }) { return 1 + tail; }
                 }
@@ -47,8 +47,8 @@ describe('Spec Validation - Runtime Type Checking', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family },
                 isEmpty: {
-                    op: 'fold',
-                    spec: { out: Boolean },
+                    [op]: 'fold',
+                    [spec]: { out: Boolean },
                     Nil() { return true; },
                     Cons() { return false; }
                 }
@@ -64,8 +64,8 @@ describe('Spec Validation - Runtime Type Checking', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family },
                 badIsEmpty: {
-                    op: 'fold',
-                    spec: { out: Boolean },
+                    [op]: 'fold',
+                    [spec]: { out: Boolean },
                     Nil() { return 1; }, // Wrong: returns number instead of boolean
                     Cons() { return false; }
                 }
@@ -82,8 +82,8 @@ describe('Spec Validation - Runtime Type Checking', () => {
                 Leaf: { value: Number },
                 Node: { left: Family, right: Family },
                 describe: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Leaf({ value }) { return 'Leaf(' + value + ')'; },
                     Node() { return 'Node'; }
                 }
@@ -99,8 +99,8 @@ describe('Spec Validation - Runtime Type Checking', () => {
                 Leaf: { value: Number },
                 Node: { left: Family, right: Family },
                 badDescribe: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Leaf({ value }) { return value; }, // Wrong: returns number instead of string
                     Node() { return 'Node'; }
                 }
@@ -121,8 +121,8 @@ describe('Spec Validation - Runtime Type Checking', () => {
                 Zero: {},
                 Succ: { pred: Family },
                 toResult: {
-                    op: 'fold',
-                    spec: { out: Result },
+                    [op]: 'fold',
+                    [spec]: { out: Result },
                     Zero() { return new Result(0); },
                     Succ({ pred }) { return new Result(pred.value + 1); }
                 }
@@ -142,8 +142,8 @@ describe('Spec Validation - Runtime Type Checking', () => {
                 Zero: {},
                 Succ: { pred: Family },
                 badToResult: {
-                    op: 'fold',
-                    spec: { out: Result },
+                    [op]: 'fold',
+                    [spec]: { out: Result },
                     Zero() { return 0; }, // Wrong: returns number instead of Result instance
                     Succ({ pred }) { return new Result(pred + 1); }
                 }
@@ -163,8 +163,8 @@ describe('Spec Validation - Runtime Type Checking', () => {
                 Green: {},
                 Blue: {},
                 isPrimary: {
-                    op: 'fold',
-                    spec: { out: Boolean },
+                    [op]: 'fold',
+                    [spec]: { out: Boolean },
                     Red() { return true; },
                     Green() { return true; },
                     Blue() { return true; }
@@ -182,8 +182,8 @@ describe('Spec Validation - Runtime Type Checking', () => {
                 Green: {},
                 Blue: {},
                 badIsPrimary: {
-                    op: 'fold',
-                    spec: { out: Boolean },
+                    [op]: 'fold',
+                    [spec]: { out: Boolean },
                     Red() { return 'yes'; }, // Wrong: returns string instead of boolean
                     Green() { return true; },
                     Blue() { return true; }
@@ -202,8 +202,8 @@ describe('Spec Validation - Runtime Type Checking', () => {
                 Green: {},
                 Blue: {},
                 toHex: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Red() { return '#FF0000'; },
                     Green() { return '#00FF00'; },
                     Blue() { return '#0000FF'; }
@@ -219,8 +219,8 @@ describe('Spec Validation - Runtime Type Checking', () => {
             const Point = data(() => ({
                 Point2D: { x: Number, y: Number },
                 magnitude: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Point2D({ x, y }) { return Math.sqrt(x * x + y * y); }
                 }
             }));
@@ -237,20 +237,20 @@ describe('Spec Validation - Runtime Type Checking', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family },
                 isEmpty: {
-                    op: 'fold',
-                    spec: { out: Boolean },
+                    [op]: 'fold',
+                    [spec]: { out: Boolean },
                     Nil() { return true; },
                     Cons() { return false; }
                 },
                 length: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Nil() { return 0; },
                     Cons({ tail }) { return 1 + tail; }
                 },
                 describe: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Nil() { return 'empty list'; },
                     Cons({ head, tail }) { return head + ', ' + tail; }
                 }
@@ -276,14 +276,14 @@ describe('Spec Validation - Runtime Type Checking', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family },
                 goodOp: {
-                    op: 'fold',
-                    spec: { out: Boolean },
+                    [op]: 'fold',
+                    [spec]: { out: Boolean },
                     Nil() { return true; },
                     Cons() { return false; }
                 },
                 badOp: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Nil() { return 'wrong'; }, // Wrong type
                     Cons({ tail }) { return 1 + tail; }
                 }
@@ -305,8 +305,8 @@ describe('Spec Validation - Runtime Type Checking', () => {
             const ADT = data(() => ({
                 Value: {},
                 getValue: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Value() { return 42; }
                 }
             }));
@@ -320,8 +320,8 @@ describe('Spec Validation - Runtime Type Checking', () => {
             const ADT = data(() => ({
                 Value: {},
                 getValue: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Value() { return 'hello'; }
                 }
             }));
@@ -335,8 +335,8 @@ describe('Spec Validation - Runtime Type Checking', () => {
             const ADT = data(() => ({
                 Value: {},
                 getValue: {
-                    op: 'fold',
-                    spec: { out: Boolean },
+                    [op]: 'fold',
+                    [spec]: { out: Boolean },
                     Value() { return true; }
                 }
             }));
@@ -353,8 +353,8 @@ describe('Spec Validation - Runtime Type Checking', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family },
                 Countdown: {
-                    op: 'unfold',
-                    spec: { in: Number, out: Family },
+                    [op]: 'unfold',
+                    [spec]: { in: Number, out: Family },
                     Nil: (n) => (n <= 0 ? {} : null),
                     Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
                 }
@@ -370,8 +370,8 @@ describe('Spec Validation - Runtime Type Checking', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family },
                 Countdown: {
-                    op: 'unfold',
-                    spec: { in: Number, out: Family },
+                    [op]: 'unfold',
+                    [spec]: { in: Number, out: Family },
                     Nil: (n) => (n <= 0 ? {} : null),
                     Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
                 }
@@ -388,8 +388,8 @@ describe('Spec Validation - Runtime Type Checking', () => {
                 Success: { value: String },
                 Error: { message: String },
                 Parse: {
-                    op: 'unfold',
-                    spec: { in: String, out: Family },
+                    [op]: 'unfold',
+                    [spec]: { in: String, out: Family },
                     Success: (s) => (s.length > 0 ? { value: s } : null),
                     Error: (s) => (s.length === 0 ? { message: 'empty string' } : null)
                 }
@@ -407,8 +407,8 @@ describe('Spec Validation - Runtime Type Checking', () => {
             const Result = data(({ Family }) => ({
                 Value: { num: Number },
                 FromSeed: {
-                    op: 'unfold',
-                    spec: { in: Seed, out: Family },
+                    [op]: 'unfold',
+                    [spec]: { in: Seed, out: Family },
                     Value: (seed) => ({ num: seed.value })
                 }
             }));
@@ -430,8 +430,8 @@ describe('Spec Validation - Runtime Type Checking', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family },
                 anything: {
-                    op: 'fold',
-                    spec: {},
+                    [op]: 'fold',
+                    [spec]: {},
                     Nil() { return 'string'; },
                     Cons() { return 42; }
                 }
@@ -446,8 +446,8 @@ describe('Spec Validation - Runtime Type Checking', () => {
             const Result = data(({ Family }) => ({
                 Value: { data: Number },
                 FromAnything: {
-                    op: 'unfold',
-                    spec: { out: Family },
+                    [op]: 'unfold',
+                    [spec]: { out: Family },
                     Value: (x) => ({ data: typeof x === 'number' ? x : 0 })
                 }
             }));

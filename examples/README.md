@@ -14,9 +14,9 @@ node examples/peano.mjs
 node examples/list.mjs
 node examples/stack.mjs
 
-# Codata examples
-node examples/codata-stream.mjs
-node examples/codata-set.mjs
+# Behavior examples
+node examples/behavior-stream.mjs
+node examples/behavior-set.mjs
 node examples/rose-tree.mjs
 node examples/parametric-observers.mjs
 ```
@@ -94,9 +94,9 @@ Parameterized stack ADT demonstrating:
 
 **Demonstrates:** Stack data structure, unfold from collections, field access
 
-## Codata Examples
+## Behavior Examples
 
-### codata-stream.mjs
+### behavior-stream.mjs
 
 Infinite streams and lazy evaluation demonstrating:
 
@@ -106,18 +106,18 @@ Infinite streams and lazy evaluation demonstrating:
 - Fibonacci stream with complex seed transformations
 - Infinite binary tree
 - Lazy evaluation and memoization behavior
-- Effect-like codata (Console IO)
+- Effect-like behavior (Console IO)
 - Power streams with multiple seed values
 
-**Demonstrates:** Codata basics, lazy evaluation, memoization, parametric observers, infinite structures
+**Demonstrates:** Behavior basics, lazy evaluation, memoization, parametric observers, infinite structures
 
-### codata-set.mjs
+### behavior-set.mjs
 
-Infinite sets as codata interfaces demonstrating:
+Infinite sets as behavior interfaces demonstrating:
 
 - Infinite sets defined by membership functions (`Evens`, `Odds`, `Multiples`)
 - Prime number set with primality testing
-- Range sets (intervals) 
+- Range sets (intervals)
 - Characteristic functions (`Squares`, `Positive`, `Fibonacci`)
 - Parametric observers for set operations (`lookup`, `contains`)
 - Multiple unfold constructors for different set types
@@ -148,9 +148,9 @@ Advanced parametric observer patterns demonstrating:
 - Parametric observers returning continuations (`drop: { in: Number, out: Self(T) }`)
 - Infinite grid/matrix with 2D indexing
 - Lazy sequence with window operations
-- Dictionary/map as codata
+- Dictionary/map as behavior
 - Time series with interpolation
-- Graph as codata with adjacency queries
+- Graph as behavior with adjacency queries
 - Memoization behavior of parametric observer functions
 
 **Demonstrates:** Advanced parametric observers, continuations from parametric observers, memoization
@@ -165,13 +165,13 @@ All examples demonstrate:
 - **Instanceof checks**: Proper type hierarchy support
 - **Stack safety**: Fold operations use iterative traversal for deep structures
 
-### Codata-Specific Concepts
+### Behavior-Specific Concepts
 
-Codata examples additionally demonstrate:
+Behavior examples additionally demonstrate:
 
-- **Observer-based definition**: Codata defined by how it's observed, not constructed
+- **Observer-based definition**: Behavior defined by how it's observed, not constructed
 - **Lazy evaluation**: Observers computed on access via Proxy
 - **Memoization**: Continuations (`Self`) are memoized, simple observers are not
 - **Parametric observers**: Functions that take input and return output
 - **Infinite structures**: Streams, trees, sets that extend indefinitely
-- **Effect representation**: IO and stateful operations as codata
+- **Effect representation**: IO and stateful operations as behavior

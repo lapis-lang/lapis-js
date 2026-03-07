@@ -1,8 +1,8 @@
 /**
- * Shared operation utilities for Data and Codata
+ * Shared operation utilities for Data and Behavior
  * 
  * This module provides common functions for parsing and validating
- * declarative operation definitions used in both data() and codata().
+ * declarative operation definitions used in both data() and behavior().
  * 
  * @module operations
  */
@@ -12,7 +12,7 @@ import { isCamelCase, isPascalCase, isObjectLiteral, callable } from './utils.mj
 // Symbol to mark Family references for recursive ADTs
 export const FamilyRefSymbol = Symbol('FamilyRef');
 
-// Symbol to mark Self references for recursive codata
+// Symbol to mark Self references for recursive behavior
 export const SelfRefSymbol = Symbol('SelfRef');
 
 // Symbol to mark type parameters
@@ -20,6 +20,15 @@ export const TypeParamSymbol = Symbol('TypeParam');
 
 // Symbol to mark parent ADT for declarative extension
 export const extend = Symbol('extend');
+
+// Symbol to mark the operation type ('fold' | 'unfold' | 'map' | 'merge')
+export const op = Symbol('op');
+
+// Symbol to carry the input/output type spec of an operation
+export const spec = Symbol('spec');
+
+// Symbol to carry the array of operation names in a merge
+export const operations = Symbol('operations');
 
 /**
  * Checks if a value is a FamilyRef
@@ -64,7 +73,7 @@ export function isTypeParam(value) {
 export function isOperationDef(key, value) {
     return (isCamelCase(key) || isPascalCase(key)) &&
         isObjectLiteral(value) &&
-        'op' in value;
+        op in value;
 }
 
 /**
@@ -93,7 +102,7 @@ export function createFamily() {
 }
 
 /**
- * Creates a Self reference for recursive codata.
+ * Creates a Self reference for recursive behavior.
  * Can be used directly as a field spec (Self) or called with type param (Self(T))
  */
 export function createSelf() {

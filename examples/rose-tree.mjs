@@ -1,22 +1,23 @@
 /**
- * Codata Examples - Rose Trees (Lazy Multi-way Trees)
+ * Behavior Examples - Rose Trees (Lazy Multi-way Trees)
  *
  * Rose trees are trees where each node can have an arbitrary number of children.
- * Using codata, we can create lazy rose trees where children are generated on demand.
+ * Using behavior, we can create lazy rose trees where children are generated on demand.
  */
 
-import { codata } from '../src/index.mjs';
+import { behavior, op, spec } from '../src/index.mjs';
+import { isPrime, smallestFactor } from '../src/lib/primes.mjs';
 
 // =============================================================================
 // Example 1: Basic Rose Tree with Lazy Children
 // =============================================================================
 
-const RoseTree = codata(({ Self }) => ({
+const RoseTree = behavior(({ Self }) => ({
     value: Number,
     children: Array,  // Array of child trees
     Node: {
-        op: 'unfold',
-        spec: { in: { value: Number, childGen: Function }, out: Self },
+        [op]: 'unfold',
+        [spec]: { in: { value: Number, childGen: Function }, out: Self },
         value: ({ value }) => value,
         children: ({ value, childGen }) => {
             const childValues = childGen(value);
@@ -24,8 +25,8 @@ const RoseTree = codata(({ Self }) => ({
         }
     },
     Leaf: {
-        op: 'unfold',
-        spec: { in: Number, out: Self },
+        [op]: 'unfold',
+        [spec]: { in: Number, out: Self },
         value: (n) => n,
         children: () => []
     }
@@ -55,23 +56,15 @@ console.log('leaf.children.length:', leaf.children.length);    // 0
 // Example 2: N-ary Tree (Variable Number of Children)
 // =============================================================================
 
-const NaryTree = codata(({ Self }) => ({
+const NaryTree = behavior(({ Self }) => ({
     value: Number,
     children: Array,
     Create: {
-        op: 'unfold',
-        spec: { in: { value: Number, arity: Number }, out: Self },
+        [op]: 'unfold',
+        [spec]: { in: { value: Number, arity: Number }, out: Self },
         value: ({ value }) => value,
-        children: ({ value, arity }) => {
-            const result = [];
-            for (let i = 0; i < arity; i++) {
-                result.push(NaryTree.Create({
-                    value: value * 10 + i,
-                    arity: arity
-                }));
-            }
-            return result;
-        }
+        children: ({ value, arity }) =>
+            Array.from({ length: arity }, (_, i) => NaryTree.Create({ value: value * 10 + i, arity }))
     }
 }));
 
@@ -88,14 +81,14 @@ console.log('Grandchildren of first child:',
 // Example 3: Directory Tree (File System)
 // =============================================================================
 
-const FileTree = codata(({ Self }) => ({
+const FileTree = behavior(({ Self }) => ({
     name: String,
     isDirectory: Boolean,
     children: Array,
     size: Number,
     Directory: {
-        op: 'unfold',
-        spec: { in: { name: String, contents: Array }, out: Self },
+        [op]: 'unfold',
+        [spec]: { in: { name: String, contents: Array }, out: Self },
         name: ({ name }) => name,
         isDirectory: () => true,
         children: ({ contents }) => contents,
@@ -104,8 +97,8 @@ const FileTree = codata(({ Self }) => ({
         }
     },
     File: {
-        op: 'unfold',
-        spec: { in: { name: String, size: Number }, out: Self },
+        [op]: 'unfold',
+        [spec]: { in: { name: String, size: Number }, out: Self },
         name: ({ name }) => name,
         isDirectory: () => false,
         children: () => [],
@@ -123,10 +116,10 @@ const root = FileTree.Directory({
             name: 'src',
             contents: [
                 FileTree.File({ name: 'index.js', size: 2048 }),
-                FileTree.File({ name: 'utils.js', size: 512 })
+                FileTree.File({ name: 'utils.js', size: 512 }),
             ]
         }),
-        FileTree.File({ name: 'package.json', size: 256 })
+        FileTree.File({ name: 'package.json', size: 256 }),
     ]
 });
 
@@ -144,13 +137,13 @@ root.children.forEach(child => {
 // Example 4: Game Tree (Tic-Tac-Toe Moves)
 // =============================================================================
 
-const GameTree = codata(({ Self }) => ({
+const GameTree = behavior(({ Self }) => ({
     state: String,
     isTerminal: Boolean,
     moves: Array,  // Array of possible next states
     Create: {
-        op: 'unfold',
-        spec: { in: { state: String, moveGen: Function }, out: Self },
+        [op]: 'unfold',
+        [spec]: { in: { state: String, moveGen: Function }, out: Self },
         state: ({ state }) => state,
         isTerminal: ({ state, moveGen }) => {
             const nextStates = moveGen(state);
@@ -188,38 +181,19 @@ console.log('Possible moves from 5:', gameState.moves.map(m => m.state)); // ['4
 // Example 5: Factor Tree (Prime Factorization)
 // =============================================================================
 
-const FactorTree = codata(({ Self }) => ({
+const FactorTree = behavior(({ Self }) => ({
     value: Number,
     isPrime: Boolean,
     factors: Array,  // Empty if prime, otherwise [left, right] factors
     Create: {
-        op: 'unfold',
-        spec: { in: Number, out: Self },
+        [op]: 'unfold',
+        [spec]: { in: Number, out: Self },
         value: (n) => n,
-        isPrime: (n) => {
-            if (n < 2) return false;
-            if (n === 2) return true;
-            if (n % 2 === 0) return false;
-            for (let i = 3; i <= Math.sqrt(n); i += 2) {
-                if (n % i === 0) return false;
-            }
-            return true;
-        },
+        isPrime: (n) => isPrime(n),
         factors: (n) => {
-            if (n < 2) return [];
-
-            // Check if prime
-            for (let i = 2; i <= Math.sqrt(n); i++) {
-                if (n % i === 0) {
-                    // Found a factor - create child nodes
-                    return [
-                        FactorTree.Create(i),
-                        FactorTree.Create(n / i)
-                    ];
-                }
-            }
-            // Prime - no factors
-            return [];
+            if (n < 2 || isPrime(n)) return [];
+            const f = smallestFactor(n);
+            return [FactorTree.Create(f), FactorTree.Create(n / f)];
         }
     }
 }));
@@ -239,35 +213,35 @@ console.log('17 factors:', factor17.factors);                  // []
 // Example 6: Expression Tree with Lazy Evaluation
 // =============================================================================
 
-const ExprTree = codata(({ Self }) => ({
+const ExprTree = behavior(({ Self }) => ({
     type: String,
     value: Number,
     children: Array,
     Constant: {
-        op: 'unfold',
-        spec: { in: Number, out: Self },
+        [op]: 'unfold',
+        [spec]: { in: Number, out: Self },
         type: () => 'const',
         value: (n) => n,
         children: () => []
     },
     Add: {
-        op: 'unfold',
-        spec: { in: { left: Number, right: Number }, out: Self },
+        [op]: 'unfold',
+        [spec]: { in: { left: Number, right: Number }, out: Self },
         type: () => 'add',
         value: ({ left, right }) => left + right,
         children: ({ left, right }) => [
             ExprTree.Constant(left),
-            ExprTree.Constant(right)
+            ExprTree.Constant(right),
         ]
     },
     Multiply: {
-        op: 'unfold',
-        spec: { in: { left: Number, right: Number }, out: Self },
+        [op]: 'unfold',
+        [spec]: { in: { left: Number, right: Number }, out: Self },
         type: () => 'mul',
         value: ({ left, right }) => left * right,
         children: ({ left, right }) => [
             ExprTree.Constant(left),
-            ExprTree.Constant(right)
+            ExprTree.Constant(right),
         ]
     }
 }));
