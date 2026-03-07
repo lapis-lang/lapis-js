@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { data } from '../index.mjs';
+import { data, op, spec } from '../index.mjs';
 
 // Define ADTs once and share across all tests
 const Pair = data(({ T, U }) => ({
@@ -11,8 +11,8 @@ const List = data(({ Family, T }) => ({
     Nil: {},
     Cons: { head: T, tail: Family(T) },
     zip: {
-        op: 'fold',
-        spec: {},
+        [op]: 'fold',
+        [spec]: {},
         Nil() { return Family(T).Nil; },
         Cons({ head, tail }, ys) {
             if (!ys || ys.constructor.name === 'Nil')

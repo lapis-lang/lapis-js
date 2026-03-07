@@ -17,7 +17,6 @@ tsconfig.json
 
 # Documentation and examples
 examples/
-CODATA_DESIGN.md
 CONTRIBUTING.md
 
 # Dependencies and build artifacts

@@ -1,10 +1,12 @@
 /**
- * Observer Abstraction for Codata Operations
+ * Observer Abstraction for Behavior Operations
  * 
  * This module provides the infrastructure for defining and composing coalgebraic operations
- * (unfold, fold, map, merge) on codata. This is the dual of Transformer.mjs for data operations.
+ * (unfold, fold, map, merge) on behavior types (final coalgebras, νF).
+ * "Behavior" is the API-level term; the underlying mathematical structure is a final coalgebra.
+ * This module is the categorical dual of Transformer.mjs, which handles initial-algebra (data) operations.
  * 
- * Codata is defined by observers (destructors) rather than constructors, enabling:
+ * Behavior is defined by observers (destructors) rather than constructors, enabling:
  * - Lazy evaluation and potentially infinite structures
  * - Observation-based programming
  * - Coinductive reasoning and corecursion
@@ -22,7 +24,7 @@ import { composeFunctions, HandlerMapSymbol } from './utils.mjs';
 export { HandlerMapSymbol };
 
 /**
- * Observer abstraction that enables composition of codata operations.
+ * Observer abstraction that enables composition of behavior operations.
  * All operations (unfold, fold, map, merge) are represented.
  * 
  * @typedef {Object} Observer
@@ -52,17 +54,17 @@ export { HandlerMapSymbol };
  */
 
 /**
- * Registry that stores observers for a codata type.
+ * Registry that stores observers for a behavior type.
  * Maps operation names to their observer implementations.
  * 
  * @typedef {Map<string, Observer>} ObserverRegistry
  */
 
 /**
- * WeakMap that stores operation registries for each codata class.
- * This allows us to add observers to frozen codata classes.
+ * WeakMap that stores operation registries for each behavior class.
+ * This allows us to add observers to frozen behavior classes.
  */
-export const codataObservers = new WeakMap();
+export const behaviorObservers = new WeakMap();
 
 /**
  * Create an observer from a configuration object.
@@ -201,7 +203,7 @@ export function composeObservers(o1, o2) {
 
 /**
  * Compose multiple observers into a single fused observer.
- * Implements deforestation by eliminating intermediate codata structure construction.
+ * Implements deforestation by eliminating intermediate behavior structure construction.
  * 
  * Composition is left-to-right: [o1, o2, o3] => o1 → o2 → o3
  * This enables natural pipeline semantics (e.g., unfold → map → fold).
@@ -307,7 +309,7 @@ export function composeMultipleObservers(observers, mergeName) {
  * Create a fold observer for coalgebraic catamorphism.
  * Uses case-based pattern matching with Done/Step cases.
  * 
- * Unlike data fold (which processes structures bottom-up), codata fold
+ * Unlike data fold (which processes structures bottom-up), behavior fold
  * consumes potentially infinite structures using bounded iteration:
  * - Done case: Termination predicate (when to stop consuming)
  * - Step case: Observation step producing { emit, nextState, nextSelf }

@@ -1,16 +1,14 @@
 /**
- * Codata Infinite Structures Tests
+ * Behavior Infinite Structures Tests
  * 
  * Comprehensive test suite covering lazy evaluation, memoization, and infinite
- * codata structures.
- * 
- * Issue #64: Core Codata Infrastructure - Tests for Infinite Structures
+ * behavior structures.
  * 
  * Acceptance Criteria:
  * - Test 1: Infinite Stream - lazy evaluation and continuation memoization
  * - Test 2: Constant Stream (ones) - infinite repetition via corecursion
  * - Test 3: Rose Tree - lazy children generation on demand
- * - Test 4: Codata Set - interface-defined infinite sets (e.g., all evens)
+ * - Test 4: Behavior Set - interface-defined infinite sets (e.g., all evens)
  * - Verify lazy evaluation (observers computed on access)
  * - Verify memoization (same Self reference === same instance)
  * - Test parametric observers (functions with inputs)
@@ -18,17 +16,18 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { codata } from '../index.mjs';
+import { isPrime, nextPrimeAfter } from '../lib/primes.mjs';
+import { behavior, op, spec, operations } from '../index.mjs';
 
-describe('Codata - Infinite Structures', () => {
+describe('Behavior - Infinite Structures', () => {
     describe('Test 1: Infinite Stream', () => {
         it('should create infinite streams with lazy evaluation', () => {
-            const Stream = codata(({ Self, T }) => ({
+            const Stream = behavior(({ Self, T }) => ({
                 head: T,
                 tail: Self(T),
                 From: {
-                    op: 'unfold',
-                    spec: { in: Number, out: Self },
+                    [op]: 'unfold',
+                    [spec]: { in: Number, out: Self },
                     head: (n) => n,
                     tail: (n) => n + 1
                 }
@@ -52,12 +51,12 @@ describe('Codata - Infinite Structures', () => {
         });
 
         it('should memoize continuation instances', () => {
-            const Stream = codata(({ Self, T }) => ({
+            const Stream = behavior(({ Self, T }) => ({
                 head: T,
                 tail: Self(T),
                 From: {
-                    op: 'unfold',
-                    spec: { in: Number, out: Self },
+                    [op]: 'unfold',
+                    [spec]: { in: Number, out: Self },
                     head: (n) => n,
                     tail: (n) => n + 1
                 }
@@ -77,12 +76,12 @@ describe('Codata - Infinite Structures', () => {
         it('should not memoize simple observers', () => {
             let headCallCount = 0;
 
-            const Stream = codata(({ Self, T }) => ({
+            const Stream = behavior(({ Self, T }) => ({
                 head: T,
                 tail: Self(T),
                 From: {
-                    op: 'unfold',
-                    spec: { in: Number },
+                    [op]: 'unfold',
+                    [spec]: { in: Number },
                     head: (n) => {
                         headCallCount++;
                         return n;
@@ -108,12 +107,12 @@ describe('Codata - Infinite Structures', () => {
             let headCallCount = 0;
             let tailCallCount = 0;
 
-            const Stream = codata(({ Self, T }) => ({
+            const Stream = behavior(({ Self, T }) => ({
                 head: T,
                 tail: Self(T),
                 From: {
-                    op: 'unfold',
-                    spec: { in: Number },
+                    [op]: 'unfold',
+                    [spec]: { in: Number },
                     head: (n) => {
                         headCallCount++;
                         return n;
@@ -147,12 +146,12 @@ describe('Codata - Infinite Structures', () => {
 
     describe('Test 2: Constant Stream (ones)', () => {
         it('should create infinite constant streams via corecursion', () => {
-            const Stream = codata(({ Self, T }) => ({
+            const Stream = behavior(({ Self, T }) => ({
                 head: T,
                 tail: Self(T),
                 Repeat: {
-                    op: 'unfold',
-                    spec: { in: Number },
+                    [op]: 'unfold',
+                    [spec]: { in: Number },
                     head: (n) => n,
                     tail: (n) => n  // Same seed = constant stream
                 }
@@ -175,12 +174,12 @@ describe('Codata - Infinite Structures', () => {
         });
 
         it('should work with different constant values', () => {
-            const Stream = codata(({ Self, T }) => ({
+            const Stream = behavior(({ Self, T }) => ({
                 head: T,
                 tail: Self(T),
                 Repeat: {
-                    op: 'unfold',
-                    spec: { in: Number, out: Self },
+                    [op]: 'unfold',
+                    [spec]: { in: Number, out: Self },
                     head: (n) => n,
                     tail: (n) => n
                 }
@@ -201,12 +200,12 @@ describe('Codata - Infinite Structures', () => {
         });
 
         it('should memoize constant stream continuations', () => {
-            const Stream = codata(({ Self, T }) => ({
+            const Stream = behavior(({ Self, T }) => ({
                 head: T,
                 tail: Self(T),
                 Repeat: {
-                    op: 'unfold',
-                    spec: { in: Number, out: Self },
+                    [op]: 'unfold',
+                    [spec]: { in: Number, out: Self },
                     head: (n) => n,
                     tail: (n) => n
                 }
@@ -228,12 +227,12 @@ describe('Codata - Infinite Structures', () => {
 
     describe('Test 3: Rose Tree', () => {
         it('should create lazy rose trees with on-demand children generation', () => {
-            const RoseTree = codata(({ Self, T }) => ({
+            const RoseTree = behavior(({ Self, T }) => ({
                 value: T,
                 children: Array,  // Array of children (could be lazy generators)
                 Node: {
-                    op: 'unfold',
-                    spec: { in: { value: Number, childGen: Function } },
+                    [op]: 'unfold',
+                    [spec]: { in: { value: Number, childGen: Function } },
                     value: ({ value }) => value,
                     children: ({ value, childGen }) => childGen(value)
                 }
@@ -256,14 +255,14 @@ describe('Codata - Infinite Structures', () => {
         });
 
         it('should support nested rose tree structures', () => {
-            // For a more complex example, we can create nested codata
-            const RoseTree = codata(({ Self, T }) => ({
+            // For a more complex example, we can create nested behavior
+            const RoseTree = behavior(({ Self, T }) => ({
                 value: T,
                 left: Self(T),
                 right: Self(T),
                 Create: {
-                    op: 'unfold',
-                    spec: { in: Number, out: Self },
+                    [op]: 'unfold',
+                    [spec]: { in: Number, out: Self },
                     value: (n) => n,
                     left: (n) => n * 2,
                     right: (n) => n * 2 + 1
@@ -291,13 +290,13 @@ describe('Codata - Infinite Structures', () => {
         });
 
         it('should memoize tree continuations (left/right)', () => {
-            const RoseTree = codata(({ Self, T }) => ({
+            const RoseTree = behavior(({ Self, T }) => ({
                 value: T,
                 left: Self(T),
                 right: Self(T),
                 Create: {
-                    op: 'unfold',
-                    spec: { in: Number, out: Self },
+                    [op]: 'unfold',
+                    [spec]: { in: Number, out: Self },
                     value: (n) => n,
                     left: (n) => n * 2,
                     right: (n) => n * 2 + 1
@@ -318,16 +317,16 @@ describe('Codata - Infinite Structures', () => {
         });
     });
 
-    describe('Test 4: Codata Set', () => {
+    describe('Test 4: Behavior Set', () => {
         it('should represent infinite sets via interface', () => {
-            const CodataSet = codata(({ Self }) => ({
+            const BehaviorSet = behavior(({ Self }) => ({
                 isEmpty: Boolean,
                 lookup: { in: Number, out: Boolean },
                 insert: { in: Number, out: Self },
                 remove: { in: Number, out: Self },
                 Evens: {
-                    op: 'unfold',
-                    spec: {},
+                    [op]: 'unfold',
+                    [spec]: {},
                     isEmpty: () => false,  // Infinite set is never empty
                     lookup: () => (n) => n % 2 === 0,
                     insert: () => (n) => {
@@ -342,7 +341,7 @@ describe('Codata - Infinite Structures', () => {
                 }
             }));
 
-            const evens = CodataSet.Evens;
+            const evens = BehaviorSet.Evens;
 
             // Infinite set is never empty
             assert.equal(evens.isEmpty, false);
@@ -357,41 +356,32 @@ describe('Codata - Infinite Structures', () => {
         });
 
         it('should support multiple infinite set types', () => {
-            const CodataSet = codata(({ Self }) => ({
+            const BehaviorSet = behavior(({ Self }) => ({
                 isEmpty: Boolean,
                 lookup: { in: Number, out: Boolean },
                 Evens: {
-                    op: 'unfold',
-                    spec: {},
+                    [op]: 'unfold',
+                    [spec]: {},
                     isEmpty: () => false,
                     lookup: () => (n) => n % 2 === 0
                 },
                 Odds: {
-                    op: 'unfold',
-                    spec: {},
+                    [op]: 'unfold',
+                    [spec]: {},
                     isEmpty: () => false,
                     lookup: () => (n) => n % 2 !== 0
                 },
                 Primes: {
-                    op: 'unfold',
-                    spec: {},
+                    [op]: 'unfold',
+                    [spec]: {},
                     isEmpty: () => false,
-                    lookup: () => (n) => {
-                        // Simple primality test (not efficient, just for demo)
-                        if (n < 2) return false;
-                        if (n === 2) return true;
-                        if (n % 2 === 0) return false;
-                        for (let i = 3; i <= Math.sqrt(n); i += 2) {
-                            if (n % i === 0) return false;
-                        }
-                        return true;
-                    }
+                    lookup: () => (n) => isPrime(n)
                 }
             }));
 
-            const evens = CodataSet.Evens;
-            const odds = CodataSet.Odds;
-            const primes = CodataSet.Primes;
+            const evens = BehaviorSet.Evens;
+            const odds = BehaviorSet.Odds;
+            const primes = BehaviorSet.Primes;
 
             // Test evens
             assert.equal(evens.lookup(4), true);
@@ -411,18 +401,18 @@ describe('Codata - Infinite Structures', () => {
         });
 
         it('should memoize parametric observer functions', () => {
-            const CodataSet = codata(({ Self }) => ({
+            const BehaviorSet = behavior(({ Self }) => ({
                 isEmpty: Boolean,
                 lookup: { in: Number, out: Boolean },
                 Evens: {
-                    op: 'unfold',
-                    spec: {},
+                    [op]: 'unfold',
+                    [spec]: {},
                     isEmpty: () => false,
                     lookup: () => (n) => n % 2 === 0
                 }
             }));
 
-            const evens = CodataSet.Evens;
+            const evens = BehaviorSet.Evens;
 
             // Access lookup multiple times - should return same function
             const lookup1 = evens.lookup;
@@ -438,13 +428,13 @@ describe('Codata - Infinite Structures', () => {
 
     describe('Parametric Observers in Infinite Structures', () => {
         it('should support parametric observers on infinite streams', () => {
-            const Stream = codata(({ Self, T }) => ({
+            const Stream = behavior(({ Self, T }) => ({
                 head: T,
                 tail: Self(T),
                 nth: { in: Number, out: T },
                 From: {
-                    op: 'unfold',
-                    spec: { in: Number, out: Self },
+                    [op]: 'unfold',
+                    [spec]: { in: Number, out: Self },
                     head: (n) => n,
                     tail: (n) => n + 1,
                     nth: (n) => (index) => n + index
@@ -466,14 +456,14 @@ describe('Codata - Infinite Structures', () => {
         });
 
         it('should support multiple parametric observers', () => {
-            const Stream = codata(({ Self, T }) => ({
+            const Stream = behavior(({ Self, T }) => ({
                 head: T,
                 tail: Self(T),
                 nth: { in: Number, out: T },
                 take: { in: Number, out: Array },
                 From: {
-                    op: 'unfold',
-                    spec: { in: Number },
+                    [op]: 'unfold',
+                    [spec]: { in: Number },
                     head: (n) => n,
                     tail: (n) => n + 1,
                     nth: (n) => (index) => n + index,
@@ -498,13 +488,13 @@ describe('Codata - Infinite Structures', () => {
         });
 
         it('should memoize parametric observer functions but not their results', () => {
-            const Stream = codata(({ Self, T }) => ({
+            const Stream = behavior(({ Self, T }) => ({
                 head: T,
                 tail: Self(T),
                 nth: { in: Number, out: T },
                 From: {
-                    op: 'unfold',
-                    spec: { in: Number, out: Self },
+                    [op]: 'unfold',
+                    [spec]: { in: Number, out: Self },
                     head: (n) => n,
                     tail: (n) => n + 1,
                     nth: (n) => (index) => n + index
@@ -533,12 +523,12 @@ describe('Codata - Infinite Structures', () => {
 
     describe('Complex Infinite Structures', () => {
         it('should support Fibonacci sequence as infinite stream', () => {
-            const Stream = codata(({ Self }) => ({
+            const Stream = behavior(({ Self }) => ({
                 current: Number,
                 next: Self,
                 Fibonacci: {
-                    op: 'unfold',
-                    spec: { in: { a: Number, b: Number } },
+                    [op]: 'unfold',
+                    [spec]: { in: { a: Number, b: Number } },
                     current: ({ a }) => a,
                     next: ({ a, b }) => ({ a: b, b: a + b })
                 }
@@ -558,33 +548,14 @@ describe('Codata - Infinite Structures', () => {
         });
 
         it('should support prime number stream', () => {
-            const Stream = codata(({ Self }) => ({
+            const Stream = behavior(({ Self }) => ({
                 head: Number,
                 tail: Self,
                 Primes: {
-                    op: 'unfold',
-                    spec: { in: Number },
+                    [op]: 'unfold',
+                    [spec]: { in: Number },
                     head: (n) => n,
-                    tail: (n) => {
-                        // Find next prime after n
-                        let candidate = n + 1;
-                        while (true) {
-                            let isPrime = candidate > 1;
-                            if (candidate === 2) return 2;
-                            if (candidate % 2 === 0) {
-                                candidate++;
-                                continue;
-                            }
-                            for (let i = 3; i <= Math.sqrt(candidate); i += 2) {
-                                if (candidate % i === 0) {
-                                    isPrime = false;
-                                    break;
-                                }
-                            }
-                            if (isPrime) return candidate;
-                            candidate++;
-                        }
-                    }
+                    tail: (n) => nextPrimeAfter(n)
                 }
             }));
 
@@ -602,14 +573,14 @@ describe('Codata - Infinite Structures', () => {
         });
 
         it('should support infinite binary tree', () => {
-            const Tree = codata(({ Self }) => ({
+            const Tree = behavior(({ Self }) => ({
                 value: Number,
                 left: Self,
                 right: Self,
                 depth: { in: Number, out: Array },  // Get all values at depth
                 Create: {
-                    op: 'unfold',
-                    spec: { in: Number },
+                    [op]: 'unfold',
+                    [spec]: { in: Number },
                     value: (n) => n,
                     left: (n) => n * 2,
                     right: (n) => n * 2 + 1,
@@ -647,12 +618,12 @@ describe('Codata - Infinite Structures', () => {
 
     describe('Performance and Deep Structures', () => {
         it('should handle deep continuation chains without stack overflow', () => {
-            const Stream = codata(({ Self }) => ({
+            const Stream = behavior(({ Self }) => ({
                 head: Number,
                 tail: Self,
                 From: {
-                    op: 'unfold',
-                    spec: { in: Number },
+                    [op]: 'unfold',
+                    [spec]: { in: Number },
                     head: (n) => n,
                     tail: (n) => n + 1
                 }
@@ -674,12 +645,12 @@ describe('Codata - Infinite Structures', () => {
         it('should efficiently memoize repeated accesses', () => {
             let tailCallCount = 0;
 
-            const Stream = codata(({ Self }) => ({
+            const Stream = behavior(({ Self }) => ({
                 head: Number,
                 tail: Self,
                 From: {
-                    op: 'unfold',
-                    spec: { in: Number },
+                    [op]: 'unfold',
+                    [spec]: { in: Number },
                     head: (n) => n,
                     tail: (n) => {
                         tailCallCount++;
@@ -700,12 +671,12 @@ describe('Codata - Infinite Structures', () => {
         });
 
         it('should support wide tree structures', () => {
-            const Tree = codata(({ Self }) => ({
+            const Tree = behavior(({ Self }) => ({
                 value: Number,
                 children: Array,  // Array of seeds for children
                 Create: {
-                    op: 'unfold',
-                    spec: { in: { value: Number, fanout: Number } },
+                    [op]: 'unfold',
+                    [spec]: { in: { value: Number, fanout: Number } },
                     value: ({ value }) => value,
                     children: ({ value, fanout }) => {
                         return Array.from({ length: fanout }, (_, i) => value * fanout + i);

@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { data } from '../index.mjs';
+import { data , op, spec, operations} from '../index.mjs';
 
 describe('Stack Safety Investigation', () => {
     describe('Current Implementation - Stack Overflow Risk', () => {
@@ -9,8 +9,8 @@ describe('Stack Safety Investigation', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family },
                 sum: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Nil() { return 0; },
                     Cons({ head, tail }) { return head + tail; }
                 }
@@ -31,8 +31,8 @@ describe('Stack Safety Investigation', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family },
                 length: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Nil() { return 0; },
                     Cons({ tail }) { return 1 + tail; }
                 }
@@ -53,8 +53,8 @@ describe('Stack Safety Investigation', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family },
                 length: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Nil() { return 0; },
                     Cons({ tail }) { return 1 + tail; }
                 }
@@ -86,8 +86,8 @@ describe('Stack Safety Investigation', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family },
                 length: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Nil() { return 0; },
                     Cons({ tail }) { return 1 + tail; }
                 }
@@ -119,8 +119,8 @@ describe('Stack Safety Investigation', () => {
                 Leaf: { value: Number },
                 Node: { left: Family, right: Family, value: Number },
                 sum: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Leaf({ value }) { return value; },
                     Node({ left, right, value }) { return left + right + value; }
                 }
@@ -156,8 +156,8 @@ describe('Stack Safety Investigation', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family },
                 sum: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Nil() { return 0; },
                     Cons({ head, tail }) { return head + tail; }
                 }

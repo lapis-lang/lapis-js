@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { data, extend, parent } from '../index.mjs';
+import { data, extend, parent , op, spec, operations} from '../index.mjs';
 
 describe('ExtendFold Operation (Recursive ADTs)', () => {
     describe('Basic Extension', () => {
@@ -10,8 +10,8 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 IntLit: { value: Number },
                 Add: { left: Family, right: Family },
                 eval: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     IntLit({ value }) { return value; },
                     Add({ left, right }) { return left + right; }
                 }
@@ -23,8 +23,8 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 BoolLit: { value: Boolean },
                 LessThan: { left: Family, right: Family },
                 eval: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     BoolLit({ value }) { return value ? 1 : 0; },
                     LessThan({ left, right }) { return left < right ? 1 : 0; }
                 }
@@ -55,8 +55,8 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 IntLit: { value: Number },
                 Add: { left: Family, right: Family },
                 eval: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     IntLit({ value }) { return value; },
                     Add({ left, right }) { return left + right; }
                 }
@@ -67,8 +67,8 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 BoolLit: { value: Boolean },
                 LessThan: { left: Family, right: Family },
                 eval: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     BoolLit({ value }) { return value ? 1 : 0; },
                     LessThan({ left, right }) { return left < right ? 1 : 0; }
                 }
@@ -85,8 +85,8 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family },
                 sum: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Nil() { return 0; },
                     Cons({ head, tail }) { return head + tail; }
                 }
@@ -97,8 +97,8 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 [extend]: NumList,
                 Labeled: { label: String, list: Family },
                 sum: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Labeled({ list }) { return list; } // Just forward to the list
                 }
             }));
@@ -123,8 +123,8 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 Zero: {},
                 Succ: { pred: Family },
                 toValue: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Zero() { return 0; },
                     Succ({ pred }) { return 1 + pred; }
                 }
@@ -135,8 +135,8 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 [extend]: Peano,
                 NegSucc: { pred: Family },
                 toValue: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     NegSucc({ pred }) { return -1 + pred; },
                     Succ({ pred }) { return 2 + pred; } // Override: double increment
                 }
@@ -160,8 +160,8 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 Zero: {},
                 Succ: { pred: Family },
                 toValue: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Zero() { return 0; },
                     Succ({ pred }) { return 1 + pred; }
                 }
@@ -172,8 +172,8 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 [extend]: Peano,
                 NegSucc: { pred: Family },
                 toValue: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     NegSucc({ pred }) { return -1 + pred; },
                     Succ({ pred }) {
                         // Call parent handler to get the original value
@@ -198,8 +198,8 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 Zero: {},
                 Succ: { pred: Family },
                 toValue: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Zero() { return 0; },
                     Succ({ pred }) { return 1 + pred; }
                 }
@@ -210,8 +210,8 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 [extend]: Peano,
                 NegSucc: { pred: Family },
                 toValue: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     NegSucc({ pred }) { return -1 + pred; },
                     Zero() {
                         // Access parent value and modify
@@ -239,8 +239,8 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 IntLit: { value: Number },
                 Add: { left: Family, right: Family },
                 eval: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     IntLit({ value }) { return value; },
                     Add({ left, right }) { return left + right; }
                 }
@@ -252,8 +252,8 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 [extend]: IntExpr,
                 Mul: { left: Family, right: Family },
                 eval: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Mul({ left, right }) { return left * right; }
                 }
             }));
@@ -274,8 +274,8 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 IntLit: { value: Number },
                 Add: { left: Family, right: Family },
                 eval: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     IntLit({ value }) { return value; },
                     Add({ left, right }) { return left + right; }
                 }
@@ -286,8 +286,8 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 [extend]: IntExpr,
                 Sub: { left: Family, right: Family },
                 eval: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Sub({ left, right }) { return left - right; }
                 }
             }));
@@ -297,8 +297,8 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 [extend]: SubExpr,
                 Mul: { left: Family, right: Family },
                 eval: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Mul({ left, right }) { return left * right; }
                 }
             }));
@@ -321,8 +321,8 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 IntLit: { value: Number },
                 Add: { left: Family, right: Family },
                 eval: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     IntLit({ value }) { return value; },
                     Add({ left, right }) { return left + right; }
                 }
@@ -333,8 +333,8 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 [extend]: IntExpr,
                 Mul: { left: Family, right: Family },
                 eval: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Mul({ left, right }) { return left * right; },
                     Add({ left, right }) {
                         // Parent handler will receive already-folded left/right
@@ -366,8 +366,8 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 IntLit: { value: Number },
                 Add: { left: Family, right: Family },
                 eval: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     IntLit({ value }) { return value; },
                     Add({ left, right }) { return left + right; }
                 }
@@ -378,8 +378,8 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 [extend]: L1,
                 Sub: { left: Family, right: Family },
                 eval: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Sub({ left, right }) { return left - right; }
                 }
             }));
@@ -389,8 +389,8 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 [extend]: L2,
                 Mul: { left: Family, right: Family },
                 eval: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Mul({ left, right }) { return left * right; }
                 }
             }));
@@ -400,8 +400,8 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 [extend]: L3,
                 Div: { left: Family, right: Family },
                 eval: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Div({ left, right }) { return left / right; }
                 }
             }));
@@ -426,8 +426,8 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 IntLit: { value: Number },
                 Add: { left: Family, right: Family },
                 eval: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     IntLit({ value }) { return value; },
                     Add({ left, right }) { return left + right; }
                 }
@@ -438,8 +438,8 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 [extend]: L1,
                 Sub: { left: Family, right: Family },
                 eval: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Sub({ left, right }) { return left - right; },
                     IntLit({ value }) {
                         const base = this[parent];
@@ -453,8 +453,8 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 [extend]: L2,
                 Mul: { left: Family, right: Family },
                 eval: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Mul({ left, right }) { return left * right; },
                     Add({ left, right }) {
                         const base = this[parent];
@@ -487,8 +487,8 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 IntLit: { value: Number },
                 Add: { left: Family, right: Family },
                 eval: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     IntLit({ value }) { return value; },
                     Add({ left, right }) { return left + right; }
                 }
@@ -498,8 +498,8 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 [extend]: Base,
                 BoolLit: { value: Boolean },
                 toBool: {
-                    op: 'fold',
-                    spec: { out: Boolean },
+                    [op]: 'fold',
+                    [spec]: { out: Boolean },
                     IntLit({ value }) { return value !== 0; },
                     Add({ left, right }) { return left || right; },
                     BoolLit({ value }) { return value; }
@@ -515,8 +515,8 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 IntLit: { value: Number },
                 Add: { left: Family, right: Family },
                 eval: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     IntLit({ value }) { return value; },
                     Add({ left, right }) { return left + right; }
                 }
@@ -526,8 +526,8 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 [extend]: Base,
                 BoolLit: { value: Boolean },
                 eval: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     BoolLit({ value }) { return value ? 1 : 0; }
                 }
             }));
@@ -536,8 +536,8 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
             const FurtherExtended = data(() => ({
                 [extend]: Extended,
                 eval: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     BoolLit({ value }) { return value ? 100 : 0; }
                 }
             }));
@@ -555,8 +555,8 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 IntLit: { value: Number },
                 Add: { left: Family, right: Family },
                 eval: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     IntLit({ value }) { return value; },
                     Add({ left, right }) { return left + right; }
                 }
@@ -566,8 +566,8 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 [extend]: L1,
                 Sub: { left: Family, right: Family },
                 eval: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Sub({ left, right }) { return left - right; }
                 }
             }));
@@ -577,8 +577,8 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 [extend]: L2,
                 Mul: { left: Family, right: Family },
                 eval: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Mul({ left, right }) { return left * right; }
                 }
             }));
@@ -598,8 +598,8 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 IntLit: { value: Number },
                 Add: { left: Family, right: Family },
                 eval: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     IntLit({ value }) { return value; },
                     _() { return -999; } // Wildcard for unknown variants
                 }
@@ -609,8 +609,8 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 [extend]: Base,
                 BoolLit: { value: Boolean },
                 eval: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     BoolLit({ value }) { return value ? 1 : 0; }
                 }
             }));
@@ -634,8 +634,8 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 IntLit: { value: Number },
                 Add: { left: Family, right: Family },
                 eval: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     IntLit({ value }) { return value; },
                     _() { return -999; } // Wildcard
                 }
@@ -645,8 +645,8 @@ describe('ExtendFold Operation (Recursive ADTs)', () => {
                 [extend]: Base,
                 BoolLit: { value: Boolean },
                 eval: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     BoolLit({ value }) { return value ? 1 : 0; },
                     _() {
                         // Access parent wildcard and modify

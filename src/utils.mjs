@@ -9,7 +9,7 @@
 // Import IsSingleton from Data.mjs to avoid symbol mismatch
 import { IsSingleton } from './Data.mjs';
 
-// Symbols for parameterized ADT/Codata instances
+// Symbols for parameterized ADT/Behavior instances
 export const IsParameterizedInstance = Symbol('IsParameterizedInstance');
 export const ParentADTSymbol = Symbol('ParentADT');
 export const TypeArgsSymbol = Symbol('TypeArgs');
@@ -122,6 +122,14 @@ export function composeFunctions(f, g) {
     if (f) return f;
     if (g) return g;
     return (x) => x; // identity
+}
+
+/**
+ * Check if a spec object declares an input parameter.
+ * Distinguishes between a missing `in` key and an explicitly `undefined` one.
+ */
+export function hasInputSpec(spec) {
+    return 'in' in spec && spec.in !== undefined;
 }
 
 /**

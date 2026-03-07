@@ -1,4 +1,4 @@
-import { data } from '../index.mjs';
+import { data , op, spec, operations} from '../index.mjs';
 import { describe, it } from 'node:test';
 import * as assert from 'node:assert/strict';
 
@@ -9,8 +9,8 @@ describe('Unfold Operations', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family },
                 Counter: {
-                    op: 'unfold',
-                    spec: { in: Number, out: Family },
+                    [op]: 'unfold',
+                    [spec]: { in: Number, out: Family },
                     Nil: n => (n <= 0 ? {} : null),
                     Cons: n => (n > 0 ? { head: n, tail: n - 1 } : null)
                 }
@@ -34,8 +34,8 @@ describe('Unfold Operations', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family },
                 Counter: {
-                    op: 'unfold',
-                    spec: { in: Number, out: Family },
+                    [op]: 'unfold',
+                    [spec]: { in: Number, out: Family },
                     Nil: n => (n <= 0 ? {} : null),
                     Cons: n => (n > 0 ? { head: n, tail: n - 1 } : null)
                 }
@@ -53,14 +53,14 @@ describe('Unfold Operations', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family },
                 Counter: {
-                    op: 'unfold',
-                    spec: { in: Number, out: Family },
+                    [op]: 'unfold',
+                    [spec]: { in: Number, out: Family },
                     Nil: n => (n <= 0 ? {} : null),
                     Cons: n => (n > 0 ? { head: n, tail: n - 1 } : null)
                 },
                 Range: {
-                    op: 'unfold',
-                    spec: { in: Number, out: Family },
+                    [op]: 'unfold',
+                    [spec]: { in: Number, out: Family },
                     Nil: n => (n <= 0 ? {} : null),
                     Cons: n => (n > 0 ? { head: 1, tail: n - 1 } : null)
                 }
@@ -86,8 +86,8 @@ describe('Unfold Operations', () => {
                         Nil: {},
                         Cons: { head: Number, tail: Family },
                         counter: {
-                            op: 'unfold',
-                            spec: { in: Number, out: Family },
+                            [op]: 'unfold',
+                            [spec]: { in: Number, out: Family },
                             Nil: n => (n <= 0 ? {} : null),
                             Cons: n => (n > 0 ? { head: n, tail: n - 1 } : null)
                         }
@@ -106,8 +106,8 @@ describe('Unfold Operations', () => {
                 Positive: { value: Number },
                 Negative: { value: Number },
                 FromInt: {
-                    op: 'unfold',
-                    spec: { in: Number, out: Family },
+                    [op]: 'unfold',
+                    [spec]: { in: Number, out: Family },
                     Zero: n => (n === 0 ? {} : null),
                     Positive: n => (n > 0 ? { value: n } : null),
                     Negative: n => (n < 0 ? { value: n } : null)

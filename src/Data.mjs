@@ -3,6 +3,9 @@ import {
     TypeParamSymbol,
     isOperationDef,
     extend,
+    op,
+    spec,
+    operations,
     validateTypeSpec,
     validateReturnType
 } from './operations.mjs';
@@ -19,7 +22,8 @@ import {
     isCamelCase,
     isObjectLiteral,
     HandlerMapSymbol,
-    isBuiltInType
+    isBuiltInType,
+    hasInputSpec
 } from './utils.mjs';
 
 // Re-export symbols
@@ -673,9 +677,9 @@ function topologicalSortOperations(operationSpecs, parentADT = null) {
                 frame.phase = 'post';
 
                 // Push dependencies onto stack in reverse order (for merge operations)
-                if (opDef.op === 'merge' && opDef.operations) {
-                    for (let i = opDef.operations.length - 1; i >= 0; i--) {
-                        const depName = opDef.operations[i];
+                if (opDef[op] === 'merge' && opDef[operations]) {
+                    for (let i = opDef[operations].length - 1; i >= 0; i--) {
+                        const depName = opDef[operations][i];
                         if (!visited.has(depName)) {
                             stack.push({ name: depName, phase: 'pre' });
                         }
@@ -706,15 +710,15 @@ function createOperations(ADT, variants, operationSpecs, typeParams) {
     const sortedOps = topologicalSortOperations(operationSpecs, parentADTMap.get(ADT));
 
     for (const [opName, opDef] of sortedOps) {
-        const op = opDef.op;
+        const opKind = opDef[op];
 
-        if (op === 'fold') {
+        if (opKind === 'fold') {
             createFoldOperation(ADT, variants, opName, opDef);
-        } else if (op === 'unfold') {
+        } else if (opKind === 'unfold') {
             createUnfoldOperation(ADT, variants, opName, opDef);
-        } else if (op === 'map') {
+        } else if (opKind === 'map') {
             createMapOperation(ADT, variants, opName, opDef);
-        } else if (op === 'merge') {
+        } else if (opKind === 'merge') {
             createMergeOperation(ADT, variants, opName, opDef);
         }
     }
@@ -724,13 +728,13 @@ function createOperations(ADT, variants, operationSpecs, typeParams) {
  * Create a fold operation
  */
 function createFoldOperation(ADT, variants, opName, opDef) {
-    const { spec = {}, op, ...handlers } = opDef;  // Exclude 'op' from handlers
+    const { [op]: _op, [spec]: opSpec = {}, ...handlers } = opDef;  // Exclude 'op' and 'spec' from handlers
 
     // LSP Enforcement: If extending and parent has this operation, inherit/validate specs
     const parentADT = parentADTMap.get(ADT);
-    let hasInput = 'in' in spec;
-    let hasOutput = 'out' in spec;
-    let finalSpec = { ...spec };
+    let hasInput = hasInputSpec(opSpec);
+    let hasOutput = 'out' in opSpec;
+    let finalSpec = { ...opSpec };
 
     if (parentADT) {
         const parentRegistry = adtTransformers.get(parentADT);
@@ -741,15 +745,15 @@ function createFoldOperation(ADT, variants, opName, opDef) {
             const parentHasInput = parentTransformer.inSpec !== undefined;
             const parentHasOutput = parentTransformer.outSpec !== undefined;
 
-            // spec: {} is same as no spec - inherit everything
-            // spec: { out: X } is explicit - not mentioning 'in' means "no input"
-            const specKeys = Object.keys(spec);
+            // opSpec: {} is same as no spec - inherit everything
+            // opSpec: { out: X } is explicit - not mentioning 'in' means "no input"
+            const specKeys = Object.keys(opSpec);
             const specIsEmpty = specKeys.length === 0;
 
             if (!specIsEmpty) {
                 // Spec has properties, so it's explicit (not inheriting)
-                const childDefinesIn = 'in' in spec;
-                const childDefinesOut = 'out' in spec;
+                const childDefinesIn = 'in' in opSpec;
+                const childDefinesOut = 'out' in opSpec;
 
                 // Check parameterization change
                 if (parentHasInput && !childDefinesIn) {
@@ -764,14 +768,14 @@ function createFoldOperation(ADT, variants, opName, opDef) {
                 }
 
                 // Check input spec value change
-                if (childDefinesIn && parentHasInput && spec.in !== parentTransformer.inSpec) {
+                if (childDefinesIn && parentHasInput && opSpec.in !== parentTransformer.inSpec) {
                     throw new Error(
                         `Cannot change operation '${opName}' input specification when extending`
                     );
                 }
 
                 // Check output spec value change
-                if (childDefinesOut && parentHasOutput && spec.out !== parentTransformer.outSpec) {
+                if (childDefinesOut && parentHasOutput && opSpec.out !== parentTransformer.outSpec) {
                     throw new Error(
                         `Cannot change operation '${opName}' output specification when extending`
                     );
@@ -908,7 +912,7 @@ function createFoldOperation(ADT, variants, opName, opDef) {
         const result = handler.call(context, foldedFields, ...args);
 
         if (hasOutput) {
-            validateReturnType(result, spec.out, opName);
+            validateReturnType(result, opSpec.out, opName);
         }
 
         return result;
@@ -933,7 +937,7 @@ function createFoldOperation(ADT, variants, opName, opDef) {
  * Create an unfold operation
  */
 function createUnfoldOperation(ADT, variants, opName, opDef) {
-    const { spec = {}, op, cases: casesObj, ...rest } = opDef;
+    const { [op]: _op, [spec]: opSpec = {}, cases: casesObj, ...rest } = opDef;
     const cases = casesObj || rest;
 
     if (!isPascalCase(opName)) {
@@ -941,7 +945,7 @@ function createUnfoldOperation(ADT, variants, opName, opDef) {
     }
 
     // Validate spec guards - prevent Function as guard
-    if (spec && 'in' in spec && spec.in === Function) {
+    if (opSpec && 'in' in opSpec && opSpec.in === Function) {
         throw new TypeError(`cannot use Function as 'in' guard`);
     }
 
@@ -949,19 +953,19 @@ function createUnfoldOperation(ADT, variants, opName, opDef) {
     const generator = (seed) => seed; // Basic generator, cases handle the logic
     const transformer = createTransformer({
         name: opName,
-        inSpec: spec.in,
+        inSpec: opSpec.in,
         generator
     });
 
     // Store cases on transformer for potential composition
     transformer.unfoldCases = cases;
-    transformer.unfoldSpec = spec;
+    transformer.unfoldSpec = opSpec;
 
     ADT._registerTransformer(opName, transformer, false, variants);
 
     ADT[opName] = function unfoldImpl(seed) {
-        if ('in' in spec) {
-            validateTypeSpec(seed, spec.in, opName, 'input of type');
+        if (hasInputSpec(opSpec)) {
+            validateTypeSpec(seed, opSpec.in, opName, 'input of type');
         }
 
         for (const [variantName, caseFn] of Object.entries(cases)) {
@@ -1001,7 +1005,7 @@ function createUnfoldOperation(ADT, variants, opName, opDef) {
  * Create a map operation
  */
 function createMapOperation(ADT, variants, opName, opDef) {
-    const { spec = {}, op, ...transformers } = opDef;
+    const { [op]: _op, [spec]: _opSpec = {}, ...transformers } = opDef;
 
     if (!isCamelCase(opName)) {
         throw new Error(`Map operation '${opName}' must be camelCase`);
@@ -1079,18 +1083,18 @@ function createMapOperation(ADT, variants, opName, opDef) {
  * Create a merge operation (hylomorphism)
  */
 function createMergeOperation(ADT, variants, opName, opDef) {
-    const { operations } = opDef;
+    const opList = opDef[operations];
 
-    if (!Array.isArray(operations) || operations.length === 0) {
+    if (!Array.isArray(opList) || opList.length === 0) {
         throw new Error(`Merge requires a non-empty array of operation names`);
     }
 
-    if (operations.length < 2) {
+    if (opList.length < 2) {
         throw new Error(`Merge requires at least 2 operations`);
     }
 
     // Retrieve transformers for each operation to check if we have unfold
-    const transformers = operations.map(operationName => {
+    const transformers = opList.map(operationName => {
         const transformer = ADT._getTransformer(operationName);
         if (!transformer) {
             throw new Error(`Cannot merge: operation '${operationName}' not found`);
@@ -1131,7 +1135,7 @@ function createMergeOperation(ADT, variants, opName, opDef) {
         ADT[opName] = function (seed) {
             // Simple implementation: execute unfold then fold
             // (Full deforestation would integrate them, but that's complex)
-            const unfoldName = operations[0];
+            const unfoldName = opList[0];
             const unfoldOp = ADT[unfoldName];
 
             if (!unfoldOp) {
@@ -1142,8 +1146,8 @@ function createMergeOperation(ADT, variants, opName, opDef) {
 
             // Apply remaining operations sequentially
             let result = intermediate;
-            for (let i = 1; i < operations.length; i++) {
-                const nextOpName = operations[i];
+            for (let i = 1; i < opList.length; i++) {
+                const nextOpName = opList[i];
                 const descriptor = Object.getOwnPropertyDescriptor(ADT.prototype, nextOpName);
 
                 if (descriptor && descriptor.get) {
@@ -1161,7 +1165,7 @@ function createMergeOperation(ADT, variants, opName, opDef) {
         // Pure fold/map composition (instance method)
         const mergeImpl = function (...args) {
             let result = this;
-            for (const opName of operations) {
+            for (const opName of opList) {
                 const descriptor = Object.getOwnPropertyDescriptor(ADT.prototype, opName);
                 if (descriptor && descriptor.get) {
                     result = result[opName];

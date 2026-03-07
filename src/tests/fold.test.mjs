@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { data } from '../index.mjs';
+import { data , op, spec, operations} from '../index.mjs';
 
 describe('Fold Operation (Catamorphism)', () => {
     describe('Non-Recursive ADTs', () => {
@@ -10,7 +10,7 @@ describe('Fold Operation (Catamorphism)', () => {
                 Green: {},
                 Blue: {},
                 toHex: {
-                    op: 'fold',
+                    [op]: 'fold',
                     out: String,
                     Red() { return '#FF0000'; },
                     Green() { return '#00FF00'; },
@@ -30,7 +30,7 @@ describe('Fold Operation (Catamorphism)', () => {
                 Blue: {},
 
                 toHex: {
-                    op: 'fold',
+                    [op]: 'fold',
                     out: String,
                     Red() { return '#FF0000'; },
                     Green() { return '#00FF00'; },
@@ -50,14 +50,14 @@ describe('Fold Operation (Catamorphism)', () => {
                 Blue: {},
 
                 toHex: {
-                    op: 'fold',
+                    [op]: 'fold',
                     out: String,
                     Red() { return '#FF0000'; },
                     Green() { return '#00FF00'; },
                     Blue() { return '#0000FF'; }
                 },
                 toRGB: {
-                    op: 'fold',
+                    [op]: 'fold',
                     out: String,
                     Red() { return 'rgb(255, 0, 0)'; },
                     Green() { return 'rgb(0, 255, 0)'; },
@@ -73,8 +73,8 @@ describe('Fold Operation (Catamorphism)', () => {
             const Point = data(() => ({
                 Point2D: { x: Number, y: Number },
                 quadrant: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Point2D({ x, y }) {
                         if (x >= 0 && y >= 0) return 'Q1';
                         if (x < 0 && y >= 0) return 'Q2';
@@ -99,8 +99,8 @@ describe('Fold Operation (Catamorphism)', () => {
             const Point = data(() => ({
                 Point2D: { x: Number, y: Number },
                 toString: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Point2D({ x, y }) {
                         return `(${x}, ${y})`;
                     }
@@ -120,8 +120,8 @@ describe('Fold Operation (Catamorphism)', () => {
             const Point3D = data(() => ({
                 Point3D: { x: Number, y: Number, z: Number },
                 sumXY: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Point3D({ x, y }) { // Ignore z
                         return x + y;
                     }
@@ -138,8 +138,8 @@ describe('Fold Operation (Catamorphism)', () => {
                 Square: { side: Number },
                 Unknown: {},
                 area: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Circle({ radius }) { return Math.PI * radius * radius; },
                     Square({ side }) { return side * side; },
                     Unknown() { return 0; }
@@ -162,8 +162,8 @@ describe('Fold Operation (Catamorphism)', () => {
                 Zero: {},
                 Succ: { pred: Family },
                 toValue: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Zero() { return 0; },
                     Succ({ pred }) { return 1 + pred; }
                 }
@@ -185,8 +185,8 @@ describe('Fold Operation (Catamorphism)', () => {
                 Zero: {},
                 Succ: { pred: Family },
                 toValue: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Zero() { return 0; },
                     Succ({ pred }) { return 1 + pred; }
                 }
@@ -201,8 +201,8 @@ describe('Fold Operation (Catamorphism)', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family },
                 length: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Nil() { return 0; },
                     Cons({ tail }) { return 1 + tail; }
                 }
@@ -224,8 +224,8 @@ describe('Fold Operation (Catamorphism)', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family },
                 sum: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Nil() { return 0; },
                     Cons({ head, tail }) { return head + tail; }
                 }
@@ -248,8 +248,8 @@ describe('Fold Operation (Catamorphism)', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family },
                 product: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Nil() { return 1; },
                     Cons({ head, tail }) { return head * tail; }
                 }
@@ -272,8 +272,8 @@ describe('Fold Operation (Catamorphism)', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family },
                 append: {
-                    op: 'fold',
-                    spec: { in: Number },
+                    [op]: 'fold',
+                    [spec]: { in: Number },
                     Nil(_fields, val) {
                         return List.Cons({ head: val, tail: List.Nil });
                     },
@@ -311,8 +311,8 @@ describe('Fold Operation (Catamorphism)', () => {
                 Green: {},
                 Blue: {},
                 matches: {
-                    op: 'fold',
-                    spec: { in: String, out: Boolean },
+                    [op]: 'fold',
+                    [spec]: { in: String, out: Boolean },
                     Red(_fields, text) { return text.toLowerCase() === 'red'; },
                     _(_fields, text) {
                         // Wildcard handler receives foldedFields and input parameter
@@ -344,8 +344,8 @@ describe('Fold Operation (Catamorphism)', () => {
                 Leaf: { value: Number },
                 Node: { left: Family, right: Family, value: Number },
                 height: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Leaf() { return 1; },
                     Node({ left, right }) { return 1 + Math.max(left, right); }
                 }
@@ -370,8 +370,8 @@ describe('Fold Operation (Catamorphism)', () => {
                 Leaf: { value: Number },
                 Node: { left: Family, right: Family, value: Number },
                 sum: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Leaf({ value }) { return value; },
                     Node({ left, right, value }) { return left + right + value; }
                 }
@@ -394,8 +394,8 @@ describe('Fold Operation (Catamorphism)', () => {
                 Succ: { pred: Family },
                 NegSucc: { pred: Family },
                 toValue: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Zero() { return 0; },
                     _() { return -999; } // Wildcard for unknown variants
                 }
@@ -411,8 +411,8 @@ describe('Fold Operation (Catamorphism)', () => {
                 Leaf: { value: Number },
                 Node: { left: Family, right: Family },
                 getType: {
-                    op: 'fold',
-                    spec: { out: String },
+                    [op]: 'fold',
+                    [spec]: { out: String },
                     Leaf() { return 'leaf'; },
                     _() {
                         assert.ok(this instanceof Tree);
@@ -432,20 +432,20 @@ describe('Fold Operation (Catamorphism)', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family },
                 length: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Nil() { return 0; },
                     Cons({ tail }) { return 1 + tail; }
                 },
                 sum: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Nil() { return 0; },
                     Cons({ head, tail }) { return head + tail; }
                 },
                 product: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Nil() { return 1; },
                     Cons({ head, tail }) { return head * tail; }
                 }
@@ -471,8 +471,8 @@ describe('Fold Operation (Catamorphism)', () => {
                 Nil: {},
                 Cons: { head: T, tail: Family },
                 length: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Nil() { return 0; },
                     Cons({ tail }) { return 1 + tail; }
                 }
@@ -499,8 +499,8 @@ describe('Fold Operation (Catamorphism)', () => {
                 data(({ Family }) => ({
                     Node: { value: Number, left: Family },
                     value: {
-                        op: 'fold',
-                        spec: { out: Number },
+                        [op]: 'fold',
+                        [spec]: { out: Number },
                         Node({ value }) { return value; }
                     }
                 }));
@@ -515,8 +515,8 @@ describe('Fold Operation (Catamorphism)', () => {
                 Add: { left: Family, right: Family },
                 Mul: { left: Family, right: Family },
                 eval: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Lit({ value }) { return value; },
                     Add({ left, right }) { return left + right; },
                     Mul({ left, right }) { return left * right; }
@@ -539,8 +539,8 @@ describe('Fold Operation (Catamorphism)', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family },
                 sum: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Nil() { return 0; },
                     Cons({ head, tail }) { return head + tail; }
                 }
@@ -563,8 +563,8 @@ describe('Fold Operation (Catamorphism)', () => {
                 Zero: {},
                 Succ: { pred: Family },
                 partial: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Zero() { return 0; },
                     // Missing Succ handler, use wildcard to avoid exhaustiveness error
                     _() {
@@ -588,14 +588,14 @@ describe('Fold Operation (Catamorphism)', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family },
                 isEmpty: {
-                    op: 'fold',
-                    spec: { out: Boolean },
+                    [op]: 'fold',
+                    [spec]: { out: Boolean },
                     Nil() { return true; },
                     Cons() { return false; }
                 },
                 length: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Nil() { return 0; },
                     Cons({ tail }) { return 1 + tail; }
                 }
@@ -616,8 +616,8 @@ describe('Fold Operation (Catamorphism)', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family },
                 sum: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Nil() { return 0; },
                     Cons({ head, tail }) {
                         // TypeScript should infer: head is number, tail is already folded result (number)
@@ -639,8 +639,8 @@ describe('Fold Operation (Catamorphism)', () => {
                 Zero: {},
                 Succ: { pred: Family },
                 toValue: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Zero() { return 0; },
                     Succ({ pred }) { return 1 + pred; }
                 }
@@ -660,8 +660,8 @@ describe('Fold Operation (Catamorphism)', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family },
                 length: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Nil() { return 0; },
                     Cons({ tail }) { return 1 + tail; }
                 }

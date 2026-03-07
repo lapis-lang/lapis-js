@@ -1,20 +1,20 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { codata } from '../index.mjs';
-import { codataObservers } from '../Observer.mjs';
+import { behavior } from '../index.mjs';
+import { behaviorObservers } from '../Observer.mjs';
 
-describe('Codata Stream', () => {
-    it('should define Stream codata type with head and tail observers', () => {
-        const Stream = codata(({ Self, T }) => ({
+describe('Behavior Stream', () => {
+    it('should define Stream behavior type with head and tail observers', () => {
+        const Stream = behavior(({ Self, T }) => ({
             head: T,
             tail: Self
         }));
 
-        // Verify the codata type was created
+        // Verify the behavior type was created
         assert.ok(Stream);
 
         // Verify observer registry exists
-        const observers = codataObservers.get(Stream);
+        const observers = behaviorObservers.get(Stream);
         assert.ok(observers);
         assert.strictEqual(observers.size, 2);
 
@@ -36,7 +36,7 @@ describe('Codata Stream', () => {
     });
 
     it('should support parameterized Stream with type argument', () => {
-        const Stream = codata(({ Self, T }) => ({
+        const Stream = behavior(({ Self, T }) => ({
             head: T,
             tail: Self
         }));
@@ -53,7 +53,7 @@ describe('Codata Stream', () => {
 
     it('should validate observer names are camelCase', () => {
         assert.throws(() => {
-            codata(({ Self, T }) => ({
+            behavior(({ Self, T }) => ({
                 Head: T,  // PascalCase - should fail
                 tail: Self
             }));
@@ -63,7 +63,7 @@ describe('Codata Stream', () => {
         });
 
         assert.throws(() => {
-            codata(({ Self, T }) => ({
+            behavior(({ Self, T }) => ({
                 head: T,
                 _tail: Self  // Underscore prefix - should fail
             }));
@@ -74,13 +74,13 @@ describe('Codata Stream', () => {
     });
 
     it('should distinguish simple, parametric, and continuation observers', () => {
-        const ComplexCodata = codata(({ Self, T }) => ({
+        const ComplexBehavior = behavior(({ Self, T }) => ({
             simple: T,                              // Simple observer
             parametric: { in: Number, out: T },    // Parametric observer
             continuation: Self                      // Continuation
         }));
 
-        const observers = codataObservers.get(ComplexCodata);
+        const observers = behaviorObservers.get(ComplexBehavior);
 
         const simple = observers.get('simple');
         assert.strictEqual(simple.isSimple, true);
@@ -99,13 +99,13 @@ describe('Codata Stream', () => {
     });
 
     it('should extract multiple type parameters', () => {
-        const BiStream = codata(({ Self, T, U }) => ({
+        const BiStream = behavior(({ Self, T, U }) => ({
             headT: T,
             headU: U,
             tail: Self
         }));
 
-        const observers = codataObservers.get(BiStream);
+        const observers = behaviorObservers.get(BiStream);
         assert.strictEqual(observers.size, 3);
         assert.ok(observers.get('headT'));
         assert.ok(observers.get('headU'));
@@ -114,26 +114,26 @@ describe('Codata Stream', () => {
 
     it('should reject non-function declaration', () => {
         assert.throws(() => {
-            codata({ head: Number });
+            behavior({ head: Number });
         }, {
             name: 'TypeError',
-            message: /codata\(\) requires a callback function/
+            message: /behavior\(\) requires a callback function/
         });
     });
 
     it('should reject declaration that does not return object', () => {
         assert.throws(() => {
-            codata(({ Self, T }) => null);
+            behavior(({ Self, T }) => null);
         }, {
             name: 'TypeError',
-            message: /codata\(\) callback must return an object/
+            message: /behavior\(\) callback must return an object/
         });
 
         assert.throws(() => {
-            codata(({ Self, T }) => "not an object");
+            behavior(({ Self, T }) => "not an object");
         }, {
             name: 'TypeError',
-            message: /codata\(\) callback must return an object/
+            message: /behavior\(\) callback must return an object/
         });
     });
 });

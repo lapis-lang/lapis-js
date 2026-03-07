@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { data } from '../index.mjs';
+import { data , op, spec, operations} from '../index.mjs';
 
 describe('Merge Operation (Deforestation)', () => {
     describe('Hylomorphism (unfold + fold)', () => {
@@ -9,20 +9,20 @@ describe('Merge Operation (Deforestation)', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family },
                 Counter: {
-                    op: 'unfold',
-                    spec: { in: Number, out: Family },
+                    [op]: 'unfold',
+                    [spec]: { in: Number, out: Family },
                     Nil: (n) => (n <= 0 ? {} : null),
                     Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
                 },
                 product: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Nil() { return 1; },
                     Cons({ head, tail }) { return head * tail; }
                 },
                 Factorial: {
-                    op: 'merge',
-                    operations: ['Counter', 'product']
+                    [op]: 'merge',
+                    [operations]: ['Counter', 'product']
                 }
             }));
 
@@ -39,20 +39,20 @@ describe('Merge Operation (Deforestation)', () => {
                     Nil: {},
                     Cons: { head: Number, tail: Family },
                     Counter: {
-                        op: 'unfold',
-                        spec: { in: Number, out: Family },
+                        [op]: 'unfold',
+                        [spec]: { in: Number, out: Family },
                         Nil: (n) => (n <= 0 ? {} : null),
                         Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
                     },
                     sum: {
-                        op: 'fold',
-                        spec: { out: Number },
+                        [op]: 'fold',
+                        [spec]: { out: Number },
                         Nil() { return 0; },
                         Cons({ head, tail }) { return head + tail; }
                     },
                     triangular: {
-                        op: 'merge',
-                        operations: ['Counter', 'sum']
+                        [op]: 'merge',
+                        [operations]: ['Counter', 'sum']
                     }
                 })),
                 /Merged operation 'triangular' with unfold must be PascalCase/
@@ -64,20 +64,20 @@ describe('Merge Operation (Deforestation)', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family },
                 CountUp: {
-                    op: 'unfold',
-                    spec: { in: Number, out: Family },
+                    [op]: 'unfold',
+                    [spec]: { in: Number, out: Family },
                     Nil: (n) => (n <= 0 ? {} : null),
                     Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
                 },
                 sum: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Nil() { return 0; },
                     Cons({ head, tail }) { return head + tail; }
                 },
                 Triangular: {
-                    op: 'merge',
-                    operations: ['CountUp', 'sum']
+                    [op]: 'merge',
+                    [operations]: ['CountUp', 'sum']
                 }
             }));
 
@@ -95,19 +95,19 @@ describe('Merge Operation (Deforestation)', () => {
                 Nil: {},
                 Cons: { head: T, tail: Family },
                 double: {
-                    op: 'map',
-                    spec: { out: Family },
+                    [op]: 'map',
+                    [spec]: { out: Family },
                     T: (x) => x * 2
                 },
                 sum: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Nil() { return 0; },
                     Cons({ head, tail }) { return head + tail; }
                 },
                 doubleSum: {
-                    op: 'merge',
-                    operations: ['double', 'sum']
+                    [op]: 'merge',
+                    [operations]: ['double', 'sum']
                 }
             }));
 
@@ -126,19 +126,19 @@ describe('Merge Operation (Deforestation)', () => {
                 Nil: {},
                 Cons: { head: T, tail: Family },
                 CountDown: {
-                    op: 'unfold',
-                    spec: { in: Number, out: Family },
+                    [op]: 'unfold',
+                    [spec]: { in: Number, out: Family },
                     Nil: (n) => (n <= 0 ? {} : null),
                     Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
                 },
                 square: {
-                    op: 'map',
-                    spec: { out: Family },
+                    [op]: 'map',
+                    [spec]: { out: Family },
                     T: (x) => x * x
                 },
                 SquareCountDown: {
-                    op: 'merge',
-                    operations: ['CountDown', 'square']
+                    [op]: 'merge',
+                    [operations]: ['CountDown', 'square']
                 }
             }));
 
@@ -160,24 +160,24 @@ describe('Merge Operation (Deforestation)', () => {
                 Nil: {},
                 Cons: { head: T, tail: Family },
                 double: {
-                    op: 'map',
-                    spec: { out: Family },
+                    [op]: 'map',
+                    [spec]: { out: Family },
                     T: (x) => x * 2
                 },
                 increment: {
-                    op: 'map',
-                    spec: { out: Family },
+                    [op]: 'map',
+                    [spec]: { out: Family },
                     T: (x) => x + 1
                 },
                 product: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Nil() { return 1; },
                     Cons({ head, tail }) { return head * tail; }
                 },
                 transformProduct: {
-                    op: 'merge',
-                    operations: ['double', 'increment', 'product']
+                    [op]: 'merge',
+                    [operations]: ['double', 'increment', 'product']
                 }
             }));
 
@@ -196,25 +196,25 @@ describe('Merge Operation (Deforestation)', () => {
                 Nil: {},
                 Cons: { head: T, tail: Family },
                 Range: {
-                    op: 'unfold',
-                    spec: { in: Number, out: Family },
+                    [op]: 'unfold',
+                    [spec]: { in: Number, out: Family },
                     Nil: (n) => (n <= 0 ? {} : null),
                     Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
                 },
                 square: {
-                    op: 'map',
-                    spec: { out: Family },
+                    [op]: 'map',
+                    [spec]: { out: Family },
                     T: (x) => x * x
                 },
                 sum: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Nil() { return 0; },
                     Cons({ head, tail }) { return head + tail; }
                 },
                 SumOfSquares: {
-                    op: 'merge',
-                    operations: ['Range', 'square', 'sum']
+                    [op]: 'merge',
+                    [operations]: ['Range', 'square', 'sum']
                 }
             }));
 
@@ -231,30 +231,30 @@ describe('Merge Operation (Deforestation)', () => {
                 Nil: {},
                 Cons: { head: T, tail: Family },
                 Range: {
-                    op: 'unfold',
-                    spec: { in: Number, out: Family },
+                    [op]: 'unfold',
+                    [spec]: { in: Number, out: Family },
                     Nil: (n) => (n <= 0 ? {} : null),
                     Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
                 },
                 double: {
-                    op: 'map',
-                    spec: { out: Family },
+                    [op]: 'map',
+                    [spec]: { out: Family },
                     T: (x) => x * 2
                 },
                 increment: {
-                    op: 'map',
-                    spec: { out: Family },
+                    [op]: 'map',
+                    [spec]: { out: Family },
                     T: (x) => x + 1
                 },
                 sum: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Nil() { return 0; },
                     Cons({ head, tail }) { return head + tail; }
                 },
                 ComplexPipeline: {
-                    op: 'merge',
-                    operations: ['Range', 'double', 'increment', 'sum']
+                    [op]: 'merge',
+                    [operations]: ['Range', 'double', 'increment', 'sum']
                 }
             }));
 
@@ -272,20 +272,20 @@ describe('Merge Operation (Deforestation)', () => {
                     Nil: {},
                     Cons: { head: Number, tail: Family },
                     Counter1: {
-                        op: 'unfold',
-                        spec: { in: Number, out: Family },
+                        [op]: 'unfold',
+                        [spec]: { in: Number, out: Family },
                         Nil: (n) => (n <= 0 ? {} : null),
                         Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
                     },
                     Counter2: {
-                        op: 'unfold',
-                        spec: { in: Number, out: Family },
+                        [op]: 'unfold',
+                        [spec]: { in: Number, out: Family },
                         Nil: (n) => (n <= 0 ? {} : null),
                         Cons: (n) => (n > 0 ? { head: n * 2, tail: n - 1 } : null)
                     },
                     Invalid: {
-                        op: 'merge',
-                        operations: ['Counter1', 'Counter2']
+                        [op]: 'merge',
+                        [operations]: ['Counter1', 'Counter2']
                     }
                 })),
                 /multiple unfolds detected.*'Counter1', 'Counter2'.*Only one unfold/
@@ -298,20 +298,20 @@ describe('Merge Operation (Deforestation)', () => {
                     Nil: {},
                     Cons: { head: Number, tail: Family },
                     sum: {
-                        op: 'fold',
-                        spec: { out: Number },
+                        [op]: 'fold',
+                        [spec]: { out: Number },
                         Nil() { return 0; },
                         Cons({ head, tail }) { return head + tail; }
                     },
                     product: {
-                        op: 'fold',
-                        spec: { out: Number },
+                        [op]: 'fold',
+                        [spec]: { out: Number },
                         Nil() { return 1; },
                         Cons({ head, tail }) { return head * tail; }
                     },
                     invalid: {
-                        op: 'merge',
-                        operations: ['sum', 'product']
+                        [op]: 'merge',
+                        [operations]: ['sum', 'product']
                     }
                 })),
                 /multiple folds detected.*'sum', 'product'.*Only one fold/
@@ -324,14 +324,14 @@ describe('Merge Operation (Deforestation)', () => {
                     Nil: {},
                     Cons: { head: Number, tail: Family },
                     sum: {
-                        op: 'fold',
-                        spec: { out: Number },
+                        [op]: 'fold',
+                        [spec]: { out: Number },
                         Nil() { return 0; },
                         Cons({ head, tail }) { return head + tail; }
                     },
                     invalid: {
-                        op: 'merge',
-                        operations: ['sum', 'unknown']
+                        [op]: 'merge',
+                        [operations]: ['sum', 'unknown']
                     }
                 })),
                 /Cannot merge: operation 'unknown' not found/
@@ -344,8 +344,8 @@ describe('Merge Operation (Deforestation)', () => {
                     Nil: {},
                     Cons: { head: Number, tail: Family },
                     invalid: {
-                        op: 'merge',
-                        operations: []
+                        [op]: 'merge',
+                        [operations]: []
                     }
                 })),
                 /requires a non-empty array of operation names/
@@ -358,14 +358,14 @@ describe('Merge Operation (Deforestation)', () => {
                     Nil: {},
                     Cons: { head: Number, tail: Family },
                     sum: {
-                        op: 'fold',
-                        spec: { out: Number },
+                        [op]: 'fold',
+                        [spec]: { out: Number },
                         Nil() { return 0; },
                         Cons({ head, tail }) { return head + tail; }
                     },
                     justSum: {
-                        op: 'merge',
-                        operations: ['sum']
+                        [op]: 'merge',
+                        [operations]: ['sum']
                     }
                 })),
                 /Merge requires at least 2 operations/
@@ -379,20 +379,20 @@ describe('Merge Operation (Deforestation)', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family },
                 Counter: {
-                    op: 'unfold',
-                    spec: { in: Number, out: Family },
+                    [op]: 'unfold',
+                    [spec]: { in: Number, out: Family },
                     Nil: (n) => (n <= 0 ? {} : null),
                     Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
                 },
                 sum: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Nil() { return 0; },
                     Cons({ head, tail }) { return head + tail; }
                 },
                 Triangular: {
-                    op: 'merge',
-                    operations: ['Counter', 'sum']
+                    [op]: 'merge',
+                    [operations]: ['Counter', 'sum']
                 }
             }));
 
@@ -431,20 +431,20 @@ describe('Merge Operation (Deforestation)', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family },
                 Range: {
-                    op: 'unfold',
-                    spec: { in: Number, out: Family },
+                    [op]: 'unfold',
+                    [spec]: { in: Number, out: Family },
                     Nil: (n) => (n <= 0 ? {} : null),
                     Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
                 },
                 length: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Nil() { return 0; },
                     Cons({ head, tail }) { return tail + 1; }
                 },
                 Count: {
-                    op: 'merge',
-                    operations: ['Range', 'length']
+                    [op]: 'merge',
+                    [operations]: ['Range', 'length']
                 }
             }));
 
@@ -470,30 +470,30 @@ describe('Merge Operation (Deforestation)', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family },
                 Counter: {
-                    op: 'unfold',
-                    spec: { in: Number, out: Family },
+                    [op]: 'unfold',
+                    [spec]: { in: Number, out: Family },
                     Nil: (n) => (n <= 0 ? {} : null),
                     Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
                 },
                 sum: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Nil() { return 0; },
                     Cons({ head, tail }) { return head + tail; }
                 },
                 Triangular: {
-                    op: 'merge',
-                    operations: ['Counter', 'sum']
+                    [op]: 'merge',
+                    [operations]: ['Counter', 'sum']
                 },
                 product: {
-                    op: 'fold',
-                    spec: { out: Number },
+                    [op]: 'fold',
+                    [spec]: { out: Number },
                     Nil() { return 1; },
                     Cons({ head, tail }) { return head * tail; }
                 },
                 Factorial: {
-                    op: 'merge',
-                    operations: ['Counter', 'product']
+                    [op]: 'merge',
+                    [operations]: ['Counter', 'product']
                 }
             }));
 

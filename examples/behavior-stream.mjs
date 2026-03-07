@@ -1,41 +1,41 @@
 /**
- * Codata Examples - Streams and Infinite Structures
+ * Behavior Examples - Streams and Infinite Structures
  *
- * This file demonstrates the use of codata (final coalgebras) in Lapis JS,
+ * This file demonstrates the use of behavior (final coalgebras) in Lapis JS,
  * showcasing lazy evaluation, infinite structures, and observer-based programming.
  */
 
-import { codata } from '../src/index.mjs';
+import { behavior , op, spec} from '../src/index.mjs';
 
 // =============================================================================
 // Example 1: Basic Stream with Simple Observers and Continuations
 // =============================================================================
 
-const Stream = codata(({ Self, T }) => ({
-    head: T,           // Simple observer: returns current value
-    tail: Self(T),     // Continuation: returns next stream
-    From: {
-        op: 'unfold',
-        spec: { in: Number, out: Self },
-        head: (n) => n,
-        tail: (n) => n + 1
-    },
-    Constant: {
-        op: 'unfold',
-        spec: { in: Number, out: Self },
-        head: (n) => n,
-        tail: (n) => n          // Same seed = constant stream
-    },
-    Range: {
-        op: 'unfold',
-        spec: { in: { start: Number, end: Number }, out: Self },
-        head: ({ start }) => start,
-        tail: ({ start, end }) => start < end ? { start: start + 1, end } : { start: end, end }
-    }
-}));
+const Stream = behavior(({ Self, T }) => ({
+        head: T,           // Simple observer: returns current value
+        tail: Self(T),     // Continuation: returns next stream
+        From: {
+            [op]: 'unfold',
+            [spec]: { in: Number, out: Self },
+            head: (n) => n,
+            tail: (n) => n + 1
+        },
+        Constant: {
+            [op]: 'unfold',
+            [spec]: { in: Number, out: Self },
+            head: (n) => n,
+            tail: (n) => n          // Same seed = constant stream
+        },
+        Range: {
+            [op]: 'unfold',
+            [spec]: { in: { start: Number, end: Number }, out: Self },
+            head: ({ start }) => start,
+            tail: ({ start, end }) => start < end ? { start: start + 1, end } : { start: end, end }
+        }
+    })),
 
-// Instantiate for numbers
-const StreamNum = Stream(Number);
+    // Instantiate for numbers
+    StreamNum = Stream(Number);
 
 console.log('\n=== Basic Stream Examples ===');
 
@@ -60,20 +60,20 @@ console.log('range.tail.head:', range.tail.head);  // 6
 // Example 2: Stream with Parametric Observers
 // =============================================================================
 
-const StreamWithNth = codata(({ Self, T }) => ({
-    head: T,
-    tail: Self(T),
-    nth: { in: Number, out: T },  // Parametric observer
-    From: {
-        op: 'unfold',
-        spec: { in: Number, out: Self },
-        head: (n) => n,
-        tail: (n) => n + 1,
-        nth: (n) => (index) => n + index
-    }
-}));
+const StreamWithNth = behavior(({ Self, T }) => ({
+        head: T,
+        tail: Self(T),
+        nth: { in: Number, out: T },  // Parametric observer
+        From: {
+            [op]: 'unfold',
+            [spec]: { in: Number, out: Self },
+            head: (n) => n,
+            tail: (n) => n + 1,
+            nth: (n) => (index) => n + index
+        }
+    })),
 
-const StreamNumNth = StreamWithNth(Number);
+    StreamNumNth = StreamWithNth(Number);
 
 console.log('\n=== Parametric Observer Example ===');
 
@@ -86,12 +86,12 @@ console.log('numsWithNth.nth(100):', numsWithNth.nth(100)); // 100
 // Example 3: Fibonacci Stream
 // =============================================================================
 
-const FibStream = codata(({ Self }) => ({
+const FibStream = behavior(({ Self }) => ({
     head: Number,
     tail: Self,
     Create: {
-        op: 'unfold',
-        spec: { in: { a: Number, b: Number }, out: Self },
+        [op]: 'unfold',
+        [spec]: { in: { a: Number, b: Number }, out: Self },
         head: ({ a }) => a,
         tail: ({ a, b }) => ({ a: b, b: a + b })
     }
@@ -110,13 +110,13 @@ console.log('fib[4]:', fib.tail.tail.tail.tail.head); // 3
 // Example 4: Infinite Binary Tree
 // =============================================================================
 
-const Tree = codata(({ Self }) => ({
+const Tree = behavior(({ Self }) => ({
     value: Number,
     left: Self,
     right: Self,
     Create: {
-        op: 'unfold',
-        spec: { in: Number, out: Self },
+        [op]: 'unfold',
+        [spec]: { in: Number, out: Self },
         value: (n) => n,
         left: (n) => n * 2,
         right: (n) => n * 2 + 1
@@ -140,66 +140,59 @@ console.log('tree.right.right.value:', tree.right.right.value); // 7
 
 console.log('\n=== Lazy Evaluation and Memoization ===');
 
-let headCallCount = 0;
-let tailCallCount = 0;
-
-const LazyStream = codata(({ Self }) => ({
-    head: Number,
-    tail: Self,
-    Create: {
-        op: 'unfold',
-        spec: { in: Number, out: Self },
-        head: (n) => {
-            headCallCount++;
-            console.log(`  Computing head for seed ${n}`);
-            return n;
-        },
-        tail: (n) => {
-            tailCallCount++;
-            console.log(`  Computing tail for seed ${n}`);
-            return n + 1;
+const LazyStream = behavior(({ Self }) => ({
+        head: Number,
+        tail: Self,
+        Create: {
+            [op]: 'unfold',
+            [spec]: { in: Number, out: Self },
+            head: (n) => {
+                console.log(`  Computing head for seed ${n}`);
+                return n;
+            },
+            tail: (n) => {
+                console.log(`  Computing tail for seed ${n}`);
+                return n + 1;
+            }
         }
-    }
-}));
+    })),
 
-const lazy = LazyStream.Create(0);
+    lazy = LazyStream.Create(0);
 
+// Simple observers are recomputed on each access — log line appears twice:
 console.log('First access to head:');
 console.log('  lazy.head =', lazy.head);
 console.log('Second access to head (recomputed):');
 console.log('  lazy.head =', lazy.head);
 
+// Continuations are memoized — log line appears only once despite two accesses:
 console.log('\nFirst access to tail:');
 const tail1 = lazy.tail;
 console.log('  lazy.tail.head =', tail1.head);
 
-console.log('Second access to tail (memoized):');
+console.log('Second access to tail (memoized — no log line above):');
 const tail2 = lazy.tail;
 console.log('  tail1 === tail2:', tail1 === tail2);  // true (memoized)
 
-console.log(`\nTotal head calls: ${headCallCount} (no memoization for simple observers)`);
-console.log(`Total tail calls: ${tailCallCount} (memoized continuations)`);
-
 // =============================================================================
-// Example 6: Effect-like Codata (Console IO)
+// Example 6: Effect-like Behavior (Console IO)
 // =============================================================================
 
-const Console = codata(({ Self }) => ({
+const Console = behavior(() => ({
     log: { in: String, out: undefined },
     read: { out: String },
     Create: {
-        op: 'unfold',
-        spec: { out: Self },
+        [op]: 'unfold',
         log: () => (msg) => { console.log(`  [Console.log] ${msg}`); },
         read: () => () => 'simulated input'
     }
 }));
 
-console.log('\n=== Effect-like Codata (Console) ===');
+console.log('\n=== Effect-like Behavior (Console) ===');
 
-const io = Console.Create();
+const io = Console.Create;
 io.log('Hello, world!');
-io.log('This demonstrates effect-like codata');
+io.log('This demonstrates effect-like behavior');
 const input = io.read();
 console.log(`  [Console.read] Got: "${input}"`);
 
@@ -207,12 +200,12 @@ console.log(`  [Console.read] Got: "${input}"`);
 // Example 7: Multiple Seed Transformations
 // =============================================================================
 
-const PowerStream = codata(({ Self }) => ({
+const PowerStream = behavior(({ Self }) => ({
     head: Number,
     tail: Self,
     Create: {
-        op: 'unfold',
-        spec: { in: { base: Number, exp: Number }, out: Self },
+        [op]: 'unfold',
+        [spec]: { in: { base: Number, exp: Number }, out: Self },
         head: ({ base, exp }) => Math.pow(base, exp),
         tail: ({ base, exp }) => ({ base, exp: exp + 1 })
     }

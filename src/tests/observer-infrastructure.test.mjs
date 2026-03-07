@@ -10,7 +10,7 @@ import {
     composeObservers,
     composeMultipleObservers,
     createFoldObserver,
-    codataObservers
+    behaviorObservers
 } from '../Observer.mjs';
 
 describe('Observer Infrastructure', () => {
@@ -372,13 +372,13 @@ describe('Observer Infrastructure', () => {
         });
     });
 
-    describe('codataObservers WeakMap', () => {
+    describe('behaviorObservers WeakMap', () => {
         it('should be a WeakMap', () => {
-            assert.ok(codataObservers instanceof WeakMap);
+            assert.ok(behaviorObservers instanceof WeakMap);
         });
 
         it('should allow storing and retrieving observers', () => {
-            class TestCodata { }
+            class TestBehavior { }
             const registry = new Map();
 
             const observer = createObserver({
@@ -388,9 +388,9 @@ describe('Observer Infrastructure', () => {
             });
 
             registry.set('test', observer);
-            codataObservers.set(TestCodata, registry);
+            behaviorObservers.set(TestBehavior, registry);
 
-            const retrieved = codataObservers.get(TestCodata);
+            const retrieved = behaviorObservers.get(TestBehavior);
             assert.strictEqual(retrieved.get('test').name, 'test');
         });
     });

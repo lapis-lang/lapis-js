@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 
-import { data } from '@lapis-lang/lapis-js';
+import { data , op} from '@lapis-lang/lapis-js';
 
 // Structured data ADT with multiple variants
 const Point = data(() => ({
     Point2D: { x: Number, y: Number },
     Point3D: { x: Number, y: Number, z: Number },
     distanceFromOrigin: {
-        op: 'fold',
+        [op]: 'fold',
         out: Number,
         Point2D({ x, y }) {
             return Math.sqrt(x * x + y * y);
@@ -17,13 +17,16 @@ const Point = data(() => ({
         }
     },
     quadrant: {
-        op: 'fold',
+        [op]: 'fold',
         out: String,
         Point2D({ x, y }) {
-            if (x >= 0 && y >= 0) return 'Q1 (Northeast)';
-            if (x < 0 && y >= 0) return 'Q2 (Northwest)';
-            if (x < 0 && y < 0) return 'Q3 (Southwest)';
-            return 'Q4 (Southeast)';
+            const quadrants = {
+                '++': 'Q1 (Northeast)',
+                '-+': 'Q2 (Northwest)',
+                '--': 'Q3 (Southwest)',
+                '+-': 'Q4 (Southeast)'
+            };
+            return quadrants[`${x >= 0 ? '+' : '-'}${y >= 0 ? '+' : '-'}`];
         },
         Point3D({ x, y, z }) {
             const signs = [x >= 0 ? '+' : '-', y >= 0 ? '+' : '-', z >= 0 ? '+' : '-'];
@@ -31,7 +34,7 @@ const Point = data(() => ({
         }
     },
     toString: {
-        op: 'fold',
+        [op]: 'fold',
         out: String,
         Point2D({ x, y }) {
             return `(${x}, ${y})`;
@@ -46,9 +49,9 @@ console.log('=== Point ADT Example ===\n');
 
 // Create points using named arguments
 console.log('Creating points (named arguments):');
-const p1 = Point.Point2D({ x: 3, y: 4 });
-const p2 = Point.Point2D({ x: -5, y: 12 });
-const p3 = Point.Point3D({ x: 1, y: 2, z: 2 });
+const p1 = Point.Point2D({ x: 3, y: 4 }),
+    p2 = Point.Point2D({ x: -5, y: 12 }),
+    p3 = Point.Point3D({ x: 1, y: 2, z: 2 });
 
 console.log(`p1 = ${p1.toString}`);
 console.log(`p2 = ${p2.toString}`);
@@ -56,8 +59,8 @@ console.log(`p3 = ${p3.toString}`);
 
 // Create points using positional arguments
 console.log('\nCreating points (positional arguments):');
-const p4 = Point.Point2D(6, 8);
-const p5 = Point.Point3D(3, 4, 12);
+const p4 = Point.Point2D(6, 8),
+    p5 = Point.Point3D(3, 4, 12);
 
 console.log(`p4 = ${p4.toString}`);
 console.log(`p5 = ${p5.toString}`);

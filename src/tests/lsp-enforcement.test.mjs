@@ -1,14 +1,14 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { data, extend } from '../index.mjs';
+import { data, extend , op, spec, operations} from '../index.mjs';
 
 describe('LSP Enforcement', () => {
     test('should prevent changing parameterless to parameterized', () => {
         const Point = data(() => ({
             Point2D: { x: Number, y: Number },
             magnitude: {
-                op: 'fold',
-                spec: { out: Number },
+                [op]: 'fold',
+                [spec]: { out: Number },
                 Point2D({ x, y }) { return Math.sqrt(x * x + y * y); }
             }
         }));
@@ -19,8 +19,8 @@ describe('LSP Enforcement', () => {
                     [extend]: Point,
                     Point3D: { x: Number, y: Number, z: Number },
                     magnitude: {
-                        op: 'fold',
-                        spec: { in: String, out: Number },
+                        [op]: 'fold',
+                        [spec]: { in: String, out: Number },
                         Point3D({ x, y, z }, _unit) { return Math.sqrt(x * x + y * y + z * z); },
                         Point2D({ x, y }, _unit) { return Math.sqrt(x * x + y * y); }
                     }
@@ -38,8 +38,8 @@ describe('LSP Enforcement', () => {
             Nil: {},
             Cons: { head: Number, tail: Family },
             append: {
-                op: 'fold',
-                spec: { in: Number },
+                [op]: 'fold',
+                [spec]: { in: Number },
                 Nil({}, val) { return List.Cons({ head: val, tail: List.Nil }); },
                 Cons({ head, tail }, val) { return List.Cons({ head, tail: tail(val) }); }
             }
@@ -51,8 +51,8 @@ describe('LSP Enforcement', () => {
                 data(({ Family }) => ({
                     [extend]: List,
                     append: {
-                        op: 'fold',
-                        spec: { out: Family },
+                        [op]: 'fold',
+                        [spec]: { out: Family },
                         // Override all variants with parameterless handlers
                         Nil({}) { return List.Nil; },
                         Cons({ head, tail }) { return List.Cons({ head, tail }); }
@@ -71,8 +71,8 @@ describe('LSP Enforcement', () => {
             Red: {},
             Green: {},
             toHex: {
-                op: 'fold',
-                spec: { out: String },
+                [op]: 'fold',
+                [spec]: { out: String },
                 Red() { return '#FF0000'; },
                 Green() { return '#00FF00'; }
             }
@@ -83,7 +83,7 @@ describe('LSP Enforcement', () => {
             [extend]: Color,
             Blue: {},
             toHex: {
-                op: 'fold',
+                [op]: 'fold',
                 Blue() { return '#0000FF'; }
             }
         }));
@@ -97,8 +97,8 @@ describe('LSP Enforcement', () => {
             Nil: {},
             Cons: { head: Number, tail: Family },
             append: {
-                op: 'fold',
-                spec: { in: Number },
+                [op]: 'fold',
+                [spec]: { in: Number },
                 Nil({}, val) { return List.Cons({ head: val, tail: List.Nil }); },
                 Cons({ head, tail }, val) { return List.Cons({ head, tail: tail(val) }); }
             }
@@ -109,7 +109,7 @@ describe('LSP Enforcement', () => {
             [extend]: List,
             Special: { value: Number },
             append: {
-                op: 'fold',
+                [op]: 'fold',
                 Special({ value }, val) { 
                     // Just return a simple list with the Special's value and appended val
                     const tailList = List.Cons({ head: val, tail: List.Nil });
@@ -131,8 +131,8 @@ describe('LSP Enforcement', () => {
             Nil: {},
             Cons: { head: Number, tail: Family },
             append: {
-                op: 'fold',
-                spec: { in: Number },
+                [op]: 'fold',
+                [spec]: { in: Number },
                 Nil({}, val) { return List.Cons({ head: val, tail: List.Nil }); },
                 Cons({ head, tail }, val) { return List.Cons({ head, tail: tail(val) }); }
             }
@@ -145,8 +145,8 @@ describe('LSP Enforcement', () => {
                     [extend]: List,
                     Special: { value: Number },
                     append: {
-                        op: 'fold',
-                        spec: { in: String }, // Changed from Number to String
+                        [op]: 'fold',
+                        [spec]: { in: String }, // Changed from Number to String
                         Special({ value }, val) { 
                             return List.Cons({ head: value, tail: List.Nil }); 
                         }
@@ -166,8 +166,8 @@ describe('LSP Enforcement', () => {
             Green: {},
             Blue: {},
             toHex: {
-                op: 'fold',
-                spec: { out: String },
+                [op]: 'fold',
+                [spec]: { out: String },
                 Red() { return '#FF0000'; },
                 Green() { return '#00FF00'; },
                 Blue() { return '#0000FF'; }
@@ -181,8 +181,8 @@ describe('LSP Enforcement', () => {
                     [extend]: Color,
                     Yellow: {},
                     toHex: {
-                        op: 'fold',
-                        spec: { out: Number }, // Changed from String to Number
+                        [op]: 'fold',
+                        [spec]: { out: Number }, // Changed from String to Number
                         Yellow() { return 0xFFFF00; }
                     }
                 }));
@@ -199,8 +199,8 @@ describe('LSP Enforcement', () => {
             Nil: {},
             Cons: { head: Number, tail: Family },
             sum: {
-                op: 'fold',
-                spec: { out: Number },
+                [op]: 'fold',
+                [spec]: { out: Number },
                 Nil() { return 0; },
                 Cons({ head, tail }) { return head + tail; }
             }
@@ -211,8 +211,8 @@ describe('LSP Enforcement', () => {
             [extend]: List,
             Special: { value: Number },
             sum: {
-                op: 'fold',
-                spec: { out: Number }, // Same spec
+                [op]: 'fold',
+                [spec]: { out: Number }, // Same spec
                 Special({ value }) { return value; }
             }
         }));
