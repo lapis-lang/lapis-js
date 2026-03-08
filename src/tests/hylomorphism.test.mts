@@ -292,6 +292,9 @@ describe('Merge pipeline (unfold + fold)', () => {
         });
 
         test('fold handler has correct instanceof in merge', () => {
+            // Store in a container to break the TS7022 circular reference
+            // while the fold handlers capture `ref` by closure.
+            const ref: { List: unknown } = { List: null };
             const List = data(({ Family }) => ({
                 Nil: {},
                 Cons: { head: Number, tail: Family },
@@ -300,11 +303,14 @@ describe('Merge pipeline (unfold + fold)', () => {
                     Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
                 }),
                 isListInstance: fold({ out: Boolean })({
-                    Nil() { return this instanceof List; },
-                    Cons() { return this instanceof List; }
+                     
+                    Nil() { return this instanceof (ref.List as abstract new (...args: never) => unknown); },
+                     
+                    Cons() { return this instanceof (ref.List as abstract new (...args: never) => unknown); }
                 }),
                 CheckInstance: merge('Range', 'isListInstance')
             }));
+            ref.List = List;
 
             assert.strictEqual(List.CheckInstance(3), true);
             assert.strictEqual(List.CheckInstance(0), true);
