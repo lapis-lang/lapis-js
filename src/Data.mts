@@ -856,9 +856,8 @@ function createFoldOperation(
             if (dagCacheDepth === 0)
                 dagCache = new WeakMap();
 
-            const cached = dagCache!.get(this as object);
-            if (cached !== undefined)
-                return cached;
+            if (dagCache!.has(this as object))
+                return dagCache!.get(this as object);
 
             dagCacheDepth++;
         }
@@ -1186,155 +1185,34 @@ function createMergeOperation(
     ADT._registerTransformer(opName, composedTransformer, false, variants);
 
     if (composedTransformer.generator) {
-        // Check for hylomorphism opportunity: unfold + [maps*] + fold
-        const unfoldTransformer = transformerList.find(t => t.generator),
-            foldTransformer = transformerList.find(t => t[HandlerMapSymbol]),
-            mapTransformers = transformerList.filter(t =>
-                t.getParamTransform && !t.generator && !t[HandlerMapSymbol]
-            );
+        // Sequential pipeline: unfold → [maps*] → [fold]
+        // Each operation runs through its own registered machinery,
+        // preserving proper `this` context, parent handlers, open recursion,
+        // instanceof, and all other documented fold-handler semantics.
+        (ADT as Record<string, unknown>)[opName] = function (seed: unknown) {
+            const unfoldName = opList[0],
+                unfoldOp = (ADT as Record<string, unknown>)[unfoldName] as
+                    ((s: unknown) => unknown) | undefined;
 
-        if (unfoldTransformer && foldTransformer) {
-            // True deforestation: hylomorphism eliminates intermediate structure
-            const unfoldCases = (unfoldTransformer as unknown as {
-                    unfoldCases: Record<string, (s: unknown) => unknown | null>
-                }).unfoldCases,
-                unfoldSpec = (unfoldTransformer as unknown as {
-                    unfoldSpec?: Record<string, unknown>
-                }).unfoldSpec,
-                foldHandlers = foldTransformer[HandlerMapSymbol] as Record<string, HandlerFn>;
+            if (!unfoldOp)
+                throw new Error(`Unfold operation '${unfoldName}' not found`);
 
-            (ADT as Record<string, unknown>)[opName] = function hylo(seed: unknown): unknown {
-                if (unfoldSpec && hasInputSpec(unfoldSpec)) {
-                    validateTypeSpec(
-                        seed,
-                        unfoldSpec['in'] as Parameters<typeof validateTypeSpec>[1],
-                        opName,
-                        'input of type'
-                    );
-                }
+            const intermediate = unfoldOp(seed);
+            let result = intermediate;
+            for (let i = 1; i < opList.length; i++) {
+                const nextOpName = opList[i],
+                    descriptor = Object.getOwnPropertyDescriptor(ADT.prototype, nextOpName);
 
-                for (const [variantName, caseFn] of Object.entries(unfoldCases)) {
-                    const caseResult = caseFn(seed);
-                    if (caseResult !== null && caseResult !== undefined) {
-                        const variantValue = variants[variantName] ||
-                            (ADT as Record<string, unknown>)[variantName];
-                        if (!variantValue) {
-                            throw new Error(
-                                `Unknown variant '${variantName}' in merged operation '${opName}'`
-                            );
-                        }
+                if (descriptor && descriptor.get)
+                    result = (result as Record<string, unknown>)[nextOpName];
+                else if (typeof (result as Record<string, unknown>)[nextOpName] === 'function')
+                    result = ((result as Record<string, () => unknown>)[nextOpName])();
+                else
+                    throw new Error(`Operation '${nextOpName}' not found on result`);
+            }
 
-                        const foldHandler = foldHandlers[variantName] || foldHandlers['_'];
-                        if (!foldHandler) {
-                            throw new Error(
-                                `No fold handler for variant '${variantName}' in merged operation '${opName}'`
-                            );
-                        }
-
-                        // Singleton variant (base case, e.g., Nil)
-                        if (typeof variantValue === 'object' && Object.isFrozen(variantValue)) {
-                            const result = foldHandler.call(variantValue, {});
-                            if (foldTransformer.outSpec) {
-                                validateReturnType(
-                                    result,
-                                    foldTransformer.outSpec as Parameters<typeof validateReturnType>[1],
-                                    opName
-                                );
-                            }
-                            return result;
-                        }
-
-                        const Variant = variantValue as VariantLike;
-                        if (Variant.spec) {
-                            const processedFields: Record<string, unknown> = {};
-                            for (const [fieldName, fieldSpec] of Object.entries(Variant.spec)) {
-                                if (fieldSpec &&
-                                    (typeof fieldSpec === 'object' ||
-                                        typeof fieldSpec === 'function') &&
-                                    FamilyRefSymbol in (fieldSpec as object)) {
-                                    // Recursive field: directly recurse hylomorphism
-                                    if (fieldName in (caseResult as object)) {
-                                        processedFields[fieldName] = hylo(
-                                            (caseResult as Record<string, unknown>)[fieldName]
-                                        );
-                                    }
-                                } else if (
-                                    fieldSpec &&
-                                    typeof fieldSpec === 'object' &&
-                                    TypeParamSymbol in (fieldSpec as object)
-                                ) {
-                                    // Type-parameterized field: apply map transforms
-                                    const paramName =
-                                        (fieldSpec as Record<symbol, string>)[TypeParamSymbol];
-                                    let value =
-                                        (caseResult as Record<string, unknown>)[fieldName];
-                                    for (const mapT of mapTransformers) {
-                                        const fn = mapT.getParamTransform?.(paramName)
-                                            ?? mapT.getAtomTransform?.(fieldName);
-                                        if (fn) value = fn(value);
-                                    }
-                                    processedFields[fieldName] = value;
-                                } else {
-                                    processedFields[fieldName] =
-                                        (caseResult as Record<string, unknown>)[fieldName];
-                                }
-                            }
-
-                            const result = foldHandler.call(processedFields, processedFields);
-                            if (foldTransformer.outSpec) {
-                                validateReturnType(
-                                    result,
-                                    foldTransformer.outSpec as Parameters<typeof validateReturnType>[1],
-                                    opName
-                                );
-                            }
-                            return result;
-                        }
-
-                        // No spec (non-singleton without fields)
-                        const result = foldHandler.call(
-                            caseResult, caseResult as Record<string, unknown>
-                        );
-                        if (foldTransformer.outSpec) {
-                            validateReturnType(
-                                result,
-                                foldTransformer.outSpec as Parameters<typeof validateReturnType>[1],
-                                opName
-                            );
-                        }
-                        return result;
-                    }
-                }
-
-                throw new Error(`No case matched in merged operation '${opName}'`);
-            };
-        } else {
-            // Sequential fallback (unfold + maps without fold)
-            (ADT as Record<string, unknown>)[opName] = function (seed: unknown) {
-                const unfoldName = opList[0],
-                    unfoldOp = (ADT as Record<string, unknown>)[unfoldName] as
-                        ((s: unknown) => unknown) | undefined;
-
-                if (!unfoldOp)
-                    throw new Error(`Unfold operation '${unfoldName}' not found`);
-
-                const intermediate = unfoldOp(seed);
-                let result = intermediate;
-                for (let i = 1; i < opList.length; i++) {
-                    const nextOpName = opList[i],
-                        descriptor = Object.getOwnPropertyDescriptor(ADT.prototype, nextOpName);
-
-                    if (descriptor && descriptor.get)
-                        result = (result as Record<string, unknown>)[nextOpName];
-                    else if (typeof (result as Record<string, unknown>)[nextOpName] === 'function')
-                        result = ((result as Record<string, () => unknown>)[nextOpName])();
-                    else
-                        throw new Error(`Operation '${nextOpName}' not found on result`);
-                }
-
-                return result;
-            };
-        }
+            return result;
+        };
     } else {
         const mergeImpl = function (this: Record<string, unknown>, ...args: unknown[]) {
             let result: unknown = this;

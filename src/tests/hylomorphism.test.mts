@@ -2,26 +2,17 @@ import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { data, merge, fold, unfold, map } from '../index.mjs';
 
-// Depth large enough to exercise recursive hylomorphism meaningfully,
-// but well within typical stack limits (~10-15k frames) so the test
+// Moderate depth for exercising recursive merge pipelines.
+// Well within typical stack limits (~10-15k frames) so the test
 // remains deterministic across environments.
 const MODERATE_RECURSION_DEPTH = 1000;
 
-// Probing bounds for detecting sequential stack overflow.
-// Start at 2× MODERATE_RECURSION_DEPTH and step upward until
-// either the sequential path overflows or we reach the ceiling.
-const SEQ_PROBE_START = 2000;
-const SEQ_PROBE_CEILING = 8000;
-const SEQ_PROBE_STEP = 1000;
-
-describe('Hylomorphism (true deforestation)', () => {
-    describe('No intermediate structure allocation', () => {
-        test('unfold case functions should feed directly into fold handlers', () => {
+describe('Merge pipeline (unfold + fold)', () => {
+    describe('Basic unfold → fold merge', () => {
+        test('unfold + fold produces correct result', () => {
             let unfoldCaseCalls = 0;
             let foldHandlerCalls = 0;
-            let constructorCalls = 0;
 
-            // Track whether the Cons constructor is ever invoked
             const List = data(({ Family }) => ({
                 Nil: {},
                 Cons: { head: Number, tail: Family },
@@ -48,22 +39,19 @@ describe('Hylomorphism (true deforestation)', () => {
                 Triangular: merge('Counter', 'sum')
             }));
 
-            // Count constructor calls via sequential path
-            const seqList = List.Counter(3);
-            constructorCalls = 0;
-
-            // The hylomorphism should produce the same result
             const result = List.Triangular(3);
             assert.strictEqual(result, 6); // 3 + 2 + 1
 
-            // We cannot directly assert zero constructor calls from here,
-            // but we can verify the fold handlers were invoked (proving
-            // the fused path was taken, not a no-op)
-            assert.ok(foldHandlerCalls > 0, 'fold handlers should have been called');
-            assert.ok(unfoldCaseCalls > 0, 'unfold cases should have been called');
+            // n=3 produces Nil,Cons,Cons,Cons → 4 unfold case probes per seed
+            // (each seed tries Nil then Cons, or vice versa, until one matches)
+            // and 4 fold handler calls (one per constructed node: 3 Cons + 1 Nil)
+            assert.strictEqual(foldHandlerCalls, 4,
+                'fold should be called once per node (3 Cons + 1 Nil)');
+            assert.ok(unfoldCaseCalls >= 4,
+                'unfold cases should be probed for each seed value');
         });
 
-        test('hylomorphism handles deeper recursion than sequential (single pass vs two passes)', () => {
+        test('merge matches manual unfold → fold at moderate depth', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
                 Cons: { head: Number, tail: Family },
@@ -78,47 +66,18 @@ describe('Hylomorphism (true deforestation)', () => {
                 Sum: merge('Range', 'sum')
             }));
 
-            // Hylomorphism uses a single recursive pass of depth n,
-            // while sequential uses unfold (depth n) then fold (depth n).
-            // Find a depth that sequential fails at but hylomorphism handles.
-            // Use a moderate size first to verify correctness.
             const n = MODERATE_RECURSION_DEPTH;
             const expected = (n * (n + 1)) / 2;
 
-            const result = List.Sum(n);
-            assert.strictEqual(result, expected);
-
-            // Now find a size where sequential overflows but hylo survives.
-            // The sequential path has ~2x the stack depth of hylo.
-            // We probe for a size that sequential cannot handle.
-            let maxSeq = SEQ_PROBE_START;
-            let seqOverflowed = false;
-            while (maxSeq <= SEQ_PROBE_CEILING) {
-                try {
-                    const list = List.Range(maxSeq);
-                    list.sum;
-                    maxSeq += SEQ_PROBE_STEP;
-                } catch {
-                    seqOverflowed = true;
-                    break;
-                }
-            }
-
-            if (seqOverflowed) {
-                // Sequential overflows at maxSeq — hylo should handle it
-                // since it uses roughly half the stack depth
-                const hyloResult = List.Sum(maxSeq);
-                assert.strictEqual(hyloResult, (maxSeq * (maxSeq + 1)) / 2,
-                    `Hylomorphism should handle n=${maxSeq} where sequential overflows`);
-            }
-            // If sequential never overflowed (generous stack), that's fine —
-            // the correctness assertion at MODERATE_RECURSION_DEPTH already passed.
+            assert.strictEqual(List.Sum(n), expected);
+            assert.strictEqual(List.Sum(n), List.Range(n).sum,
+                'merge result should match manual unfold → fold');
         });
     });
 
-    describe('Hylomorphism with map transforms', () => {
-        test('unfold + map + fold should fuse with inline map application', () => {
-            let mapCalledDirectly = 0;
+    describe('Unfold → map → fold merge', () => {
+        test('unfold + map + fold applies map transforms correctly', () => {
+            let mapCallCount = 0;
 
             const List = data(({ Family, T }) => ({
                 Nil: {},
@@ -129,7 +88,7 @@ describe('Hylomorphism (true deforestation)', () => {
                 }),
                 square: map({ out: Family })({
                     T: (x) => {
-                        mapCalledDirectly++;
+                        mapCallCount++;
                         return x * x;
                     }
                 }),
@@ -142,17 +101,16 @@ describe('Hylomorphism (true deforestation)', () => {
 
             const NumList = List(Number);
 
-            mapCalledDirectly = 0;
+            mapCallCount = 0;
             const result = NumList.SumOfSquares(4);
 
-            // 1^2 + 2^2 + 3^2 + 4^2 = 1 + 4 + 9 + 16 = 30
+            // 1² + 2² + 3² + 4² = 1 + 4 + 9 + 16 = 30
             assert.strictEqual(result, 30);
-            // The map transform should have been called for each Cons node
-            assert.strictEqual(mapCalledDirectly, 4,
-                'map transform should be applied inline during hylomorphism');
+            assert.strictEqual(mapCallCount, 4,
+                'map transform should be applied for each element');
         });
 
-        test('unfold + multiple maps + fold should apply all maps in order', () => {
+        test('unfold + multiple maps + fold applies maps in order', () => {
             const List = data(({ Family, T }) => ({
                 Nil: {},
                 Cons: { head: T, tail: Family },
@@ -171,13 +129,13 @@ describe('Hylomorphism (true deforestation)', () => {
 
             const NumList = List(Number);
 
-            // For n=3: [3,2,1] -> double -> [6,4,2] -> increment -> [7,5,3] -> sum = 15
+            // n=3: [3,2,1] → double → [6,4,2] → increment → [7,5,3] → sum = 15
             assert.strictEqual(NumList.Pipeline(3), 15);
         });
     });
 
-    describe('Sequential fallback (unfold + map, no fold)', () => {
-        test('should still produce concrete ADT instances when no fold is present', () => {
+    describe('Unfold + map (no fold)', () => {
+        test('produces concrete ADT instances when no fold is present', () => {
             const List = data(({ Family, T }) => ({
                 Nil: {},
                 Cons: { head: T, tail: Family },
@@ -192,15 +150,14 @@ describe('Hylomorphism (true deforestation)', () => {
             const NumList = List(Number);
             const result = NumList.SquareCountDown(3);
 
-            // Should produce a real ADT instance
-            assert.strictEqual(result.head, 9);   // 3^2
-            assert.strictEqual(result.tail.head, 4); // 2^2
-            assert.strictEqual(result.tail.tail.head, 1); // 1^2
+            assert.strictEqual(result.head, 9);        // 3²
+            assert.strictEqual(result.tail.head, 4);    // 2²
+            assert.strictEqual(result.tail.tail.head, 1); // 1²
         });
     });
 
-    describe('Correctness across recursion schemes', () => {
-        test('hylomorphism factorial matches sequential factorial', () => {
+    describe('Correctness across patterns', () => {
+        test('merge factorial matches sequential factorial', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
                 Cons: { head: Number, tail: Family },
@@ -215,16 +172,15 @@ describe('Hylomorphism (true deforestation)', () => {
                 Factorial: merge('Counter', 'product')
             }));
 
-            // Compare hylomorphism result with sequential unfold→fold
             for (const n of [0, 1, 2, 5, 10]) {
                 const sequential = List.Counter(n).product;
-                const fused = List.Factorial(n);
-                assert.strictEqual(fused, sequential,
-                    `Factorial(${n}): hylomorphism ${fused} !== sequential ${sequential}`);
+                const merged = List.Factorial(n);
+                assert.strictEqual(merged, sequential,
+                    `Factorial(${n}): merged ${merged} !== sequential ${sequential}`);
             }
         });
 
-        test('hylomorphism with wildcard fold handler', () => {
+        test('wildcard fold handler works in merge', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
                 Cons: { head: Number, tail: Family },
@@ -243,7 +199,7 @@ describe('Hylomorphism (true deforestation)', () => {
             assert.strictEqual(List.Count(0), 0);
         });
 
-        test('hylomorphism should validate input types', () => {
+        test('merge validates unfold input types', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
                 Cons: { head: Number, tail: Family },
@@ -264,8 +220,7 @@ describe('Hylomorphism (true deforestation)', () => {
             );
         });
 
-        test('hylomorphism on binary tree structure', () => {
-            // Verifies hylomorphism works with multiple recursive fields
+        test('merge on binary tree structure', () => {
             const Tree = data(({ Family }) => ({
                 Leaf: { value: Number },
                 Node: { left: Family, right: Family, value: Number },
@@ -284,18 +239,80 @@ describe('Hylomorphism (true deforestation)', () => {
                 TotalSum: merge('Build', 'sum')
             }));
 
-            // Sequential
             for (const n of [0, 1, 2, 5, 10]) {
                 const sequential = Tree.Build(n).sum;
-                const fused = Tree.TotalSum(n);
-                assert.strictEqual(fused, sequential,
-                    `TotalSum(${n}): hylomorphism ${fused} !== sequential ${sequential}`);
+                const merged = Tree.TotalSum(n);
+                assert.strictEqual(merged, sequential,
+                    `TotalSum(${n}): merged ${merged} !== sequential ${sequential}`);
             }
         });
     });
 
-    describe('Fused path equivalence at scale', () => {
-        test('hylomorphism produces correct results for large inputs', () => {
+    describe('Fold this-context preserved through merge', () => {
+        test('fold handler can access this.constructor.name via merge', () => {
+            const Color = data(() => ({
+                Red: {},
+                Green: {},
+                Blue: {},
+                name: fold({ out: String })({
+                    Red() { return 'red'; },
+                    _() { return this.constructor.name.toLowerCase(); }
+                })
+            }));
+
+            assert.strictEqual(Color.Green.name, 'green');
+            assert.strictEqual(Color.Blue.name, 'blue');
+        });
+
+        test('fold handler can access other operations via this in merge', () => {
+            const List = data(({ Family }) => ({
+                Nil: {},
+                Cons: { head: Number, tail: Family },
+                Range: unfold({ in: Number, out: Family })({
+                    Nil: (n) => (n <= 0 ? {} : null),
+                    Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
+                }),
+                length: fold({ out: Number })({
+                    Nil() { return 0; },
+                    Cons({ tail }) { return 1 + tail; }
+                }),
+                describe: fold({ out: String })({
+                    Nil() { return 'empty list'; },
+                    Cons({ head }) {
+                        return `list starting with ${head}, length ${this.length}`;
+                    }
+                }),
+                Describe: merge('Range', 'describe')
+            }));
+
+            assert.strictEqual(
+                List.Describe(2),
+                'list starting with 2, length 2'
+            );
+        });
+
+        test('fold handler has correct instanceof in merge', () => {
+            const List = data(({ Family }) => ({
+                Nil: {},
+                Cons: { head: Number, tail: Family },
+                Range: unfold({ in: Number, out: Family })({
+                    Nil: (n) => (n <= 0 ? {} : null),
+                    Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
+                }),
+                isListInstance: fold({ out: Boolean })({
+                    Nil() { return this instanceof List; },
+                    Cons() { return this instanceof List; }
+                }),
+                CheckInstance: merge('Range', 'isListInstance')
+            }));
+
+            assert.strictEqual(List.CheckInstance(3), true);
+            assert.strictEqual(List.CheckInstance(0), true);
+        });
+    });
+
+    describe('Correctness at scale', () => {
+        test('merge produces correct results for large inputs', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
                 Cons: { head: Number, tail: Family },
@@ -310,19 +327,17 @@ describe('Hylomorphism (true deforestation)', () => {
                 Triangular: merge('Counter', 'sum')
             }));
 
-            // Verify correctness across a range of inputs
             for (const n of [0, 1, 10, 100, 500, MODERATE_RECURSION_DEPTH]) {
                 const expected = (n * (n + 1)) / 2;
                 assert.strictEqual(List.Triangular(n), expected,
                     `Triangular(${n}) should equal ${expected}`);
             }
 
-            // Verify fused path matches sequential path
             for (const n of [0, 1, 50, 200]) {
                 const sequential = List.Counter(n).sum;
-                const fused = List.Triangular(n);
-                assert.strictEqual(fused, sequential,
-                    `Fused and sequential should agree for n=${n}`);
+                const merged = List.Triangular(n);
+                assert.strictEqual(merged, sequential,
+                    `Merged and sequential should agree for n=${n}`);
             }
         });
     });

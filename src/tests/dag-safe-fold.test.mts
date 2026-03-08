@@ -154,16 +154,11 @@ describe('DAG-safe fold (shared substructure)', () => {
 
     describe('List with shared tail', () => {
         test('should handle shared tail in list-like structure', () => {
-            let nilCalls = 0;
-
             const List = data(({ Family }) => ({
                 Nil: {},
                 Cons: { head: Number, tail: Family },
                 length: fold({ out: Number })({
-                    Nil() {
-                        nilCalls++;
-                        return 0;
-                    },
+                    Nil() { return 0; },
                     Cons({ tail }) { return 1 + tail; }
                 })
             }));
