@@ -365,7 +365,8 @@ console.log(letExpr instanceof FullExpr);    // true
 
 ## Fold Operations
 
-A fold is a way to define operations on ADTs that support pattern matching and structural recursion (catamorphisms). Unlike folds you may have seen in other languages, Lapis ADT folds unify both pattern matching and structural recursion into a single mechanism and are more declarative.
+A fold (catamorphism) is the **universal observation** on an algebraic data type: every total function that consumes an ADT and respects its algebraic structure is expressible as a fold. This is why Lapis provides a single `fold` mechanism rather than distinguishing between `foldl` and `foldr` — that distinction is an artifact of lists being linear. For general algebraic data types (trees, expressions, etc.), there is only one canonical fold: the catamorphism, which replaces each constructor with a corresponding function and accumulates results bottom-up from leaves to root.
+
 For non-recursive ADTs, folds perform simple pattern matching. For recursive ADTs, folds automatically recurse into `Family` fields, replacing constructors with functions. Operations are installed on variant class prototypes and support proper inheritance through the extension hierarchy.
 
 Semantically you can think of folds as creating methods on each variant class that dispatch based on the variant type and recursively process fields as needed.
@@ -692,7 +693,7 @@ const Peano = data(({ Family }) => ({
 const three = Peano.Succ({ pred: Peano.Succ({ pred: Peano.Succ({ pred: Peano.Zero }) }) });
 console.log(three.toValue); // 3
 
-// For lists: right fold (processes tail to head)
+// For lists: accumulates bottom-up (Nil base case first, then each Cons from tail to head)
 const List = data(({ Family }) => ({
     Nil: {},
     Cons: { head: Number, tail: Family },
@@ -1210,7 +1211,7 @@ const scaled = list.scale(10); // All values multiplied by 10
 
 ## Unfold Operations (Corecursion/Anamorphisms)
 
-Unfold operations generate ADT instances through corecursion (anamorphisms), the dual of fold. While fold consumes structures bottom-up, unfold produces structures top-down from a seed value.
+Unfold operations (anamorphisms) generate ADT instances through corecursion — the dual of fold. Just as fold is the universal observation on a data type (every way of consuming an ADT factors through fold), unfold is the **universal generator** (every way of producing a recursive structure from a seed factors through unfold). Where fold replaces constructors with functions and accumulates bottom-up, unfold starts from a seed value and repeatedly decides which constructor to apply, building the structure top-down.
 
 Unfolds are defined inline within the `data` or `behavior` declaration using `unfold(spec)(handlers)`. The `spec` argument is optional — see [Specs](#specs) for details. This co-locates type definitions with their constructors for clarity.
 
@@ -1296,7 +1297,7 @@ const zipped = nums.zip(strs);
 
 ## Merge Operations (Deforestation)
 
-Merge operations compose multiple operations (fold, map, unfold) into a single fused operation, eliminating intermediate allocations. They are defined inline using `merge(...operationNames)`:
+Merge operations compose multiple operations (fold, map, unfold) into a single fused operation, eliminating intermediate allocations. Since unfold is the universal way to generate structure and fold is the universal way to consume it, their composition (a hylomorphism) represents the general pattern of "generate then consume" — without materializing the intermediate data structure. They are defined inline using `merge(...operationNames)`:
 
 ### Recursion Schemes
 
@@ -1447,10 +1448,22 @@ Behavior types are the categorical dual of data (algebraic data types). Where da
 
 ### Data vs Behavior
 
+Data types (initial algebras) and behavior types (final coalgebras) are **dual** to each other. This duality is the organizing principle of Lapis:
+
+- **Data** is defined by its constructors (variants) and is naturally open to new observations — you can always define new folds. Fold is the **universal observation**: every total function that consumes a data type and respects its structure is expressible as a fold.
+- **Behavior** is defined by its observations (methods/projections) and is naturally open to new implementations — you can always define new generators. Unfold is the **universal generator**: every way of producing behavior from a seed is expressible as an unfold.
+
+This asymmetry is sometimes called the **Expression Problem**: data makes adding observations easy but adding variants hard, while behavior makes adding implementations easy but adding observations hard. Lapis addresses both sides: `extend` allows new variants to be added to data types (with inherited and overridable operations), and coalgebraic behavior definitions allow new implementations of existing observation interfaces.
+
 | Aspect | Data — Initial Algebra (μF) | Behavior — Final Coalgebra (νF) |
 | --- | --- | --- |
 | **Defined by** | Constructors (how to build) | Observers / Destructors (how to observe) |
 | **Self-reference** | `Family` | `Self` |
+| **Defined by** (closed by default) | Constructors (variants) | Observations (methods) |
+| **Naturally open to** | New observations (folds) | New generators (unfolds) |
+| **Extensible via** | `extend` (add variants + inherit ops) | New unfold implementations |
+| **Universal arrow** | Fold (catamorphism) | Unfold (anamorphism) |
+| **Direction** | Consumes structure bottom-up | Produces structure top-down |
 | **Natural introduction** | Construction (calling constructors) | Unfold (anamorphism from seed) |
 | **Natural elimination** | Fold (catamorphism) | Observation (accessing observers) |
 | **Dual operation** | Unfold (build from seed) | Fold (bounded consumption) |
