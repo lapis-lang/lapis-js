@@ -1459,7 +1459,6 @@ This asymmetry is sometimes called the **Expression Problem**: data makes adding
 | --- | --- | --- |
 | **Defined by** | Constructors (how to build) | Observers / Destructors (how to observe) |
 | **Self-reference** | `Family` | `Self` |
-| **Defined by** (closed by default) | Constructors (variants) | Observations (methods) |
 | **Naturally open to** | New observations (folds) | New generators (unfolds) |
 | **Extensible via** | `extend` (add variants + inherit ops) | New unfold implementations |
 | **Universal arrow** | Fold (catamorphism) | Unfold (anamorphism) |
