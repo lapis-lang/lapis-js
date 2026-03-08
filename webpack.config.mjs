@@ -1,23 +1,32 @@
 import path from 'path';
 import url from 'url';
-import ESLintWebpackPlugin from 'eslint-webpack-plugin';
 
 const fileName = url.fileURLToPath(import.meta.url),
     dirName = path.dirname(fileName);
 
 export default {
-    entry: './src/index.mjs',
+    entry: './src/index.mts',
     devtool: 'source-map',
     mode: 'production',
     experiments: {
         outputModule: true
     },
     resolve: {
-        extensions: ['.mjs', '.js', '.json'],
+        extensions: ['.mts', '.mjs', '.ts', '.js', '.json'],
         extensionAlias: {
-            '.js': ['.js'],
-            '.mjs': ['.mjs']
+            '.js': ['.ts', '.js'],
+            '.mjs': ['.mts', '.mjs'],
+            '.mts': ['.mts']
         }
+    },
+    module: {
+        rules: [
+            {
+                test: /\.mts$/,
+                use: 'ts-loader',
+                exclude: /node_modules/
+            }
+        ]
     },
     output: {
         clean: true,
@@ -27,12 +36,5 @@ export default {
         module: true,
         filename: 'index.mjs',
         path: path.resolve(dirName, 'dist')
-    },
-    plugins: [
-        new ESLintWebpackPlugin({
-            extensions: ['.mjs', '.js', '.json'],
-            exclude: ['node_modules', 'dist', 'coverage'],
-            fix: true
-        }),
-    ]
+    }
 };

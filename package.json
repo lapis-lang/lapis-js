@@ -1,14 +1,16 @@
 {
     "name": "@lapis-lang/lapis-js",
-    "version": "0.35.2",
+    "version": "0.40.0",
     "description": "An embedded DSL for experimentation of Lapis Semantics",
     "type": "module",
     "exports": {
         ".": {
+            "types": "./dist/index.d.mts",
             "import": "./dist/index.mjs"
         }
     },
     "main": "./dist/index.mjs",
+    "types": "./dist/index.d.mts",
     "keywords": [
         "algebraic-data-types",
         "adt",
@@ -22,12 +24,16 @@
         "lapis"
     ],
     "scripts": {
-        "prebuild": "npm run lint:fix",
+        "prebuild": "npm run typecheck && npm run lint:fix",
         "build": "webpack",
+        "typecheck": "tsc --noEmit",
+        "typecheck:tests": "tsc --noEmit --project tsconfig.test.json",
         "lint": "eslint .",
+        "lint:tests": "eslint \"src/tests/**/*.mts\" \"examples/**/*.mts\"",
         "lint:fix": "eslint . --fix",
+        "lint:fix:tests": "eslint --fix \"src/tests/**/*.mts\" \"examples/**/*.mts\"",
         "pretest": "npm run build",
-        "test": "globstar -- node --experimental-test-coverage --test ./src/tests/*.test.mjs"
+        "test": "globstar -- node --import tsx --experimental-test-coverage --test ./src/tests/*.test.mts"
     },
     "repository": {
         "type": "git",
@@ -49,6 +55,11 @@
         "eslint-webpack-plugin": "^5.0.2",
         "globals": "^16.5.0",
         "globstar": "^1.0.0",
+        "ts-loader": "^9.5.4",
+        "ts-morph": "^27.0.2",
+        "tsx": "^4.21.0",
+        "typescript": "^5.9.3",
+        "typescript-eslint": "^8.56.1",
         "webpack": "^5.102.1",
         "webpack-cli": "^6.0.1"
     },

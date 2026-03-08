@@ -1,0 +1,187 @@
+/**
+ * Shared utility functions for Lapis JS
+ *
+ * This module provides common helper functions and symbols used across the codebase.
+ *
+ * @module utils
+ */
+
+// Import IsSingleton from Data.mjs to avoid symbol mismatch
+import { IsSingleton } from './Data.mjs';
+
+// Symbols for parameterized ADT/Behavior instances
+export const IsParameterizedInstance: unique symbol = Symbol('IsParameterizedInstance');
+export type IsParameterizedInstance = typeof IsParameterizedInstance;
+
+export const ParentADTSymbol: unique symbol = Symbol('ParentADT');
+export type ParentADTSymbol = typeof ParentADTSymbol;
+
+export const TypeArgsSymbol: unique symbol = Symbol('TypeArgs');
+export type TypeArgsSymbol = typeof TypeArgsSymbol;
+
+export const VariantDeclSymbol: unique symbol = Symbol('VariantDecl');
+export type VariantDeclSymbol = typeof VariantDeclSymbol;
+
+export const TypeParamSymbol: unique symbol = Symbol('TypeParam');
+export type TypeParamSymbol = typeof TypeParamSymbol;
+
+/**
+ * Symbol for storing handler maps on transformers and observers.
+ * Used internally to detect wildcard handlers and case structure.
+ * Shared between Transformer.mjs (match handlers) and Observer.mjs (fold cases).
+ */
+export const HandlerMapSymbol: unique symbol = Symbol('HandlerMap');
+export type HandlerMapSymbol = typeof HandlerMapSymbol;
+
+// ---- callable ---------------------------------------------------------------
+
+/** A constructable type together with a callable (non-new) call signature. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type CallableClass<T extends abstract new (...args: any[]) => any> =
+    T & ((...args: ConstructorParameters<T>) => InstanceType<T>);
+
+/**
+ * Decorator to make a class callable.
+ * When the class is called as a function, it invokes the constructor.
+ * This enables syntax like: List(Number) instead of new List(Number)
+ *
+ * @param Class - The class to make callable
+ * @returns A proxy that can be called as a function or used with 'new'
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function callable<T extends abstract new (...args: any[]) => any>(
+    Class: T
+): CallableClass<T> {
+    return new Proxy(Class, {
+        apply(target, _thisArg, argumentsList) {
+            // Check if this is a variant constructor (has _fieldNames or is a singleton)
+            // Variants should use their constructor, not _call
+            const isVariant = '_fieldNames' in target ||
+                (target as unknown as Record<symbol, unknown>)[IsSingleton] === true;
+
+            // When called as a function, check if it has a _call method (for ADT parameterization)
+            // But only use _call if this is not a variant
+            if (!isVariant && (target as unknown as { _call?: (...a: unknown[]) => unknown })._call) {
+                return (target as unknown as { _call: (...a: unknown[]) => unknown })._call(
+                    ...argumentsList
+                );
+            }
+            // Otherwise, invoke the constructor (for variant constructors or base ADT)
+            return Reflect.construct(target, argumentsList);
+        },
+        construct(target, argumentsList) {
+            // When called with 'new', invoke the constructor normally
+            return Reflect.construct(target, argumentsList);
+        }
+    }) as CallableClass<T>;
+}
+
+// ---- String predicates -------------------------------------------------------
+
+/** Returns true if `str` starts with an uppercase letter. */
+export function isPascalCase(str: string): boolean {
+    return str.length > 0 && str[0] === str[0].toUpperCase() && str[0] !== str[0].toLowerCase();
+}
+
+/** Returns true if `str` starts with a lowercase letter and has no leading underscore. */
+export function isCamelCase(str: string): boolean {
+    return str.length > 0 && str[0] === str[0].toLowerCase() && !str.startsWith('_');
+}
+
+// ---- Object predicates -------------------------------------------------------
+
+/**
+ * Checks if the value is an object literal.
+ * @param value The value to check.
+ * @returns Returns true if the value is an object literal, else false.
+ */
+export function isObjectLiteral(value: unknown): value is Record<string, unknown> {
+    return value !== null &&
+        typeof value === 'object' &&
+        Object.getPrototypeOf(value) === Object.prototype;
+}
+
+/**
+ * Checks if a function is constructable
+ */
+export function isConstructable(fn: unknown): fn is new (...args: unknown[]) => unknown {
+    if (typeof fn !== 'function') return false;
+    try {
+        const test = Object.create((fn as { prototype: object }).prototype);
+        return (test as object) instanceof (fn as new () => unknown) ||
+            (fn as { prototype: unknown }).prototype !== undefined;
+    } catch {
+        return false;
+    }
+}
+
+// ---- Object helpers ----------------------------------------------------------
+
+/**
+ * Omit a symbol property from an object, returning a new object without that symbol.
+ * Used to filter out the invariant symbol when extracting field specifications.
+ *
+ * @param obj - The object to filter
+ * @param symbol - The symbol to omit
+ * @returns New object without the symbol property
+ */
+export function omitSymbol<T extends object>(obj: T, symbol: symbol): Omit<T, symbol> {
+    const result: Record<string | symbol, unknown> = {};
+    for (const key of Reflect.ownKeys(obj)) {
+        if (key !== symbol)
+            result[key] = (obj as Record<string | symbol, unknown>)[key];
+
+    }
+    return result as Omit<T, symbol>;
+}
+
+// ---- Function helpers --------------------------------------------------------
+
+/**
+ * Compose two transformation functions.
+ * Returns a function that applies f then g: g(f(x))
+ *
+ * Overload 1 — heterogeneous pipeline: `f: A→B`, `g: B→C` → `A→C`.
+ * Overload 2 — homogeneous / optional: `f: T→T | undefined`, `g: T→T | undefined` → `T→T`.
+ *
+ * @param f - First transformation (or undefined)
+ * @param g - Second transformation (or undefined)
+ * @returns Composed transformation, or the non-undefined one, or identity
+ */
+export function composeFunctions<A, B, C>(
+    f: (x: A) => B,
+    g: (x: B) => C
+): (x: A) => C;
+export function composeFunctions<T>(
+    f: ((x: T) => T) | undefined,
+    g: ((x: T) => T) | undefined
+): (x: T) => T;
+export function composeFunctions(
+    f: ((x: unknown) => unknown) | undefined,
+    g: ((x: unknown) => unknown) | undefined
+): (x: unknown) => unknown {
+    if (f && g) return (x) => g(f(x));
+    if (f) return f;
+    if (g) return g;
+    return (x) => x;
+}
+
+// ---- Spec helpers ------------------------------------------------------------
+
+/**
+ * Check if a spec object declares an input parameter.
+ * Distinguishes between a missing `in` key and an explicitly `undefined` one.
+ */
+export function hasInputSpec(spec: Record<string, unknown>): boolean {
+    return 'in' in spec && spec['in'] !== undefined;
+}
+
+// ---- Built-in type helpers ---------------------------------------------------
+
+/** Set of built-in primitive-boxing type constructors used for field validation */
+export const BUILT_IN_TYPES: Set<unknown> = new Set([Number, String, Boolean, Symbol, BigInt]);
+
+/** Check if a value is a built-in type constructor */
+export function isBuiltInType(value: unknown): boolean {
+    return BUILT_IN_TYPES.has(value);
+}
