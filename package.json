@@ -26,6 +26,7 @@
     "scripts": {
         "prebuild": "npm run typecheck && npm run lint:fix",
         "build": "webpack",
+        "postbuild": "tsc --emitDeclarationOnly",
         "typecheck": "tsc --noEmit",
         "typecheck:tests": "tsc --noEmit --project tsconfig.test.json",
         "lint": "eslint .",
