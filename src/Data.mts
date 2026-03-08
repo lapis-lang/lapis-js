@@ -843,99 +843,125 @@ function createFoldOperation(
     );
     ADT._registerTransformer(opName, transformer, false, variants);
 
+    // DAG-safe fold cache — closure-scoped so each (ADT, opName) pair is
+    // fully isolated.  Recursive children share the cache via this same
+    // closure; re-entrant cross-ADT folds with the same operation name
+    // use their own closure and never interfere.
+    const canCache = !hasInput && !hasExtraParams;
+    let dagCache: WeakMap<object, unknown> | null = null,
+        dagCacheDepth = 0;
+
     const foldImpl = function (this: Record<symbol, unknown>, ...args: unknown[]) {
-        const variantName = this[VariantNameSymbol] as string,
-            variantCtor = (this as { constructor: VariantLike }).constructor;
+        if (canCache) {
+            if (dagCacheDepth === 0)
+                dagCache = new WeakMap();
 
-        let handler: HandlerFn | null = null,
-            parentHandler: HandlerFn | null = null,
-            foundAtADT: ADTLike | null = null,
+            if (dagCache!.has(this as object))
+                return dagCache!.get(this as object);
 
-            currentSearchADT: ADTLike | null = ADT;
-
-        while (currentSearchADT) {
-            const registry = adtTransformers.get(currentSearchADT as unknown as object),
-                localTransformer = registry?.get(opName);
-
-            if (localTransformer && localTransformer.getCtorTransform) {
-                const handlerMap = localTransformer[HandlerMapSymbol] as Record<string, HandlerFn> | undefined;
-                if (handlerMap && (handlerMap[variantName] || handlerMap['_'])) {
-                    handler = localTransformer.getCtorTransform(variantCtor as unknown as VariantConstructorLike);
-                    foundAtADT = currentSearchADT;
-                    break;
-                }
-            }
-            currentSearchADT = parentADTMap.get(currentSearchADT as unknown as object) as ADTLike | null ?? null;
+            dagCacheDepth++;
         }
 
-        if (!handler)
-            throw new Error(`No handler for variant '${variantName}' in fold operation '${opName}'`);
+        try {
+            const variantName = this[VariantNameSymbol] as string,
+                variantCtor = (this as { constructor: VariantLike }).constructor;
 
+            let handler: HandlerFn | null = null,
+                parentHandler: HandlerFn | null = null,
+                foundAtADT: ADTLike | null = null,
 
-        if (foundAtADT) {
-            let searchParent = parentADTMap.get(foundAtADT as unknown as object) as ADTLike | null ?? null;
-            while (searchParent) {
-                const parentRegistry = adtTransformers.get(searchParent as unknown as object),
-                    parentTransformer = parentRegistry?.get(opName);
+                currentSearchADT: ADTLike | null = ADT;
 
-                if (parentTransformer && parentTransformer.getCtorTransform) {
-                    const parentHandlerMap = parentTransformer[HandlerMapSymbol] as Record<string, HandlerFn> | undefined;
-                    if (parentHandlerMap && (parentHandlerMap[variantName] || parentHandlerMap['_'])) {
-                        parentHandler = parentTransformer.getCtorTransform(variantCtor as unknown as VariantConstructorLike);
+            while (currentSearchADT) {
+                const registry = adtTransformers.get(currentSearchADT as unknown as object),
+                    localTransformer = registry?.get(opName);
+
+                if (localTransformer && localTransformer.getCtorTransform) {
+                    const handlerMap = localTransformer[HandlerMapSymbol] as Record<string, HandlerFn> | undefined;
+                    if (handlerMap && (handlerMap[variantName] || handlerMap['_'])) {
+                        handler = localTransformer.getCtorTransform(variantCtor as unknown as VariantConstructorLike);
+                        foundAtADT = currentSearchADT;
                         break;
                     }
                 }
-                searchParent = parentADTMap.get(searchParent as unknown as object) as ADTLike | null ?? null;
+                currentSearchADT = parentADTMap.get(currentSearchADT as unknown as object) as ADTLike | null ?? null;
             }
-        }
 
-        const foldedFields: Record<string, unknown> = {};
-        if (variantCtor.spec) {
-            for (const [fieldName, fieldSpec] of Object.entries(variantCtor.spec)) {
-                if (fieldSpec &&
+            if (!handler)
+                throw new Error(`No handler for variant '${variantName}' in fold operation '${opName}'`);
+
+
+            if (foundAtADT) {
+                let searchParent = parentADTMap.get(foundAtADT as unknown as object) as ADTLike | null ?? null;
+                while (searchParent) {
+                    const parentRegistry = adtTransformers.get(searchParent as unknown as object),
+                        parentTransformer = parentRegistry?.get(opName);
+
+                    if (parentTransformer && parentTransformer.getCtorTransform) {
+                        const parentHandlerMap = parentTransformer[HandlerMapSymbol] as Record<string, HandlerFn> | undefined;
+                        if (parentHandlerMap && (parentHandlerMap[variantName] || parentHandlerMap['_'])) {
+                            parentHandler = parentTransformer.getCtorTransform(variantCtor as unknown as VariantConstructorLike);
+                            break;
+                        }
+                    }
+                    searchParent = parentADTMap.get(searchParent as unknown as object) as ADTLike | null ?? null;
+                }
+            }
+
+            const foldedFields: Record<string, unknown> = {};
+            if (variantCtor.spec) {
+                for (const [fieldName, fieldSpec] of Object.entries(variantCtor.spec)) {
+                    if (fieldSpec &&
                     (typeof fieldSpec === 'object' || typeof fieldSpec === 'function') &&
                     FamilyRefSymbol in (fieldSpec as object)) {
-                    const fieldValue = (this as Record<string, unknown>)[fieldName];
-                    if (hasInput || hasExtraParams) {
-                        foldedFields[fieldName] = (...params: unknown[]) =>
-                            (fieldValue as Record<string, (...p: unknown[]) => unknown>)[opName](...params);
+                        const fieldValue = (this as Record<string, unknown>)[fieldName];
+                        if (hasInput || hasExtraParams) {
+                            foldedFields[fieldName] = (...params: unknown[]) =>
+                                (fieldValue as Record<string, (...p: unknown[]) => unknown>)[opName](...params);
+                        } else
+                            foldedFields[fieldName] = (fieldValue as Record<string, unknown>)[opName];
+
                     } else
-                        foldedFields[fieldName] = (fieldValue as Record<string, unknown>)[opName];
+                        foldedFields[fieldName] = (this as Record<string, unknown>)[fieldName];
 
-                } else
-                    foldedFields[fieldName] = (this as Record<string, unknown>)[fieldName];
+                }
+            }
 
+            let context: object = this;
+
+            if (parentHandler) {
+                context = Object.create(this);
+
+                if (hasInput || hasExtraParams) {
+                    Object.defineProperty(context, parent, {
+                        get: () => (...parentArgs: unknown[]) =>
+                            (parentHandler as HandlerFn).call(this, foldedFields, ...parentArgs),
+                        enumerable: false,
+                        configurable: true
+                    });
+                } else {
+                    Object.defineProperty(context, parent, {
+                        get: () => (parentHandler as HandlerFn).call(this, foldedFields),
+                        enumerable: false,
+                        configurable: true
+                    });
+                }
+            }
+
+            const result = (handler as HandlerFn).call(context, foldedFields, ...args);
+
+            if (hasOutput)
+                validateReturnType(result, opSpecObj['out'] as Parameters<typeof validateReturnType>[1], opName);
+
+            if (canCache) dagCache!.set(this as object, result);
+
+            return result;
+        } finally {
+            if (canCache) {
+                dagCacheDepth--;
+                if (dagCacheDepth === 0) dagCache = null;
             }
         }
-
-        let context: object = this;
-
-        if (parentHandler) {
-            context = Object.create(this);
-
-            if (hasInput || hasExtraParams) {
-                Object.defineProperty(context, parent, {
-                    get: () => (...parentArgs: unknown[]) =>
-                        (parentHandler as HandlerFn).call(this, foldedFields, ...parentArgs),
-                    enumerable: false,
-                    configurable: true
-                });
-            } else {
-                Object.defineProperty(context, parent, {
-                    get: () => (parentHandler as HandlerFn).call(this, foldedFields),
-                    enumerable: false,
-                    configurable: true
-                });
-            }
-        }
-
-        const result = (handler as HandlerFn).call(context, foldedFields, ...args);
-
-        if (hasOutput)
-            validateReturnType(result, opSpecObj['out'] as Parameters<typeof validateReturnType>[1], opName);
-
-
-        return result;
     };
 
     if (hasInput || hasExtraParams)
@@ -1159,13 +1185,17 @@ function createMergeOperation(
     ADT._registerTransformer(opName, composedTransformer, false, variants);
 
     if (composedTransformer.generator) {
+        // Sequential pipeline: unfold → [maps*] → [fold]
+        // Each operation runs through its own registered machinery,
+        // preserving proper `this` context, parent handlers, open recursion,
+        // instanceof, and all other documented fold-handler semantics.
         (ADT as Record<string, unknown>)[opName] = function (seed: unknown) {
             const unfoldName = opList[0],
-                unfoldOp = (ADT as Record<string, unknown>)[unfoldName] as ((s: unknown) => unknown) | undefined;
+                unfoldOp = (ADT as Record<string, unknown>)[unfoldName] as
+                    ((s: unknown) => unknown) | undefined;
 
             if (!unfoldOp)
                 throw new Error(`Unfold operation '${unfoldName}' not found`);
-
 
             const intermediate = unfoldOp(seed);
             let result = intermediate;
@@ -1179,7 +1209,6 @@ function createMergeOperation(
                     result = ((result as Record<string, () => unknown>)[nextOpName])();
                 else
                     throw new Error(`Operation '${nextOpName}' not found on result`);
-
             }
 
             return result;
