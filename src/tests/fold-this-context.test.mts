@@ -189,4 +189,141 @@ describe('Fold Operation - `this` Context and Open Recursion', () => {
         assert.strictEqual(ok.isOk, true);
         assert.strictEqual(err.isOk, false);
     });
+
+    test('`this.sameOp` on same node throws circular fold error (parameterless)', () => {
+        const List = data(({ Family }) => ({
+            Nil: {},
+            Cons: { head: Number, tail: Family },
+
+            bad: fold({ out: Number })({
+                Nil() { return 0; },
+                Cons() {
+                    // Circular: re-enters the same fold on the same instance
+                    return this.bad;
+                }
+            })
+        }));
+
+        const list = List.Cons({ head: 1, tail: List.Nil });
+        assert.throws(
+            () => list.bad,
+            (err: Error) => {
+                assert.match(err.message, /Circular fold detected.*'bad'/);
+                return true;
+            }
+        );
+    });
+
+    test('`this.sameOp(arg)` on same node throws circular fold error (parameterized)', () => {
+        const List = data(({ Family }) => ({
+            Nil: {},
+            Cons: { head: Number, tail: Family },
+
+            bad: fold({ in: Number, out: Number })({
+                Nil({}, _n) { return 0; },
+                Cons({}, n) {
+                    // Circular: re-enters the same fold on the same instance
+                    return this.bad(n);
+                }
+            })
+        }));
+
+        const list = List.Cons({ head: 1, tail: List.Nil });
+        assert.throws(
+            () => list.bad(42),
+            (err: Error) => {
+                assert.match(err.message, /Circular fold detected.*'bad'/);
+                return true;
+            }
+        );
+    });
+
+    test('mutual recursion between operations on same node throws', () => {
+        const List = data(({ Family }) => ({
+            Nil: {},
+            Cons: { head: Number, tail: Family },
+
+            opA: fold({ out: Number })({
+                Nil() { return 0; },
+                Cons() {
+                    return this.opB;  // calls opB on same node
+                }
+            }),
+
+            opB: fold({ out: Number })({
+                Nil() { return 0; },
+                Cons() {
+                    return this.opA;  // calls opA on same node → detected
+                }
+            })
+        }));
+
+        const list = List.Cons({ head: 1, tail: List.Nil });
+        assert.throws(
+            () => list.opA,
+            (err: Error) => {
+                assert.match(err.message, /Circular fold detected.*'opA'/);
+                return true;
+            }
+        );
+    });
+
+    test('`this.differentOp` on same node still works (no false positive)', () => {
+        const List = data(({ Family }) => ({
+            Nil: {},
+            Cons: { head: Number, tail: Family },
+
+            length: fold({ out: Number })({
+                Nil() { return 0; },
+                Cons({ tail }) { return 1 + tail; }
+            }),
+
+            headTimesLength: fold({ out: Number })({
+                Nil() { return 0; },
+                Cons({ head }) {
+                    // Calls a different operation on the same node — allowed
+                    return head * this.length;
+                }
+            })
+        }));
+
+        const list = List.Cons({ head: 5, tail: List.Cons({ head: 3, tail: List.Nil }) });
+        assert.strictEqual(list.headTimesLength, 10);
+    });
+
+    test('`this.subField.sameOp` on child node still works (no false positive)', () => {
+        const List = data(({ Family }) => ({
+            Nil: {},
+            Cons: { head: Number, tail: Family },
+
+            toArray: fold({ out: Array })({
+                Nil() { return []; },
+                Cons({ head }) {
+                    // Open recursion on child node — allowed
+                    return [head, ...this.tail.toArray];
+                }
+            })
+        }));
+
+        const list = List.Cons({ head: 1, tail: List.Cons({ head: 2, tail: List.Cons({ head: 3, tail: List.Nil }) }) });
+        assert.deepStrictEqual(list.toArray, [1, 2, 3]);
+    });
+
+    test('re-entrancy guard cleans up after error, fold works on next call', () => {
+        const Color = data(() => ({
+            Red: {},
+            Green: {},
+
+            safe: fold({ out: String })({
+                Red() { return 'red'; },
+                Green() { return 'green'; }
+            })
+        }));
+
+        // First call succeeds
+        assert.strictEqual(Color.Red.safe, 'red');
+        // Second call also succeeds (guard cleaned up)
+        assert.strictEqual(Color.Red.safe, 'red');
+        assert.strictEqual(Color.Green.safe, 'green');
+    });
 });

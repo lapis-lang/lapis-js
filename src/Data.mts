@@ -850,6 +850,7 @@ function createFoldOperation(
     const canCache = !hasInput && !hasExtraParams;
     let dagCache: WeakMap<object, unknown> | null = null,
         dagCacheDepth = 0;
+    const inProgress = new WeakSet<object>();
 
     const foldImpl = function (this: Record<symbol, unknown>, ...args: unknown[]) {
         if (canCache) {
@@ -863,6 +864,16 @@ function createFoldOperation(
         }
 
         try {
+            // Re-entrancy guard: detect `this.opName` on the same instance
+            if (inProgress.has(this as object)) {
+                throw new Error(
+                    `Circular fold detected: operation '${opName}' re-entered on the same instance during its own evaluation. ` +
+                    `Use destructured fields for structural recursion instead of \`this.${opName}\`.`
+                );
+            }
+
+            inProgress.add(this as object);
+
             const variantName = this[VariantNameSymbol] as string,
                 variantCtor = (this as { constructor: VariantLike }).constructor;
 
@@ -957,6 +968,7 @@ function createFoldOperation(
 
             return result;
         } finally {
+            inProgress.delete(this as object);
             if (canCache) {
                 dagCacheDepth--;
                 if (dagCacheDepth === 0) dagCache = null;

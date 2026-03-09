@@ -34,6 +34,7 @@ there is an emphasis on the Bird-Meertens Formalism (BMF) (Squiggol) of making p
   - [Integration with ADT Extension](#integration-with-adt-extension)
   - [Extending Fold Operations](#extending-fold-operations)
   - [Recursion and Stack Safety](#recursion-and-stack-safety)
+  - [Circular Fold Protection](#circular-fold-protection)
   - [Polymorphic Recursion in Extended Folds](#polymorphic-recursion-in-extended-folds)
 - [Type Parameter Transformations with Map](#type-parameter-transformations-with-map)
 - [Unfold Operations (Corecursion/Anamorphisms)](#unfold-operations-corecursionanamorphisms)
@@ -1103,6 +1104,69 @@ const big = Peano.FromValue(100000);
 console.log(big.isEven); // Works without overflow
 ```
 
+### Circular Fold Protection
+
+Lapis JS enforces a **re-entrancy guard** that prevents a fold operation from being invoked on the same instance during its own evaluation. This catches the class of bugs where `this.sameOp` creates infinite recursion:
+
+```ts
+const List = data(({ Family }) => ({
+    Nil: {},
+    Cons: { head: Number, tail: Family },
+
+    // ✗ This will throw at runtime — circular fold
+    bad: fold({ out: Number })({
+        Nil() { return 0; },
+        Cons({ head }) {
+            return head + this.bad;  // re-enters same fold on same node!
+        }
+    }),
+
+    // ✓ Correct: use destructured `tail` (already-folded value)
+    sum: fold({ out: Number })({
+        Nil() { return 0; },
+        Cons({ head, tail }) {
+            return head + tail;
+        }
+    })
+}));
+
+const list = List.Cons(1, List.Cons(2, List.Nil));
+list.bad;  // Error: Circular fold detected: operation 'bad' re-entered
+           //        on the same instance during its own evaluation.
+           //        Use destructured fields for structural recursion
+           //        instead of `this.bad`.
+list.sum;  // 3 — works correctly
+```
+
+The guard also catches **mutual recursion** cycles where two operations call each other on the same node:
+
+```ts
+// ✗ opA → opB → opA on same instance — detected and throws
+const List = data(({ Family }) => ({
+    Nil: {},
+    Cons: { head: Number, tail: Family },
+    opA: fold({ out: Number })({
+        Nil() { return 0; },
+        Cons() { return this.opB; }
+    }),
+    opB: fold({ out: Number })({
+        Nil() { return 0; },
+        Cons() { return this.opA; }  // triggers opA's guard
+    })
+}));
+```
+
+The following patterns remain valid and are **not** affected by the guard:
+
+| Pattern | Valid? | Reason |
+| ------- | ------ | ------ |
+| `fields.tail` (destructured) | ✓ | Structural recursion — always terminates |
+| `this.differentOp` | ✓ | Independent fold on same node — separate guard |
+| `this.childField.sameOp` | ✓ | Same operation on a smaller substructure |
+| `this.nonRecursiveField` | ✓ | Data access, no recursion |
+| `this.sameOp` | ✗ | Re-enters same fold on same instance |
+| `this.opA` → `this.opB` → `this.opA` | ✗ | Mutual cycle on same instance |
+
 ### Polymorphic Recursion in Extended Folds
 
 When extending fold operations on recursive ADTs, recursive calls use the **extended operation** with new handlers:
@@ -1310,7 +1374,7 @@ Merge operations compose multiple operations (fold, map, unfold) into a single f
 | **Prepromorphism** | Map + fold | Transform then consume | Apply type transformation before consuming |
 | **Postpromorphism** | Unfold + map | Generate then transform | Apply type transformation after generating |
 
-> **Paramorphisms via `this`:** In a fold handler, `this` is the raw original instance. Recursive `Family` fields in `foldedFields` carry the already-folded result, while `this.<field>` accesses the original substructure — giving you both at once, which is the defining characteristic of a paramorphism.
+> **Paramorphisms via `this`:** In a fold handler, `this` is the raw original instance. Recursive `Family` fields in `foldedFields` carry the already-folded result, while `this.<field>` accesses the original substructure — giving you both at once, which is the defining characteristic of a paramorphism. Note: `this.sameOp` on the same instance is guarded against (see [Circular Fold Protection](#circular-fold-protection)) — use `this.childField.sameOp` or destructured fields instead.
 
 ### Examples
 
