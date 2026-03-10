@@ -680,8 +680,9 @@ function validateAndAssignFields(
  * `"ADT{MakePair}(String, Number)"` by walking its parent chain and type args.
  */
 function describeADT(adt: ADTLike): string {
-    // Walk the parent chain to find the root (base) ADT
-    let root: object = adt as unknown as object;
+    // Unwrap proxied ADT to raw constructor before walking parentADTMap,
+    // which is keyed by raw constructors, not proxied ones.
+    let root: object = ((adt as { _rawADT?: object })._rawADT ?? adt) as object;
     while (parentADTMap.has(root))
         root = parentADTMap.get(root)!;
 
@@ -1990,6 +1991,10 @@ function createParameterized(
             Base,
             false
         );
+
+    // Store raw ADT reference on the proxied parameterized ADT so that
+    // describeADT can unwrap proxies before walking parentADTMap.
+    (ProxiedParameterized as { _rawADT: ADTLike })._rawADT = ParameterizedADT as unknown as ADTLike;
 
     // Register raw → proxied mapping for fold-context resolution.
     rawToProxiedMap.set(ParameterizedADT as unknown as object, ProxiedParameterized as unknown as object);
