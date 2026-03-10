@@ -326,4 +326,41 @@ describe('Fold Operation - `this` Context and Open Recursion', () => {
         assert.strictEqual(Color.Red.safe, 'red');
         assert.strictEqual(Color.Green.safe, 'green');
     });
+
+    test('true data cycle (bypassing freeze) reports cycle-specific error', () => {
+        const List = data(({ Family }) => ({
+            Nil: {},
+            Cons: { head: Number, tail: Family },
+
+            sum: fold({ out: Number })({
+                Nil() { return 0; },
+                Cons({ head, tail }) { return head + tail; }
+            })
+        }));
+
+        // Construct a cyclic structure by bypassing Object.freeze
+        // (not possible via normal construction, but tests robustness)
+        const a = Object.create(List.Cons.prototype);
+        const b = Object.create(List.Cons.prototype);
+        Object.defineProperty(a, 'head', { value: 1, enumerable: true });
+        Object.defineProperty(a, 'tail', { value: b, enumerable: true });
+        Object.defineProperty(b, 'head', { value: 2, enumerable: true });
+        Object.defineProperty(b, 'tail', { value: a, enumerable: true });
+
+        // Set the variant name symbol used internally
+        const VariantNameSymbol = Object.getOwnPropertySymbols(List.Nil)
+            .find(s => String(s) === 'Symbol(VariantName)');
+        if (VariantNameSymbol) {
+            Object.defineProperty(a, VariantNameSymbol, { value: 'Cons' });
+            Object.defineProperty(b, VariantNameSymbol, { value: 'Cons' });
+        }
+
+        assert.throws(
+            () => a.sum,
+            (err: Error) => {
+                assert.match(err.message, /Cycle detected in data structure/);
+                return true;
+            }
+        );
+    });
 });

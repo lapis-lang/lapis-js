@@ -42,6 +42,7 @@ function makeStream() {
         // Static merge: unfold + map + fold  → PascalCase
         TakeFrom: merge('From', 'take'),
         TakeDoubled: merge('From', 'doubled', 'take'),
+        TakeDoubledNegated: merge('From', 'doubled', 'negated', 'take'),
         SumDoubled: merge('From', 'doubled', 'sum'),
         // Instance merge: map + fold only → camelCase
         doubledSum: merge('doubled', 'sum'),
@@ -130,9 +131,9 @@ describe('Behavior Merge - Equivalence with manual composition', () => {
     it('instance.doubledSum(n) ≡ instance.doubled.sum(n)', () => {
         const Stream = makeStream();
         const s = Stream.From(0);
-        for (const n of [0, 1, 5]) 
+        for (const n of [0, 1, 5])
             assert.equal(s.doubledSum(n), s.doubled.sum(n), `n=${n}`);
-        
+
     });
 });
 
@@ -190,5 +191,59 @@ describe('Behavior Merge - Validation', () => {
                 Bogus: merge('From', 'nonexistent')
             }));
         }, /nonexistent|not found|unknown/i);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Deforestation (pre-composed handlers eliminate intermediate instances)
+// ---------------------------------------------------------------------------
+
+describe('Behavior Merge - Deforestation', () => {
+    it('multi-map static merge produces correct results (pre-composed)', () => {
+        const Stream = makeStream();
+        // doubled then negated: n → n*2 → -(n*2)
+        // From(1): head values 1,2,3,4 → doubled 2,4,6,8 → negated -2,-4,-6,-8
+        assert.deepEqual(Stream.TakeDoubledNegated(1, 4), [-2, -4, -6, -8]);
+    });
+
+    it('static merge equivalence holds after deforestation', () => {
+        const Stream = makeStream();
+        // Deforested merge should equal manual composition
+        for (const seed of [0, 3, 7]) {
+            for (const count of [0, 2, 5]) {
+                assert.deepEqual(
+                    Stream.TakeDoubled(seed, count),
+                    Stream.From(seed).doubled.take(count),
+                    `TakeDoubled: seed=${seed}, count=${count}`
+                );
+                assert.equal(
+                    Stream.SumDoubled(seed, count),
+                    Stream.From(seed).doubled.sum(count),
+                    `SumDoubled: seed=${seed}, count=${count}`
+                );
+            }
+        }
+    });
+
+    it('instance-level multi-map merge equivalence (doubledNegatedTake)', () => {
+        const Stream = makeStream();
+        const s = Stream.From(1);
+        for (const n of [0, 1, 4, 6]) {
+            assert.deepEqual(
+                s.doubledNegatedTake(n),
+                s.doubled.negated.take(n),
+                `n=${n}`
+            );
+        }
+    });
+
+    it('instance merge does not affect original instance observations', () => {
+        const Stream = makeStream();
+        const s = Stream.From(0);
+        // Access the merged operation
+        s.doubledSum(5);
+        // Original observations unaffected
+        assert.equal(s.head, 0);
+        assert.equal(s.tail.head, 1);
     });
 });

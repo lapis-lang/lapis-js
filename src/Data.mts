@@ -891,6 +891,12 @@ function createFoldOperation(
     let dagCache: WeakMap<object, unknown> | null = null,
         dagCacheDepth = 0;
     const inProgress = new WeakSet<object>();
+    // Tracks the node whose fold is currently executing (including handler
+    // invocation).  Used to distinguish data‐structure cycles from
+    // `this.opName` misuse: when `inProgress` fires and `currentNode ===
+    // this`, the handler directly re‐entered the fold on itself; otherwise
+    // the fold traversed back to an ancestor — a true cycle.
+    let currentNode: object | null = null;
 
     // Histomorphism support — when `history: true` in spec, each node's
     // foldedFields are cached so that handlers can access deeper sub-results
@@ -978,15 +984,28 @@ function createFoldOperation(
             histoFieldsDepth++;
         }
 
+        let prevNode: object | null = null;
+
         try {
-            // Re-entrancy guard: detect `this.opName` on the same instance
+            // Re-entrancy guard: detect cycles and `this.opName` misuse
             if (inProgress.has(this as object)) {
+                if (currentNode !== null && currentNode !== (this as object)) {
+                    // A descendant's Family field points back to this node —
+                    // a true cycle in the data structure.
+                    throw new Error(
+                        `Cycle detected in data structure: fold operation '${opName}' encountered the same ` +
+                        `node twice during recursive traversal. Data ADTs must be acyclic (trees or DAGs).`
+                    );
+                }
+                // The handler called this.opName on itself directly.
                 throw new Error(
                     `Circular fold detected: operation '${opName}' re-entered on the same instance during its own evaluation. ` +
                     `Use destructured fields for structural recursion instead of \`this.${opName}\`.`
                 );
             }
 
+            prevNode = currentNode;
+            currentNode = this as object;
             inProgress.add(this as object);
 
             const variantName = this[VariantNameSymbol] as string,
@@ -1179,6 +1198,7 @@ function createFoldOperation(
 
             return result;
         } finally {
+            currentNode = prevNode;
             inProgress.delete(this as object);
             if (canCache) {
                 dagCacheDepth--;

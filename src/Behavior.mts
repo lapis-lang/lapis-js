@@ -61,6 +61,11 @@ interface ObserverEntry {
     isContinuation: boolean;
 }
 
+interface MapTransformEntry {
+    typeParam: string;
+    transformFn: AnyFn;
+}
+
 interface FoldOpEntry {
     spec: Record<string, unknown>;
     handler: AnyFn;
@@ -68,7 +73,7 @@ interface FoldOpEntry {
     isHisto: boolean;
     auxNames: string[] | null;
     auxIsArray: boolean;
-    preMaps?: string[];
+    preMapTransforms?: MapTransformEntry[];
 }
 
 interface MapOpEntry {
@@ -804,6 +809,22 @@ function createMappedHandlers(
     return mappedHandlers;
 }
 
+/**
+ * Pre-compose multiple map transforms into a single handler set.
+ * This eliminates intermediate behavior instances in merge pipelines.
+ */
+function composeHandlers(
+    originalHandlers: Record<string, AnyFn> | undefined,
+    observerMap: Map<string, ObserverEntry>,
+    transforms: MapTransformEntry[]
+): Record<string, AnyFn> {
+    let handlers: Record<string, AnyFn> = originalHandlers ?? {};
+    for (const { typeParam, transformFn } of transforms)
+        handlers = createMappedHandlers(handlers, observerMap, typeParam, transformFn);
+
+    return handlers;
+}
+
 // ---- Fold operation registration --------------------------------------------
 
 function addFoldOperation(
@@ -876,6 +897,53 @@ function addMapOperation(
     ).set(name, { typeParam, transformFn, isGetter });
 }
 
+// ---- Merge helpers ----------------------------------------------------------
+
+function getSymbolMap<V>(
+    bt: BehaviorTypeLike,
+    sym: symbol
+): Map<string, V> | null {
+    return (bt as Record<symbol, unknown>)[sym] instanceof Map
+        ? (bt as Record<symbol, unknown>)[sym] as Map<string, V>
+        : null;
+}
+
+/**
+ * Collect pre-composable getter-map transforms from the given map names.
+ * Returns `null` if any map is non-getter (cannot be pre-composed).
+ */
+function collectMapTransforms(
+    mapOpsMap: Map<string, MapOpEntry> | null,
+    mapNames: string[]
+): MapTransformEntry[] | null {
+    const transforms: MapTransformEntry[] = [];
+    for (const mapName of mapNames) {
+        const mapOp = mapOpsMap?.get(mapName);
+        if (!mapOp || !mapOp.isGetter) return null;
+        transforms.push({ typeParam: mapOp.typeParam, transformFn: mapOp.transformFn });
+    }
+    return transforms;
+}
+
+/**
+ * Optionally fold an instance.  Returns the fold result when a fold
+ * operation is present, otherwise returns the instance as-is.
+ */
+function maybeFold(
+    instance: unknown,
+    observerMap: Map<string, ObserverEntry>,
+    foldOp: FoldOpEntry | null,
+    params: unknown[]
+): unknown {
+    if (!foldOp) return instance;
+    return executeFold(
+        instance as Record<string, unknown>,
+        observerMap, foldOp.handler,
+        foldOp.hasInput ? params : [],
+        foldOp.isHisto
+    );
+}
+
 // ---- Merge operation registration -------------------------------------------
 
 function addMergeOperation(
@@ -887,19 +955,16 @@ function addMergeOperation(
     if (!Array.isArray(operationNames) || operationNames.length === 0)
         throw new TypeError(`Merge operation '${name}' requires a non-empty 'operations' array`);
 
+    const foldMap = getSymbolMap<FoldOpEntry>(BehaviorType, FoldOpsSymbol),
+        mapOpsMap = getSymbolMap<MapOpEntry>(BehaviorType, MapOpsSymbol),
+        unfoldOpsMap = getSymbolMap<UnfoldOpEntry>(BehaviorType, UnfoldOpsSymbol);
 
     const unfoldNames = operationNames.filter(opName => {
             const desc = Object.getOwnPropertyDescriptor(BehaviorType, opName);
             return desc !== undefined;
         }),
-        foldNames = operationNames.filter(opName =>
-            (BehaviorType as Record<symbol, unknown>)[FoldOpsSymbol] instanceof Map &&
-            ((BehaviorType as Record<symbol, unknown>)[FoldOpsSymbol] as Map<string, unknown>).has(opName)
-        ),
-        mapNames = operationNames.filter(opName =>
-            (BehaviorType as Record<symbol, unknown>)[MapOpsSymbol] instanceof Map &&
-            ((BehaviorType as Record<symbol, unknown>)[MapOpsSymbol] as Map<string, unknown>).has(opName)
-        );
+        foldNames = operationNames.filter(opName => foldMap?.has(opName) ?? false),
+        mapNames = operationNames.filter(opName => mapOpsMap?.has(opName) ?? false);
 
     for (const opName of operationNames) {
         const known = unfoldNames.includes(opName) ||
@@ -911,9 +976,7 @@ function addMergeOperation(
 
     const hasUnfold = unfoldNames.length > 0,
         foldName = foldNames[0],
-        foldMap = (BehaviorType as Record<symbol, unknown>)[FoldOpsSymbol] as
-            Map<string, FoldOpEntry> | undefined,
-        foldOp = foldName ? foldMap?.get(foldName) : null;
+        foldOp = foldName ? foldMap?.get(foldName) ?? null : null;
 
     if (hasUnfold && !isPascalCase(name))
         throw new TypeError(`Merge operation '${name}' includes an unfold and must be PascalCase`);
@@ -921,59 +984,48 @@ function addMergeOperation(
     if (!hasUnfold && !isCamelCase(name))
         throw new TypeError(`Merge operation '${name}' (no unfold) must be camelCase`);
 
+    const mapTransforms = collectMapTransforms(mapOpsMap, mapNames);
 
     if (hasUnfold) {
         const unfoldName = unfoldNames[0],
             unfoldDescriptor = Object.getOwnPropertyDescriptor(BehaviorType, unfoldName),
-            unfoldIsGetter = unfoldDescriptor?.get !== undefined;
+            unfoldIsGetter = unfoldDescriptor?.get !== undefined,
+            unfoldEntry = unfoldOpsMap?.get(unfoldName);
+
+        // Pre-compose map transforms into unfold handlers when possible
+        const composedHandlers = mapTransforms && unfoldEntry
+            ? composeHandlers(unfoldEntry.handlers, observerMap, mapTransforms)
+            : null;
+
+        const buildInstance = (seed: unknown): unknown => {
+            if (composedHandlers)
+                return createBehaviorInstance(BehaviorType, observerMap, seed, composedHandlers);
+
+            // Fallback: sequential application (non-getter maps or no maps)
+            let instance: unknown = unfoldIsGetter
+                ? BehaviorType[unfoldName]
+                : (BehaviorType[unfoldName] as AnyFn)(seed);
+            if (!unfoldIsGetter) {
+                for (const mapName of mapNames) {
+                    const mapOp = mapOpsMap?.get(mapName);
+                    if (mapOp?.isGetter) instance = (instance as Record<string, unknown>)[mapName];
+                }
+            } else {
+                for (const mapName of mapNames)
+                    instance = (instance as Record<string, unknown>)[mapName];
+            }
+
+            return instance;
+        };
 
         if (!unfoldIsGetter) {
             BehaviorType[name] = function (seed: unknown, ...rest: unknown[]) {
-                let instance: unknown = BehaviorType[unfoldName];
-                instance = (instance as AnyFn)(seed);
-                for (const mapName of mapNames) {
-                    const mapOp = (BehaviorType as Record<symbol, unknown>)[MapOpsSymbol] instanceof Map
-                        ? ((BehaviorType as Record<symbol, unknown>)[MapOpsSymbol] as Map<string, MapOpEntry>).get(mapName)
-                        : null;
-                    if (mapOp?.isGetter) instance = (instance as Record<string, unknown>)[mapName];
-                }
-                if (foldOp) {
-                    if (foldOp.hasInput) {
-                        return executeFold(
-                            instance as Record<string, unknown>,
-                            observerMap,
-                            foldOp.handler,
-                            rest,
-                            foldOp.isHisto
-                        );
-                    }
-                    return executeFold(
-                        instance as Record<string, unknown>,
-                        observerMap,
-                        foldOp.handler,
-                        [],
-                        foldOp.isHisto
-                    );
-                }
-                return instance;
+                return maybeFold(buildInstance(seed), observerMap, foldOp ?? null, rest);
             };
         } else {
             Object.defineProperty(BehaviorType, name, {
                 get() {
-                    let instance: unknown = BehaviorType[unfoldName];
-                    for (const mapName of mapNames)
-                        instance = (instance as Record<string, unknown>)[mapName];
-
-                    if (foldOp) {
-                        return executeFold(
-                            instance as Record<string, unknown>,
-                            observerMap,
-                            foldOp.handler,
-                            [],
-                            foldOp.isHisto
-                        );
-                    }
-                    return instance;
+                    return maybeFold(buildInstance(undefined), observerMap, foldOp ?? null, []);
                 },
                 enumerable: true,
                 configurable: true
@@ -993,7 +1045,7 @@ function addMergeOperation(
             isHisto: foldOp.isHisto,
             auxNames: foldOp.auxNames,
             auxIsArray: foldOp.auxIsArray,
-            preMaps: mapNames
+            preMapTransforms: mapTransforms && mapTransforms.length > 0 ? mapTransforms : undefined
         });
     }
 }
@@ -1043,45 +1095,37 @@ function createBehaviorInstance(
                     if (foldOp) {
                         const { hasInput, handler, isHisto: foldIsHisto,
                             auxNames: foldAuxNames, auxIsArray: foldAuxIsArray } = foldOp;
-                        if (foldOp.preMaps && foldOp.preMaps.length > 0) {
-                            if (hasInput) {
-                                return function (...params: unknown[]) {
-                                    let inst: unknown = receiver;
-                                    for (const mapName of foldOp.preMaps!)
-                                        inst = (inst as Record<string, unknown>)[mapName];
 
-                                    return executeFold(
-                                        inst as Record<string, unknown>,
-                                        observerMap, handler, params, foldIsHisto,
-                                        foldAuxNames, foldAuxIsArray, bt ?? null
-                                    );
-                                };
-                            } else {
-                                let inst: unknown = receiver;
-                                for (const mapName of foldOp.preMaps)
-                                    inst = (inst as Record<string, unknown>)[mapName];
+                        // Determine the target instance for the fold.
+                        // With preMapTransforms, compose maps into current handlers
+                        // to create a single mapped instance (deforestation).
+                        let foldTarget: unknown;
+                        if (foldOp.preMapTransforms && foldOp.preMapTransforms.length > 0) {
+                            const state = behaviorInstanceState.get(target);
+                            const composedHandlers = composeHandlers(
+                                state?.handlers, observerMap, foldOp.preMapTransforms
+                            );
+                            foldTarget = makeInstance(
+                                state?.seed, composedHandlers
+                            );
+                        } else
+                            foldTarget = receiver;
 
-                                return executeFold(
-                                    inst as Record<string, unknown>, observerMap, handler, [],
-                                    foldIsHisto,
-                                    foldAuxNames, foldAuxIsArray, bt ?? null
-                                );
-                            }
-                        } else if (hasInput) {
+
+                        if (hasInput) {
                             return function (...params: unknown[]) {
                                 return executeFold(
-                                    receiver as Record<string, unknown>, observerMap, handler, params,
-                                    foldIsHisto,
+                                    foldTarget as Record<string, unknown>,
+                                    observerMap, handler, params, foldIsHisto,
                                     foldAuxNames, foldAuxIsArray, bt ?? null
                                 );
                             };
-                        } else {
-                            return executeFold(
-                                receiver as Record<string, unknown>, observerMap, handler, [],
-                                foldIsHisto,
-                                foldAuxNames, foldAuxIsArray, bt ?? null
-                            );
                         }
+                        return executeFold(
+                            foldTarget as Record<string, unknown>, observerMap, handler, [],
+                            foldIsHisto,
+                            foldAuxNames, foldAuxIsArray, bt ?? null
+                        );
                     }
 
                     const mapOp = bt?.[MapOpsSymbol] instanceof Map
