@@ -23,7 +23,6 @@ import {
     checkEnsures,
     checkInvariant,
     executeRescue,
-    MAX_RETRIES,
     DemandsError,
     type ContractSpec
 } from './contracts.mjs';

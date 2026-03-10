@@ -122,6 +122,7 @@ describe('Contracts: Continuous Invariant Enforcement', () => {
                     x: Number
                 },
                 risky: fold({
+                    in: Number,
                     rescue: (_self, _error, _args, retry) => retry(5)
                 })({
                     Box(_ctx, n) {

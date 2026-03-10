@@ -611,19 +611,21 @@ function addUnfoldOperation(
         BehaviorType[name] = function (seed: unknown) {
             validateTypeSpec(seed, parsedSpec['in'] as Parameters<typeof validateTypeSpec>[1], name, 'input of type');
 
-            if (isCheckedMode() && unfoldContracts)
+            if (isCheckedMode() && unfoldContracts) {
                 return checkedUnfold(seed, [seed],
                     (...newArgs: unknown[]) =>
                         (BehaviorType[name] as (s: unknown) => unknown)(newArgs[0]));
+            }
 
             return makeInstance(seed);
         };
     } else {
         Object.defineProperty(BehaviorType, name, {
             get() {
-                if (isCheckedMode() && unfoldContracts)
+                if (isCheckedMode() && unfoldContracts) {
                     return checkedUnfold(undefined, [],
                         () => BehaviorType[name] as unknown);
+                }
 
                 return makeInstance(undefined);
             },

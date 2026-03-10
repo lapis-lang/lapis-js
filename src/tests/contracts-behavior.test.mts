@@ -278,7 +278,7 @@ describe('Contracts: Behavior', () => {
                 })
             }));
 
-            const s = ChildStream.From(1);
+            const s = (ChildStream as any).From(1);
 
             // Valid
             assert.deepEqual(s.take(2), [1, 2]);
@@ -321,7 +321,7 @@ describe('Contracts: Behavior', () => {
                 })
             }));
 
-            const s = ChildStream.From(1);
+            const s = (ChildStream as any).From(1);
 
             // n=7 passes child demands but not parent — OR should accept
             assert.deepEqual(s.take(7), [1, 2, 3, 4, 5, 6, 7]);
@@ -358,7 +358,7 @@ describe('Contracts: Behavior', () => {
                 })
             }));
 
-            const s = ChildStream.From(1);
+            const s = (ChildStream as any).From(1);
             // Both ensures pass
             assert.deepEqual(s.take(3), [1, 2, 3]);
         });
@@ -401,7 +401,7 @@ describe('Contracts: Behavior', () => {
                 })
             }));
 
-            const s = ChildStream.From(1);
+            const s = (ChildStream as any).From(1);
             const result = s.risky(-1);
             assert.equal(rescueCalled, true);
             assert.deepEqual(result, []);
