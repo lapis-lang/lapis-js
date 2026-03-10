@@ -47,6 +47,9 @@ export type IsSingleton = typeof IsSingleton;
 
 const TypeArgsSymbol: unique symbol = Symbol('TypeArgs'),
     VariantNameSymbol: unique symbol = Symbol('VariantName'),
+    // Marks wrapper contexts created for parent dispatch so that
+    // re-entrancy guards can resolve back to the underlying node.
+    FoldContextOriginSymbol: unique symbol = Symbol('FoldContextOrigin'),
 
     // WeakMap to store parent ADT references (for Comb Inheritance parent chain)
     parentADTMap = new WeakMap<object, object>();
@@ -891,6 +894,12 @@ function createFoldOperation(
     let dagCache: WeakMap<object, unknown> | null = null,
         dagCacheDepth = 0;
     const inProgress = new WeakSet<object>();
+    // Tracks the node whose fold is currently executing (including handler
+    // invocation).  Used to distinguish data‐structure cycles from
+    // `this.opName` misuse: when `inProgress` fires and `currentNode ===
+    // this`, the handler directly re‐entered the fold on itself; otherwise
+    // the fold traversed back to an ancestor — a true cycle.
+    let currentNode: object | null = null;
 
     // Histomorphism support — when `history: true` in spec, each node's
     // foldedFields are cached so that handlers can access deeper sub-results
@@ -962,12 +971,17 @@ function createFoldOperation(
     }
 
     const foldImpl = function (this: Record<symbol, unknown>, ...args: unknown[]) {
+        // Resolve wrapper contexts (created for parent dispatch) to the
+        // underlying node so that re-entrancy guards, DAG caches, and
+        // histo caches all key on the original node identity.
+        const self: object = (this as Record<symbol, unknown>)[FoldContextOriginSymbol] as object ?? this;
+
         if (canCache) {
             if (dagCacheDepth === 0)
                 dagCache = new WeakMap();
 
-            if (dagCache!.has(this as object))
-                return dagCache!.get(this as object);
+            if (dagCache!.has(self))
+                return dagCache!.get(self);
 
             dagCacheDepth++;
         }
@@ -978,19 +992,34 @@ function createFoldOperation(
             histoFieldsDepth++;
         }
 
+        let prevNode: object | null = null;
+        let entered = false;
+
         try {
-            // Re-entrancy guard: detect `this.opName` on the same instance
-            if (inProgress.has(this as object)) {
+            // Re-entrancy guard: detect cycles and `this.opName` misuse
+            if (inProgress.has(self)) {
+                if (currentNode !== null && currentNode !== self) {
+                    // A descendant's Family field points back to this node —
+                    // a true cycle in the data structure.
+                    throw new Error(
+                        `Cycle detected in data structure: fold operation '${opName}' encountered the same ` +
+                        `node twice during recursive traversal. Data ADTs must be acyclic (trees or DAGs).`
+                    );
+                }
+                // The handler called this.opName on itself directly.
                 throw new Error(
                     `Circular fold detected: operation '${opName}' re-entered on the same instance during its own evaluation. ` +
                     `Use destructured fields for structural recursion instead of \`this.${opName}\`.`
                 );
             }
 
-            inProgress.add(this as object);
+            prevNode = currentNode;
+            currentNode = self;
+            inProgress.add(self);
+            entered = true;
 
-            const variantName = this[VariantNameSymbol] as string,
-                variantCtor = (this as { constructor: VariantLike }).constructor;
+            const variantName = (self as Record<symbol, unknown>)[VariantNameSymbol] as string,
+                variantCtor = (self as { constructor: VariantLike }).constructor;
 
             let handler: HandlerFn | null = null,
                 parentHandler: HandlerFn | null = null,
@@ -1040,7 +1069,7 @@ function createFoldOperation(
                     if (fieldSpec &&
                     (typeof fieldSpec === 'object' || typeof fieldSpec === 'function') &&
                     FamilyRefSymbol in (fieldSpec as object)) {
-                        const fieldValue = (this as Record<string, unknown>)[fieldName];
+                        const fieldValue = (self as Record<string, unknown>)[fieldName];
                         if (hasInput || hasExtraParams) {
                             foldedFields[fieldName] = (...params: unknown[]) =>
                                 (fieldValue as Record<string, (...p: unknown[]) => unknown>)[opName](...params);
@@ -1048,7 +1077,7 @@ function createFoldOperation(
                             foldedFields[fieldName] = (fieldValue as Record<string, unknown>)[opName];
 
                     } else
-                        foldedFields[fieldName] = (this as Record<string, unknown>)[fieldName];
+                        foldedFields[fieldName] = (self as Record<string, unknown>)[fieldName];
 
                 }
             }
@@ -1070,7 +1099,7 @@ function createFoldOperation(
                             if (fieldSpec &&
                                 (typeof fieldSpec === 'object' || typeof fieldSpec === 'function') &&
                                 FamilyRefSymbol in (fieldSpec as object)) {
-                                const fieldValue = (this as Record<string, unknown>)[fieldName];
+                                const fieldValue = (self as Record<string, unknown>)[fieldName];
                                 Object.defineProperty(historyObj, fieldName, {
                                     get: () => histoFieldsCache?.get(fieldValue as object),
                                     enumerable: true,
@@ -1089,7 +1118,7 @@ function createFoldOperation(
                             if (fieldSpec &&
                                 (typeof fieldSpec === 'object' || typeof fieldSpec === 'function') &&
                                 FamilyRefSymbol in (fieldSpec as object)) {
-                                const fieldValue = (this as Record<string, unknown>)[fieldName];
+                                const fieldValue = (self as Record<string, unknown>)[fieldName];
                                 const childFields = histoFieldsCache.get(fieldValue as object);
                                 if (childFields)
                                     historyObj[fieldName] = childFields;
@@ -1118,7 +1147,7 @@ function createFoldOperation(
                         if (fieldSpec &&
                             (typeof fieldSpec === 'object' || typeof fieldSpec === 'function') &&
                             FamilyRefSymbol in (fieldSpec as object)) {
-                            const fieldValue = (this as Record<string, unknown>)[fieldName];
+                            const fieldValue = (self as Record<string, unknown>)[fieldName];
                             if (singleAuxName !== null) {
                                 // Flat shape: auxObj[fieldName]
                                 // Use the aux fold's own call shape, not the primary fold's.
@@ -1147,23 +1176,24 @@ function createFoldOperation(
             // *after* all symbol injections ([history], [aux]) so that the
             // cached object fully reflects what the handler receives.
             if (isHisto && histoFieldsCache)
-                histoFieldsCache.set(this as object, foldedFields as Record<string | symbol, unknown>);
+                histoFieldsCache.set(self, foldedFields as Record<string | symbol, unknown>);
 
-            let context: object = this;
+            let context: object = self;
 
             if (parentHandler) {
-                context = Object.create(this);
+                context = Object.create(self);
+                (context as Record<symbol, unknown>)[FoldContextOriginSymbol] = self;
 
                 if (hasInput || hasExtraParams) {
                     Object.defineProperty(context, parent, {
                         get: () => (...parentArgs: unknown[]) =>
-                            (parentHandler as HandlerFn).call(this, foldedFields, ...parentArgs),
+                            (parentHandler as HandlerFn).call(self, foldedFields, ...parentArgs),
                         enumerable: false,
                         configurable: true
                     });
                 } else {
                     Object.defineProperty(context, parent, {
-                        get: () => (parentHandler as HandlerFn).call(this, foldedFields),
+                        get: () => (parentHandler as HandlerFn).call(self, foldedFields),
                         enumerable: false,
                         configurable: true
                     });
@@ -1175,11 +1205,14 @@ function createFoldOperation(
             if (hasOutput)
                 validateReturnType(result, opSpecObj['out'] as Parameters<typeof validateReturnType>[1], opName);
 
-            if (canCache) dagCache!.set(this as object, result);
+            if (canCache) dagCache!.set(self, result);
 
             return result;
         } finally {
-            inProgress.delete(this as object);
+            if (entered) {
+                currentNode = prevNode;
+                inProgress.delete(self);
+            }
             if (canCache) {
                 dagCacheDepth--;
                 if (dagCacheDepth === 0) dagCache = null;
