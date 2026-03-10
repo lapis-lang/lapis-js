@@ -58,6 +58,25 @@ export type invariant = typeof invariant;
 export const IsSingleton: unique symbol = Symbol('IsSingleton');
 export type IsSingleton = typeof IsSingleton;
 
+// Maps raw (unwrapped) ADT constructors to their delegation-Proxy
+// counterparts so that `foldImpl` can recover the public, proxied ADT
+// from the prototype chain of a variant instance.
+//
+// Entries are added in two places:
+//   • createADT        – for the base ADT constructor
+//   • createParameterized – for each parameterized specialization
+//
+// Using a WeakMap ensures that entries are automatically eligible for
+// garbage collection once the raw constructor (key) is no longer
+// reachable — no manual cleanup is needed.
+const rawToProxiedMap = new WeakMap<object, object>();
+
+// Module-level fold-execution context: holds the current parameterized
+// (proxied) ADT during fold handler invocation so that Family(T) can
+// resolve type-param markers to the correct parameterized ADT without
+// requiring the user to hardcode concrete type arguments.
+let _currentFoldParameterizedADT: object | null = null;
+
 const TypeArgsSymbol: unique symbol = Symbol('TypeArgs'),
     VariantNameSymbol: unique symbol = Symbol('VariantName'),
     // Brands variant constructors and singleton instances so the delegation
@@ -395,6 +414,24 @@ function createTransformerMethods(ADT: ADTLike): TransformerMethods {
 
 function createFamilyMarker(): FamilyMarker {
     const marker = function (typeParam?: unknown): FamilyMarker {
+        // During fold execution on a parameterized ADT, resolve type-param
+        // markers (e.g. `T`) to the current parameterized ADT.  This allows
+        // fold handlers to write `Family(T).Push(...)` instead of hardcoding
+        // `Stack(Number).Push(...)`.
+        // We also verify that the param name is actually declared in the
+        // current fold-context ADT's TypeArgs, so a stray type param from
+        // a *different* ADT won't silently resolve to the wrong ADT.
+        if (_currentFoldParameterizedADT !== null &&
+            typeParam && typeof typeParam === 'object' &&
+            TypeParamSymbol in (typeParam as object)
+        ) {
+            const paramName = (typeParam as Record<symbol, string>)[TypeParamSymbol],
+                typeArgs = (_currentFoldParameterizedADT as Record<symbol, unknown>)[TypeArgsSymbol] as Record<string, unknown> | undefined;
+            if (typeArgs && paramName in typeArgs)
+                return _currentFoldParameterizedADT as unknown as FamilyMarker;
+        }
+
+
         if ((marker as FamilyMarker)._adt)
             return ((marker as FamilyMarker)._adt as (typeParam?: unknown) => FamilyMarker)(typeParam);
 
@@ -479,6 +516,9 @@ function createADT(decl: ParsedDecl): ADTLike {
     if (decl.Family)
         decl.Family._adt = ProxiedADT as unknown as ADTLike;
 
+    // Register raw → proxied mapping so fold handlers can recover the
+    // proxied ADT from the prototype chain.
+    rawToProxiedMap.set(ADT as unknown as object, ProxiedADT as unknown as object);
 
     return ProxiedADT;
 }
@@ -1036,6 +1076,7 @@ function createFoldOperation(
         contractDepth++;
         let prevNode: object | null = null;
         let entered = false;
+        const prevFoldADT = _currentFoldParameterizedADT;
 
         try {
             // Re-entrancy guard: detect cycles and `this.opName` misuse
@@ -1062,6 +1103,22 @@ function createFoldOperation(
 
             const variantName = (self as Record<symbol, unknown>)[VariantNameSymbol] as string,
                 variantCtor = (self as { constructor: VariantLike }).constructor;
+
+            // ---- Parameterized ADT context for Family(T) ----
+            // Walk the variant's prototype chain to find the ADT constructor,
+            // then look up its proxied form.  If it carries TypeArgsSymbol it
+            // is a parameterized ADT and we expose it via the module-level
+            // _currentFoldParameterizedADT so that Family(T) in the handler
+            // closure resolves to the correct parameterized ADT.
+            const variantProtoParent = Object.getPrototypeOf(
+                (variantCtor as unknown as { prototype: object }).prototype
+            );
+            const adtCtor = variantProtoParent?.constructor ?? null;
+            const proxiedADT = adtCtor ? rawToProxiedMap.get(adtCtor as object) ?? null : null;
+            if (proxiedADT && TypeArgsSymbol in (proxiedADT as Record<symbol, unknown>))
+                _currentFoldParameterizedADT = proxiedADT;
+            else
+                _currentFoldParameterizedADT = null;
 
             // ---- Cached handler resolution ----
             let resolved = handlerCache.get(variantCtor as object);
@@ -1363,6 +1420,7 @@ function createFoldOperation(
 
             return result;
         } finally {
+            _currentFoldParameterizedADT = prevFoldADT;
             contractDepth--;
             if (entered) {
                 currentNode = prevNode;
@@ -1857,6 +1915,9 @@ function createParameterized(
             Base,
             false
         );
+
+    // Register raw → proxied mapping for fold-context resolution.
+    rawToProxiedMap.set(ParameterizedADT as unknown as object, ProxiedParameterized as unknown as object);
 
     return Object.assign(ProxiedParameterized, paramVariants) as unknown as ADTLike;
 }

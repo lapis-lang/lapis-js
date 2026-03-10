@@ -10,22 +10,23 @@ const Pair = data(({ T, U }) => ({
 const List = data(({ Family, T }) => ({
     Nil: {},
     Cons: { head: T, tail: Family(T) },
+    // zip changes the element type (T → Pair), so it returns an array
+    // rather than a Family(T) list (which would enforce head: T).
     zip: fold({})({
-        // @ts-expect-error -- intentional type violation for test
-        Nil() { return Family(T).Nil; },
-        // @ts-expect-error -- intentional type violation for test
-        Cons({ head, tail }, ys) {
+        Nil() { return []; },
+        Cons({ head, tail }: { head: unknown; tail: (ys: unknown) => unknown[] }, ys: any) {
             if (!ys || ys.constructor.name === 'Nil')
-                // @ts-expect-error -- intentional type violation for test
-                return Family(T).Nil;
+                return [];
 
-            const PairType = Pair(typeof head, typeof ys.head);
+            const PairType = Pair(typeof head === 'number' ? Number
+                : typeof head === 'string' ? String : Object,
+            typeof ys.head === 'number' ? Number
+                : typeof ys.head === 'string' ? String : Object);
 
-            // @ts-expect-error -- intentional type violation for test
-            return Family(T).Cons({
-                head: PairType.MakePair({ first: head, second: ys.head }),
-                tail: tail(ys.tail)  // tail is a partially applied function
-            });
+            return [
+                PairType.MakePair({ first: head, second: ys.head }),
+                ...tail(ys.tail)
+            ];
         }
     })
 }));
@@ -55,23 +56,20 @@ describe('Binary Operations with Fold', () => {
 
             const zipped = nums.zip(strs);
 
-            // Verify structure
-            assert.strictEqual(zipped.constructor.name, 'Cons');
+            // Verify structure — result is an array of pairs
+            assert.strictEqual(zipped.length, 3);
 
             // Check first pair
-            assert.strictEqual(zipped.head.first, 1);
-            assert.strictEqual(zipped.head.second, "a");
+            assert.strictEqual(zipped[0].first, 1);
+            assert.strictEqual(zipped[0].second, "a");
 
             // Check second pair
-            assert.strictEqual(zipped.tail.head.first, 2);
-            assert.strictEqual(zipped.tail.head.second, "b");
+            assert.strictEqual(zipped[1].first, 2);
+            assert.strictEqual(zipped[1].second, "b");
 
             // Check third pair
-            assert.strictEqual(zipped.tail.tail.head.first, 3);
-            assert.strictEqual(zipped.tail.tail.head.second, "c");
-
-            // Check end
-            assert.strictEqual(zipped.tail.tail.tail.constructor.name, 'Nil');
+            assert.strictEqual(zipped[2].first, 3);
+            assert.strictEqual(zipped[2].second, "c");
 
             console.log('Zip operation works for equal-length lists');
         });
@@ -93,11 +91,11 @@ describe('Binary Operations with Fold', () => {
             const zipped = nums.zip(strs);
 
             // Should only zip 2 elements
-            assert.strictEqual(zipped.head.first, 1);
-            assert.strictEqual(zipped.head.second, "a");
-            assert.strictEqual(zipped.tail.head.first, 2);
-            assert.strictEqual(zipped.tail.head.second, "b");
-            assert.strictEqual(zipped.tail.tail.constructor.name, 'Nil');
+            assert.strictEqual(zipped.length, 2);
+            assert.strictEqual(zipped[0].first, 1);
+            assert.strictEqual(zipped[0].second, "a");
+            assert.strictEqual(zipped[1].first, 2);
+            assert.strictEqual(zipped[1].second, "b");
 
             console.log('Zip handles shorter first list correctly');
         });
@@ -116,9 +114,9 @@ describe('Binary Operations with Fold', () => {
             const zipped = nums.zip(strs);
 
             // Should only zip 1 element
-            assert.strictEqual(zipped.head.first, 1);
-            assert.strictEqual(zipped.head.second, "a");
-            assert.strictEqual(zipped.tail.constructor.name, 'Nil');
+            assert.strictEqual(zipped.length, 1);
+            assert.strictEqual(zipped[0].first, 1);
+            assert.strictEqual(zipped[0].second, "a");
 
             console.log('Zip handles shorter second list correctly');
         });
@@ -132,7 +130,7 @@ describe('Binary Operations with Fold', () => {
 
             const zipped = nums.zip(strs);
 
-            assert.strictEqual(zipped.constructor.name, 'Nil');
+            assert.strictEqual(zipped.length, 0);
 
             console.log('Zip handles empty first list correctly');
         });
@@ -146,7 +144,7 @@ describe('Binary Operations with Fold', () => {
 
             const zipped = nums.zip(strs);
 
-            assert.strictEqual(zipped.constructor.name, 'Nil');
+            assert.strictEqual(zipped.length, 0);
 
             console.log('Zip handles empty second list correctly');
         });
@@ -155,7 +153,7 @@ describe('Binary Operations with Fold', () => {
             const nums = NumList.Nil;
             const strs = StrList.Nil;
             const zipped = nums.zip(strs);
-            assert.strictEqual(zipped.constructor.name, 'Nil');
+            assert.strictEqual(zipped.length, 0);
 
             console.log('Zip handles both empty lists correctly');
         });

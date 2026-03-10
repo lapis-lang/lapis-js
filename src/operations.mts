@@ -279,6 +279,28 @@ export function validateTypeSpec(
         return;
     }
 
+    // Handle FamilyRef specs — validate against the resolved ADT constructor.
+    // Family markers carry a `_adt` reference to the ADT (or parameterized ADT)
+    // that was assigned during creation.  Use that for the instanceof check
+    // instead of the marker function itself (which has no prototype relation
+    // to variant instances).
+    if (isFamilyRefSpec(spec)) {
+        const adt = (spec as { _adt?: unknown })._adt;
+        if (adt && typeof adt === 'function' &&
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            !(value instanceof (adt as new (...args: any[]) => unknown))
+        ) {
+            const typePhrase = context === 'to return'
+                ? `${context} instance of ADT family`
+                : `${context} ADT family instance`;
+
+            throw new TypeError(
+                `Operation '${opName}' expected ${typePhrase}, but got ${(value as { constructor?: { name?: string } } | null)?.constructor?.name || typeof value}`
+            );
+        }
+        return;
+    }
+
     // Handle custom class/constructor - use instanceof
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     if (typeof spec === 'function' && !(value instanceof (spec as new (...args: any[]) => unknown))) {
