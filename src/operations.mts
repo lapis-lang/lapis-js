@@ -80,7 +80,9 @@ export function parseAux(raw: unknown): ParsedAux {
         }
         return { names: raw as string[], isArray: true };
     }
-    return { names: null, isArray: false };
+    throw new TypeError(
+        `'aux' must be a string or string[], got ${typeof raw}`
+    );
 }
 
 // ---- Interfaces --------------------------------------------------------------

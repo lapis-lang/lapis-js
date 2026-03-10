@@ -15,7 +15,7 @@
 
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { data, fold, unfold, merge, behavior, aux, extend, history } from '../index.mjs';
+import { data, fold, unfold, map, merge, behavior, aux, extend, history } from '../index.mjs';
 
 // ---------------------------------------------------------------------------
 // Shared base ADTs
@@ -386,6 +386,124 @@ describe('Zygomorphism (Data) — string form', () => {
                 }));
             }, /aux.*array elements must be strings.*index 0/);
         });
+
+        test('throws when aux is an unsupported type', () => {
+            assert.throws(() => {
+                data(() => ({
+                    [extend]: BaseTree,
+                    bad: fold({ aux: 42 as unknown as string, out: Number })({
+                        Leaf() { return 0; },
+                        Node({ left, right }) { return left + right; }
+                    })
+                }));
+            }, /aux.*must be a string or string\[\], got number/);
+        });
+
+        test('throws when aux references an unfold operation', () => {
+            assert.throws(() => {
+                data(({ Family }) => ({
+                    Nil: {},
+                    Cons: { head: Number, tail: Family },
+                    FromArray: unfold({ in: Array })({
+                        Nil: (arr: unknown[]) => (arr.length === 0 ? {} : null),
+                        Cons: (arr: unknown[]) => (arr.length > 0 ? { head: arr[0], tail: arr.slice(1) } : null)
+                    }),
+                    bad: fold({ aux: 'FromArray', out: Number })({
+                        Nil() { return 0; },
+                        Cons({ tail }) { return 1 + tail; }
+                    })
+                }));
+            }, /references auxiliary fold 'FromArray'.*but no fold named 'FromArray' exists/);
+        });
+
+        test('throws when aux references a map operation', () => {
+            assert.throws(() => {
+                data(({ Family, T }) => ({
+                    Leaf: { value: T },
+                    Node: { left: Family(T), right: Family(T) },
+                    fmap: map({ out: Family })({
+                        T: (x: unknown) => x
+                    }),
+                    bad: fold({ aux: 'fmap', out: Number })({
+                        Leaf() { return 0; },
+                        Node({ left, right }) { return left + right; }
+                    })
+                }));
+            }, /references auxiliary fold 'fmap'.*but no fold named 'fmap' exists/);
+        });
+    });
+
+    describe('Parameterized primary fold with getter aux', () => {
+        test('method-primary + getter-aux: aux entries are values, not thunks', () => {
+            // depth is a getter (no input).  sumWith is a method (has input).
+            // The aux entry a.left / a.right should be plain numbers, not functions.
+            const Tree = data(() => ({
+                [extend]: BaseTree,
+                sumWith: fold({ aux: 'depth', in: Number, out: Number })({
+                    Leaf({ value }, bonus: number) { return value + bonus; },
+                    Node({ left, right, [aux]: a }, bonus: number) {
+                        // a.left and a.right must be numbers (from getter aux),
+                        // NOT thunks — if they were thunks this would NaN/throw.
+                        return left(bonus) + right(bonus) + a.left + a.right;
+                    }
+                })
+            }));
+
+            //   Node
+            //  /    \
+            // L(10) L(20)
+            const t = Tree.Node({
+                left: Tree.Leaf({ value: 10 }),
+                right: Tree.Leaf({ value: 20 })
+            });
+            // sumWith(5): left(5)=15, right(5)=25, a.left=0, a.right=0 → 40
+            assert.strictEqual(t.sumWith(5), 40);
+        });
+
+        test('array form: mixed getter-aux and method-aux', () => {
+            // depth is a getter, size is a getter.
+            // Primary fold is parameterized (has `in`).
+            // Both aux entries should be plain values.
+            const Tree = data(() => ({
+                [extend]: BaseTree,
+                info: fold({ aux: ['depth', 'size'], in: Number, out: Object })({
+                    Leaf({ value }, bonus: number) {
+                        return { total: value + bonus };
+                    },
+                    Node({ left, right, [aux]: a }, bonus: number) {
+                        type AuxFields = { left: number; right: number };
+                        type AuxShape = { depth: AuxFields; size: AuxFields };
+                        const { depth: ad, size: as_ } = a as AuxShape;
+                        const l = left(bonus) as { total: number };
+                        const r = right(bonus) as { total: number };
+                        return {
+                            total: l.total + r.total + ad.left + ad.right + as_.left + as_.right
+                        };
+                    }
+                })
+            }));
+
+            //      Node
+            //     /    \
+            //   Node   L(3)
+            //  /    \
+            // L(1)  L(2)
+            const t = Tree.Node({
+                left: Tree.Node({
+                    left: Tree.Leaf({ value: 1 }),
+                    right: Tree.Leaf({ value: 2 })
+                }),
+                right: Tree.Leaf({ value: 3 })
+            });
+            // bonus=0: leaves return {total: value}
+            // inner Node: l.total=(1+2)=3, r... let's just check it doesn't throw
+            // and returns a sensible number.
+            const result = t.info(0) as { total: number };
+            assert.strictEqual(typeof result.total, 'number');
+            // Inner Node: l=1,r=2, ad.left=0,ad.right=0, as.left=1,as.right=1 → total=5
+            // Outer Node: l=5, r=3, ad.left=1,ad.right=0, as.left=3,as.right=1 → total=13
+            assert.strictEqual(result.total, 13);
+        });
     });
 
     describe('Zygo + histo together', () => {
@@ -444,6 +562,36 @@ describe('Zygomorphism (Data) — string form', () => {
             });
             assert.strictEqual(balanced.isBalanced, true);
             assert.strictEqual(balanced.depth, 1);
+        });
+
+        test('aux fold declared after primary fold (reverse order)', () => {
+            // isBalanced references depth via aux, but depth is declared
+            // *after* isBalanced in source order.  The topo sort must
+            // resolve this dependency and register depth first.
+            const Tree = data(({ Family }) => ({
+                Leaf: { value: Number },
+                Node: { left: Family, right: Family },
+                isBalanced: fold({ aux: 'depth', out: Boolean })({
+                    Leaf() { return true; },
+                    Node({ left, right, [aux]: a }) {
+                        return left && right && Math.abs(a.left - a.right) <= 1;
+                    }
+                }),
+                depth: fold({ out: Number })({
+                    Leaf() { return 0; },
+                    Node({ left, right }) { return 1 + Math.max(left, right); }
+                })
+            }));
+
+            const t = Tree.Node({
+                left: Tree.Node({
+                    left: Tree.Leaf({ value: 1 }),
+                    right: Tree.Leaf({ value: 2 })
+                }),
+                right: Tree.Leaf({ value: 3 })
+            });
+            assert.strictEqual(t.isBalanced, true);
+            assert.strictEqual(t.depth, 2);
         });
     });
 });

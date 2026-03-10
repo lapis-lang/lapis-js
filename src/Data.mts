@@ -683,7 +683,7 @@ function validateField(
 
 // ---- Topological sort -------------------------------------------------------
 
-type DepFrame = { name: string; phase: 'pre' | 'post' };
+type DepFrame = { name: string; phase: 'pre' | 'post'; isAuxDep?: boolean };
 
 function topologicalSortOperations(
     operationSpecs: SpecRecord,
@@ -721,9 +721,12 @@ function topologicalSortOperations(
                     const parentHasOp = localParentADT &&
                         (localParentADT as ADTLike)._getTransformer &&
                         (localParentADT as ADTLike)._getTransformer(frame.name);
-                    if (!parentHasOp)
+                    if (!parentHasOp && !frame.isAuxDep)
                         throw new Error(`Cannot merge: operation '${frame.name}' not found`);
 
+                    // For aux deps that don't exist locally or on a parent,
+                    // silently skip — fold registration validation will
+                    // produce a specific error later.
                     visiting.delete(frame.name);
                     visited.add(frame.name);
                     stack.pop();
@@ -739,6 +742,22 @@ function topologicalSortOperations(
                         if (!visited.has(depName))
                             stack.push({ name: depName, phase: 'pre' });
 
+                    }
+                }
+
+                // Fold aux dependency: if this fold specifies `aux`, the
+                // auxiliary fold(s) must be registered first.
+                if (opDef[op as unknown as string] === 'fold') {
+                    const foldSpec = opDef[spec as unknown as string] as Record<string, unknown> | undefined;
+                    if (foldSpec) {
+                        const { names: auxDeps } = parseAux(foldSpec['aux']);
+                        if (auxDeps) {
+                            for (let i = auxDeps.length - 1; i >= 0; i--) {
+                                const depName = auxDeps[i];
+                                if (!visited.has(depName))
+                                    stack.push({ name: depName, phase: 'pre', isAuxDep: true });
+                            }
+                        }
                     }
                 }
             } else {
@@ -894,15 +913,49 @@ function createFoldOperation(
         );
     }
 
-    // Validate that every auxiliary fold name references a known fold operation
-    // on this ADT (own or inherited).  Because operations are topologically
-    // sorted, the aux fold must already be registered by the time we get here.
+    // Validate that every auxiliary fold name references a known *fold*
+    // operation on this ADT (own or inherited).  Because operations are
+    // topologically sorted, the aux fold must already be registered by the
+    // time we get here.
+    //
+    // The check is two-pronged:
+    //   1. A transformer with HandlerMapSymbol must exist (fold transformer).
+    //      This excludes unfolds, maps, and merges whose transformers lack
+    //      that symbol.
+    //   2. The operation must be present on the prototype chain (getter or
+    //      method), confirming it is an instance-level fold, not a static
+    //      ADT method like an unfold.
+    //
+    // We also record each aux fold's call shape (getter vs method) so the
+    // runtime zygo block wraps lookups correctly.
+    const auxIsMethod = new Map<string, boolean>();
     if (isZygo && auxNames) {
         for (const auxName of auxNames) {
-            if (!ADT._getTransformer(auxName)) {
+            const transformer = ADT._getTransformer(auxName);
+            if (!transformer || !transformer[HandlerMapSymbol]) {
                 throw new Error(
                     `Fold operation '${opName}' references auxiliary fold '${auxName}' via 'aux', ` +
                     `but no fold named '${auxName}' exists on this data type`
+                );
+            }
+            // Walk the prototype chain to find how the aux fold was installed:
+            //   getter  (defineProperty with `get`) → direct value access
+            //   method  (plain `value` on descriptor) → function call
+            let proto: object | null = ADT.prototype as object;
+            let found = false;
+            while (proto) {
+                const desc = Object.getOwnPropertyDescriptor(proto, auxName);
+                if (desc) {
+                    auxIsMethod.set(auxName, 'value' in desc);
+                    found = true;
+                    break;
+                }
+                proto = Object.getPrototypeOf(proto) as object | null;
+            }
+            if (!found) {
+                throw new Error(
+                    `Fold operation '${opName}' references auxiliary fold '${auxName}' via 'aux', ` +
+                    `but '${auxName}' is not an instance-level fold on this data type`
                 );
             }
         }
@@ -1047,11 +1100,6 @@ function createFoldOperation(
                 }
             }
 
-            // Histomorphism: cache this node's foldedFields so ancestor nodes
-            // can access them through [history] chains.
-            if (isHisto && histoFieldsCache)
-                histoFieldsCache.set(this as object, foldedFields as Record<string | symbol, unknown>);
-
             // Zygomorphism: compute auxiliary fold results at each recursive
             // child and inject them via [aux].
             // String form → flat shape: auxObj[fieldName] = auxResult
@@ -1062,7 +1110,6 @@ function createFoldOperation(
                     if (auxIsArray)
                         for (const auxName of auxNames) auxObj[auxName] = {};
 
-                    const isParam = hasInput || hasExtraParams;
                     // String form uses a single aux fold name; array form
                     // iterates all names.  Kept as distinct branches so flat
                     // mode cannot accidentally overwrite keys.
@@ -1074,14 +1121,16 @@ function createFoldOperation(
                             const fieldValue = (this as Record<string, unknown>)[fieldName];
                             if (singleAuxName !== null) {
                                 // Flat shape: auxObj[fieldName]
-                                auxObj[fieldName] = isParam
+                                // Use the aux fold's own call shape, not the primary fold's.
+                                auxObj[fieldName] = auxIsMethod.get(singleAuxName)
                                     ? (...params: unknown[]) =>
                                         (fieldValue as Record<string, (...p: unknown[]) => unknown>)[singleAuxName](...params)
                                     : (fieldValue as Record<string, unknown>)[singleAuxName];
                             } else {
                                 // Nested shape: auxObj[foldName][fieldName]
                                 for (const auxName of auxNames) {
-                                    (auxObj[auxName] as Record<string, unknown>)[fieldName] = isParam
+                                    const isAuxParam = auxIsMethod.get(auxName) ?? false;
+                                    (auxObj[auxName] as Record<string, unknown>)[fieldName] = isAuxParam
                                         ? (...params: unknown[]) =>
                                             (fieldValue as Record<string, (...p: unknown[]) => unknown>)[auxName](...params)
                                         : (fieldValue as Record<string, unknown>)[auxName];
@@ -1092,6 +1141,13 @@ function createFoldOperation(
                 }
                 (foldedFields as Record<symbol, unknown>)[aux as unknown as symbol] = auxObj;
             }
+
+            // Histomorphism: cache this node's foldedFields so ancestor nodes
+            // can access them through [history] chains.  This must happen
+            // *after* all symbol injections ([history], [aux]) so that the
+            // cached object fully reflects what the handler receives.
+            if (isHisto && histoFieldsCache)
+                histoFieldsCache.set(this as object, foldedFields as Record<string | symbol, unknown>);
 
             let context: object = this;
 
