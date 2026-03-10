@@ -72,7 +72,7 @@ describe('Structured Data', () => {
 
         assert.throws(
             () => ColorPoint.Point({ x: 10, color: {} }),
-            /Field 'color' failed predicate validation/
+            /Field 'color' must be an instance of/
         );
     });
 

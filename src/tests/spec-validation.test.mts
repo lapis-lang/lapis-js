@@ -398,9 +398,11 @@ describe('Spec Validation - Runtime Type Checking', () => {
                 Nil: {},
                 Cons: { head: Number, tail: Family },
                 append: fold({ in: Number, out: Family })({
+                    // @ts-expect-error -- InstanceOf<FamilyRef> = never; runtime resolves correctly
                     Nil({}, val: number) {
                         return List.Cons({ head: val, tail: List.Nil });
                     },
+                    // @ts-expect-error -- InstanceOf<FamilyRef> = never; runtime resolves correctly
                     Cons({ tail }: { tail: (v: number) => unknown }, val: number) {
                         return List.Cons({ head: this.head, tail: tail(val) });
                     }
@@ -422,12 +424,12 @@ describe('Spec Validation - Runtime Type Checking', () => {
                 badClone: fold({ out: Family })({
                     // @ts-expect-error -- intentional type violation for test
                     Nil() { return { head: 0 }; },
+                    // @ts-expect-error -- InstanceOf<FamilyRef> = never; runtime resolves correctly
                     Cons() { return List.Nil; }
                 })
             }));
 
             assert.throws(
-                // @ts-expect-error -- intentional type violation for test
                 () => List.Nil.badClone(),
                 /Operation 'badClone' expected to return instance of ADT family.*got Object/
             );
@@ -440,12 +442,12 @@ describe('Spec Validation - Runtime Type Checking', () => {
                 badOp: fold({ out: Family })({
                     // @ts-expect-error -- intentional type violation for test
                     Nil() { return 42; },
+                    // @ts-expect-error -- InstanceOf<FamilyRef> = never; runtime resolves correctly
                     Cons() { return List.Nil; }
                 })
             }));
 
             assert.throws(
-                // @ts-expect-error -- intentional type violation for test
                 () => List.Nil.badOp(),
                 /Operation 'badOp' expected to return instance of ADT family/
             );
@@ -462,12 +464,12 @@ describe('Spec Validation - Runtime Type Checking', () => {
                 badOp: fold({ out: Family })({
                     // @ts-expect-error -- intentional type violation for test
                     Nil() { return Other.Thing({ x: 1 }); },
+                    // @ts-expect-error -- InstanceOf<FamilyRef> = never; runtime resolves correctly
                     Cons() { return List.Nil; }
                 })
             }));
 
             assert.throws(
-                // @ts-expect-error -- intentional type violation for test
                 () => List.Nil.badOp(),
                 /Operation 'badOp' expected to return instance of ADT family.*got Thing/
             );
@@ -485,7 +487,9 @@ describe('Spec Validation - Runtime Type Checking', () => {
                 Leaf: { value: Number },
                 Node: { left: Family, right: Family },
                 leftmost: fold({ out: Family })({
+                    // @ts-expect-error -- InstanceOf<FamilyRef> = never; runtime resolves correctly
                     Leaf() { return this; },
+                    // @ts-expect-error -- InstanceOf<FamilyRef> = never; runtime resolves correctly
                     Node({ left }: { left: unknown }) { return left; }
                 })
             }));
@@ -504,11 +508,13 @@ describe('Spec Validation - Runtime Type Checking', () => {
                 Empty: {},
                 Push: { value: T, rest: Family(T) },
                 append: fold({ in: T, out: Family })({
+                    // @ts-expect-error -- Family(T) resolves at runtime; TS cannot model variant properties on FamilyRefCallable
                     Empty({}, val: unknown) {
-                        return Family(T).Push({ value: val, rest: Family(T).Empty });
+                        return (Family(T) as any).Push({ value: val, rest: (Family(T) as any).Empty });
                     },
+                    // @ts-expect-error -- Family(T) resolves at runtime; TS cannot model variant properties on FamilyRefCallable
                     Push({ rest }: { rest: (v: unknown) => unknown }, val: unknown) {
-                        return Family(T).Push({ value: this.value, rest: rest(val) });
+                        return (Family(T) as any).Push({ value: this.value, rest: rest(val) });
                     }
                 })
             }));

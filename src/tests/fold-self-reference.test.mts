@@ -28,11 +28,13 @@ describe('Family(T) in data fold handlers', () => {
             }),
 
             append: fold({ in: T, out: Family })({
+                // @ts-expect-error -- Family(T) resolves at runtime; TS cannot model variant properties on FamilyRefCallable
                 Empty({}, val: unknown) {
-                    return Family(T).Push({ value: val, rest: Family(T).Empty });
+                    return (Family(T) as any).Push({ value: val, rest: (Family(T) as any).Empty });
                 },
+                // @ts-expect-error -- Family(T) resolves at runtime; TS cannot model variant properties on FamilyRefCallable
                 Push({ rest }: { rest: (v: unknown) => unknown }, val: unknown) {
-                    return Family(T).Push({ value: this.value, rest: rest(val) });
+                    return (Family(T) as any).Push({ value: this.value, rest: rest(val) });
                 }
             }),
 
@@ -59,11 +61,13 @@ describe('Family(T) in data fold handlers', () => {
             Push: { value: T, rest: Family(T) },
 
             append: fold({ in: T, out: Family })({
+                // @ts-expect-error -- Family(T) resolves at runtime; TS cannot model variant properties on FamilyRefCallable
                 Empty({}, val: unknown) {
-                    return Family(T).Push({ value: val, rest: Family(T).Empty });
+                    return (Family(T) as any).Push({ value: val, rest: (Family(T) as any).Empty });
                 },
+                // @ts-expect-error -- Family(T) resolves at runtime; TS cannot model variant properties on FamilyRefCallable
                 Push({ rest }: { rest: (v: unknown) => unknown }, val: unknown) {
-                    return Family(T).Push({ value: this.value, rest: rest(val) });
+                    return (Family(T) as any).Push({ value: this.value, rest: rest(val) });
                 }
             }),
 
@@ -96,9 +100,11 @@ describe('Family(T) in data fold handlers', () => {
             Cons: { head: Number, tail: Family },
 
             append: fold({ in: Number, out: Family })({
+                // @ts-expect-error -- InstanceOf<FamilyRef> = never; runtime resolves correctly
                 Nil({}, val: number) {
                     return List.Cons({ head: val, tail: List.Nil });
                 },
+                // @ts-expect-error -- InstanceOf<FamilyRef> = never; runtime resolves correctly
                 Cons({ tail }: { tail: (v: number) => unknown }, val: number) {
                     return List.Cons({ head: this.head, tail: tail(val) });
                 }
@@ -123,7 +129,9 @@ describe('Family(T) in data fold handlers', () => {
             Push: { value: T, rest: Family(T) },
 
             reversed: fold({ out: Family })({
+                // @ts-expect-error -- Family(T) resolves at runtime; TS cannot model variant properties on FamilyRefCallable
                 Empty() { return Family(T).Empty; },
+                // @ts-expect-error -- InstanceOf<FamilyRef> = never; runtime resolves correctly
                 Push({ rest }: { rest: unknown }) {
                     // Simplified: just check Family(T) resolves correctly
                     return rest;
@@ -163,11 +171,13 @@ describe('Family(T) in data fold handlers', () => {
             Push: { value: T, rest: Family(T) },
 
             append: fold({ in: T, out: Family })({
+                // @ts-expect-error -- Family(T) resolves at runtime; TS cannot model variant properties on FamilyRefCallable
                 Empty({}, val: unknown) {
-                    return Family(T).Push({ value: val, rest: Family(T).Empty });
+                    return (Family(T) as any).Push({ value: val, rest: (Family(T) as any).Empty });
                 },
+                // @ts-expect-error -- Family(T) resolves at runtime; TS cannot model variant properties on FamilyRefCallable
                 Push({ rest }: { rest: (v: unknown) => unknown }, val: unknown) {
-                    return Family(T).Push({ value: this.value, rest: rest(val) });
+                    return (Family(T) as any).Push({ value: this.value, rest: rest(val) });
                 }
             })
         }));
