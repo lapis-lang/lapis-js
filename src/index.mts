@@ -9,6 +9,10 @@ export { behavior } from './Behavior.mjs';
 export { createTransformer, composeTransformers, composeMultipleTransformers } from './Transformer.mjs';
 export { createObserver, composeObservers, composeMultipleObservers, createFoldObserver, behaviorObservers } from './Observer.mjs';
 
+// Design by Contract exports
+export { checkedMode, DemandsError, EnsuresError, InvariantError, AssertionError, assert, implies, iff } from './contracts.mjs';
+export type { ContractSpec } from './contracts.mjs';
+
 // Type exports
 export type { DataADT, BehaviorADT, DataDeclParams, BehaviorDeclParams } from './types.mjs';
 export type { TypeSpec, FamilyRef, SelfRef, TypeParamRef } from './types.mjs';

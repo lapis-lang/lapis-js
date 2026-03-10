@@ -41,7 +41,7 @@ describe('Merge Operation (Deforestation)', () => {
                     }),
                     triangular: merge('Counter', 'sum')
                 })),
-                /Merged operation 'triangular' with unfold must be PascalCase/
+                /Merged operation \(with unfold\) 'triangular' must be PascalCase/
             );
         });
 

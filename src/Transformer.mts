@@ -8,8 +8,9 @@
  * @module Transformer
  */
 
-import { composeFunctions, HandlerMapSymbol } from './utils.mjs';
+import { composeOptionalTransform, validateMergeComposition, HandlerMapSymbol } from './utils.mjs';
 import type { TypeSpec } from './operations.mjs';
+import type { ContractSpec } from './contracts.mjs';
 
 export { HandlerMapSymbol };
 
@@ -48,6 +49,8 @@ export interface Transformer {
     getAtomTransform?: (fieldName: string) => HandlerFn | undefined;
     /** Stored handler map (set by createFoldTransformer) */
     [HandlerMapSymbol]?: Record<string, HandlerFn>;
+    /** Contract spec for design by contract (demands, ensures, rescue) */
+    contracts?: ContractSpec;
     /** Unfold case map (set by unfold operations) */
     unfoldCases?: Record<string, (seed: unknown) => unknown | null>;
     /** Unfold spec (set by unfold operations) */
@@ -125,15 +128,9 @@ export function composeTransformers(t1: Transformer, t2: Transformer): Transform
     return createTransformer({
         name: `${t1.name}_${t2.name}`,
         generator: t1.generator || t2.generator,
-        getCtorTransform: t1.getCtorTransform && t2.getCtorTransform
-            ? (ctor) => composeFunctions(t1.getCtorTransform!(ctor), t2.getCtorTransform!(ctor))
-            : t1.getCtorTransform || t2.getCtorTransform,
-        getParamTransform: t1.getParamTransform && t2.getParamTransform
-            ? (param) => composeFunctions(t1.getParamTransform!(param), t2.getParamTransform!(param))
-            : t1.getParamTransform || t2.getParamTransform,
-        getAtomTransform: t1.getAtomTransform && t2.getAtomTransform
-            ? (ctor) => composeFunctions(t1.getAtomTransform!(ctor), t2.getAtomTransform!(ctor))
-            : t1.getAtomTransform || t2.getAtomTransform
+        getCtorTransform: composeOptionalTransform(t1.getCtorTransform, t2.getCtorTransform),
+        getParamTransform: composeOptionalTransform(t1.getParamTransform, t2.getParamTransform),
+        getAtomTransform: composeOptionalTransform(t1.getAtomTransform, t2.getAtomTransform)
     });
 }
 
@@ -162,22 +159,7 @@ export function composeMultipleTransformers(
     }
 
     // Validate composition rules
-    const generatorCount = transformers.filter(t => t.generator).length,
-        foldCount = transformers.filter(t => t.getCtorTransform !== undefined).length;
-
-    if (generatorCount > 1) {
-        const names = transformers.filter(t => t.generator).map(t => `'${t.name}'`).join(', ');
-        throw new Error(
-            `Cannot merge operations: multiple unfolds detected (${names}). Only one unfold operation is allowed per merge.`
-        );
-    }
-
-    if (foldCount > 1) {
-        const names = transformers.filter(t => t.getCtorTransform).map(t => `'${t.name}'`).join(', ');
-        throw new Error(
-            `Cannot merge operations: multiple folds detected (${names}). Only one fold operation is allowed per merge.`
-        );
-    }
+    validateMergeComposition(transformers, t => t.getCtorTransform !== undefined);
 
     // Compose transformers sequentially (left-to-right)
     let composed = transformers[0];
