@@ -14,6 +14,7 @@ const List = data(({ Family, T }) => ({
     // rather than a Family(T) list (which would enforce head: T).
     zip: fold({})({
         Nil() { return []; },
+        // @ts-expect-error -- binary fold handler receives 2nd arg at runtime; TS fold signature only models single-arg
         Cons({ head, tail }: { head: unknown; tail: (ys: unknown) => unknown[] }, ys: any) {
             if (!ys || ys.constructor.name === 'Nil')
                 return [];

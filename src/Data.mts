@@ -672,6 +672,51 @@ function validateAndAssignFields(
     }
 }
 
+/**
+ * Produces a human-readable description of an ADT for error messages.
+ *
+ * For a base ADT like `Color`, returns its variant names: `"ADT{Red, Green, Blue}"`.
+ * For a parameterized ADT like `Pair(String, Number)`, returns
+ * `"ADT{MakePair}(String, Number)"` by walking its parent chain and type args.
+ */
+function describeADT(adt: ADTLike): string {
+    // Walk the parent chain to find the root (base) ADT
+    let root: object = adt as unknown as object;
+    while (parentADTMap.has(root))
+        root = parentADTMap.get(root)!;
+
+    // Recover the proxied base ADT to enumerate variant names
+    const proxiedRoot = rawToProxiedMap.get(root) ?? root;
+    const variantNames: string[] = [];
+    for (const key of Object.keys(proxiedRoot as object)) {
+        const val = (proxiedRoot as Record<string, unknown>)[key];
+        if (val && typeof val === 'object' && IsVariantSymbol in (val as object))
+            variantNames.push(key);
+        else if (typeof val === 'function' && IsVariantSymbol in (val as object))
+            variantNames.push(key);
+    }
+    const baseName = variantNames.length > 0
+        ? `ADT{${variantNames.join(', ')}}`
+        : 'ADT';
+
+    // If the ADT carries type arguments, format them
+    const typeArgs = (adt as Record<symbol, unknown>)[TypeArgsSymbol] as SpecRecord | undefined;
+    if (typeArgs) {
+        const argDescs = Object.values(typeArgs).map(arg => {
+            // Primitive constructors
+            if (typeof arg === 'function' && (arg as { name?: string }).name)
+                return (arg as { name: string }).name;
+            // Nested ADT
+            if (typeof arg === 'function' && typeof (arg as unknown as ADTLike)._getTransformer === 'function')
+                return describeADT(arg as unknown as ADTLike);
+            return String(arg);
+        });
+        return `${baseName}(${argDescs.join(', ')})`;
+    }
+
+    return baseName;
+}
+
 function validateField(
     value: unknown,
     fieldSpec: unknown,
@@ -709,6 +754,23 @@ function validateField(
         if (typeof value !== expectedType)
             throw new TypeError(`Field '${fieldName}' must be a ${(fieldSpec as { name: string }).name}`);
         return;
+    }
+
+    // ADT type argument — instanceof check against the exact ADT (including
+    // parameterisation-level matching, since each parameterized ADT has its
+    // own unique prototype chain).
+    if (typeof fieldSpec === 'function') {
+        const asADT = fieldSpec as unknown as ADTLike;
+        if (typeof asADT._getTransformer === 'function') {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            if (!(value instanceof (fieldSpec as unknown as abstract new (...args: any[]) => unknown))) {
+                throw new TypeError(
+                    `Field '${fieldName}' must be an instance of ${describeADT(asADT)}`
+                );
+            }
+
+            return;
+        }
     }
 
     // Predicate function validation
