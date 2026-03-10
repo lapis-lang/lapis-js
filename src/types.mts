@@ -220,32 +220,80 @@ type MergeCtors<D> = MergeCtorsFor<MergeOpKeys<D> & string>;
 
 // ---- Full ADT type ----------------------------------------------------------
 
+// ---- Inheritance-aware instance and operation types -------------------------
+
+/**
+ * Extract the parent declaration `P` from `D`'s `[extend]: DataADT<P>`.
+ *
+ * This is the type-level analog of the comb-inheritance parent-chain walk:
+ * just as the runtime proxy re-enters itself for recursive parent lookup,
+ * types that consume `ParentDecl` recurse naturally through the ancestor
+ * chain without each consumer reimplementing the `[extend]` extraction.
+ */
+type ParentDecl<D> =
+    (typeof extend) extends keyof D
+        ? D[typeof extend] extends DataADT<infer P> ? P : never
+        : never;
+
+/** Walk the [extend] chain to collect all ancestor variant instances. */
+type ParentADTInstances<D, Self = unknown> =
+    ParentDecl<D> extends never ? never
+        : ADTInstances<ParentDecl<D>, Self> | ParentADTInstances<ParentDecl<D>, Self>;
+
+/** Own + inherited variant instances. */
+type CombinedADTInstances<D, Self = unknown> =
+    ADTInstances<D, Self> | ParentADTInstances<D, Self>;
+
+/** Walk the [extend] chain to collect all ancestor operation methods. */
+type ParentOperationMethods<D, Instance = unknown> =
+    ParentDecl<D> extends never ? Record<never, never>
+        : OperationMethods<ParentDecl<D>, Instance> & ParentOperationMethods<ParentDecl<D>, Instance>;
+
+/** Own + inherited operation methods on instances. */
+type CombinedOperationMethods<D, Instance = unknown> =
+    OperationMethods<D, Instance> & ParentOperationMethods<D, Instance>;
+
 /**
  * The full instance type for an ADT: union of variant shapes plus all operation methods.
- * The string index signature (`[k: string]: unknown`) allows accessing variant fields
+ *
+ * When `[extend]` is used, parent variant shapes and parent operation methods
+ * are folded in so that `DataInstance<ChildDecl>` includes everything the child
+ * inherits — preventing it from collapsing to `never` when the child declares
+ * no own variants.
+ *
+ * The string index signature (`[k: string]: any`) allows accessing variant fields
  * (e.g. `cons.head`) without narrowing — necessary because `DataInstance<D>` is a
  * union over all variants and TypeScript can't know which variant is active at a
- * given use-site. The specific field types are still checked on the individual
- * `VariantInstance` types returned by constructors.
+ * given use-site.
  */
 export type DataInstance<D> =
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ADTInstances<D, ADTInstances<D> & OperationMethods<D, any>> & OperationMethods<D, any>
+    CombinedADTInstances<D, CombinedADTInstances<D> & CombinedOperationMethods<D, any>>
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    & CombinedOperationMethods<D, any>
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     & { readonly [k: string]: any };
 
 // ---- Extended variant propagation via [extend] ----------------------------
 
 /**
- * When D has `[extend]: DataADT<P>`, expose all of DataADT<P>'s members
- * (variant constructors, unfold/merge ctors) on the child DataADT<D>.
- * This makes inherited variant constructors accessible at the type level
- * (e.g. `IntBoolExpr.IntLit`, `LabeledList.Cons`).
+ * When D has `[extend]: DataADT<P>`, walks the ancestor chain and re-types
+ * inherited variant constructors, unfold constructors, and merge constructors
+ * so that they produce child-typed instances (DataInstance<Leaf>) rather than
+ * parent-typed instances.
+ *
+ * `Leaf` is the outermost (leaf) child declaration — threaded unchanged through
+ * recursion so that grandparent constructors also return leaf-typed instances.
  */
-type ExtendedParentCtors<D> =
-    (typeof extend) extends keyof D
-        ? D[typeof extend] extends DataADT<infer _P> ? D[typeof extend] : object
-        : object;
+type ExtendedParentCtorsImpl<D, Leaf> =
+    ParentDecl<D> extends never ? object
+        : VariantCtors<ParentDecl<D>, DataInstance<Leaf>, CombinedOperationMethods<Leaf, DataInstance<Leaf>>>
+          & UnfoldCtors<ParentDecl<D>, DataInstance<Leaf>>
+          & MergeCtors<ParentDecl<D>>
+          & ExtendedParentCtorsImpl<ParentDecl<D>, Leaf>;
+
+/** Public entry point: hides the `Leaf` parameter. */
+type ExtendedParentCtors<D> = ExtendedParentCtorsImpl<D, D>;
 
 /**
  * The full type of the value returned by `data()`.
@@ -263,7 +311,7 @@ type ExtendedParentCtors<D> =
 export type DataADT<D = Record<string, unknown>> =
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ((...typeArgs: any[]) => DataADT<D>) &
-    VariantCtors<D, DataInstance<D>, OperationMethods<D, DataInstance<D>>> &
+    VariantCtors<D, DataInstance<D>, CombinedOperationMethods<D, DataInstance<D>>> &
     ExtendedParentCtors<D> &
     UnfoldCtors<D, DataInstance<D>> &
     MergeCtors<D> & {

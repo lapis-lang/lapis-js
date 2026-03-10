@@ -31,6 +31,8 @@ there is an emphasis on the Bird-Meertens Formalism (BMF) (Squiggol) of making p
   - [Multiple Fold Operations](#multiple-fold-operations)
   - [Structural Recursion (Catamorphisms)](#structural-recursion-catamorphisms)
   - [Parameterized Folds](#parameterized-folds)
+  - [Histomorphisms (Course-of-Values Recursion)](#histomorphisms-course-of-values-recursion)
+  - [Zygomorphisms (Auxiliary Folds)](#zygomorphisms-auxiliary-folds)
   - [Integration with ADT Extension](#integration-with-adt-extension)
   - [Extending Fold Operations](#extending-fold-operations)
   - [Recursion and Stack Safety](#recursion-and-stack-safety)
@@ -823,6 +825,134 @@ console.log(Color.Green.matches('green')); // true (wildcard handler)
 console.log(Color.Blue.matches('blue'));    // true (wildcard handler)
 ```
 
+### Histomorphisms (Course-of-Values Recursion)
+
+A **histomorphism** extends a regular fold (catamorphism) by giving each handler access to the already-folded sub-results of all recursive children — not just the immediate fold result, but the entire "course of values" down the recursion.
+
+Enable histomorphisms by adding `history: true` to the fold spec. Import the `history` symbol and destructure `[history]` from the fold argument to access an object keyed by recursive field names:
+
+```ts
+import { data, fold, history } from '@lapis-lang/lapis-js';
+
+const Nat = data(({ Family }) => ({
+    Zero: {},
+    Succ: { pred: Family },
+    fib: fold({ history: true, out: Number })({
+        Zero() { return 0; },
+        Succ({ pred, [history]: h }) {
+            // pred  = fib(n-1) — the immediate fold result (standard catamorphism)
+            // h.pred = the child's foldedFields object
+            // h.pred.pred = fib(n-2) — the grandchild's fold result
+            const fibN2 = h.pred?.pred;
+            return fibN2 !== undefined ? pred + fibN2 : 1;
+        }
+    })
+}));
+
+Nat.Succ({ pred: Nat.Succ({ pred: Nat.Succ({ pred:
+    Nat.Succ({ pred: Nat.Succ({ pred: Nat.Zero }) }) }) }) }).fib
+// → 5 (fibonacci of 5)
+```
+
+Each entry in the `[history]` object is the child's own `foldedFields`, which itself carries a `[history]` — forming a chain that lets you look back arbitrarily far:
+
+```ts
+// In a Succ handler for fib(5):
+// pred            → fib(4) = 3
+// h.pred.pred     → fib(3) = 2
+// h.pred[history].pred.pred → fib(2) = 1
+```
+
+For **base-case variants** (no recursive fields), `[history]` is an empty object `{}`.
+
+Histomorphisms also work with **binary trees**, where history provides access to both children:
+
+```ts
+const Tree = data(({ Family }) => ({
+    Leaf: { value: Number },
+    Node: { left: Family, right: Family },
+    sumHisto: fold({ history: true, out: Number })({
+        Leaf({ value }) { return value; },
+        Node({ left, right, [history]: h }) {
+            // h.left and h.right are the children's foldedFields
+            return left + right;
+        }
+    })
+}));
+```
+
+Histomorphisms work with **parameterized folds** too — history entries become lazy getters that resolve after the child thunk is invoked:
+
+```ts
+const List = data(({ Family }) => ({
+    Nil: {},
+    Cons: { head: Number, tail: Family },
+    scan: fold({ history: true, in: Number, out: Array })({
+        Nil() { return []; },
+        Cons({ head, tail, [history]: h }, limit) {
+            return [head, ...tail(limit)];
+        }
+    })
+}));
+```
+
+Histomorphisms are supported on both **Data** (initial algebras) and **Behavior** (final coalgebras). For behavior folds, `[history]` provides lazy access to the sub-observations of continuation fields.
+
+### Zygomorphisms (Auxiliary Folds)
+
+A **zygomorphism** fuses two (or more) folds into a single traversal. The primary fold has access to the results of one or more *auxiliary* folds at every recursive position, without requiring a separate pass over the structure.
+
+Enable zygomorphisms by adding `aux` to the fold spec. Import the `aux` symbol and destructure `[aux]` from the fold argument:
+
+**String form** — a single auxiliary fold produces a *flat* shape keyed by recursive field names:
+
+```ts
+import { data, fold, aux } from '@lapis-lang/lapis-js';
+
+const Tree = data(({ Family }) => ({
+    Leaf: { value: Number },
+    Node: { left: Family, right: Family },
+    depth: fold({ out: Number })({
+        Leaf() { return 0; },
+        Node({ left, right }) { return 1 + Math.max(left, right); }
+    }),
+    isBalanced: fold({ aux: 'depth', out: Boolean })({
+        Leaf() { return true; },
+        Node({ left, right, [aux]: a }) {
+            // left, right = isBalanced results of children (standard catamorphism)
+            // a.left     = depth of left child  (auxiliary fold result)
+            // a.right    = depth of right child
+            return left && right && Math.abs(a.left - a.right) <= 1;
+        }
+    })
+}));
+```
+
+**Array form** — multiple auxiliary folds produce a *nested* shape `a.<foldName>.<fieldName>`:
+
+```ts
+const Tree = data(({ Family }) => ({
+    Leaf: { value: Number },
+    Node: { left: Family, right: Family },
+    depth: fold({ out: Number })({ /* … */ }),
+    size:  fold({ out: Number })({ /* … */ }),
+    info: fold({ aux: ['depth', 'size'], out: String })({
+        Leaf() { return 'leaf'; },
+        Node({ [aux]: a }) {
+            // a.depth.left, a.depth.right — depth of each child
+            // a.size.left,  a.size.right  — size of each child
+            return `d:${a.depth.left}/${a.depth.right} s:${a.size.left}/${a.size.right}`;
+        }
+    })
+}));
+```
+
+For **base-case variants** (no recursive fields), `[aux]` is an empty object `{}` (string form) or an object with empty nested objects (array form).
+
+Zygomorphisms can be **combined with histomorphisms** — use both `history: true` and `aux` in the same fold spec to access both sub-result history and auxiliary fold results simultaneously.
+
+Zygomorphisms are supported on both **Data** (initial algebras) and **Behavior** (final coalgebras). For behavior folds with parameterized auxiliary folds, `[aux]` entries are functions that accept the auxiliary fold's parameters.
+
 ### Integration with ADT Extension
 
 Operations defined on a base ADT are inherited by extended ADTs:
@@ -1368,6 +1498,8 @@ Merge operations compose multiple operations (fold, map, unfold) into a single f
 | Scheme | Operations | Direction | Use Case |
 | ------ | ----------- | ----------- | ----------- |
 | **Catamorphism** | Fold operation | Bottom-up (leaves → root) | Consume/reduce structures |
+| **Histomorphism** | Fold (`history: true`) | Bottom-up + history | Fold with access to sub-results of recursive children |
+| **Zygomorphism** | Fold (`aux: 'name'`) | Bottom-up + auxiliary | Fold fused with one or more auxiliary folds |
 | **Anamorphism** | Unfold operation | Top-down (seed → structure) | Generate/produce structures |
 | **Hylomorphism** | Unfold + fold | Generate then consume | Transform without intermediate structure |
 | **Paramorphism** | Fold (`this` context) | Bottom-up + substructure | Fold while retaining access to original substructures |
