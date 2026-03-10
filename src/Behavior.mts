@@ -933,14 +933,18 @@ function maybeFold(
     instance: unknown,
     observerMap: Map<string, ObserverEntry>,
     foldOp: FoldOpEntry | null,
-    params: unknown[]
+    params: unknown[],
+    BehaviorType: BehaviorTypeLike | null = null
 ): unknown {
     if (!foldOp) return instance;
     return executeFold(
         instance as Record<string, unknown>,
         observerMap, foldOp.handler,
         foldOp.hasInput ? params : [],
-        foldOp.isHisto
+        foldOp.isHisto,
+        foldOp.auxNames ?? null,
+        foldOp.auxIsArray ?? false,
+        BehaviorType
     );
 }
 
@@ -984,6 +988,17 @@ function addMergeOperation(
     if (!hasUnfold && !isCamelCase(name))
         throw new TypeError(`Merge operation '${name}' (no unfold) must be camelCase`);
 
+    // Reject non-getter maps: merge pipelines cannot supply map parameters
+    for (const mapName of mapNames) {
+        const mapOp = mapOpsMap?.get(mapName);
+        if (mapOp && !mapOp.isGetter) {
+            throw new TypeError(
+                `Merge operation '${name}' references parameterized map '${mapName}' which requires arguments. ` +
+                `Only getter maps (arity 0-1) can be used in merge pipelines.`
+            );
+        }
+    }
+
     const mapTransforms = collectMapTransforms(mapOpsMap, mapNames);
 
     if (hasUnfold) {
@@ -997,9 +1012,16 @@ function addMergeOperation(
             ? composeHandlers(unfoldEntry.handlers, observerMap, mapTransforms)
             : null;
 
+        // Cache the unfold's input spec for validation on the deforestation path
+        const unfoldInSpec = unfoldEntry?.spec?.['in'] as
+            Parameters<typeof validateTypeSpec>[1] | undefined;
+
         const buildInstance = (seed: unknown): unknown => {
-            if (composedHandlers)
+            if (composedHandlers) {
+                if (unfoldInSpec)
+                    validateTypeSpec(seed, unfoldInSpec, unfoldName, 'input of type');
                 return createBehaviorInstance(BehaviorType, observerMap, seed, composedHandlers);
+            }
 
             // Fallback: sequential application (non-getter maps or no maps)
             let instance: unknown = unfoldIsGetter
@@ -1011,8 +1033,10 @@ function addMergeOperation(
                     if (mapOp?.isGetter) instance = (instance as Record<string, unknown>)[mapName];
                 }
             } else {
-                for (const mapName of mapNames)
-                    instance = (instance as Record<string, unknown>)[mapName];
+                for (const mapName of mapNames) {
+                    const mapOp = mapOpsMap?.get(mapName);
+                    if (mapOp?.isGetter) instance = (instance as Record<string, unknown>)[mapName];
+                }
             }
 
             return instance;
@@ -1020,12 +1044,12 @@ function addMergeOperation(
 
         if (!unfoldIsGetter) {
             BehaviorType[name] = function (seed: unknown, ...rest: unknown[]) {
-                return maybeFold(buildInstance(seed), observerMap, foldOp ?? null, rest);
+                return maybeFold(buildInstance(seed), observerMap, foldOp ?? null, rest, BehaviorType);
             };
         } else {
             Object.defineProperty(BehaviorType, name, {
                 get() {
-                    return maybeFold(buildInstance(undefined), observerMap, foldOp ?? null, []);
+                    return maybeFold(buildInstance(undefined), observerMap, foldOp ?? null, [], BehaviorType);
                 },
                 enumerable: true,
                 configurable: true
