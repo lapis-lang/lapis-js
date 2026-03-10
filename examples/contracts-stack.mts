@@ -57,16 +57,11 @@ const Stack = data(({ Family, T }) => ({
             return retry(0);
         }
     })({
-        // NOTE: Fold handlers that construct new instances of a parameterized ADT
-        // must reference a concrete parameterization (here Stack(Number)) because
-        // there is currently no way to access the "current type arguments" from
-        // inside a handler closure. The non-parameterized equivalent (e.g. List)
-        // can simply reference the ADT variable directly (see examples/list.mts).
-        // @ts-expect-error -- intentional type violation: parameterized fold handler signature
-        Empty({}, val: unknown) { return Stack(Number).Push({ value: val, rest: Stack(Number).Empty }); },
-        // @ts-expect-error -- intentional type violation: parameterized fold handler signature
+        // Fold handlers use Family(T) to construct instances of the current
+        // parameterized ADT without hardcoding type arguments.
+        Empty({}, val: unknown) { return Family(T).Push({ value: val, rest: Family(T).Empty }); },
         Push({ rest }: { rest: (val: unknown) => unknown }, val: unknown) {
-            return Stack(Number).Push({ value: this.value, rest: rest(val) });
+            return Family(T).Push({ value: this.value, rest: rest(val) });
         }
     }),
 

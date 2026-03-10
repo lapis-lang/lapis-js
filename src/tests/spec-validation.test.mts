@@ -392,6 +392,136 @@ describe('Spec Validation - Runtime Type Checking', () => {
         });
     });
 
+    describe('spec.out - Family Return Type Validation', () => {
+        test('should validate Family return type (returns valid ADT instance)', () => {
+            const List = data(({ Family }) => ({
+                Nil: {},
+                Cons: { head: Number, tail: Family },
+                append: fold({ in: Number, out: Family })({
+                    Nil({}, val: number) {
+                        return List.Cons({ head: val, tail: List.Nil });
+                    },
+                    Cons({ tail }: { tail: (v: number) => unknown }, val: number) {
+                        return List.Cons({ head: this.head, tail: tail(val) });
+                    }
+                })
+            }));
+
+            const list = List.Cons({ head: 1, tail: List.Nil });
+            const result = list.append(2);
+
+            // Should return a valid List instance
+            assert.ok(result instanceof List);
+            assert.strictEqual(result.head, 1);
+        });
+
+        test('should throw TypeError when Family handler returns non-ADT value', () => {
+            const List = data(({ Family }) => ({
+                Nil: {},
+                Cons: { head: Number, tail: Family },
+                badClone: fold({ out: Family })({
+                    // @ts-expect-error -- intentional type violation for test
+                    Nil() { return { head: 0 }; },
+                    Cons() { return List.Nil; }
+                })
+            }));
+
+            assert.throws(
+                // @ts-expect-error -- intentional type violation for test
+                () => List.Nil.badClone(),
+                /Operation 'badClone' expected to return instance of ADT family.*got Object/
+            );
+        });
+
+        test('should throw TypeError when Family handler returns primitive', () => {
+            const List = data(({ Family }) => ({
+                Nil: {},
+                Cons: { head: Number, tail: Family },
+                badOp: fold({ out: Family })({
+                    // @ts-expect-error -- intentional type violation for test
+                    Nil() { return 42; },
+                    Cons() { return List.Nil; }
+                })
+            }));
+
+            assert.throws(
+                // @ts-expect-error -- intentional type violation for test
+                () => List.Nil.badOp(),
+                /Operation 'badOp' expected to return instance of ADT family/
+            );
+        });
+
+        test('should throw TypeError when Family handler returns instance of wrong ADT', () => {
+            const Other = data(() => ({
+                Thing: { x: Number }
+            }));
+
+            const List = data(({ Family }) => ({
+                Nil: {},
+                Cons: { head: Number, tail: Family },
+                badOp: fold({ out: Family })({
+                    // @ts-expect-error -- intentional type violation for test
+                    Nil() { return Other.Thing({ x: 1 }); },
+                    Cons() { return List.Nil; }
+                })
+            }));
+
+            assert.throws(
+                // @ts-expect-error -- intentional type violation for test
+                () => List.Nil.badOp(),
+                /Operation 'badOp' expected to return instance of ADT family.*got Thing/
+            );
+        });
+
+        test('should accept any return when Family._adt is null (permissive)', () => {
+            // When Family._adt has not been resolved (e.g. during internal
+            // bootstrapping), the validation is permissive — no instanceof
+            // check is performed.
+            // We test this indirectly: a fold with `out: Family` that returns
+            // a valid instance should always pass (the _adt IS set for normal
+            // usage).  The null case is an internal fallback; here we just
+            // confirm normal usage works without false positives.
+            const Tree = data(({ Family }) => ({
+                Leaf: { value: Number },
+                Node: { left: Family, right: Family },
+                leftmost: fold({ out: Family })({
+                    Leaf() { return this; },
+                    Node({ left }: { left: unknown }) { return left; }
+                })
+            }));
+
+            const tree = Tree.Node({
+                left: Tree.Leaf({ value: 1 }),
+                right: Tree.Leaf({ value: 2 })
+            });
+            const result = tree.leftmost;
+            assert.ok(result instanceof Tree);
+            assert.strictEqual(result.value, 1);
+        });
+
+        test('should validate parameterized Family return type', () => {
+            const Stack = data(({ Family, T }) => ({
+                Empty: {},
+                Push: { value: T, rest: Family(T) },
+                append: fold({ in: T, out: Family })({
+                    Empty({}, val: unknown) {
+                        return Family(T).Push({ value: val, rest: Family(T).Empty });
+                    },
+                    Push({ rest }: { rest: (v: unknown) => unknown }, val: unknown) {
+                        return Family(T).Push({ value: this.value, rest: rest(val) });
+                    }
+                })
+            }));
+
+            const NumStack = Stack(Number);
+            const s = NumStack.Push({ value: 1, rest: NumStack.Empty });
+            const s2 = s.append(2);
+
+            // Should return a valid Stack instance
+            assert.ok(s2 instanceof Stack);
+        });
+    });
+
     describe('No spec provided - no validation', () => {
         test('fold without spec.out allows any return type', () => {
             const List = data(({ Family }) => ({

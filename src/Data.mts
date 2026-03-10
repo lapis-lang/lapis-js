@@ -58,6 +58,25 @@ export type invariant = typeof invariant;
 export const IsSingleton: unique symbol = Symbol('IsSingleton');
 export type IsSingleton = typeof IsSingleton;
 
+// Maps raw (unwrapped) ADT constructors to their delegation-Proxy
+// counterparts so that `foldImpl` can recover the public, proxied ADT
+// from the prototype chain of a variant instance.
+//
+// Entries are added in two places:
+//   • createADT        – for the base ADT constructor
+//   • createParameterized – for each parameterized specialization
+//
+// Using a WeakMap ensures that entries are automatically eligible for
+// garbage collection once the raw constructor (key) is no longer
+// reachable — no manual cleanup is needed.
+const rawToProxiedMap = new WeakMap<object, object>();
+
+// Module-level fold-execution context: holds the current parameterized
+// (proxied) ADT during fold handler invocation so that Family(T) can
+// resolve type-param markers to the correct parameterized ADT without
+// requiring the user to hardcode concrete type arguments.
+let _currentFoldParameterizedADT: object | null = null;
+
 const TypeArgsSymbol: unique symbol = Symbol('TypeArgs'),
     VariantNameSymbol: unique symbol = Symbol('VariantName'),
     // Brands variant constructors and singleton instances so the delegation
@@ -393,8 +412,45 @@ function createTransformerMethods(ADT: ADTLike): TransformerMethods {
 
 // ---- Family / TypeParam markers ---------------------------------------------
 
+/**
+ * Walks a variant constructor's prototype chain to find the proxied
+ * parameterized ADT (if any).  Returns the proxied ADT when the variant
+ * belongs to a parameterized specialization, or `null` otherwise.
+ *
+ * Extracted as a module-level helper so that its locals live in their
+ * own (non-recursive) frame rather than bloating the hot recursive
+ * `foldImpl` frame.
+ */
+function resolveFoldParameterizedADT(variantCtor: VariantLike): object | null {
+    const proto = Object.getPrototypeOf(
+        (variantCtor as unknown as { prototype: object }).prototype
+    );
+    const adtCtor = proto?.constructor ?? null;
+    const proxied = adtCtor ? rawToProxiedMap.get(adtCtor as object) : null;
+    return proxied && TypeArgsSymbol in (proxied as Record<symbol, unknown>)
+        ? proxied
+        : null;
+}
+
 function createFamilyMarker(): FamilyMarker {
     const marker = function (typeParam?: unknown): FamilyMarker {
+        // During fold execution on a parameterized ADT, resolve type-param
+        // markers (e.g. `T`) to the current parameterized ADT.  This allows
+        // fold handlers to write `Family(T).Push(...)` instead of hardcoding
+        // `Stack(Number).Push(...)`.
+        // We also verify that the param name is actually declared in the
+        // current fold-context ADT's TypeArgs, so a stray type param from
+        // a *different* ADT won't silently resolve to the wrong ADT.
+        if (_currentFoldParameterizedADT !== null &&
+            typeParam && typeof typeParam === 'object' &&
+            TypeParamSymbol in (typeParam as object)
+        ) {
+            const paramName = (typeParam as Record<symbol, string>)[TypeParamSymbol],
+                typeArgs = (_currentFoldParameterizedADT as Record<symbol, unknown>)[TypeArgsSymbol] as Record<string, unknown> | undefined;
+            if (typeArgs && paramName in typeArgs)
+                return _currentFoldParameterizedADT as unknown as FamilyMarker;
+        }
+
         if ((marker as FamilyMarker)._adt)
             return ((marker as FamilyMarker)._adt as (typeParam?: unknown) => FamilyMarker)(typeParam);
 
@@ -479,6 +535,9 @@ function createADT(decl: ParsedDecl): ADTLike {
     if (decl.Family)
         decl.Family._adt = ProxiedADT as unknown as ADTLike;
 
+    // Register raw → proxied mapping so fold handlers can recover the
+    // proxied ADT from the prototype chain.
+    rawToProxiedMap.set(ADT as unknown as object, ProxiedADT as unknown as object);
 
     return ProxiedADT;
 }
@@ -1241,127 +1300,139 @@ function createFoldOperation(
                 }
             }
 
-            // ---- Contract enforcement (Design by Contract) ----
-            // Demands/ensures/invariants only enforce at the top-level call
-            // (contractDepth === 1), not during recursive traversal of child
-            // nodes.  Since data instances are frozen, invariants and demands
-            // on a node are deterministic — checking once at the entry point
-            // is sufficient.  Rescue, however, is an error-recovery mechanism
-            // and must remain active at every recursion level.
-            //
-            // Invariant checks are gated by isCheckedMode() alone (not by
-            // hasAnyContracts) so that a fold with no demands/ensures/rescue
-            // still runs invariant pre-checks when the variant defines one.
-            const inCheckedMode = isCheckedMode();
+            // ---- Parameterized ADT context for Family(T) ----
+            // Set the module-level _currentFoldParameterizedADT just before
+            // the handler runs (not during recursive field evaluation) so
+            // that Family(T) in the handler closure resolves correctly.
+            // Resolved via a helper to keep its locals off this hot frame.
+            const prevFoldADT = _currentFoldParameterizedADT;
+            _currentFoldParameterizedADT = resolveFoldParameterizedADT(variantCtor);
+            try {
 
-            // Get the invariant function for this instance's variant
-            const variantInvariantFn: ((instance: object) => boolean) | null =
-                inCheckedMode && variantCtor
-                    ? (variantCtor as VariantLike)._invariant ?? null
-                    : null;
+                // ---- Contract enforcement (Design by Contract) ----
+                // Demands/ensures/invariants only enforce at the top-level call
+                // (contractDepth === 1), not during recursive traversal of child
+                // nodes.  Since data instances are frozen, invariants and demands
+                // on a node are deterministic — checking once at the entry point
+                // is sufficient.  Rescue, however, is an error-recovery mechanism
+                // and must remain active at every recursion level.
+                //
+                // Invariant checks are gated by isCheckedMode() alone (not by
+                // hasAnyContracts) so that a fold with no demands/ensures/rescue
+                // still runs invariant pre-checks when the variant defines one.
+                const inCheckedMode = isCheckedMode();
 
-            const checked = contractDepth === 1 && inCheckedMode
+                // Get the invariant function for this instance's variant
+                const variantInvariantFn: ((instance: object) => boolean) | null =
+                    inCheckedMode && variantCtor
+                        ? (variantCtor as VariantLike)._invariant ?? null
+                        : null;
+
+                const checked = contractDepth === 1 && inCheckedMode
                 && (hasAnyContracts || variantInvariantFn !== null);
-            let result: unknown;
+                let result: unknown;
 
-            if (checked) {
-                const variantCtx = variantName || 'unknown';
+                if (checked) {
+                    const variantCtx = variantName || 'unknown';
 
-                // 1. Invariant pre-check on self
-                if (variantInvariantFn)
-                    checkInvariant(variantInvariantFn as (i: unknown) => boolean, opName, variantCtx, 'pre', self);
+                    // 1. Invariant pre-check on self
+                    if (variantInvariantFn)
+                        checkInvariant(variantInvariantFn as (i: unknown) => boolean, opName, variantCtx, 'pre', self);
 
-                // 2. Demands check (precondition)
-                if (foldContracts?.demands)
-                    checkDemands(foldContracts.demands, opName, variantCtx, self, args);
+                    // 2. Demands check (precondition)
+                    if (foldContracts?.demands)
+                        checkDemands(foldContracts.demands, opName, variantCtx, self, args);
 
-                // 3. Capture old state for ensures (reference to self since data is frozen/immutable)
-                const old = self;
+                    // 3. Capture old state for ensures (reference to self since data is frozen/immutable)
+                    const old = self;
 
-                // Helper to execute the handler body + ensures
-                const executeBody = (...bodyArgs: unknown[]): unknown => {
-                    const bodyResult = (handler as HandlerFn).call(context, foldedFields, ...bodyArgs);
-                    if (hasOutput)
-                        validateReturnType(bodyResult, opSpecObj['out'] as Parameters<typeof validateReturnType>[1], opName);
+                    // Helper to execute the handler body + ensures
+                    const executeBody = (...bodyArgs: unknown[]): unknown => {
+                        const bodyResult = (handler as HandlerFn).call(context, foldedFields, ...bodyArgs);
+                        if (hasOutput)
+                            validateReturnType(bodyResult, opSpecObj['out'] as Parameters<typeof validateReturnType>[1], opName);
 
-                    // 4. Ensures check (postcondition)
-                    if (foldContracts?.ensures)
-                        checkEnsures(foldContracts.ensures, opName, variantCtx, self, old, bodyResult, bodyArgs);
+                        // 4. Ensures check (postcondition)
+                        if (foldContracts?.ensures)
+                            checkEnsures(foldContracts.ensures, opName, variantCtx, self, old, bodyResult, bodyArgs);
 
-                    return bodyResult;
-                };
+                        return bodyResult;
+                    };
 
-                try {
-                    result = executeBody(...args);
-                } catch (error) {
+                    try {
+                        result = executeBody(...args);
+                    } catch (error) {
                     // 5. Rescue handler for body/ensures errors
-                    if (foldContracts?.rescue && !(error instanceof DemandsError)) {
-                        const { result: rescueResult } = executeRescue(
-                            foldContracts.rescue,
-                            self,
-                            error,
-                            args,
-                            executeBody,
-                            opName,
-                            variantCtx
-                        );
+                        if (foldContracts?.rescue && !(error instanceof DemandsError)) {
+                            const { result: rescueResult } = executeRescue(
+                                foldContracts.rescue,
+                                self,
+                                error,
+                                args,
+                                executeBody,
+                                opName,
+                                variantCtx
+                            );
 
-                        // 6. Invariant post-check on result (if it's a variant with an invariant)
-                        checkResultInvariant(rescueResult, opName);
+                            // 6. Invariant post-check on result (if it's a variant with an invariant)
+                            checkResultInvariant(rescueResult, opName);
 
-                        if (canCache) dagCache!.set(self, rescueResult);
-                        return rescueResult;
+                            if (canCache) dagCache!.set(self, rescueResult);
+                            return rescueResult;
+                        }
+
+                        throw error;
                     }
 
-                    throw error;
-                }
-
-                // 6. Invariant post-check on result (if it's a variant with an invariant)
-                checkResultInvariant(result, opName);
-            } else if (inCheckedMode && foldContracts?.rescue) {
+                    // 6. Invariant post-check on result (if it's a variant with an invariant)
+                    checkResultInvariant(result, opName);
+                } else if (inCheckedMode && foldContracts?.rescue) {
                 // Inner recursion level with rescue active:
                 // Skip demands/ensures/invariant but still wrap in rescue
                 // so handler errors can be recovered at every level.
-                try {
+                    try {
+                        result = (handler as HandlerFn).call(context, foldedFields, ...args);
+                        if (hasOutput)
+                            validateReturnType(result, opSpecObj['out'] as Parameters<typeof validateReturnType>[1], opName);
+                    } catch (error) {
+                        if (!(error instanceof DemandsError)) {
+                            const innerBody = (...newArgs: unknown[]): unknown => {
+                                const r = (handler as HandlerFn).call(context, foldedFields, ...newArgs);
+                                if (hasOutput)
+                                    validateReturnType(r, opSpecObj['out'] as Parameters<typeof validateReturnType>[1], opName);
+                                return r;
+                            };
+
+                            const { result: rescueResult } = executeRescue(
+                                foldContracts!.rescue!,
+                                self,
+                                error,
+                                args,
+                                innerBody,
+                                opName,
+                                variantName || 'unknown'
+                            );
+
+                            if (canCache) dagCache!.set(self, rescueResult);
+                            return rescueResult;
+                        } else
+                            throw error;
+
+                    }
+                } else {
+                // Fast path: no active contracts — call handler directly,
+                // skipping closure allocation for executeBody and rescue machinery.
                     result = (handler as HandlerFn).call(context, foldedFields, ...args);
                     if (hasOutput)
                         validateReturnType(result, opSpecObj['out'] as Parameters<typeof validateReturnType>[1], opName);
-                } catch (error) {
-                    if (!(error instanceof DemandsError)) {
-                        const innerBody = (...newArgs: unknown[]): unknown => {
-                            const r = (handler as HandlerFn).call(context, foldedFields, ...newArgs);
-                            if (hasOutput)
-                                validateReturnType(r, opSpecObj['out'] as Parameters<typeof validateReturnType>[1], opName);
-                            return r;
-                        };
-
-                        const { result: rescueResult } = executeRescue(
-                            foldContracts!.rescue!,
-                            self,
-                            error,
-                            args,
-                            innerBody,
-                            opName,
-                            variantName || 'unknown'
-                        );
-
-                        if (canCache) dagCache!.set(self, rescueResult);
-                        return rescueResult;
-                    } else
-                        throw error;
-
                 }
-            } else {
-                // Fast path: no active contracts — call handler directly,
-                // skipping closure allocation for executeBody and rescue machinery.
-                result = (handler as HandlerFn).call(context, foldedFields, ...args);
-                if (hasOutput)
-                    validateReturnType(result, opSpecObj['out'] as Parameters<typeof validateReturnType>[1], opName);
+
+                if (canCache) dagCache!.set(self, result);
+
+                return result;
+            } finally {
+                _currentFoldParameterizedADT = prevFoldADT;
             }
-
-            if (canCache) dagCache!.set(self, result);
-
-            return result;
         } finally {
             contractDepth--;
             if (entered) {
@@ -1857,6 +1928,9 @@ function createParameterized(
             Base,
             false
         );
+
+    // Register raw → proxied mapping for fold-context resolution.
+    rawToProxiedMap.set(ParameterizedADT as unknown as object, ProxiedParameterized as unknown as object);
 
     return Object.assign(ProxiedParameterized, paramVariants) as unknown as ADTLike;
 }
