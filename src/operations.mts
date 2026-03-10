@@ -7,7 +7,13 @@
  * @module operations
  */
 
-import { isCamelCase, isPascalCase, isObjectLiteral, callable } from './utils.mjs';
+import {
+    isCamelCase,
+    isPascalCase,
+    isObjectLiteral,
+    callable,
+    TypeParamSymbol
+} from './utils.mjs';
 import type { CallableClass } from './utils.mjs';
 
 // ---- Symbols -----------------------------------------------------------------
@@ -20,9 +26,8 @@ export type FamilyRefSymbol = typeof FamilyRefSymbol;
 export const SelfRefSymbol: unique symbol = Symbol('SelfRef');
 export type SelfRefSymbol = typeof SelfRefSymbol;
 
-/** Marks type parameters */
-export const TypeParamSymbol: unique symbol = Symbol('TypeParam');
-export type TypeParamSymbol = typeof TypeParamSymbol;
+/** Marks type parameters — re-exported from utils.mts (single canonical symbol) */
+export { TypeParamSymbol };
 
 /** Marks parent ADT for declarative extension */
 export const extend: unique symbol = Symbol('extend');
@@ -324,6 +329,43 @@ export function validateSpecGuard(spec: unknown, specType: string, opName: strin
         }
     }
 }
+
+// ---- FamilyRef spec predicate -----------------------------------------------
+
+/**
+ * Checks whether a field spec references the enclosing ADT family.
+ * Uses `in` (prototype-chain walk) — distinct from `isFamilyRef()
+ * which uses `hasOwnProperty`.
+ */
+export function isFamilyRefSpec(fieldSpec: unknown): boolean {
+    return !!fieldSpec &&
+        (typeof fieldSpec === 'object' || typeof fieldSpec === 'function') &&
+        FamilyRefSymbol in (fieldSpec as object);
+}
+
+// ---- Casing assertion helpers -----------------------------------------------
+
+/**
+ * Throw a TypeError if `name` is not camelCase.
+ * @param name  - identifier to check
+ * @param kind  - human-readable context for the error message
+ */
+export function assertCamelCase(name: string, kind: string): void {
+    if (!isCamelCase(name))
+        throw new TypeError(`${kind} '${name}' must be camelCase`);
+}
+
+/**
+ * Throw a TypeError if `name` is not PascalCase.
+ * @param name  - identifier to check
+ * @param kind  - human-readable context for the error message
+ */
+export function assertPascalCase(name: string, kind: string): void {
+    if (!isPascalCase(name))
+        throw new TypeError(`${kind} '${name}' must be PascalCase`);
+}
+
+// ---- Op-def destructuring helper --------------------------------------------
 
 // Re-export CallableClass for downstream consumers
 export type { CallableClass };

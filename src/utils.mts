@@ -166,6 +166,46 @@ export function composeFunctions(
     return (x) => x;
 }
 
+/**
+ * Compose two optional transform factories.
+ * If both are defined, returns a factory that composes their results via `composeFunctions`.
+ * If only one is defined, returns it as-is.  If neither, returns `undefined`.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function composeOptionalTransform<T extends (arg: any) => any>(
+    fn1: T | undefined,
+    fn2: T | undefined
+): T | undefined {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (fn1 && fn2) return ((arg: any) => composeFunctions(fn1(arg), fn2(arg))) as T;
+    return fn1 || fn2;
+}
+
+/**
+ * Validate that a set of composable items (transformers or observers) does not
+ * contain multiple unfolds or multiple folds.  Used by both
+ * `composeMultipleTransformers` and `composeMultipleObservers`.
+ */
+export function validateMergeComposition<T extends { name: string; generator?: unknown }>(
+    items: T[],
+    isFold: (item: T) => boolean
+): void {
+    const generatorCount = items.filter(i => i.generator).length;
+    if (generatorCount > 1) {
+        const names = items.filter(i => i.generator).map(i => `'${i.name}'`).join(', ');
+        throw new Error(
+            `Cannot merge operations: multiple unfolds detected (${names}). Only one unfold operation is allowed per merge.`
+        );
+    }
+    const foldCount = items.filter(isFold).length;
+    if (foldCount > 1) {
+        const names = items.filter(isFold).map(i => `'${i.name}'`).join(', ');
+        throw new Error(
+            `Cannot merge operations: multiple folds detected (${names}). Only one fold operation is allowed per merge.`
+        );
+    }
+}
+
 // ---- Spec helpers ------------------------------------------------------------
 
 /**
@@ -178,10 +218,22 @@ export function hasInputSpec(spec: Record<string, unknown>): boolean {
 
 // ---- Built-in type helpers ---------------------------------------------------
 
+/**
+ * Map from primitive-boxing constructor to expected typeof string.
+ * Used for O(1) field validation in Data.mts and derived set for membership checks.
+ */
+export const builtInTypeChecks = new Map<unknown, string>([
+    [Number, 'number'],
+    [String, 'string'],
+    [Boolean, 'boolean'],
+    [Symbol, 'symbol'],
+    [BigInt, 'bigint']
+]);
+
 /** Set of built-in primitive-boxing type constructors used for field validation */
-export const BUILT_IN_TYPES: Set<unknown> = new Set([Number, String, Boolean, Symbol, BigInt]);
+export const BUILT_IN_TYPES: Set<unknown> = new Set(builtInTypeChecks.keys());
 
 /** Check if a value is a built-in type constructor */
 export function isBuiltInType(value: unknown): boolean {
-    return BUILT_IN_TYPES.has(value);
+    return builtInTypeChecks.has(value);
 }

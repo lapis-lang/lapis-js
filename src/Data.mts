@@ -10,8 +10,22 @@ import {
     aux,
     parseAux,
     validateTypeSpec,
-    validateReturnType
+    validateReturnType,
+    isFamilyRefSpec,
+    assertCamelCase,
+    assertPascalCase
 } from './operations.mjs';
+
+import {
+    isCheckedMode,
+    resolveContracts,
+    checkDemands,
+    checkEnsures,
+    checkInvariant,
+    executeRescue,
+    DemandsError,
+    type ContractSpec
+} from './contracts.mjs';
 
 import {
     adtTransformers,
@@ -24,12 +38,11 @@ import {
 } from './Transformer.mjs';
 
 import {
-    isPascalCase,
-    isCamelCase,
     isObjectLiteral,
     HandlerMapSymbol,
-    isBuiltInType,
-    hasInputSpec
+    hasInputSpec,
+    omitSymbol,
+    builtInTypeChecks
 } from './utils.mjs';
 
 import type { DataADT, DataDeclParams } from './types.mjs';
@@ -47,6 +60,12 @@ export type IsSingleton = typeof IsSingleton;
 
 const TypeArgsSymbol: unique symbol = Symbol('TypeArgs'),
     VariantNameSymbol: unique symbol = Symbol('VariantName'),
+    // Brands variant constructors and singleton instances so the delegation
+    // proxy (`createDelegationProxy`) can distinguish them from operations
+    // with a single `IsVariantSymbol in obj` check.  Without this brand
+    // the proxy would need fragile multi-condition heuristics (checking
+    // `.variantName`, `.spec`, `IsSingleton`, etc.) on every property access.
+    IsVariantSymbol: unique symbol = Symbol('IsVariant'),
     // Marks wrapper contexts created for parent dispatch so that
     // re-entrancy guards can resolve back to the underlying node.
     FoldContextOriginSymbol: unique symbol = Symbol('FoldContextOrigin'),
@@ -208,6 +227,7 @@ function createVariantConstructor({
     (Variant as unknown as { spec: SpecRecord }).spec = fieldSpec;
     (Variant as unknown as { _invariant: unknown })._invariant = invariantFn;
     (Variant as unknown as Record<symbol, unknown>)[IsSingleton] = false;
+    (Variant as unknown as Record<symbol, unknown>)[IsVariantSymbol] = true;
 
     return Variant as unknown as VariantLike;
 }
@@ -216,6 +236,7 @@ function createSingletonVariant(name: string, ADT: ADTLike): SingletonInstance {
     function Variant(this: object) {
         if (!new.target) return new (Variant as unknown as new () => unknown)();
         (this as Record<symbol, unknown>)[VariantNameSymbol] = name;
+        (this as Record<symbol, unknown>)[IsVariantSymbol] = true;
         Object.freeze(this);
     }
 
@@ -234,7 +255,7 @@ function createSingletonVariant(name: string, ADT: ADTLike): SingletonInstance {
     return Object.freeze(new (Variant as unknown as new () => unknown)()) as SingletonInstance;
 }
 
-function checkInvariant(
+function checkConstructorInvariant(
     instance: object,
     invariantFn: ((instance: object) => boolean) | null,
     variantName: string
@@ -292,12 +313,7 @@ function createDelegationProxy(
                     // continue to use the transformer registry of the ADT that
                     // defined them.  Wrapping an operation would incorrectly
                     // re-parent its prototype to the child, breaking lookup.
-                    const isVariant =
-                        (typeof delegatedValue === 'function' && 'variantName' in delegatedValue) ||
-                        (typeof delegatedValue === 'object' && delegatedValue !== null &&
-                            Object.isFrozen(delegatedValue) && VariantNameSymbol in delegatedValue);
-
-                    if (isVariant)
+                    if (IsVariantSymbol in (delegatedValue as object))
                         return createChildVariant(target, prop as string, delegatedValue as VariantLike | SingletonInstance);
 
                 }
@@ -488,7 +504,7 @@ function createChildVariant(
             constructorBody: function (...args: unknown[]) {
                 const fields = normalizeFields(args[0], args.slice(1), parentSpec, variantName);
                 validateAndAssignFields(this, fields, parentSpec, ChildADT);
-                checkInvariant(this, parentInvariantFn, variantName);
+                checkConstructorInvariant(this, parentInvariantFn, variantName);
                 (this as Record<symbol, unknown>)[VariantNameSymbol] = variantName;
                 Object.freeze(this);
             }
@@ -506,8 +522,7 @@ function createVariants(
     const variants: Record<string, VariantLike | SingletonInstance> = {};
 
     for (const [name, rawSpec] of Object.entries(variantSpecs)) {
-        if (!isPascalCase(name))
-            throw new Error(`Variant '${name}' must be PascalCase`);
+        assertPascalCase(name, 'Variant');
 
 
         let invariantFn: ((instance: object) => boolean) | null = null,
@@ -517,24 +532,12 @@ function createVariants(
             const rawObj = rawSpec as Record<string | symbol, unknown>;
             if (invariant in rawObj) {
                 invariantFn = rawObj[invariant as unknown as string] as (instance: object) => boolean;
-                fieldSpec = {};
-                for (const key of Object.keys(rawObj)) {
-                    if (key !== String(invariant))
-                        fieldSpec[key] = rawObj[key];
-
-                }
-                for (const sym of Object.getOwnPropertySymbols(rawObj)) {
-                    if (sym !== (invariant as unknown as symbol))
-                        (fieldSpec as Record<symbol, unknown>)[sym] = rawObj[sym];
-
-                }
+                fieldSpec = omitSymbol(rawObj, invariant as unknown as symbol) as SpecRecord;
             }
 
-            for (const fieldName of Object.keys(fieldSpec)) {
-                if (!isCamelCase(fieldName))
-                    throw new Error(`Field '${fieldName}' in variant '${name}' must be camelCase`);
+            for (const fieldName of Object.keys(fieldSpec))
+                assertCamelCase(fieldName, 'Field');
 
-            }
         }
 
         const isEmpty = !fieldSpec || Object.keys(fieldSpec).length === 0;
@@ -550,7 +553,7 @@ function createVariants(
                 constructorBody: function (...args: unknown[]) {
                     const fields = normalizeFields(args[0], args.slice(1), fieldSpec, name);
                     validateAndAssignFields(this, fields, fieldSpec, ADT);
-                    checkInvariant(this, invariantFn, name);
+                    checkConstructorInvariant(this, invariantFn, name);
                     (this as Record<symbol, unknown>)[VariantNameSymbol] = name;
                     Object.freeze(this);
                 }
@@ -629,12 +632,10 @@ function validateField(
     }
 
     // Family reference - check against root base
-    if (fieldSpec && (typeof fieldSpec === 'object' || typeof fieldSpec === 'function') &&
-        FamilyRefSymbol in (fieldSpec as object)) {
+    if (isFamilyRefSpec(fieldSpec)) {
         let rootBase: object = ADT as object;
         while (parentADTMap.has(rootBase))
             rootBase = parentADTMap.get(rootBase)!;
-
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         if (!(value instanceof (rootBase as unknown as abstract new (...args: any[]) => unknown)))
@@ -643,22 +644,16 @@ function validateField(
         return;
     }
 
-    // Built-in types
-    switch (true) {
-        case fieldSpec === Number && typeof value !== 'number':
-            throw new TypeError(`Field '${fieldName}' must be a Number`);
-        case fieldSpec === String && typeof value !== 'string':
-            throw new TypeError(`Field '${fieldName}' must be a String`);
-        case fieldSpec === Boolean && typeof value !== 'boolean':
-            throw new TypeError(`Field '${fieldName}' must be a Boolean`);
-        case fieldSpec === Symbol && typeof value !== 'symbol':
-            throw new TypeError(`Field '${fieldName}' must be a Symbol`);
-        case fieldSpec === BigInt && typeof value !== 'bigint':
-            throw new TypeError(`Field '${fieldName}' must be a BigInt`);
+    // Built-in types — O(1) Map lookup
+    const expectedType = builtInTypeChecks.get(fieldSpec);
+    if (expectedType) {
+        if (typeof value !== expectedType)
+            throw new TypeError(`Field '${fieldName}' must be a ${(fieldSpec as { name: string }).name}`);
+        return;
     }
 
     // Predicate function validation
-    if (typeof fieldSpec === 'function' && !isBuiltInType(fieldSpec)) {
+    if (typeof fieldSpec === 'function' && !builtInTypeChecks.has(fieldSpec)) {
         try {
             const result = (fieldSpec as (v: unknown) => unknown)(value);
             if (result === false)
@@ -805,6 +800,23 @@ function createOperations(
     }
 }
 
+/**
+ * If `value` is a variant instance whose constructor defines an [invariant],
+ * run a post-check against that invariant.  This ensures continuous invariant
+ * enforcement on operation *results* — not just on the receiver (`self`).
+ * Data instances are frozen, so the receiver's invariant cannot change; the
+ * interesting post-condition is whether the produced value satisfies *its own*
+ * variant's invariant.
+ */
+function checkResultInvariant(value: unknown, opName: string): void {
+    if (value === null || value === undefined || typeof value !== 'object') return;
+    const ctor = (value as { constructor?: VariantLike }).constructor;
+    if (!ctor?._invariant) return;
+    const variantName = (value as Record<symbol, unknown>)[VariantNameSymbol] as string | undefined;
+    if (!variantName) return;
+    checkInvariant(ctor._invariant as (i: unknown) => boolean, opName, variantName, 'post', value);
+}
+
 function createFoldOperation(
     ADT: ADTLike,
     variants: Record<string, unknown>,
@@ -870,12 +882,19 @@ function createFoldOperation(
         }
     }
 
+    // Extract + subcontract: compose child contracts with parent's (LSP rules)
+    const parentFoldTransformer = localParentADT
+        ? adtTransformers.get(localParentADT as unknown as object)?.get(opName)
+        : undefined;
+    const foldContracts: ContractSpec | null = resolveContracts(
+        opSpecObj, parentFoldTransformer?.contracts
+    );
+
     const hasExtraParams = !hasInput && Object.values(handlers).some(h =>
         typeof h === 'function' && (h as HandlerFn).length > 1
     );
 
-    if (!isCamelCase(opName))
-        throw new Error(`Fold operation '${opName}' must be camelCase`);
+    assertCamelCase(opName, 'Fold operation');
 
 
     const transformer = createFoldTransformer(
@@ -884,6 +903,9 @@ function createFoldOperation(
         finalSpec['out'] as ReturnType<typeof createFoldTransformer> extends { outSpec?: infer T } ? T : unknown,
         finalSpec['in'] as ReturnType<typeof createFoldTransformer> extends { inSpec?: infer T } ? T : unknown
     );
+    // Store contracts on transformer for subcontracting inheritance
+    if (foldContracts)
+        transformer.contracts = foldContracts;
     ADT._registerTransformer(opName, transformer, false, variants);
 
     // DAG-safe fold cache — closure-scoped so each (ADT, opName) pair is
@@ -900,6 +922,25 @@ function createFoldOperation(
     // this`, the handler directly re‐entered the fold on itself; otherwise
     // the fold traversed back to an ancestor — a true cycle.
     let currentNode: object | null = null;
+
+    // Handler resolution cache — maps variant constructors to their resolved
+    // {handler, parentHandler} pair so the parent-chain walk runs at most once
+    // per variant type.
+    const handlerCache = new Map<object, { handler: HandlerFn; parentHandler: HandlerFn | null }>();
+
+    // Spec entries cache — avoids re-allocating Object.entries(variantCtor.spec)
+    // on every fold invocation.  Keyed by variant constructor.
+    const specEntriesCache = new Map<object, [string, unknown][]>();
+
+    // Contract depth counter — contracts only execute at the top-level call
+    // (depth 1), not during recursive traversal of child nodes.  Since data
+    // instances are frozen, invariants and demands are deterministic so
+    // checking once at the entry point is sufficient.
+    let contractDepth = 0;
+
+    // Pre-check whether any contracts are defined (avoids repeated property
+    // access inside the hot loop).
+    const hasAnyContracts = foldContracts !== null;
 
     // Histomorphism support — when `history: true` in spec, each node's
     // foldedFields are cached so that handlers can access deeper sub-results
@@ -992,6 +1033,7 @@ function createFoldOperation(
             histoFieldsDepth++;
         }
 
+        contractDepth++;
         let prevNode: object | null = null;
         let entered = false;
 
@@ -1021,65 +1063,76 @@ function createFoldOperation(
             const variantName = (self as Record<symbol, unknown>)[VariantNameSymbol] as string,
                 variantCtor = (self as { constructor: VariantLike }).constructor;
 
-            let handler: HandlerFn | null = null,
-                parentHandler: HandlerFn | null = null,
-                foundAtADT: ADTLike | null = null,
+            // ---- Cached handler resolution ----
+            let resolved = handlerCache.get(variantCtor as object);
+            if (!resolved) {
+                let handlerFound: HandlerFn | null = null,
+                    parentHandlerFound: HandlerFn | null = null,
+                    foundAtADT: ADTLike | null = null,
+                    currentSearchADT: ADTLike | null = ADT;
 
-                currentSearchADT: ADTLike | null = ADT;
+                while (currentSearchADT) {
+                    const registry = adtTransformers.get(currentSearchADT as unknown as object),
+                        localTransformer = registry?.get(opName);
 
-            while (currentSearchADT) {
-                const registry = adtTransformers.get(currentSearchADT as unknown as object),
-                    localTransformer = registry?.get(opName);
-
-                if (localTransformer && localTransformer.getCtorTransform) {
-                    const handlerMap = localTransformer[HandlerMapSymbol] as Record<string, HandlerFn> | undefined;
-                    if (handlerMap && (handlerMap[variantName] || handlerMap['_'])) {
-                        handler = localTransformer.getCtorTransform(variantCtor as unknown as VariantConstructorLike);
-                        foundAtADT = currentSearchADT;
-                        break;
-                    }
-                }
-                currentSearchADT = parentADTMap.get(currentSearchADT as unknown as object) as ADTLike | null ?? null;
-            }
-
-            if (!handler)
-                throw new Error(`No handler for variant '${variantName}' in fold operation '${opName}'`);
-
-
-            if (foundAtADT) {
-                let searchParent = parentADTMap.get(foundAtADT as unknown as object) as ADTLike | null ?? null;
-                while (searchParent) {
-                    const parentRegistry = adtTransformers.get(searchParent as unknown as object),
-                        parentTransformer = parentRegistry?.get(opName);
-
-                    if (parentTransformer && parentTransformer.getCtorTransform) {
-                        const parentHandlerMap = parentTransformer[HandlerMapSymbol] as Record<string, HandlerFn> | undefined;
-                        if (parentHandlerMap && (parentHandlerMap[variantName] || parentHandlerMap['_'])) {
-                            parentHandler = parentTransformer.getCtorTransform(variantCtor as unknown as VariantConstructorLike);
+                    if (localTransformer && localTransformer.getCtorTransform) {
+                        const handlerMap = localTransformer[HandlerMapSymbol] as Record<string, HandlerFn> | undefined;
+                        if (handlerMap && (handlerMap[variantName] || handlerMap['_'])) {
+                            handlerFound = localTransformer.getCtorTransform(variantCtor as unknown as VariantConstructorLike);
+                            foundAtADT = currentSearchADT;
                             break;
                         }
                     }
-                    searchParent = parentADTMap.get(searchParent as unknown as object) as ADTLike | null ?? null;
+                    currentSearchADT = parentADTMap.get(currentSearchADT as unknown as object) as ADTLike | null ?? null;
                 }
+
+                if (!handlerFound)
+                    throw new Error(`No handler for variant '${variantName}' in fold operation '${opName}'`);
+
+                if (foundAtADT) {
+                    let searchParent = parentADTMap.get(foundAtADT as unknown as object) as ADTLike | null ?? null;
+                    while (searchParent) {
+                        const parentRegistry = adtTransformers.get(searchParent as unknown as object),
+                            parentTransformer = parentRegistry?.get(opName);
+
+                        if (parentTransformer && parentTransformer.getCtorTransform) {
+                            const parentHandlerMap = parentTransformer[HandlerMapSymbol] as Record<string, HandlerFn> | undefined;
+                            if (parentHandlerMap && (parentHandlerMap[variantName] || parentHandlerMap['_'])) {
+                                parentHandlerFound = parentTransformer.getCtorTransform(variantCtor as unknown as VariantConstructorLike);
+                                break;
+                            }
+                        }
+                        searchParent = parentADTMap.get(searchParent as unknown as object) as ADTLike | null ?? null;
+                    }
+                }
+
+                resolved = { handler: handlerFound, parentHandler: parentHandlerFound };
+                handlerCache.set(variantCtor as object, resolved);
+            }
+
+            const handler = resolved.handler,
+                parentHandler = resolved.parentHandler;
+
+            // ---- Cached spec entries ----
+            let specEntries = specEntriesCache.get(variantCtor as object);
+            if (!specEntries) {
+                specEntries = variantCtor.spec ? Object.entries(variantCtor.spec) as [string, unknown][] : [];
+                specEntriesCache.set(variantCtor as object, specEntries);
             }
 
             const foldedFields: Record<string | symbol, unknown> = {};
-            if (variantCtor.spec) {
-                for (const [fieldName, fieldSpec] of Object.entries(variantCtor.spec)) {
-                    if (fieldSpec &&
-                    (typeof fieldSpec === 'object' || typeof fieldSpec === 'function') &&
-                    FamilyRefSymbol in (fieldSpec as object)) {
-                        const fieldValue = (self as Record<string, unknown>)[fieldName];
-                        if (hasInput || hasExtraParams) {
-                            foldedFields[fieldName] = (...params: unknown[]) =>
-                                (fieldValue as Record<string, (...p: unknown[]) => unknown>)[opName](...params);
-                        } else
-                            foldedFields[fieldName] = (fieldValue as Record<string, unknown>)[opName];
-
+            for (const [fieldName, fieldSpec] of specEntries) {
+                if (isFamilyRefSpec(fieldSpec)) {
+                    const fieldValue = (self as Record<string, unknown>)[fieldName];
+                    if (hasInput || hasExtraParams) {
+                        foldedFields[fieldName] = (...params: unknown[]) =>
+                            (fieldValue as Record<string, (...p: unknown[]) => unknown>)[opName](...params);
                     } else
-                        foldedFields[fieldName] = (self as Record<string, unknown>)[fieldName];
+                        foldedFields[fieldName] = (fieldValue as Record<string, unknown>)[opName];
 
-                }
+                } else
+                    foldedFields[fieldName] = (self as Record<string, unknown>)[fieldName];
+
             }
 
             // Histomorphism: inject [history] into foldedFields.
@@ -1094,18 +1147,14 @@ function createFoldOperation(
                     // hasn't run yet. We create getters that read from the cache
                     // after the child thunk has been invoked.
                     const historyObj: Record<string | symbol, unknown> = {};
-                    if (variantCtor.spec) {
-                        for (const [fieldName, fieldSpec] of Object.entries(variantCtor.spec)) {
-                            if (fieldSpec &&
-                                (typeof fieldSpec === 'object' || typeof fieldSpec === 'function') &&
-                                FamilyRefSymbol in (fieldSpec as object)) {
-                                const fieldValue = (self as Record<string, unknown>)[fieldName];
-                                Object.defineProperty(historyObj, fieldName, {
-                                    get: () => histoFieldsCache?.get(fieldValue as object),
-                                    enumerable: true,
-                                    configurable: true
-                                });
-                            }
+                    for (const [fieldName, fieldSpec] of specEntries) {
+                        if (isFamilyRefSpec(fieldSpec)) {
+                            const fieldValue = (self as Record<string, unknown>)[fieldName];
+                            Object.defineProperty(historyObj, fieldName, {
+                                get: () => histoFieldsCache?.get(fieldValue as object),
+                                enumerable: true,
+                                configurable: true
+                            });
                         }
                     }
                     (foldedFields as Record<symbol, unknown>)[history as unknown as symbol] = historyObj;
@@ -1113,16 +1162,12 @@ function createFoldOperation(
                     // Non-parameterized: children have already been folded
                     // (bottom-up), so their foldedFields are in the cache.
                     const historyObj: Record<string | symbol, unknown> = {};
-                    if (variantCtor.spec) {
-                        for (const [fieldName, fieldSpec] of Object.entries(variantCtor.spec)) {
-                            if (fieldSpec &&
-                                (typeof fieldSpec === 'object' || typeof fieldSpec === 'function') &&
-                                FamilyRefSymbol in (fieldSpec as object)) {
-                                const fieldValue = (self as Record<string, unknown>)[fieldName];
-                                const childFields = histoFieldsCache.get(fieldValue as object);
-                                if (childFields)
-                                    historyObj[fieldName] = childFields;
-                            }
+                    for (const [fieldName, fieldSpec] of specEntries) {
+                        if (isFamilyRefSpec(fieldSpec)) {
+                            const fieldValue = (self as Record<string, unknown>)[fieldName];
+                            const childFields = histoFieldsCache.get(fieldValue as object);
+                            if (childFields)
+                                historyObj[fieldName] = childFields;
                         }
                     }
                     (foldedFields as Record<symbol, unknown>)[history as unknown as symbol] = historyObj;
@@ -1135,35 +1180,31 @@ function createFoldOperation(
             // Array form  → nested:     auxObj[foldName][fieldName] = auxResult
             if (isZygo && auxNames) {
                 const auxObj: Record<string, unknown> = {};
-                if (variantCtor.spec) {
-                    if (auxIsArray)
-                        for (const auxName of auxNames) auxObj[auxName] = {};
+                if (auxIsArray)
+                    for (const auxName of auxNames) auxObj[auxName] = {};
 
-                    // String form uses a single aux fold name; array form
-                    // iterates all names.  Kept as distinct branches so flat
-                    // mode cannot accidentally overwrite keys.
-                    const singleAuxName = auxIsArray ? null : auxNames[0];
-                    for (const [fieldName, fieldSpec] of Object.entries(variantCtor.spec)) {
-                        if (fieldSpec &&
-                            (typeof fieldSpec === 'object' || typeof fieldSpec === 'function') &&
-                            FamilyRefSymbol in (fieldSpec as object)) {
-                            const fieldValue = (self as Record<string, unknown>)[fieldName];
-                            if (singleAuxName !== null) {
-                                // Flat shape: auxObj[fieldName]
-                                // Use the aux fold's own call shape, not the primary fold's.
-                                auxObj[fieldName] = auxIsMethod.get(singleAuxName)
+                // String form uses a single aux fold name; array form
+                // iterates all names.  Kept as distinct branches so flat
+                // mode cannot accidentally overwrite keys.
+                const singleAuxName = auxIsArray ? null : auxNames[0];
+                for (const [fieldName, fieldSpec] of specEntries) {
+                    if (isFamilyRefSpec(fieldSpec)) {
+                        const fieldValue = (self as Record<string, unknown>)[fieldName];
+                        if (singleAuxName !== null) {
+                            // Flat shape: auxObj[fieldName]
+                            // Use the aux fold's own call shape, not the primary fold's.
+                            auxObj[fieldName] = auxIsMethod.get(singleAuxName)
+                                ? (...params: unknown[]) =>
+                                    (fieldValue as Record<string, (...p: unknown[]) => unknown>)[singleAuxName](...params)
+                                : (fieldValue as Record<string, unknown>)[singleAuxName];
+                        } else {
+                            // Nested shape: auxObj[foldName][fieldName]
+                            for (const auxName of auxNames) {
+                                const isAuxParam = auxIsMethod.get(auxName) ?? false;
+                                (auxObj[auxName] as Record<string, unknown>)[fieldName] = isAuxParam
                                     ? (...params: unknown[]) =>
-                                        (fieldValue as Record<string, (...p: unknown[]) => unknown>)[singleAuxName](...params)
-                                    : (fieldValue as Record<string, unknown>)[singleAuxName];
-                            } else {
-                                // Nested shape: auxObj[foldName][fieldName]
-                                for (const auxName of auxNames) {
-                                    const isAuxParam = auxIsMethod.get(auxName) ?? false;
-                                    (auxObj[auxName] as Record<string, unknown>)[fieldName] = isAuxParam
-                                        ? (...params: unknown[]) =>
-                                            (fieldValue as Record<string, (...p: unknown[]) => unknown>)[auxName](...params)
-                                        : (fieldValue as Record<string, unknown>)[auxName];
-                                }
+                                        (fieldValue as Record<string, (...p: unknown[]) => unknown>)[auxName](...params)
+                                    : (fieldValue as Record<string, unknown>)[auxName];
                             }
                         }
                     }
@@ -1200,15 +1241,129 @@ function createFoldOperation(
                 }
             }
 
-            const result = (handler as HandlerFn).call(context, foldedFields, ...args);
+            // ---- Contract enforcement (Design by Contract) ----
+            // Demands/ensures/invariants only enforce at the top-level call
+            // (contractDepth === 1), not during recursive traversal of child
+            // nodes.  Since data instances are frozen, invariants and demands
+            // on a node are deterministic — checking once at the entry point
+            // is sufficient.  Rescue, however, is an error-recovery mechanism
+            // and must remain active at every recursion level.
+            //
+            // Invariant checks are gated by isCheckedMode() alone (not by
+            // hasAnyContracts) so that a fold with no demands/ensures/rescue
+            // still runs invariant pre-checks when the variant defines one.
+            const inCheckedMode = isCheckedMode();
 
-            if (hasOutput)
-                validateReturnType(result, opSpecObj['out'] as Parameters<typeof validateReturnType>[1], opName);
+            // Get the invariant function for this instance's variant
+            const variantInvariantFn: ((instance: object) => boolean) | null =
+                inCheckedMode && variantCtor
+                    ? (variantCtor as VariantLike)._invariant ?? null
+                    : null;
+
+            const checked = contractDepth === 1 && inCheckedMode
+                && (hasAnyContracts || variantInvariantFn !== null);
+            let result: unknown;
+
+            if (checked) {
+                const variantCtx = variantName || 'unknown';
+
+                // 1. Invariant pre-check on self
+                if (variantInvariantFn)
+                    checkInvariant(variantInvariantFn as (i: unknown) => boolean, opName, variantCtx, 'pre', self);
+
+                // 2. Demands check (precondition)
+                if (foldContracts?.demands)
+                    checkDemands(foldContracts.demands, opName, variantCtx, self, args);
+
+                // 3. Capture old state for ensures (reference to self since data is frozen/immutable)
+                const old = self;
+
+                // Helper to execute the handler body + ensures
+                const executeBody = (...bodyArgs: unknown[]): unknown => {
+                    const bodyResult = (handler as HandlerFn).call(context, foldedFields, ...bodyArgs);
+                    if (hasOutput)
+                        validateReturnType(bodyResult, opSpecObj['out'] as Parameters<typeof validateReturnType>[1], opName);
+
+                    // 4. Ensures check (postcondition)
+                    if (foldContracts?.ensures)
+                        checkEnsures(foldContracts.ensures, opName, variantCtx, self, old, bodyResult, bodyArgs);
+
+                    return bodyResult;
+                };
+
+                try {
+                    result = executeBody(...args);
+                } catch (error) {
+                    // 5. Rescue handler for body/ensures errors
+                    if (foldContracts?.rescue && !(error instanceof DemandsError)) {
+                        const { result: rescueResult } = executeRescue(
+                            foldContracts.rescue,
+                            self,
+                            error,
+                            args,
+                            executeBody,
+                            opName,
+                            variantCtx
+                        );
+
+                        // 6. Invariant post-check on result (if it's a variant with an invariant)
+                        checkResultInvariant(rescueResult, opName);
+
+                        if (canCache) dagCache!.set(self, rescueResult);
+                        return rescueResult;
+                    }
+
+                    throw error;
+                }
+
+                // 6. Invariant post-check on result (if it's a variant with an invariant)
+                checkResultInvariant(result, opName);
+            } else if (inCheckedMode && foldContracts?.rescue) {
+                // Inner recursion level with rescue active:
+                // Skip demands/ensures/invariant but still wrap in rescue
+                // so handler errors can be recovered at every level.
+                try {
+                    result = (handler as HandlerFn).call(context, foldedFields, ...args);
+                    if (hasOutput)
+                        validateReturnType(result, opSpecObj['out'] as Parameters<typeof validateReturnType>[1], opName);
+                } catch (error) {
+                    if (!(error instanceof DemandsError)) {
+                        const innerBody = (...newArgs: unknown[]): unknown => {
+                            const r = (handler as HandlerFn).call(context, foldedFields, ...newArgs);
+                            if (hasOutput)
+                                validateReturnType(r, opSpecObj['out'] as Parameters<typeof validateReturnType>[1], opName);
+                            return r;
+                        };
+
+                        const { result: rescueResult } = executeRescue(
+                            foldContracts!.rescue!,
+                            self,
+                            error,
+                            args,
+                            innerBody,
+                            opName,
+                            variantName || 'unknown'
+                        );
+
+                        if (canCache) dagCache!.set(self, rescueResult);
+                        return rescueResult;
+                    } else
+                        throw error;
+
+                }
+            } else {
+                // Fast path: no active contracts — call handler directly,
+                // skipping closure allocation for executeBody and rescue machinery.
+                result = (handler as HandlerFn).call(context, foldedFields, ...args);
+                if (hasOutput)
+                    validateReturnType(result, opSpecObj['out'] as Parameters<typeof validateReturnType>[1], opName);
+            }
 
             if (canCache) dagCache!.set(self, result);
 
             return result;
         } finally {
+            contractDepth--;
             if (entered) {
                 currentNode = prevNode;
                 inProgress.delete(self);
@@ -1273,6 +1428,18 @@ function installUnfoldImpl(
     cases: Record<string, (seed: unknown) => unknown | null>,
     opSpecObj: Record<string, unknown>
 ): void {
+    // Extract + subcontract: compose child contracts with parent's (LSP rules)
+    const localParentADT = parentADTMap.get(ADT as unknown as object) as ADTLike | null ?? null;
+    const parentUnfoldTransformer = localParentADT
+        ? adtTransformers.get(localParentADT as unknown as object)?.get(opName)
+        : undefined;
+    const unfoldContracts: ContractSpec | null = resolveContracts(
+        opSpecObj, parentUnfoldTransformer?.contracts
+    );
+
+    const hasAnyUnfoldContracts = unfoldContracts !== null;
+    let unfoldContractDepth = 0;
+
     const generator = (seed: unknown) => seed,
         transformer = createTransformer({
             name: opName,
@@ -1282,6 +1449,9 @@ function installUnfoldImpl(
 
     (transformer as unknown as Record<string, unknown>).unfoldCases = cases;
     (transformer as unknown as Record<string, unknown>).unfoldSpec = opSpecObj;
+    // Store contracts on transformer for subcontracting inheritance
+    if (unfoldContracts)
+        transformer.contracts = unfoldContracts;
 
     ADT._registerTransformer(opName, transformer, false, variants);
 
@@ -1304,44 +1474,123 @@ function installUnfoldImpl(
             );
         }
 
-        for (const [variantName, caseFn] of Object.entries(cases)) {
-            const result = (caseFn as (s: unknown) => unknown)(seed);
-            if (result !== null && result !== undefined) {
-                const variantValue = resolvedVariants[variantName] ||
-                    (ADT as Record<string, unknown>)[variantName];
-                if (!variantValue)
-                    throw new Error(`Unknown variant '${variantName}' in unfold '${opName}'`);
+        unfoldContractDepth++;
+
+        const executeUnfold = (currentSeed: unknown): unknown => {
+            for (const [variantName, caseFn] of Object.entries(cases)) {
+                const result = (caseFn as (s: unknown) => unknown)(currentSeed);
+                if (result !== null && result !== undefined) {
+                    const variantValue = resolvedVariants[variantName] ||
+                        (ADT as Record<string, unknown>)[variantName];
+                    if (!variantValue)
+                        throw new Error(`Unknown variant '${variantName}' in unfold '${opName}'`);
 
 
-                if (typeof variantValue === 'object' && Object.isFrozen(variantValue))
-                    return variantValue;
+                    if (typeof variantValue === 'object' && Object.isFrozen(variantValue))
+                        return variantValue;
 
 
-                const Variant = variantValue as VariantLike;
-                if (Variant.spec) {
-                    const transformedResult = { ...(result as Record<string, unknown>) };
-                    for (const [fieldName, fieldSpec] of Object.entries(Variant.spec)) {
-                        if (fieldSpec &&
-                            (typeof fieldSpec === 'object' || typeof fieldSpec === 'function') &&
-                            FamilyRefSymbol in (fieldSpec as object)) {
-                            if (fieldName in (result as object)) {
-                                transformedResult[fieldName] =
-                                    (ADT as Record<string, unknown>)[opName] as ((s: unknown) => unknown);
-                                transformedResult[fieldName] =
-                                    ((ADT as Record<string, unknown>)[opName] as (s: unknown) => unknown)(
-                                        (result as Record<string, unknown>)[fieldName]
-                                    );
+                    const Variant = variantValue as VariantLike;
+                    if (Variant.spec) {
+                        const transformedResult = { ...(result as Record<string, unknown>) };
+                        for (const [fieldName, fieldSpec] of Object.entries(Variant.spec)) {
+                            if (isFamilyRefSpec(fieldSpec)) {
+                                if (fieldName in (result as object)) {
+                                    transformedResult[fieldName] =
+                                        (ADT as Record<string, unknown>)[opName] as ((s: unknown) => unknown);
+                                    transformedResult[fieldName] =
+                                        ((ADT as Record<string, unknown>)[opName] as (s: unknown) => unknown)(
+                                            (result as Record<string, unknown>)[fieldName]
+                                        );
+                                }
                             }
                         }
+                        return (Variant as unknown as (f: object) => unknown)(transformedResult);
                     }
-                    return (Variant as unknown as (f: object) => unknown)(transformedResult);
+
+                    return (Variant as unknown as (f: object) => unknown)(result as object);
+                }
+            }
+
+            throw new Error(`No case matched in unfold '${opName}'`);
+        };
+
+        // Only check demands/ensures at the top-level entry (depth 1).
+        // Recursive calls re-enter unfoldImpl but data is immutable,
+        // so intermediate demands/ensures checks are redundant.
+        // Rescue, however, is an error-recovery mechanism and must
+        // remain active at every recursion level.
+        const inCheckedMode = hasAnyUnfoldContracts && isCheckedMode();
+        const checked = unfoldContractDepth === 1 && inCheckedMode;
+
+        if (checked) {
+            let finalResult: unknown;
+            try {
+                // Contract: demands check
+                if (unfoldContracts!.demands)
+                    checkDemands(unfoldContracts!.demands, opName, 'unfold', null, [seed]);
+
+                finalResult = executeUnfold(seed);
+
+                // Contract: ensures check
+                if (unfoldContracts!.ensures)
+                    checkEnsures(unfoldContracts!.ensures, opName, 'unfold', null, seed, finalResult, [seed]);
+            } catch (error) {
+                // Rescue handler
+                if (unfoldContracts!.rescue && !(error instanceof DemandsError)) {
+                    const { result: rescueResult } = executeRescue(
+                        unfoldContracts!.rescue,
+                        null,
+                        error,
+                        [seed],
+                        (...newArgs: unknown[]) =>
+                            ((ADT as Record<string, unknown>)[opName] as (s: unknown) => unknown)(newArgs[0]),
+                        opName,
+                        'unfold'
+                    );
+
+                    return rescueResult;
                 }
 
-                return (Variant as unknown as (f: object) => unknown)(result as object);
+                throw error;
+            } finally {
+                unfoldContractDepth--;
+            }
+
+            return finalResult;
+        } else if (inCheckedMode && unfoldContracts?.rescue) {
+            // Inner recursion level with rescue active
+            try {
+                const innerResult = executeUnfold(seed);
+                return innerResult;
+            } catch (error) {
+                if (!(error instanceof DemandsError)) {
+                    const { result: rescueResult } = executeRescue(
+                        unfoldContracts!.rescue!,
+                        null,
+                        error,
+                        [seed],
+                        (...newArgs: unknown[]) =>
+                            ((ADT as Record<string, unknown>)[opName] as (s: unknown) => unknown)(newArgs[0]),
+                        opName,
+                        'unfold'
+                    );
+
+                    return rescueResult;
+                }
+
+                throw error;
+            } finally {
+                unfoldContractDepth--;
+            }
+        } else {
+            // Fast path: no contracts active or recursive call
+            try {
+                return executeUnfold(seed);
+            } finally {
+                unfoldContractDepth--;
             }
         }
-
-        throw new Error(`No case matched in unfold '${opName}'`);
     };
 }
 
@@ -1387,8 +1636,7 @@ function createUnfoldOperation(
         cases = (casesObj || rest) as Record<string, (seed: unknown) => unknown | null>,
         opSpecObj = opSpec as Record<string, unknown>;
 
-    if (!isPascalCase(opName))
-        throw new Error(`Unfold operation '${opName}' must be PascalCase`);
+    assertPascalCase(opName, 'Unfold operation');
 
 
     if (opSpecObj && 'in' in opSpecObj && opSpecObj['in'] === Function)
@@ -1410,8 +1658,7 @@ function createMapOperation(
         ...transformers
     } = opDef;
 
-    if (!isCamelCase(opName))
-        throw new Error(`Map operation '${opName}' must be camelCase`);
+    assertCamelCase(opName, 'Map operation');
 
 
     const hasExtraParams = Object.values(transformers).some(t =>
@@ -1441,9 +1688,7 @@ function createMapOperation(
         for (const [fieldName, fieldSpec] of Object.entries(variantSpec)) {
             const value = (this as Record<string, unknown>)[fieldName];
 
-            if (fieldSpec &&
-                (typeof fieldSpec === 'object' || typeof fieldSpec === 'function') &&
-                FamilyRefSymbol in (fieldSpec as object)) {
+            if (isFamilyRefSpec(fieldSpec)) {
                 if (hasExtraParams && args.length > 0) {
                     mappedFields[fieldName] =
                         (value as Record<string, (...a: unknown[]) => unknown>)[opName](...args);
@@ -1515,15 +1760,11 @@ function createMergeOperation(
 
         hasUnfold = transformerList.some(t => t.generator);
 
-    if (hasUnfold) {
-        if (!isPascalCase(opName))
-            throw new Error(`Merged operation '${opName}' with unfold must be PascalCase`);
+    if (hasUnfold)
+        assertPascalCase(opName, 'Merged operation (with unfold)');
+    else
+        assertCamelCase(opName, 'Merged operation (without unfold)');
 
-    } else {
-        if (!isCamelCase(opName))
-            throw new Error(`Merged operation '${opName}' without unfold must be camelCase`);
-
-    }
 
     if (hasUnfold && opName in variants)
         throw new Error(`Merged operation name '${opName}' conflicts with existing variant`);

@@ -8,8 +8,6 @@ import {
     VariantDeclSymbol,
     TypeParamSymbol,
     callable,
-    isCamelCase,
-    isPascalCase,
     isObjectLiteral,
     isConstructable,
     hasInputSpec
@@ -26,8 +24,20 @@ import {
     extend,
     history,
     aux,
-    parseAux
+    parseAux,
+    assertCamelCase,
+    assertPascalCase
 } from './operations.mjs';
+
+import {
+    isCheckedMode,
+    resolveContracts,
+    checkDemands,
+    checkEnsures,
+    executeRescue,
+    DemandsError,
+    type ContractSpec
+} from './contracts.mjs';
 
 import type { BehaviorADT, BehaviorDeclParams } from './types.mjs';
 
@@ -74,6 +84,7 @@ interface FoldOpEntry {
     auxNames: string[] | null;
     auxIsArray: boolean;
     preMapTransforms?: MapTransformEntry[];
+    contracts?: ContractSpec;
 }
 
 interface MapOpEntry {
@@ -85,6 +96,7 @@ interface MapOpEntry {
 interface UnfoldOpEntry {
     spec: Record<string, unknown>;
     handlers: Record<string, AnyFn>;
+    contracts?: ContractSpec;
 }
 
 interface BehaviorInstanceState {
@@ -253,30 +265,18 @@ export function behavior<D extends Record<string, unknown>>(
         for (const [entryName, entrySpec] of Object.entries(observerDecl)) {
             const opKind = isObjectLiteral(entrySpec) ? entrySpec[op as unknown as string] : null;
             if (opKind === 'unfold') {
-                if (!isPascalCase(entryName)) {
-                    throw new TypeError(
-                        `Unfold operation '${entryName}' must be PascalCase (start with uppercase letter)`
-                    );
-                }
+                assertPascalCase(entryName, 'Unfold operation');
                 declarations.unfold.push({ name: entryName, spec: entrySpec as Record<string, unknown> });
             } else if (opKind === 'fold') {
-                if (!isCamelCase(entryName))
-                    throw new TypeError(`Fold operation '${entryName}' must be camelCase`);
-
+                assertCamelCase(entryName, 'Fold operation');
                 declarations.fold.push({ name: entryName, spec: entrySpec as Record<string, unknown> });
             } else if (opKind === 'map') {
-                if (!isCamelCase(entryName))
-                    throw new TypeError(`Map operation '${entryName}' must be camelCase`);
-
+                assertCamelCase(entryName, 'Map operation');
                 declarations.map.push({ name: entryName, spec: entrySpec as Record<string, unknown> });
             } else if (opKind === 'merge')
                 declarations.merge.push({ name: entryName, spec: entrySpec as Record<string, unknown> });
             else {
-                if (!isCamelCase(entryName)) {
-                    throw new TypeError(
-                        `Observer '${entryName}' must be camelCase (start with lowercase letter, no underscore prefix)`
-                    );
-                }
+                assertCamelCase(entryName, 'Observer');
                 observerMap.set(entryName, {
                     name: entryName,
                     spec: entrySpec,
@@ -406,7 +406,8 @@ export function behavior<D extends Record<string, unknown>>(
             observerMap,
             name,
             opSpec as Record<string, unknown>,
-            handler as AnyFn
+            handler as AnyFn,
+            parentBehaviorType
         );
     }
 
@@ -507,11 +508,7 @@ function addUnfoldOperation(
     opSpec: unknown,
     handlers: Record<string, AnyFn>
 ): BehaviorTypeLike {
-    if (!isPascalCase(name)) {
-        throw new TypeError(
-            `Unfold operation '${name}' must be PascalCase (static factory method)`
-        );
-    }
+    assertPascalCase(name, 'Unfold operation');
 
     let parsedSpec: Record<string, unknown>;
     if (typeof opSpec === 'function') {
@@ -568,18 +565,68 @@ function addUnfoldOperation(
         }
     }
 
+    // Extract contracts from spec
+    const unfoldContracts: ContractSpec | null = resolveContracts(parsedSpec);
+
     const hasInput = hasInputSpec(parsedSpec),
         makeInstance = (seed: unknown) =>
             createBehaviorInstance(BehaviorType, observerMap, seed, handlers);
 
+    // Shared checked-mode helper for both seeded and seedless unfold paths.
+    const checkedUnfold = (
+        seed: unknown,
+        args: unknown[],
+        retryBody: (...newArgs: unknown[]) => unknown
+    ): unknown => {
+        if (unfoldContracts!.demands)
+            checkDemands(unfoldContracts!.demands, name, 'unfold', null, args);
+
+        try {
+            const result = makeInstance(seed);
+
+            if (unfoldContracts!.ensures)
+                checkEnsures(unfoldContracts!.ensures, name, 'unfold', null, seed, result, args);
+
+            return result;
+        } catch (error) {
+            if (unfoldContracts!.rescue && !(error instanceof DemandsError)) {
+                const { result: rescueResult } = executeRescue(
+                    unfoldContracts!.rescue,
+                    null,
+                    error,
+                    args,
+                    retryBody,
+                    name,
+                    'unfold'
+                );
+
+                return rescueResult;
+            }
+
+            throw error;
+        }
+    };
+
     if (hasInput) {
         BehaviorType[name] = function (seed: unknown) {
             validateTypeSpec(seed, parsedSpec['in'] as Parameters<typeof validateTypeSpec>[1], name, 'input of type');
+
+            if (isCheckedMode() && unfoldContracts) {
+                return checkedUnfold(seed, [seed],
+                    (...newArgs: unknown[]) =>
+                        (BehaviorType[name] as (s: unknown) => unknown)(newArgs[0]));
+            }
+
             return makeInstance(seed);
         };
     } else {
         Object.defineProperty(BehaviorType, name, {
             get() {
+                if (isCheckedMode() && unfoldContracts) {
+                    return checkedUnfold(undefined, [],
+                        () => BehaviorType[name] as unknown);
+                }
+
                 return makeInstance(undefined);
             },
             enumerable: true,
@@ -590,7 +637,7 @@ function addUnfoldOperation(
     ensureOwnMap<string, UnfoldOpEntry>(
         BehaviorType as unknown as Record<symbol, unknown>,
         UnfoldOpsSymbol
-    ).set(name, { spec: parsedSpec, handlers });
+    ).set(name, { spec: parsedSpec, handlers, contracts: unfoldContracts ?? undefined });
 
     return BehaviorType;
 }
@@ -605,7 +652,9 @@ function executeFold(
     isHisto: boolean = false,
     auxNames: string[] | null = null,
     auxIsArray: boolean = false,
-    BehaviorType: BehaviorTypeLike | null = null
+    BehaviorType: BehaviorTypeLike | null = null,
+    contracts: ContractSpec | null = null,
+    opName: string = ''
 ): unknown {
     const observations: Record<string | symbol, unknown> = {};
     for (const [name, obs] of observerMap) {
@@ -733,6 +782,46 @@ function executeFold(
         observations[aux as unknown as symbol] = auxObj;
     }
 
+    // Contract checking around the fold handler
+    if (isCheckedMode() && contracts) {
+        // 1. Demands check
+        if (contracts.demands)
+            checkDemands(contracts.demands, opName, 'behavior', proxyInstance, params);
+
+        const old = proxyInstance;
+
+        try {
+            const result = handler(observations, ...params);
+
+            // 2. Ensures check
+            if (contracts.ensures)
+                checkEnsures(contracts.ensures, opName, 'behavior', proxyInstance, old, result, params);
+
+            return result;
+        } catch (error) {
+            // 3. Rescue
+            if (contracts.rescue && !(error instanceof DemandsError)) {
+                const { result: rescueResult } = executeRescue(
+                    contracts.rescue,
+                    proxyInstance,
+                    error,
+                    params,
+                    (...newArgs: unknown[]) => executeFold(
+                        proxyInstance, observerMap, handler, newArgs,
+                        isHisto, auxNames, auxIsArray, BehaviorType,
+                        contracts, opName
+                    ),
+                    opName,
+                    'behavior'
+                );
+
+                return rescueResult;
+            }
+
+            throw error;
+        }
+    }
+
     return handler(observations, ...params);
 }
 
@@ -832,10 +921,10 @@ function addFoldOperation(
     _observerMap: Map<string, ObserverEntry>,
     name: string,
     opSpecArg: Record<string, unknown>,
-    handler: AnyFn
+    handler: AnyFn,
+    parentBehaviorType?: BehaviorTypeLike | null
 ): void {
-    if (!isCamelCase(name))
-        throw new TypeError(`Fold operation '${name}' must be camelCase`);
+    assertCamelCase(name, 'Fold operation');
 
     if (typeof handler !== 'function')
         throw new TypeError(`Fold operation '${name}' requires a '_' handler function`);
@@ -852,6 +941,16 @@ function addFoldOperation(
         );
     }
 
+    // Extract contracts from spec
+    // Extract + subcontract: compose child contracts with parent's (LSP rules)
+    const parentFoldEntry = parentBehaviorType
+        ? ((parentBehaviorType as Record<symbol, unknown>)[FoldOpsSymbol] as
+            Map<string, FoldOpEntry> | undefined)?.get(name)
+        : undefined;
+    const foldContracts: ContractSpec | null = resolveContracts(
+        parsedSpec, parentFoldEntry?.contracts
+    );
+
     ensureOwnMap<string, FoldOpEntry>(
         BehaviorType as unknown as Record<symbol, unknown>,
         FoldOpsSymbol
@@ -861,7 +960,8 @@ function addFoldOperation(
         hasInput: handler.length > 1,
         isHisto: parsedSpec['history'] === true,
         auxNames: parsedAux.names,
-        auxIsArray: parsedAux.isArray
+        auxIsArray: parsedAux.isArray,
+        contracts: foldContracts ?? undefined
     });
 }
 
@@ -873,8 +973,7 @@ function addMapOperation(
     name: string,
     transforms: Record<string, AnyFn>
 ): void {
-    if (!isCamelCase(name))
-        throw new TypeError(`Map operation '${name}' must be camelCase`);
+    assertCamelCase(name, 'Map operation');
 
 
     const typeParam0Names = Object.keys(transforms);
@@ -934,7 +1033,8 @@ function maybeFold(
     observerMap: Map<string, ObserverEntry>,
     foldOp: FoldOpEntry | null,
     params: unknown[],
-    BehaviorType: BehaviorTypeLike | null = null
+    BehaviorType: BehaviorTypeLike | null = null,
+    foldName: string = ''
 ): unknown {
     if (!foldOp) return instance;
     return executeFold(
@@ -944,7 +1044,9 @@ function maybeFold(
         foldOp.isHisto,
         foldOp.auxNames ?? null,
         foldOp.auxIsArray ?? false,
-        BehaviorType
+        BehaviorType,
+        foldOp.contracts ?? null,
+        foldName
     );
 }
 
@@ -982,11 +1084,8 @@ function addMergeOperation(
         foldName = foldNames[0],
         foldOp = foldName ? foldMap?.get(foldName) ?? null : null;
 
-    if (hasUnfold && !isPascalCase(name))
-        throw new TypeError(`Merge operation '${name}' includes an unfold and must be PascalCase`);
-
-    if (!hasUnfold && !isCamelCase(name))
-        throw new TypeError(`Merge operation '${name}' (no unfold) must be camelCase`);
+    if (hasUnfold) assertPascalCase(name, 'Merge operation (with unfold)');
+    else assertCamelCase(name, 'Merge operation (without unfold)');
 
     // Reject non-getter maps: merge pipelines cannot supply map parameters
     for (const mapName of mapNames) {
@@ -1141,14 +1240,16 @@ function createBehaviorInstance(
                                 return executeFold(
                                     foldTarget as Record<string, unknown>,
                                     observerMap, handler, params, foldIsHisto,
-                                    foldAuxNames, foldAuxIsArray, bt ?? null
+                                    foldAuxNames, foldAuxIsArray, bt ?? null,
+                                    foldOp.contracts ?? null, prop
                                 );
                             };
                         }
                         return executeFold(
                             foldTarget as Record<string, unknown>, observerMap, handler, [],
                             foldIsHisto,
-                            foldAuxNames, foldAuxIsArray, bt ?? null
+                            foldAuxNames, foldAuxIsArray, bt ?? null,
+                            foldOp.contracts ?? null, prop
                         );
                     }
 
@@ -1186,7 +1287,7 @@ function createBehaviorInstance(
                 if (!handler) {
                     throw new Error(
                         `No unfold handler defined for observer '${prop}'. ` +
-                        `Define an unfold operation (e.g., 'From: { [op]: "unfold", [spec]: {...}, ...handlers }') to construct behavior instances.`
+                        `Define an unfold operation (e.g., 'From: unfold({ in: Number, out: Self })({ ... })') to construct behavior instances.`
                     );
                 }
 

@@ -9,7 +9,7 @@
  * @module Observer
  */
 
-import { composeFunctions, HandlerMapSymbol } from './utils.mjs';
+import { composeOptionalTransform, validateMergeComposition, HandlerMapSymbol } from './utils.mjs';
 import type { TypeSpec } from './operations.mjs';
 
 export { HandlerMapSymbol };
@@ -176,18 +176,8 @@ export function composeObservers(o1: Observer, o2: Observer): Observer {
         outSpec,
         generator: o1.generator || o2.generator,
         cases: o1.cases || o2.cases,
-        getObserverTransform: o1.getObserverTransform && o2.getObserverTransform
-            ? (observer) => composeFunctions(
-                o1.getObserverTransform!(observer),
-                o2.getObserverTransform!(observer)
-            )
-            : o1.getObserverTransform || o2.getObserverTransform,
-        getAtomTransform: o1.getAtomTransform && o2.getAtomTransform
-            ? (atom) => composeFunctions(
-                o1.getAtomTransform!(atom),
-                o2.getAtomTransform!(atom)
-            )
-            : o1.getAtomTransform || o2.getAtomTransform
+        getObserverTransform: composeOptionalTransform(o1.getObserverTransform, o2.getObserverTransform),
+        getAtomTransform: composeOptionalTransform(o1.getAtomTransform, o2.getAtomTransform)
     });
 }
 
@@ -213,22 +203,7 @@ export function composeMultipleObservers(observers: Observer[], mergeName: strin
         });
     }
 
-    const generatorCount = observers.filter(o => o.generator).length,
-        foldCount = observers.filter(o => o.cases).length;
-
-    if (generatorCount > 1) {
-        const names = observers.filter(o => o.generator).map(o => `'${o.name}'`).join(', ');
-        throw new Error(
-            `Cannot merge operations: multiple unfolds detected (${names}). Only one unfold operation is allowed per merge.`
-        );
-    }
-
-    if (foldCount > 1) {
-        const names = observers.filter(o => o.cases).map(o => `'${o.name}'`).join(', ');
-        throw new Error(
-            `Cannot merge operations: multiple folds detected (${names}). Only one fold operation is allowed per merge.`
-        );
-    }
+    validateMergeComposition(observers, o => !!o.cases);
 
     let composed = observers[0];
     for (let i = 1; i < observers.length; i++)

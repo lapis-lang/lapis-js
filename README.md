@@ -56,6 +56,18 @@ there is an emphasis on the Bird-Meertens Formalism (BMF) (Squiggol) of making p
   - [Map (Lazy Type Transformation)](#map-lazy-type-transformation)
   - [Merge (Deforestation)](#merge-deforestation)
   - [Effect-like Behavior](#effect-like-behavior)
+- [Design by Contract](#design-by-contract)
+  - [Checked Mode](#checked-mode)
+  - [Assertions](#assertions)
+  - [Implies](#implies)
+  - [Iff](#iff)
+  - [Demands (Preconditions)](#demands-preconditions)
+  - [Ensures (Postconditions)](#ensures-postconditions)
+  - [Rescue (Structured Recovery)](#rescue-structured-recovery)
+  - [Continuous Invariants](#continuous-invariants)
+  - [Subcontracting](#subcontracting)
+  - [The Order of Assertions](#the-order-of-assertions)
+  - [Contracts on Behavior (Codata)](#contracts-on-behavior-codata)
 - [References, Inspirations, and Further Reading](#references-inspirations-and-further-reading)
 
 ## Installation
@@ -2007,9 +2019,643 @@ const input = await io.read();
 
 - `examples/behavior-stream.mjs` - Comprehensive behavior examples
 
+## Design by Contract
+
+Lapis JS integrates [Design by Contract™](https://en.wikipedia.org/wiki/Design_by_contract) directly into `data` and `behavior` declarations. Contracts are specified inline in fold/unfold specs and are enforced at runtime when [Checked Mode](#checked-mode) is enabled.
+
+This enables enforcement of the [Liskov Substitution Principle](https://en.wikipedia.org/wiki/Liskov_substitution_principle) (LSP) and [Organized Panic](https://en.wikipedia.org/wiki/Exception_handling#Exception_handling_based_on_design_by_contract) — structured, localized error handling with optional retry.
+
+The contract system supports several key software reliability principles:
+
+- **[Organized Panic](https://en.wikipedia.org/wiki/Exception_handling#Exception_handling_based_on_design_by_contract)** — Rather than scattering `try/catch` blocks throughout the call stack, exceptions are handled in a structured and localized manner. When an operation fails, the `rescue` handler at the point of failure recovers gracefully — either by returning a fallback value or by retrying with corrected arguments. You can always lexically determine where exception handling occurs.
+- **[Robustness](https://en.wikipedia.org/wiki/Robustness_(computer_science))** — The ability of a system to respond to situations not specified. The `rescue` mechanism enables implementations to cope with unanticipated failures by providing structured recovery logic at the declaration site, rather than relying on callers to anticipate every failure mode.
+- **[Fault-Tolerance](https://en.wikipedia.org/wiki/Fault_tolerance)** — The ability to continue operating despite failures. Rescue handlers work per-node during recursive fold traversal: when a handler throws for a particular node, `rescue` provides a fallback for that node while the rest of the tree continues folding normally.
+- **[Redundancy](https://en.wikipedia.org/wiki/Redundancy_(engineering))** — The `retry` mechanism allows an operation to re-execute with corrected arguments or after restoring invariants, providing a form of redundancy by attempting alternative strategies when the primary approach fails.
+- **[N-Version Programming](https://en.wikipedia.org/wiki/N-version_programming)** — The combination of `rescue` and `retry` provides a foundation for implementing multiple independent strategies for the same operation. When one approach fails, the rescue handler can retry with an entirely different algorithm or set of inputs.
+
+The contract system provides:
+
+- **Demands** (preconditions) — caller-blame checks before an operation executes
+- **Ensures** (postconditions) — implementer-blame checks after an operation completes
+- **Rescue** — structured recovery with optional retry when an operation fails
+- **Continuous invariants** — checked around every operation invocation
+- **Subcontracting** — LSP-safe composition through `[extend]` hierarchies
+- **Checked mode** — toggle all contract enforcement on/off at runtime
+
+```ts
+import {
+    data, fold, unfold, invariant,
+    checkedMode, DemandsError, EnsuresError, InvariantError,
+    assert, implies, iff
+} from '@lapis-lang/lapis-js';
+```
+
+### Checked Mode
+
+Checked Mode controls whether contract checking (demands, ensures, rescue, and continuous invariant checks around operations) is enabled or disabled at runtime. This allows you to turn off contract enforcement in production environments for maximum performance while keeping it enabled during development and testing.
+
+By default, Checked Mode is **enabled**.
+
+```ts
+import { checkedMode } from '@lapis-lang/lapis-js';
+
+checkedMode(false); // Disable contract checking
+checkedMode(true);  // Re-enable contract checking
+checkedMode();      // Query current state (returns boolean)
+```
+
+One approach to managing this is to leverage environment variables:
+
+```ts
+checkedMode(process.env.NODE_ENV === 'development');
+```
+
+**What is disabled:**
+
+- `demands` (precondition checks)
+- `ensures` (postcondition checks)
+- `rescue` (exception recovery handlers)
+- Continuous `[invariant]` checks around fold/unfold invocations
+
+**What remains active regardless:**
+
+- Field guards (`spec.in` / `spec.out`) — these are structural type checks, not contracts
+- Construction-time `[invariant]` checks — these are part of data construction, not operation contracts
+- `assert`, `implies`, `iff` — these are hard logical invariants (programmer errors), not operational contract checks
+
+### Assertions
+
+`assert` is **always active** regardless of `checkedMode`. It targets hard logical invariants (programmer errors) that should never be silenced, as opposed to `demands`/`ensures`/`rescue` whose overhead may be acceptable to skip in production.
+
+Use the `assert` function for inline assertions:
+
+```ts
+import { assert } from '@lapis-lang/lapis-js';
+
+function avg(xs: number[]): number {
+    assert(xs.length > 0, 'The list cannot be empty');
+    return xs.reduce((sum, next) => sum + next) / xs.length;
+}
+```
+
+If you are using TypeScript, `assert` supports assertion signatures so the type system narrows after a successful call:
+
+```ts
+let value: unknown = 'hello';
+
+value.toUpperCase(); // Error: 'value' is of type 'unknown'
+
+assert(typeof value === 'string');
+
+value.toUpperCase(); // OK: value is now narrowed to string
+```
+
+If the condition is falsy, an `AssertionError` is thrown:
+
+```ts
+assert(false, 'Something went wrong');
+// Throws: AssertionError: Something went wrong
+```
+
+**`assert` should not be used for validating operation arguments** — use `demands` for that purpose.
+
+### Implies
+
+When defining predicates it is a common use case to encode [material implication](https://en.wikipedia.org/wiki/Material_conditional):
+
+```ts
+import { implies } from '@lapis-lang/lapis-js';
+
+implies(weather.isSunny, person.visitsBeach);
+// Equivalent to: !weather.isSunny || person.visitsBeach
+```
+
+Useful in demands and ensures predicates:
+
+```ts
+const Stack = data(({ Family, T }) => ({
+    Empty: {},
+    Push: { value: T, rest: Family(T) },
+    size: fold({ out: Number })({
+        Empty() { return 0; },
+        Push({ rest }) { return 1 + rest; }
+    }),
+    pop: fold({
+        // If the stack is non-empty, then pop should succeed
+        demands: (self) => implies(self.size > 0, true)
+    })({
+        Empty() { throw new Error('Cannot pop empty stack'); },
+        Push() { return [this.value, this.rest]; }
+    })
+}));
+```
+
+| p | q | `implies(p, q)` |
+| --- | --- | --- |
+| `true` | `true` | `true` |
+| `true` | `false` | `false` |
+| `false` | `true` | `true` |
+| `false` | `false` | `true` |
+
+### Iff
+
+When defining predicates it is a common use case to encode [if and only if](https://en.wikipedia.org/wiki/Logical_biconditional) (biconditional):
+
+```ts
+import { iff } from '@lapis-lang/lapis-js';
+
+iff(person.hasTicket, person.ridesTrain);
+// Equivalent to: implies(p, q) && implies(q, p)
+```
+
+Useful for encoding equivalences in invariants:
+
+```ts
+const Stack = data(({ Family, T }) => ({
+    Empty: {},
+    Push: {
+        [invariant]: (self) => iff(self.size === 0, self instanceof Stack.Empty),
+        value: T,
+        rest: Family(T)
+    },
+    size: fold({ out: Number })({
+        Empty() { return 0; },
+        Push({ rest }) { return 1 + rest; }
+    })
+}));
+```
+
+| p | q | `iff(p, q)` |
+| --- | --- | --- |
+| `true` | `true` | `true` |
+| `true` | `false` | `false` |
+| `false` | `true` | `false` |
+| `false` | `false` | `true` |
+
+### Demands (Preconditions)
+
+Use `demands` in a fold or unfold spec to specify preconditions. If the condition fails, a `DemandsError` is thrown **before** the operation body executes. This represents **caller blame** — the caller invoked the operation with invalid state or arguments.
+
+```ts
+const Stack = data(({ Family, T }) => ({
+    Empty: {},
+    Push: { value: T, rest: Family(T) },
+    size: fold({ out: Number })({
+        Empty() { return 0; },
+        Push({ rest }) { return 1 + rest; }
+    }),
+
+    // demands: stack must not be empty before popping
+    pop: fold({
+        demands: (self) => self.size > 0
+    })({
+        Empty() { throw new TypeError('Cannot pop empty stack'); },
+        Push() { return [this.value, this.rest]; }
+    }),
+
+    // demands with input parameter: value must not be null/undefined
+    append: fold({
+        in: T,
+        demands: (self, val) => val !== undefined && val !== null
+    })({
+        Empty({}, val) { return Stack(Number).Push({ value: val, rest: Stack(Number).Empty }); },
+        Push({ rest }, val) { return Stack(Number).Push({ value: this.value, rest: rest(val) }); }
+    })
+}));
+
+const NumStack = Stack(Number);
+const { Empty, Push } = NumStack;
+
+const stack = Push({ value: 1, rest: Empty });
+console.log(stack.pop); // [1, Empty] — demands satisfied
+
+try {
+    Empty.pop; // DemandsError — stack is empty
+} catch (e) {
+    console.log(e instanceof DemandsError); // true
+}
+```
+
+**Demands on unfold operations:**
+
+```ts
+const List = data(({ Family }) => ({
+    Nil: {},
+    Cons: { head: Number, tail: Family },
+    Range: unfold({
+        in: Number,
+        out: Family,
+        demands: (self, n) => typeof n === 'number' && n >= 0
+    })({
+        Nil: (n) => (n <= 0 ? {} : null),
+        Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
+    })
+}));
+
+List.Range(5);  // OK
+List.Range(-1); // DemandsError: n must be >= 0
+```
+
+**Key points:**
+
+- The demands predicate receives `(self, ...args)` where `self` is the instance (or ADT for unfolds)
+- If the predicate returns `false` (or throws), a `DemandsError` is thrown
+- The operation body is **never executed** when demands fail
+- `DemandsError` is never caught by `rescue` — demands failures are always propagated to the caller
+
+### Ensures (Postconditions)
+
+Use `ensures` in a fold or unfold spec to specify postconditions. If the condition fails, an `EnsuresError` is thrown **after** the operation body completes. This represents **implementer blame** — the operation produced a result that violates its contract.
+
+```ts
+const Stack = data(({ Family, T }) => ({
+    Empty: {},
+    Push: { value: T, rest: Family(T) },
+    size: fold({ out: Number })({
+        Empty() { return 0; },
+        Push({ rest }) { return 1 + rest; }
+    }),
+
+    // ensures: the result size must be one more than the original
+    append: fold({
+        in: T,
+        out: Family,
+        ensures: (self, old, result) => result.size === old.size + 1
+    })({
+        Empty({}, val) { return Stack(Number).Push({ value: val, rest: Stack(Number).Empty }); },
+        Push({ rest }, val) { return Stack(Number).Push({ value: this.value, rest: rest(val) }); }
+    })
+}));
+```
+
+The ensures predicate receives `(self, old, result, ...args)`:
+
+- `self` — the instance the operation was called on
+- `old` — a snapshot of the instance state captured **before** the body executed
+- `result` — the value returned by the operation body
+- `...args` — any input arguments passed to the operation
+
+**Key points:**
+
+- The ensures predicate is evaluated **after** the operation body returns
+- If the predicate returns `false` (or throws), an `EnsuresError` is thrown
+- `EnsuresError` **is** caught by `rescue` if one is defined — allowing recovery
+
+### Rescue (Structured Recovery)
+
+Use `rescue` in a fold or unfold spec to handle exceptions thrown by the operation body or by `ensures`. Unlike traditional `try/catch` where exceptions are non-resumable and often handled far from the source (leading to scattered and redundant error handling), `rescue` provides **localized, declarative error handling** with optional retry.
+
+This is the mechanism underlying [Organized Panic](#design-by-contract) — you can lexically determine where exception handling occurs, restore invariants or perform corrective actions before retrying or failing, and implement alternative strategies for error recovery. This approach supports [Robustness](#design-by-contract), [Fault-Tolerance](#design-by-contract), [Redundancy](#design-by-contract), and [N-Version Programming](#design-by-contract) as described in the introduction above.
+
+```ts
+import { data, fold, checkedMode } from '@lapis-lang/lapis-js';
+
+checkedMode(true);
+
+const Expr = data(({ Family }) => ({
+    Lit: { value: Number },
+    Div: { left: Family, right: Family },
+
+    eval: fold({
+        out: Number,
+        rescue: (self, error, args) => {
+            console.log(`Caught: ${error.message}`);
+            return NaN; // Return a fallback value
+        }
+    })({
+        Lit({ value }) { return value; },
+        Div({ left, right }) {
+            if (right === 0) throw new Error('Division by zero');
+            return left / right;
+        }
+    })
+}));
+
+const { Lit, Div } = Expr;
+
+Div({ left: Lit({ value: 10 }), right: Lit({ value: 0 }) }).eval;
+// Logs: "Caught: Division by zero"
+// Returns: NaN
+```
+
+**Retry:**
+
+The rescue handler receives a `retry` function as its fourth argument. Calling `retry(...newArgs)` re-executes the operation body with new arguments, re-checking all contracts:
+
+```ts
+const Stack = data(({ Family, T }) => ({
+    Empty: {},
+    Push: { value: T, rest: Family(T) },
+
+    append: fold({
+        in: T,
+        out: Family,
+        rescue: (self, error, args, retry) => {
+            console.log(`append failed, retrying with default value 0`);
+            return retry(0); // Retry with a fallback argument
+        }
+    })({
+        Empty({}, val) {
+            if (val === undefined) throw new Error('No value');
+            return Stack(Number).Push({ value: val, rest: Stack(Number).Empty });
+        },
+        Push({ rest }, val) {
+            return Stack(Number).Push({ value: this.value, rest: rest(val) });
+        }
+    })
+}));
+```
+
+**Rescue handler signature:**
+
+```ts
+rescue: (self, error, args, retry) => result
+```
+
+- `self` — the instance the operation was called on
+- `error` — the error that was thrown
+- `args` — the original arguments passed to the operation
+- `retry(...newArgs)` — re-execute the body with new arguments
+
+**Fault-tolerant recursive folds (Fault-Tolerance and Redundancy):**
+
+Rescue handlers work per-node during fold traversal, enabling [Fault-Tolerance](https://en.wikipedia.org/wiki/Fault_tolerance). When a handler throws for a particular node, rescue provides a fallback ([Redundancy](https://en.wikipedia.org/wiki/Redundancy_(engineering))) for that node while the rest of the tree continues folding normally:
+
+```ts
+const Expr = data(({ Family }) => ({
+    Lit: { value: Number },
+    Add: { left: Family, right: Family },
+    Div: { left: Family, right: Family },
+
+    eval: fold({
+        out: Number,
+        rescue: (self, error, args) => {
+            return 0; // Default value for failed nodes
+        }
+    })({
+        Lit({ value }) { return value; },
+        Add({ left, right }) { return left + right; },
+        Div({ left, right }) {
+            if (right === 0) throw new Error('Division by zero');
+            return left / right;
+        }
+    })
+}));
+
+const { Lit, Add, Div } = Expr;
+
+// The division-by-zero node returns 0, but Add(5, 0) still computes correctly
+const expr = Add({ left: Lit({ value: 5 }), right: Div({ left: Lit({ value: 10 }), right: Lit({ value: 0 }) }) });
+console.log(expr.eval); // 5 (5 + 0)
+```
+
+**Key points:**
+
+- `rescue` catches errors from the operation body **and** from `ensures` failures
+- `rescue` does **not** catch `DemandsError` — precondition failures are always propagated to the caller
+- `retry` re-executes the full contract cycle (demands → body → ensures), supporting [N-Version Programming](https://en.wikipedia.org/wiki/N-version_programming) by allowing alternative strategies on failure
+- A maximum retry count (100) prevents infinite retry loops
+- If rescue does not call `retry` and does not throw, its return value becomes the operation result
+- Rescue handlers are inherited through `[extend]` unless overridden (see [Subcontracting](#subcontracting))
+
+### Continuous Invariants
+
+When checked mode is enabled, `[invariant]` predicates are not only checked at construction time — they are also checked **around every fold/unfold operation**. The invariant is verified both **before** and **after** the operation executes, ensuring that operations maintain the structural integrity of the data.
+
+```ts
+import { data, fold, invariant, checkedMode, InvariantError } from '@lapis-lang/lapis-js';
+
+checkedMode(true);
+
+const Stack = data(({ Family, T }) => ({
+    Empty: {},
+    Push: {
+        [invariant]: (self) => self.size >= 0,
+        value: T,
+        rest: Family(T)
+    },
+    size: fold({ out: Number })({
+        Empty() { return 0; },
+        Push({ rest }) { return 1 + rest; }
+    })
+}));
+```
+
+**Key points:**
+
+- Without contracts, `[invariant]` is only checked at construction time
+- With checked mode enabled, invariants are checked **before** and **after** every operation
+- If the invariant fails before the operation, an `InvariantError` is thrown (the body never executes)
+- If the invariant fails after the operation (or after rescue), an `InvariantError` is thrown
+- Invariants are AND-composed through `[extend]` hierarchies (see [Subcontracting](#subcontracting))
+
+### Subcontracting
+
+When a child ADT extends a parent ADT (via `[extend]`) and both define contracts for the same operation, the contracts are composed according to the [Liskov Substitution Principle](https://en.wikipedia.org/wiki/Liskov_substitution_principle) (LSP):
+
+| Contract | Composition Rule | Effect |
+| --- | --- | --- |
+| **Demands** | OR (weaken) | The child can accept **more** inputs than the parent |
+| **Ensures** | AND (strengthen) | The child must satisfy **all** postconditions from both parent and child |
+| **Invariant** | AND (strengthen) | All invariants in the inheritance chain must hold |
+| **Rescue** | Override or inherit | The child's rescue replaces the parent's; if absent, the parent's is inherited |
+
+**Demands — weakening (OR):**
+
+A child type can weaken preconditions to accept a wider range of inputs:
+
+```ts
+const IntExpr = data(({ Family }) => ({
+    Lit: { value: Number },
+    Add: { left: Family, right: Family },
+    eval: fold({
+        out: Number,
+        // Parent demands: value must be >= 0
+        demands: (self) => self.value !== undefined ? self.value >= 0 : true
+    })({
+        Lit({ value }) { return value; },
+        Add({ left, right }) { return left + right; }
+    })
+}));
+
+const ExtExpr = data(({ Family }) => ({
+    [extend]: IntExpr,
+    Neg: { operand: Family },
+    eval: fold({
+        out: Number,
+        // Child demands: also accept negative values (weaker = more permissive)
+        demands: (self) => self.value !== undefined ? self.value >= -100 : true
+    })({
+        Neg({ operand }) { return -operand; }
+    })
+}));
+
+// Effective demand: parent(self) || child(self)
+// Value -50 fails parent demand but passes child demand → accepted
+```
+
+**Ensures — strengthening (AND):**
+
+```ts
+const Base = data(({ Family }) => ({
+    Lit: { value: Number },
+    eval: fold({
+        out: Number,
+        ensures: (self, old, result) => result >= 0    // Parent: result non-negative
+    })({
+        Lit({ value }) { return Math.abs(value); }
+    })
+}));
+
+const Extended = data(({ Family }) => ({
+    [extend]: Base,
+    eval: fold({
+        out: Number,
+        ensures: (self, old, result) => result <= 100  // Child: result at most 100
+    })({})
+}));
+
+// Effective ensures: parent(result) && child(result)
+// Result must be both >= 0 AND <= 100
+```
+
+**Rescue — override or inherit:**
+
+```ts
+const Base = data(({ Family }) => ({
+    Lit: { value: Number },
+    eval: fold({
+        out: Number,
+        rescue: (self, error) => 0  // Parent rescue: default to 0
+    })({
+        Lit({ value }) { return value; }
+    })
+}));
+
+const Extended = data(({ Family }) => ({
+    [extend]: Base,
+    Neg: { operand: Family },
+    eval: fold({
+        out: Number,
+        rescue: (self, error) => -1  // Child rescue: override, default to -1
+    })({
+        Neg({ operand }) { return -operand; }
+    })
+}));
+
+// If no child rescue is defined, the parent's rescue is inherited
+```
+
+### The Order of Assertions
+
+When an operation is invoked in checked mode, the assertions are evaluated in the following order:
+
+**Happy path** (no errors):
+
+1. **Invariant pre-check** — verify invariant holds before the operation
+2. **Demands** — verify precondition
+3. **Capture old state** — snapshot for `ensures` predicate
+4. **Execute body** — run the operation handler
+5. **Ensures** — verify postcondition against old state and result
+6. **(Invariant post-check)** — verify invariant still holds after the operation
+
+**Error path** (body or ensures throws):
+
+1. **Invariant pre-check**
+2. **Demands**
+3. **Execute body** → throws
+4. **Rescue** — if defined, handles the error
+   - If `retry` is called → go back to step 2
+   - If rescue returns a value → that becomes the result
+5. **Invariant post-check**
+
+**Special cases:**
+
+- If **demands** fails → `DemandsError` is raised directly to the caller. The body is never entered, invariant is not re-checked (the operation cannot have modified state without executing).
+- If **invariant pre-check** fails → `InvariantError` is raised. The body is never entered.
+- If **rescue** throws or does not call `retry` → the invariant is checked before the error propagates.
+
+### Contracts on Behavior (Codata)
+
+Contracts work on `behavior` types the same way they work on `data` types. Demands and ensures can be specified on both unfold (construction) and fold (consumption) operations:
+
+```ts
+import { behavior, fold, unfold, checkedMode, DemandsError } from '@lapis-lang/lapis-js';
+
+checkedMode(true);
+
+const Stream = behavior(({ Self, T }) => ({
+    head: T,
+    tail: Self(T),
+
+    // Unfold with demands: seed must be non-negative
+    From: unfold({
+        in: Number,
+        out: Self,
+        demands: (self, seed) => typeof seed === 'number' && seed >= 0
+    })({
+        head: (n) => n,
+        tail: (n) => n + 1
+    }),
+
+    // Fold with demands + ensures + rescue
+    take: fold({
+        in: Number,
+        out: Array,
+        demands: (self, n) => typeof n === 'number' && n >= 0,
+        ensures: (self, old, result, n) =>
+            Array.isArray(result) && result.length <= n,
+        rescue: (self, error, args) => {
+            console.log(`take failed: ${error.message}`);
+            return []; // Fallback to empty array
+        }
+    })({
+        _: ({ head, tail }, n) => n > 0 ? [head, ...tail(n - 1)] : []
+    }),
+
+    // Fold with contracts
+    sum: fold({
+        in: Number,
+        out: Number,
+        demands: (self, n) => n >= 0,
+        ensures: (self, old, result) => typeof result === 'number'
+    })({
+        _: ({ head, tail }, n) => n > 0 ? head + tail(n - 1) : 0
+    })
+}));
+
+const NumStream = Stream(Number);
+
+const nats = NumStream.From(0);
+console.log(nats.take(5)); // [0, 1, 2, 3, 4]
+console.log(nats.sum(5));  // 10
+
+try {
+    NumStream.From(-1); // DemandsError: seed must be >= 0
+} catch (e) {
+    console.log(e instanceof DemandsError); // true
+}
+
+try {
+    nats.take(-1); // DemandsError: n must be >= 0
+} catch (e) {
+    console.log(e instanceof DemandsError); // true
+}
+```
+
+**See also:**
+
+- `examples/contracts-stack.mts` — Stack with demands, ensures, rescue, and invariants
+- `examples/contracts-fault-tolerant.mts` — Expression tree with fault-tolerant fold
+- `examples/contracts-stream.mts` — Behavior stream with contracts
+
 ## References, Inspirations, and Further Reading
 
 - [Algebraic Data Types in JavaScript (2008)](https://w3future.com/weblog/stories/2008/06/16/adtinjs.xml)
 - [Brevity - Michael Haufe (2022)](https://github.com/mlhaufe/brevity)
+- [Design by Contract — Wikipedia](https://en.wikipedia.org/wiki/Design_by_contract)
+- [Decorator Contracts — Final Hill](https://github.com/final-hill/decorator-contracts)
 - [From Object Algebras to Finally Tagless Interpreters - Oleksandr Manzyuk (2014)](https://web.archive.org/web/20181211210520/https://oleksandrmanzyuk.wordpress.com/2014/06/18/from-object-algebras-to-finally-tagless-interpreters-2/)
 - [Extensibility for the Masses - Bruno C. d. S. Oliveira and William R. Cook (2012)](https://www.cs.utexas.edu/~wcook/Drafts/2012/ecoop2012.pdf)
+- [Liskov Substitution Principle — Wikipedia](https://en.wikipedia.org/wiki/Liskov_substitution_principle)
+- [Object-Oriented Software Construction — Bertrand Meyer (1997)](https://en.wikipedia.org/wiki/Object-Oriented_Software_Construction)

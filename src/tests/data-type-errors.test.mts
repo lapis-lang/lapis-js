@@ -48,7 +48,7 @@ describe('Data Type Errors - Runtime Validation', () => {
             () => data(() => ({
                 Point2D: { X: Number, Y: Number }
             })),
-            /Field 'X' .* must be camelCase/
+            /Field 'X' must be camelCase/
         );
     });
 
@@ -57,7 +57,7 @@ describe('Data Type Errors - Runtime Validation', () => {
             () => data(() => ({
                 Point2D: { _x: Number, y: Number }
             })),
-            /Field '_x' .* must be camelCase/
+            /Field '_x' must be camelCase/
         );
     });
 
@@ -66,7 +66,7 @@ describe('Data Type Errors - Runtime Validation', () => {
             () => data(() => ({
                 Settings: { HOST: String, port: Number }
             })),
-            /Field 'HOST' .* must be camelCase/
+            /Field 'HOST' must be camelCase/
         );
     });
 
