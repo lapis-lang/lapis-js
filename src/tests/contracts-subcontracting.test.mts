@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { data, extend, fold, DemandsError, EnsuresError } from '../index.mjs';
+import { data, extend, fold, unfold, DemandsError, EnsuresError } from '../index.mjs';
 
 describe('Contracts: Subcontracting (LSP)', () => {
     describe('Demands OR (weaken)', () => {
@@ -149,6 +149,196 @@ describe('Contracts: Subcontracting (LSP)', () => {
             assert.equal(childRescueCalled, true);
             assert.equal(parentRescueCalled, false);
             assert.equal(result, -2);
+        });
+    });
+
+    // ---- Unfold subcontracting ------------------------------------------------
+
+    describe('Unfold demands OR (weaken)', () => {
+        it('should accept seed if either parent or child unfold demands pass', () => {
+            const Base = data(({ Family }) => ({
+                Nil: {},
+                Cons: { head: Number, tail: Family },
+                Range: unfold({
+                    in: Number,
+                    demands: (_self, n) => n >= 0
+                })({
+                    Nil: (n) => n <= 0 ? {} : null,
+                    Cons: (n) => n > 0 ? { head: n, tail: n - 1 } : null
+                })
+            }));
+
+            const Extended = data(({ Family }) => ({
+                [extend]: Base,
+                // Child weakens: also accept -1 as a special sentinel
+                Range: unfold({
+                    in: Number,
+                    demands: (_self, n) => n === -1
+                })({
+                    Nil: (n) => n <= 0 ? {} : null,
+                    Cons: (n) => n > 0 ? { head: n, tail: n - 1 } : null
+                })
+            }));
+
+            // Parent demand passes (n >= 0)
+            const list1 = Extended.Range(2);
+            assert.equal(list1.head, 2);
+
+            // Child demand passes (n === -1)
+            const list2 = Extended.Range(-1);
+            assert.ok(list2); // Nil
+
+            // Neither passes
+            assert.throws(
+                () => Extended.Range(-5),
+                (err) => err instanceof DemandsError
+            );
+        });
+    });
+
+    describe('Unfold ensures AND (strengthen)', () => {
+        it('should require both parent and child unfold ensures to pass', () => {
+            const Base = data(({ Family }) => ({
+                Nil: {},
+                Cons: { head: Number, tail: Family },
+                Range: unfold({
+                    in: Number,
+                    ensures: (_self, _old, result) =>
+                        result !== null && result !== undefined
+                })({
+                    Nil: (n) => n <= 0 ? {} : null,
+                    Cons: (n) => n > 0 ? { head: n, tail: n - 1 } : null
+                })
+            }));
+
+            const Extended = data(({ Family }) => ({
+                [extend]: Base,
+                // Child strengthens: result head must be <= 5
+                Range: unfold({
+                    in: Number,
+                    ensures: (_self, _old, result) =>
+                        !('head' in result) || result.head <= 5
+                })({
+                    Nil: (n) => n <= 0 ? {} : null,
+                    Cons: (n) => n > 0 ? { head: n, tail: n - 1 } : null
+                })
+            }));
+
+            // Both pass — head is 3 (≤ 5) and result is defined
+            const list1 = Extended.Range(3);
+            assert.equal(list1.head, 3);
+
+            // Child ensures fails — head is 10 (> 5)
+            assert.throws(
+                () => Extended.Range(10),
+                (err) => err instanceof EnsuresError
+            );
+        });
+    });
+
+    describe('Unfold rescue inheritance', () => {
+        it('should inherit parent rescue when child does not define one', () => {
+            let parentRescueCalled = false;
+
+            const Base = data(({ Family }) => ({
+                Nil: {},
+                Cons: { head: Number, tail: Family },
+                Build: unfold({
+                    in: Number,
+                    rescue: () => {
+                        parentRescueCalled = true;
+                        return Base.Nil;
+                    }
+                })({
+                    Nil: () => null,
+                    Cons: () => { throw new Error('boom'); }
+                })
+            }));
+
+            const Extended = data(({ Family }) => ({
+                [extend]: Base,
+                // Override Build without rescue — should inherit parent's
+                Build: unfold({
+                    in: Number
+                })({
+                    Nil: () => null,
+                    Cons: () => { throw new Error('extended boom'); }
+                })
+            }));
+
+            const result = Extended.Build(5);
+            assert.equal(parentRescueCalled, true);
+            assert.ok(result); // Nil from rescue
+        });
+
+        it('should use child rescue when child defines one', () => {
+            let parentRescueCalled = false;
+            let childRescueCalled = false;
+
+            const Base = data(({ Family }) => ({
+                Nil: {},
+                Cons: { head: Number, tail: Family },
+                Build: unfold({
+                    in: Number,
+                    rescue: () => {
+                        parentRescueCalled = true;
+                        return Base.Nil;
+                    }
+                })({
+                    Nil: () => null,
+                    Cons: () => { throw new Error('boom'); }
+                })
+            }));
+
+            const Extended = data(({ Family }) => ({
+                [extend]: Base,
+                Build: unfold({
+                    in: Number,
+                    rescue: () => {
+                        childRescueCalled = true;
+                        return Extended.Nil;
+                    }
+                })({
+                    Nil: () => null,
+                    Cons: () => { throw new Error('extended boom'); }
+                })
+            }));
+
+            const result = Extended.Build(5);
+            assert.equal(childRescueCalled, true);
+            assert.equal(parentRescueCalled, false);
+            assert.ok(result);
+        });
+    });
+
+    describe('Unfold inherits contracts without override', () => {
+        it('should enforce parent demands on inherited unfold', () => {
+            const Base = data(({ Family }) => ({
+                Nil: {},
+                Cons: { head: Number, tail: Family },
+                Range: unfold({
+                    in: Number,
+                    demands: (_self, n) => n >= 0
+                })({
+                    Nil: (n) => n <= 0 ? {} : null,
+                    Cons: (n) => n > 0 ? { head: n, tail: n - 1 } : null
+                })
+            }));
+
+            const Extended = data(() => ({
+                [extend]: Base,
+                Extra: { tag: String }
+            }));
+
+            // Parent demands should still fire on non-overridden unfold
+            assert.throws(
+                () => Extended.Range(-1),
+                (err) => err instanceof DemandsError
+            );
+
+            // Valid seed works
+            const list = Extended.Range(2);
+            assert.equal(list.head, 2);
         });
     });
 });

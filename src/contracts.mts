@@ -188,12 +188,18 @@ export function executeRescue(
     let retryCount = 0;
     let retryResult: unknown;
     let didRetry = false;
+    let currentError: unknown = error;
+    // Accumulate every error encountered during the rescue/retry cycle
+    // so that diagnostics are available when MAX_RETRIES is exceeded or
+    // when an unexpected error propagates out.
+    const errors: unknown[] = [error];
 
     const retryFn = (...newArgs: unknown[]): unknown => {
         retryCount++;
         if (retryCount > MAX_RETRIES) {
             throw new Error(
-                `Maximum retry count (${MAX_RETRIES}) exceeded in rescue for operation '${opName}' on ${context}`
+                `Maximum retry count (${MAX_RETRIES}) exceeded in rescue for operation '${opName}' on ${context}`,
+                { cause: errors }
             );
         }
         didRetry = true;
@@ -201,9 +207,24 @@ export function executeRescue(
         return retryResult;
     };
 
-    const rescueResult = rescue(self, error, args, retryFn);
+    while (true) {
+        didRetry = false;
 
-    return { result: didRetry ? retryResult : rescueResult, didRetry };
+        try {
+            const rescueResult = rescue(self, currentError, args, retryFn);
+
+            return { result: didRetry ? retryResult : rescueResult, didRetry };
+        } catch (e) {
+            // Only re-rescue when retry was called but the body threw.
+            // If rescue itself threw without calling retry, propagate.
+            if (!didRetry || retryCount > MAX_RETRIES) throw e;
+            // Body threw during retry — record and re-invoke rescue
+            // with the new error so the full history is preserved.
+            errors.push(e);
+            currentError = e;
+            continue;
+        }
+    }
 }
 
 /**
@@ -211,7 +232,7 @@ export function executeRescue(
  * Returns only the contract-related properties, leaving the rest for type checking.
  * Returns `null` when no contracts are present (simplifies truthiness checks at call sites).
  */
-export function extractContracts(specObj: Record<string, unknown>): ContractSpec | null {
+function extractContracts(specObj: Record<string, unknown>): ContractSpec | null {
     const hasDemands = 'demands' in specObj && typeof specObj['demands'] === 'function',
         hasEnsures = 'ensures' in specObj && typeof specObj['ensures'] === 'function',
         hasRescue = 'rescue' in specObj && typeof specObj['rescue'] === 'function';
@@ -228,10 +249,31 @@ export function extractContracts(specObj: Record<string, unknown>): ContractSpec
 }
 
 /**
- * Check if a spec has any contract properties.
+ * Resolve contracts for a child operation with optional parent subcontracting.
+ *
+ * Extracts the child's contracts from `specObj`, then composes with
+ * `parentContracts` (if any) using LSP subcontracting rules:
+ * - If the child explicitly declares contracts → compose with parent
+ * - If the child has no contracts → inherit parent's contracts unchanged
+ * - If no parent contracts exist → use child's own (may be null)
+ *
+ * Replaces the repeated extract-then-compose-or-inherit pattern that
+ * previously appeared at every fold/unfold registration site.
  */
-export function hasContracts(specObj: Record<string, unknown>): boolean {
-    return 'demands' in specObj || 'ensures' in specObj || 'rescue' in specObj;
+export function resolveContracts(
+    specObj: Record<string, unknown>,
+    parentContracts?: ContractSpec | null
+): ContractSpec | null {
+    let contracts: ContractSpec | null = extractContracts(specObj);
+
+    if (parentContracts) {
+        if (contracts !== null)
+            contracts = composeContracts(parentContracts, contracts);
+        else
+            contracts = parentContracts;
+    }
+
+    return contracts;
 }
 
 // ---- Subcontracting Composition ---------------------------------------------
@@ -242,32 +284,48 @@ export function hasContracts(specObj: Record<string, unknown>): boolean {
  * - ensures: AND (strengthen) — child ensures ∧ parent ensures
  * - rescue: override or inherit — child rescue replaces parent, or parent inherited if absent
  */
-export function composeContracts(
+function composeContracts(
     parentContracts: ContractSpec,
     childContracts: ContractSpec
 ): ContractSpec {
     const composed: ContractSpec = {};
 
-    // Demands: OR (weaken) — accept if either parent or child demands pass
+    // Demands: OR (weaken) — accept if either parent or child demands pass.
+    // Each predicate is evaluated independently; a throw is treated as false
+    // so that one side throwing does not prevent the other from accepting.
     if (parentContracts.demands || childContracts.demands) {
         const parentDemands = parentContracts.demands;
         const childDemands = childContracts.demands;
 
         if (parentDemands && childDemands) {
-            composed.demands = (self: unknown, ...args: unknown[]) =>
-                parentDemands(self, ...args) || childDemands(self, ...args);
+            composed.demands = (self: unknown, ...args: unknown[]) => {
+                let parentOk = false;
+                try { parentOk = parentDemands(self, ...args); } catch { /* treat as false */ }
+                if (parentOk) return true;
+                let childOk = false;
+                try { childOk = childDemands(self, ...args); } catch { /* treat as false */ }
+                return childOk;
+            };
         } else
             composed.demands = childDemands || parentDemands;
     }
 
-    // Ensures: AND (strengthen) — both parent and child ensures must pass
+    // Ensures: AND (strengthen) — both parent and child ensures must pass.
+    // Each predicate is evaluated independently; a throw is treated as false
+    // so that one side throwing does not mask the other's result.
     if (parentContracts.ensures || childContracts.ensures) {
         const parentEnsures = parentContracts.ensures;
         const childEnsures = childContracts.ensures;
 
         if (parentEnsures && childEnsures) {
-            composed.ensures = (self: unknown, old: unknown, result: unknown, ...args: unknown[]) =>
-                parentEnsures(self, old, result, ...args) && childEnsures(self, old, result, ...args);
+            composed.ensures = (self: unknown, old: unknown, result: unknown, ...args: unknown[]) => {
+                let parentOk = false;
+                try { parentOk = parentEnsures(self, old, result, ...args); } catch { /* treat as false */ }
+                if (!parentOk) return false;
+                let childOk = false;
+                try { childOk = childEnsures(self, old, result, ...args); } catch { /* treat as false */ }
+                return childOk;
+            };
         } else
             composed.ensures = childEnsures || parentEnsures;
     }

@@ -31,7 +31,7 @@ import {
 
 import {
     isCheckedMode,
-    extractContracts,
+    resolveContracts,
     checkDemands,
     checkEnsures,
     executeRescue,
@@ -406,7 +406,8 @@ export function behavior<D extends Record<string, unknown>>(
             observerMap,
             name,
             opSpec as Record<string, unknown>,
-            handler as AnyFn
+            handler as AnyFn,
+            parentBehaviorType
         );
     }
 
@@ -565,31 +566,65 @@ function addUnfoldOperation(
     }
 
     // Extract contracts from spec
-    const unfoldContracts: ContractSpec | null = extractContracts(parsedSpec);
+    const unfoldContracts: ContractSpec | null = resolveContracts(parsedSpec);
 
     const hasInput = hasInputSpec(parsedSpec),
         makeInstance = (seed: unknown) =>
             createBehaviorInstance(BehaviorType, observerMap, seed, handlers);
 
+    // Shared checked-mode helper for both seeded and seedless unfold paths.
+    const checkedUnfold = (
+        seed: unknown,
+        args: unknown[],
+        retryBody: (...newArgs: unknown[]) => unknown
+    ): unknown => {
+        if (unfoldContracts!.demands)
+            checkDemands(unfoldContracts!.demands, name, 'unfold', null, args);
+
+        try {
+            const result = makeInstance(seed);
+
+            if (unfoldContracts!.ensures)
+                checkEnsures(unfoldContracts!.ensures, name, 'unfold', null, seed, result, args);
+
+            return result;
+        } catch (error) {
+            if (unfoldContracts!.rescue && !(error instanceof DemandsError)) {
+                const { result: rescueResult } = executeRescue(
+                    unfoldContracts!.rescue,
+                    null,
+                    error,
+                    args,
+                    retryBody,
+                    name,
+                    'unfold'
+                );
+
+                return rescueResult;
+            }
+
+            throw error;
+        }
+    };
+
     if (hasInput) {
         BehaviorType[name] = function (seed: unknown) {
             validateTypeSpec(seed, parsedSpec['in'] as Parameters<typeof validateTypeSpec>[1], name, 'input of type');
 
-            // Contract: demands check
-            if (isCheckedMode() && unfoldContracts?.demands)
-                checkDemands(unfoldContracts.demands, name, 'unfold', null, [seed]);
+            if (isCheckedMode() && unfoldContracts)
+                return checkedUnfold(seed, [seed],
+                    (...newArgs: unknown[]) =>
+                        (BehaviorType[name] as (s: unknown) => unknown)(newArgs[0]));
 
-            const result = makeInstance(seed);
-
-            // Contract: ensures check
-            if (isCheckedMode() && unfoldContracts?.ensures)
-                checkEnsures(unfoldContracts.ensures, name, 'unfold', null, seed, result, [seed]);
-
-            return result;
+            return makeInstance(seed);
         };
     } else {
         Object.defineProperty(BehaviorType, name, {
             get() {
+                if (isCheckedMode() && unfoldContracts)
+                    return checkedUnfold(undefined, [],
+                        () => BehaviorType[name] as unknown);
+
                 return makeInstance(undefined);
             },
             enumerable: true,
@@ -884,7 +919,8 @@ function addFoldOperation(
     _observerMap: Map<string, ObserverEntry>,
     name: string,
     opSpecArg: Record<string, unknown>,
-    handler: AnyFn
+    handler: AnyFn,
+    parentBehaviorType?: BehaviorTypeLike | null
 ): void {
     assertCamelCase(name, 'Fold operation');
 
@@ -904,7 +940,14 @@ function addFoldOperation(
     }
 
     // Extract contracts from spec
-    const foldContracts: ContractSpec | null = extractContracts(parsedSpec);
+    // Extract + subcontract: compose child contracts with parent's (LSP rules)
+    const parentFoldEntry = parentBehaviorType
+        ? ((parentBehaviorType as Record<symbol, unknown>)[FoldOpsSymbol] as
+            Map<string, FoldOpEntry> | undefined)?.get(name)
+        : undefined;
+    const foldContracts: ContractSpec | null = resolveContracts(
+        parsedSpec, parentFoldEntry?.contracts
+    );
 
     ensureOwnMap<string, FoldOpEntry>(
         BehaviorType as unknown as Record<symbol, unknown>,
@@ -1242,7 +1285,7 @@ function createBehaviorInstance(
                 if (!handler) {
                     throw new Error(
                         `No unfold handler defined for observer '${prop}'. ` +
-                        `Define an unfold operation (e.g., 'From: { [op]: "unfold", [spec]: {...}, ...handlers }') to construct behavior instances.`
+                        `Define an unfold operation (e.g., 'From: unfold({ in: Number, out: Self })({ ... })') to construct behavior instances.`
                     );
                 }
 

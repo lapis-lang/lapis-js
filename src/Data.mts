@@ -18,9 +18,7 @@ import {
 
 import {
     isCheckedMode,
-    extractContracts,
-    hasContracts,
-    composeContracts,
+    resolveContracts,
     checkDemands,
     checkEnsures,
     checkInvariant,
@@ -803,6 +801,23 @@ function createOperations(
     }
 }
 
+/**
+ * If `value` is a variant instance whose constructor defines an [invariant],
+ * run a post-check against that invariant.  This ensures continuous invariant
+ * enforcement on operation *results* — not just on the receiver (`self`).
+ * Data instances are frozen, so the receiver's invariant cannot change; the
+ * interesting post-condition is whether the produced value satisfies *its own*
+ * variant's invariant.
+ */
+function checkResultInvariant(value: unknown, opName: string): void {
+    if (value === null || value === undefined || typeof value !== 'object') return;
+    const ctor = (value as { constructor?: VariantLike }).constructor;
+    if (!ctor?._invariant) return;
+    const variantName = (value as Record<symbol, unknown>)[VariantNameSymbol] as string | undefined;
+    if (!variantName) return;
+    checkInvariant(ctor._invariant as (i: unknown) => boolean, opName, variantName, 'post', value);
+}
+
 function createFoldOperation(
     ADT: ADTLike,
     variants: Record<string, unknown>,
@@ -868,21 +883,13 @@ function createFoldOperation(
         }
     }
 
-    // Extract contract properties from spec (demands, ensures, rescue)
-    let foldContracts: ContractSpec | null = extractContracts(opSpecObj);
-
-    // Subcontracting: compose contracts with parent's contracts
-    if (localParentADT) {
-        const parentRegistry = adtTransformers.get(localParentADT as unknown as object),
-            parentTransformer = parentRegistry?.get(opName);
-        if (parentTransformer && parentTransformer.contracts) {
-            const parentContracts = parentTransformer.contracts;
-            if (hasContracts(opSpecObj))
-                foldContracts = composeContracts(parentContracts, foldContracts!);
-            else
-                foldContracts = parentContracts;
-        }
-    }
+    // Extract + subcontract: compose child contracts with parent's (LSP rules)
+    const parentFoldTransformer = localParentADT
+        ? adtTransformers.get(localParentADT as unknown as object)?.get(opName)
+        : undefined;
+    const foldContracts: ContractSpec | null = resolveContracts(
+        opSpecObj, parentFoldTransformer?.contracts
+    );
 
     const hasExtraParams = !hasInput && Object.values(handlers).some(h =>
         typeof h === 'function' && (h as HandlerFn).length > 1
@@ -935,64 +942,6 @@ function createFoldOperation(
     // Pre-check whether any contracts are defined (avoids repeated property
     // access inside the hot loop).
     const hasAnyContracts = foldContracts !== null;
-
-    // Shared rescue + retry loop.  Encapsulates the re-rescue pattern used by
-    // both the top-level checked path and the inner-recursion rescue path.
-    //
-    // `bodyFn`   — executes the handler (including ensures in the checked path)
-    // `onSubstitute` — optional callback when rescue returns a substitute value
-    //                   (not via retry), e.g. invariant post-check
-    const rescueLoop = (
-        rescue: NonNullable<ContractSpec['rescue']>,
-        self: unknown,
-        error: unknown,
-        callArgs: unknown[],
-        bodyFn: (...a: unknown[]) => unknown,
-        ctx: string,
-        onSubstitute?: (rescueResult: unknown) => void
-    ): unknown => {
-        let retryCount = 0;
-        let didRetry = false;
-        let currentError: unknown = error;
-        // Accumulate every error encountered during the rescue/retry cycle
-        // so that diagnostics are available when MAX_RETRIES is exceeded or
-        // when an unexpected error propagates out.
-        const errors: unknown[] = [error];
-
-        const retryFn = (...newArgs: unknown[]): unknown => {
-            retryCount++;
-            if (retryCount > MAX_RETRIES) {
-                throw new Error(
-                    `Maximum retry count (${MAX_RETRIES}) exceeded in rescue for operation '${opName}' on ${ctx}`,
-                    { cause: errors }
-                );
-            }
-            didRetry = true;
-            return bodyFn(...newArgs);
-        };
-
-        while (true) {
-            didRetry = false;
-
-            try {
-                const rescueResult = rescue(self, currentError, callArgs, retryFn);
-
-                if (!didRetry && onSubstitute)
-                    onSubstitute(rescueResult);
-
-                return rescueResult;
-            } catch (e) {
-                // Only re-rescue when retry was called but the body threw.
-                // If rescue itself threw without calling retry, propagate.
-                if (!didRetry || retryCount > MAX_RETRIES) throw e;
-                // Body threw during retry — record and re-invoke rescue
-                // with the new error so the full history is preserved.
-                errors.push(e);
-                currentError = e;
-                continue;
-            }
-        }
-    };
 
     // Histomorphism support — when `history: true` in spec, each node's
     // foldedFields are cached so that handlers can access deeper sub-results
@@ -1300,26 +1249,32 @@ function createFoldOperation(
             // on a node are deterministic — checking once at the entry point
             // is sufficient.  Rescue, however, is an error-recovery mechanism
             // and must remain active at every recursion level.
-            const inCheckedMode = hasAnyContracts && isCheckedMode();
-            const checked = contractDepth === 1 && inCheckedMode;
+            //
+            // Invariant checks are gated by isCheckedMode() alone (not by
+            // hasAnyContracts) so that a fold with no demands/ensures/rescue
+            // still runs invariant pre-checks when the variant defines one.
+            const inCheckedMode = isCheckedMode();
+
+            // Get the invariant function for this instance's variant
+            const variantInvariantFn: ((instance: object) => boolean) | null =
+                inCheckedMode && variantCtor
+                    ? (variantCtor as VariantLike)._invariant ?? null
+                    : null;
+
+            const checked = contractDepth === 1 && inCheckedMode
+                && (hasAnyContracts || variantInvariantFn !== null);
             let result: unknown;
 
             if (checked) {
                 const variantCtx = variantName || 'unknown';
-
-                // Get the invariant function for this instance's variant
-                const variantInvariantFn: ((instance: object) => boolean) | null =
-                    variantCtor
-                        ? (variantCtor as VariantLike)._invariant ?? null
-                        : null;
 
                 // 1. Invariant pre-check on self
                 if (variantInvariantFn)
                     checkInvariant(variantInvariantFn as (i: unknown) => boolean, opName, variantCtx, 'pre', self);
 
                 // 2. Demands check (precondition)
-                if (foldContracts!.demands)
-                    checkDemands(foldContracts!.demands, opName, variantCtx, self, args);
+                if (foldContracts?.demands)
+                    checkDemands(foldContracts.demands, opName, variantCtx, self, args);
 
                 // 3. Capture old state for ensures (reference to self since data is frozen/immutable)
                 const old = self;
@@ -1331,8 +1286,8 @@ function createFoldOperation(
                         validateReturnType(bodyResult, opSpecObj['out'] as Parameters<typeof validateReturnType>[1], opName);
 
                     // 4. Ensures check (postcondition)
-                    if (foldContracts!.ensures)
-                        checkEnsures(foldContracts!.ensures, opName, variantCtx, self, old, bodyResult, bodyArgs);
+                    if (foldContracts?.ensures)
+                        checkEnsures(foldContracts.ensures, opName, variantCtx, self, old, bodyResult, bodyArgs);
 
                     return bodyResult;
                 };
@@ -1341,18 +1296,19 @@ function createFoldOperation(
                     result = executeBody(...args);
                 } catch (error) {
                     // 5. Rescue handler for body/ensures errors
-                    if (foldContracts!.rescue && !(error instanceof DemandsError)) {
-                        const rescueResult = rescueLoop(
-                            foldContracts!.rescue!,
+                    if (foldContracts?.rescue && !(error instanceof DemandsError)) {
+                        const { result: rescueResult } = executeRescue(
+                            foldContracts.rescue,
                             self,
                             error,
                             args,
                             executeBody,
-                            variantCtx,
-                            variantInvariantFn
-                                ? () => checkInvariant(variantInvariantFn as (i: unknown) => boolean, opName, variantCtx, 'post', self)
-                                : undefined
+                            opName,
+                            variantCtx
                         );
+
+                        // 6. Invariant post-check on result (if it's a variant with an invariant)
+                        checkResultInvariant(rescueResult, opName);
 
                         if (canCache) dagCache!.set(self, rescueResult);
                         return rescueResult;
@@ -1360,6 +1316,9 @@ function createFoldOperation(
 
                     throw error;
                 }
+
+                // 6. Invariant post-check on result (if it's a variant with an invariant)
+                checkResultInvariant(result, opName);
             } else if (inCheckedMode && foldContracts?.rescue) {
                 // Inner recursion level with rescue active:
                 // Skip demands/ensures/invariant but still wrap in rescue
@@ -1377,12 +1336,13 @@ function createFoldOperation(
                             return r;
                         };
 
-                        const rescueResult = rescueLoop(
+                        const { result: rescueResult } = executeRescue(
                             foldContracts!.rescue!,
                             self,
                             error,
                             args,
                             innerBody,
+                            opName,
                             variantName || 'unknown'
                         );
 
@@ -1469,8 +1429,15 @@ function installUnfoldImpl(
     cases: Record<string, (seed: unknown) => unknown | null>,
     opSpecObj: Record<string, unknown>
 ): void {
-    // Extract contracts from spec
-    const unfoldContracts: ContractSpec | null = extractContracts(opSpecObj);
+    // Extract + subcontract: compose child contracts with parent's (LSP rules)
+    const localParentADT = parentADTMap.get(ADT as unknown as object) as ADTLike | null ?? null;
+    const parentUnfoldTransformer = localParentADT
+        ? adtTransformers.get(localParentADT as unknown as object)?.get(opName)
+        : undefined;
+    const unfoldContracts: ContractSpec | null = resolveContracts(
+        opSpecObj, parentUnfoldTransformer?.contracts
+    );
+
     const hasAnyUnfoldContracts = unfoldContracts !== null;
     let unfoldContractDepth = 0;
 
@@ -1483,7 +1450,7 @@ function installUnfoldImpl(
 
     (transformer as unknown as Record<string, unknown>).unfoldCases = cases;
     (transformer as unknown as Record<string, unknown>).unfoldSpec = opSpecObj;
-    // Store contracts on transformer for subcontracting
+    // Store contracts on transformer for subcontracting inheritance
     if (unfoldContracts)
         transformer.contracts = unfoldContracts;
 
@@ -1558,12 +1525,12 @@ function installUnfoldImpl(
         const checked = unfoldContractDepth === 1 && inCheckedMode;
 
         if (checked) {
-            // Contract: demands check
-            if (unfoldContracts!.demands)
-                checkDemands(unfoldContracts!.demands, opName, 'unfold', null, [seed]);
-
             let finalResult: unknown;
             try {
+                // Contract: demands check
+                if (unfoldContracts!.demands)
+                    checkDemands(unfoldContracts!.demands, opName, 'unfold', null, [seed]);
+
                 finalResult = executeUnfold(seed);
 
                 // Contract: ensures check
