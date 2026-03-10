@@ -40,6 +40,49 @@ export type spec = typeof spec;
 export const operations: unique symbol = Symbol('operations');
 export type operations = typeof operations;
 
+/** Provides access to course-of-values history in histomorphism folds */
+export const history: unique symbol = Symbol('history');
+export type history = typeof history;
+
+/** Provides access to auxiliary fold results in zygomorphism folds */
+export const aux: unique symbol = Symbol('aux');
+export type aux = typeof aux;
+
+/** Parsed auxiliary-fold configuration from a fold spec's `aux` key. */
+export interface ParsedAux {
+    /** Normalised list of auxiliary fold names, or `null` when absent. */
+    readonly names: string[] | null;
+    /** `true` when the original spec used the array form (`aux: [...]`). */
+    readonly isArray: boolean;
+}
+
+/**
+ * Parse the `aux` key from a fold spec into a normalised form.
+ * Accepts `string`, `string[]`, or `undefined`.
+ */
+export function parseAux(raw: unknown): ParsedAux {
+    if (raw === undefined || raw === null)
+        return { names: null, isArray: false };
+    if (typeof raw === 'string')
+        return { names: [raw], isArray: false };
+    if (Array.isArray(raw)) {
+        if (raw.length === 0) {
+            throw new TypeError(
+                `'aux' array must contain at least one fold name, got empty array`
+            );
+        }
+        for (let i = 0; i < raw.length; i++) {
+            if (typeof raw[i] !== 'string') {
+                throw new TypeError(
+                    `'aux' array elements must be strings, but element at index ${i} is ${typeof raw[i]}`
+                );
+            }
+        }
+        return { names: raw as string[], isArray: true };
+    }
+    return { names: null, isArray: false };
+}
+
 // ---- Interfaces --------------------------------------------------------------
 
 /** A value with a FamilyRef marker */

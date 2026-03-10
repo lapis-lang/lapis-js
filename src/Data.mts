@@ -6,6 +6,9 @@ import {
     op,
     spec,
     operations,
+    history,
+    aux,
+    parseAux,
     validateTypeSpec,
     validateReturnType
 } from './operations.mjs';
@@ -278,9 +281,23 @@ function createDelegationProxy(
 
                 if (isParentExtension &&
                     (typeof delegatedValue === 'function' ||
-                        (typeof delegatedValue === 'object' && delegatedValue !== null)))
-                    return createChildVariant(target, prop as string, delegatedValue as VariantLike | SingletonInstance);
+                        (typeof delegatedValue === 'object' && delegatedValue !== null))) {
+                    // Only variant constructors and singletons are re-wrapped
+                    // for the child ADT.  Operations (fold, unfold, map, merge)
+                    // are plain functions / property descriptors installed on
+                    // the prototype chain and must be delegated as-is so they
+                    // continue to use the transformer registry of the ADT that
+                    // defined them.  Wrapping an operation would incorrectly
+                    // re-parent its prototype to the child, breaking lookup.
+                    const isVariant =
+                        (typeof delegatedValue === 'function' && 'variantName' in delegatedValue) ||
+                        (typeof delegatedValue === 'object' && delegatedValue !== null &&
+                            Object.isFrozen(delegatedValue) && VariantNameSymbol in delegatedValue);
 
+                    if (isVariant)
+                        return createChildVariant(target, prop as string, delegatedValue as VariantLike | SingletonInstance);
+
+                }
 
                 return delegatedValue;
             }
@@ -417,6 +434,10 @@ function createADT(decl: ParsedDecl): ADTLike {
     const ownVariants = createVariants(ADT as unknown as ADTLike, decl.variants, decl.typeParams);
 
     createOperations(ADT as unknown as ADTLike, ownVariants, decl.operations, decl.typeParams);
+
+    // Inherit unfold operations from parent, rebound to child variants
+    if (parentADT)
+        inheritUnfoldOperations(ADT as unknown as ADTLike, ownVariants, parentADT, decl.operations);
 
     const ProxiedADT = createDelegationProxy(
         ADT as unknown as ADTLike,
@@ -852,6 +873,41 @@ function createFoldOperation(
         dagCacheDepth = 0;
     const inProgress = new WeakSet<object>();
 
+    // Histomorphism support — when `history: true` in spec, each node's
+    // foldedFields are cached so that handlers can access deeper sub-results
+    // via the [history] symbol.
+    const isHisto = finalSpec['history'] === true;
+    let histoFieldsCache: WeakMap<object, Record<string | symbol, unknown>> | null = null,
+        histoFieldsDepth = 0;
+
+    // Zygomorphism support — when `aux` in spec, auxiliary fold results are
+    // computed at each node for every recursive field and injected via the
+    // [aux] symbol.  Accepted forms: `aux: 'foldName'` or `aux: ['f1','f2']`.
+    const { names: auxNames, isArray: auxIsArray } = parseAux(finalSpec['aux']);
+    const isZygo = auxNames !== null && auxNames.length > 0;
+
+    // String form invariant: exactly one aux fold name.
+    if (isZygo && !auxIsArray && auxNames!.length !== 1) {
+        throw new Error(
+            `Fold operation '${opName}': string-form aux must reference exactly one fold, ` +
+            `got ${auxNames!.length}`
+        );
+    }
+
+    // Validate that every auxiliary fold name references a known fold operation
+    // on this ADT (own or inherited).  Because operations are topologically
+    // sorted, the aux fold must already be registered by the time we get here.
+    if (isZygo && auxNames) {
+        for (const auxName of auxNames) {
+            if (!ADT._getTransformer(auxName)) {
+                throw new Error(
+                    `Fold operation '${opName}' references auxiliary fold '${auxName}' via 'aux', ` +
+                    `but no fold named '${auxName}' exists on this data type`
+                );
+            }
+        }
+    }
+
     const foldImpl = function (this: Record<symbol, unknown>, ...args: unknown[]) {
         if (canCache) {
             if (dagCacheDepth === 0)
@@ -861,6 +917,12 @@ function createFoldOperation(
                 return dagCache!.get(this as object);
 
             dagCacheDepth++;
+        }
+
+        if (isHisto) {
+            if (histoFieldsDepth === 0)
+                histoFieldsCache = new WeakMap();
+            histoFieldsDepth++;
         }
 
         try {
@@ -919,7 +981,7 @@ function createFoldOperation(
                 }
             }
 
-            const foldedFields: Record<string, unknown> = {};
+            const foldedFields: Record<string | symbol, unknown> = {};
             if (variantCtor.spec) {
                 for (const [fieldName, fieldSpec] of Object.entries(variantCtor.spec)) {
                     if (fieldSpec &&
@@ -936,6 +998,99 @@ function createFoldOperation(
                         foldedFields[fieldName] = (this as Record<string, unknown>)[fieldName];
 
                 }
+            }
+
+            // Histomorphism: inject [history] into foldedFields.
+            // history is an object keyed by recursive field names, where each
+            // value is the child's own foldedFields (which recursively carries
+            // its own [history]).
+            // For parameterized folds, history entries are thunks (like the
+            // recursive fields themselves) that resolve after the child fold runs.
+            if (isHisto && histoFieldsCache) {
+                if (hasInput || hasExtraParams) {
+                    // Parameterized: history entries are lazy — the child fold
+                    // hasn't run yet. We create getters that read from the cache
+                    // after the child thunk has been invoked.
+                    const historyObj: Record<string | symbol, unknown> = {};
+                    if (variantCtor.spec) {
+                        for (const [fieldName, fieldSpec] of Object.entries(variantCtor.spec)) {
+                            if (fieldSpec &&
+                                (typeof fieldSpec === 'object' || typeof fieldSpec === 'function') &&
+                                FamilyRefSymbol in (fieldSpec as object)) {
+                                const fieldValue = (this as Record<string, unknown>)[fieldName];
+                                Object.defineProperty(historyObj, fieldName, {
+                                    get: () => histoFieldsCache?.get(fieldValue as object),
+                                    enumerable: true,
+                                    configurable: true
+                                });
+                            }
+                        }
+                    }
+                    (foldedFields as Record<symbol, unknown>)[history as unknown as symbol] = historyObj;
+                } else {
+                    // Non-parameterized: children have already been folded
+                    // (bottom-up), so their foldedFields are in the cache.
+                    const historyObj: Record<string | symbol, unknown> = {};
+                    if (variantCtor.spec) {
+                        for (const [fieldName, fieldSpec] of Object.entries(variantCtor.spec)) {
+                            if (fieldSpec &&
+                                (typeof fieldSpec === 'object' || typeof fieldSpec === 'function') &&
+                                FamilyRefSymbol in (fieldSpec as object)) {
+                                const fieldValue = (this as Record<string, unknown>)[fieldName];
+                                const childFields = histoFieldsCache.get(fieldValue as object);
+                                if (childFields)
+                                    historyObj[fieldName] = childFields;
+                            }
+                        }
+                    }
+                    (foldedFields as Record<symbol, unknown>)[history as unknown as symbol] = historyObj;
+                }
+            }
+
+            // Histomorphism: cache this node's foldedFields so ancestor nodes
+            // can access them through [history] chains.
+            if (isHisto && histoFieldsCache)
+                histoFieldsCache.set(this as object, foldedFields as Record<string | symbol, unknown>);
+
+            // Zygomorphism: compute auxiliary fold results at each recursive
+            // child and inject them via [aux].
+            // String form → flat shape: auxObj[fieldName] = auxResult
+            // Array form  → nested:     auxObj[foldName][fieldName] = auxResult
+            if (isZygo && auxNames) {
+                const auxObj: Record<string, unknown> = {};
+                if (variantCtor.spec) {
+                    if (auxIsArray)
+                        for (const auxName of auxNames) auxObj[auxName] = {};
+
+                    const isParam = hasInput || hasExtraParams;
+                    // String form uses a single aux fold name; array form
+                    // iterates all names.  Kept as distinct branches so flat
+                    // mode cannot accidentally overwrite keys.
+                    const singleAuxName = auxIsArray ? null : auxNames[0];
+                    for (const [fieldName, fieldSpec] of Object.entries(variantCtor.spec)) {
+                        if (fieldSpec &&
+                            (typeof fieldSpec === 'object' || typeof fieldSpec === 'function') &&
+                            FamilyRefSymbol in (fieldSpec as object)) {
+                            const fieldValue = (this as Record<string, unknown>)[fieldName];
+                            if (singleAuxName !== null) {
+                                // Flat shape: auxObj[fieldName]
+                                auxObj[fieldName] = isParam
+                                    ? (...params: unknown[]) =>
+                                        (fieldValue as Record<string, (...p: unknown[]) => unknown>)[singleAuxName](...params)
+                                    : (fieldValue as Record<string, unknown>)[singleAuxName];
+                            } else {
+                                // Nested shape: auxObj[foldName][fieldName]
+                                for (const auxName of auxNames) {
+                                    (auxObj[auxName] as Record<string, unknown>)[fieldName] = isParam
+                                        ? (...params: unknown[]) =>
+                                            (fieldValue as Record<string, (...p: unknown[]) => unknown>)[auxName](...params)
+                                        : (fieldValue as Record<string, unknown>)[auxName];
+                                }
+                            }
+                        }
+                    }
+                }
+                (foldedFields as Record<symbol, unknown>)[aux as unknown as symbol] = auxObj;
             }
 
             let context: object = this;
@@ -973,6 +1128,10 @@ function createFoldOperation(
                 dagCacheDepth--;
                 if (dagCacheDepth === 0) dagCache = null;
             }
+            if (isHisto) {
+                histoFieldsDepth--;
+                if (histoFieldsDepth === 0) histoFieldsCache = null;
+            }
         }
     };
 
@@ -987,29 +1146,44 @@ function createFoldOperation(
     }
 }
 
-function createUnfoldOperation(
+// ---- Unfold helpers ---------------------------------------------------------
+
+/**
+ * Walk the `parentADTMap` chain to find a variant by name, creating
+ * a child-bound copy when found.  Returns `undefined` when no ancestor
+ * provides the variant.
+ */
+function resolveAncestorVariant(
+    childADT: ADTLike,
+    variantName: string
+): unknown | undefined {
+    let ancestor: object | undefined =
+        parentADTMap.get(childADT as unknown as object) as object | undefined;
+    while (ancestor) {
+        const ancestorVariant = (ancestor as Record<string, unknown>)[variantName];
+        if (ancestorVariant) {
+            return createChildVariant(
+                childADT, variantName,
+                ancestorVariant as VariantLike | SingletonInstance
+            );
+        }
+
+        ancestor = parentADTMap.get(ancestor) as object | undefined;
+    }
+    return undefined;
+}
+
+/**
+ * Core unfold installation: registers the transformer and creates the
+ * static ADT method that unfolds a seed into a recursive structure.
+ */
+function installUnfoldImpl(
     ADT: ADTLike,
     variants: Record<string, unknown>,
     opName: string,
-    opDef: Record<string, unknown>
+    cases: Record<string, (seed: unknown) => unknown | null>,
+    opSpecObj: Record<string, unknown>
 ): void {
-    const {
-        [op as unknown as string]: _op,
-        [spec as unknown as string]: opSpec = {},
-        cases: casesObj,
-        ...rest
-        } = opDef,
-        cases = (casesObj || rest) as Record<string, (seed: unknown) => unknown | null>,
-        opSpecObj = opSpec as Record<string, unknown>;
-
-    if (!isPascalCase(opName))
-        throw new Error(`Unfold operation '${opName}' must be PascalCase`);
-
-
-    if (opSpecObj && 'in' in opSpecObj && opSpecObj['in'] === Function)
-        throw new TypeError(`cannot use Function as 'in' guard`);
-
-
     const generator = (seed: unknown) => seed,
         transformer = createTransformer({
             name: opName,
@@ -1021,6 +1195,15 @@ function createUnfoldOperation(
     (transformer as unknown as Record<string, unknown>).unfoldSpec = opSpecObj;
 
     ADT._registerTransformer(opName, transformer, false, variants);
+
+    // Resolve variants for all case names, including inherited ones
+    const resolvedVariants: Record<string, unknown> = { ...variants };
+    for (const caseName of Object.keys(cases)) {
+        if (!(caseName in resolvedVariants)) {
+            const fromAncestor = resolveAncestorVariant(ADT, caseName);
+            if (fromAncestor) resolvedVariants[caseName] = fromAncestor;
+        }
+    }
 
     (ADT as Record<string, unknown>)[opName] = function unfoldImpl(seed: unknown): unknown {
         if (hasInputSpec(opSpecObj)) {
@@ -1035,7 +1218,7 @@ function createUnfoldOperation(
         for (const [variantName, caseFn] of Object.entries(cases)) {
             const result = (caseFn as (s: unknown) => unknown)(seed);
             if (result !== null && result !== undefined) {
-                const variantValue = variants[variantName] ||
+                const variantValue = resolvedVariants[variantName] ||
                     (ADT as Record<string, unknown>)[variantName];
                 if (!variantValue)
                     throw new Error(`Unknown variant '${variantName}' in unfold '${opName}'`);
@@ -1071,6 +1254,59 @@ function createUnfoldOperation(
 
         throw new Error(`No case matched in unfold '${opName}'`);
     };
+}
+
+/**
+ * Inherit unfold operations from a parent ADT, rebound to the child's
+ * variant set.  Skips operations the child explicitly overrides.
+ */
+function inheritUnfoldOperations(
+    childADT: ADTLike,
+    ownVariants: Record<string, unknown>,
+    parentADT: ADTLike,
+    childOperations: Record<string, unknown>
+): void {
+    const rawParent = (parentADT as { _rawADT?: ADTLike })._rawADT || parentADT,
+        parentRegistry = adtTransformers.get(rawParent as unknown as object);
+    if (!parentRegistry) return;
+
+    for (const [name, transformer] of parentRegistry) {
+        const tx = transformer as unknown as Record<string, unknown>;
+        // Only inherit unfold operations not overridden by the child
+        if (!tx.unfoldCases || name in childOperations) continue;
+
+        installUnfoldImpl(
+            childADT, ownVariants, name,
+            tx.unfoldCases as Record<string, (seed: unknown) => unknown | null>,
+            (tx.unfoldSpec ?? {}) as Record<string, unknown>
+        );
+    }
+}
+
+function createUnfoldOperation(
+    ADT: ADTLike,
+    variants: Record<string, unknown>,
+    opName: string,
+    opDef: Record<string, unknown>
+): void {
+    const {
+        [op as unknown as string]: _op,
+        [spec as unknown as string]: opSpec = {},
+        cases: casesObj,
+        ...rest
+        } = opDef,
+        cases = (casesObj || rest) as Record<string, (seed: unknown) => unknown | null>,
+        opSpecObj = opSpec as Record<string, unknown>;
+
+    if (!isPascalCase(opName))
+        throw new Error(`Unfold operation '${opName}' must be PascalCase`);
+
+
+    if (opSpecObj && 'in' in opSpecObj && opSpecObj['in'] === Function)
+        throw new TypeError(`cannot use Function as 'in' guard`);
+
+
+    installUnfoldImpl(ADT, variants, opName, cases, opSpecObj);
 }
 
 function createMapOperation(
@@ -1161,6 +1397,17 @@ function createMergeOperation(
 ): void {
     const opList = opDef[operations as unknown as string] as string[];
 
+    /** Walk the prototype chain to find a property descriptor. */
+    function getPrototypeDescriptor(propName: string): PropertyDescriptor | undefined {
+        let proto: object | null = ADT.prototype as object;
+        while (proto) {
+            const desc = Object.getOwnPropertyDescriptor(proto, propName);
+            if (desc) return desc;
+            proto = Object.getPrototypeOf(proto);
+        }
+        return undefined;
+    }
+
     if (!Array.isArray(opList) || opList.length === 0)
         throw new Error(`Merge requires a non-empty array of operation names`);
 
@@ -1213,7 +1460,7 @@ function createMergeOperation(
             let result = intermediate;
             for (let i = 1; i < opList.length; i++) {
                 const nextOpName = opList[i],
-                    descriptor = Object.getOwnPropertyDescriptor(ADT.prototype, nextOpName);
+                    descriptor = getPrototypeDescriptor(nextOpName);
 
                 if (descriptor && descriptor.get)
                     result = (result as Record<string, unknown>)[nextOpName];
@@ -1229,7 +1476,7 @@ function createMergeOperation(
         const mergeImpl = function (this: Record<string, unknown>, ...args: unknown[]) {
             let result: unknown = this;
             for (const mOpName of opList) {
-                const descriptor = Object.getOwnPropertyDescriptor(ADT.prototype, mOpName);
+                const descriptor = getPrototypeDescriptor(mOpName);
                 if (descriptor && descriptor.get)
                     result = (result as Record<string, unknown>)[mOpName];
                 else if (typeof (result as Record<string, unknown>)[mOpName] === 'function')

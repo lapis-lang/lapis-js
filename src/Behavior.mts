@@ -23,7 +23,10 @@ import {
     op,
     spec,
     operations,
-    extend
+    extend,
+    history,
+    aux,
+    parseAux
 } from './operations.mjs';
 
 import type { BehaviorADT, BehaviorDeclParams } from './types.mjs';
@@ -62,6 +65,9 @@ interface FoldOpEntry {
     spec: Record<string, unknown>;
     handler: AnyFn;
     hasInput: boolean;
+    isHisto: boolean;
+    auxNames: string[] | null;
+    auxIsArray: boolean;
     preMaps?: string[];
 }
 
@@ -465,6 +471,25 @@ export function behavior<D extends Record<string, unknown>>(
         }
     }
 
+    // Validate that every fold with aux references names a known fold operation.
+    // This runs after all folds (own + inherited) are registered.
+    const allFoldOps = (callableBehavior as unknown as Record<symbol, unknown>)[FoldOpsSymbol] as
+        Map<string, FoldOpEntry> | undefined;
+    if (allFoldOps) {
+        for (const [foldName, entry] of allFoldOps) {
+            if (entry.auxNames) {
+                for (const auxName of entry.auxNames) {
+                    if (!allFoldOps.has(auxName)) {
+                        throw new Error(
+                            `Fold operation '${foldName}' references auxiliary fold '${auxName}' via 'aux', ` +
+                            `but no fold named '${auxName}' exists on this behavior type`
+                        );
+                    }
+                }
+            }
+        }
+    }
+
     return callableBehavior as unknown as BehaviorADT<D>;
 }
 
@@ -571,9 +596,13 @@ function executeFold(
     proxyInstance: Record<string, unknown>,
     observerMap: Map<string, ObserverEntry>,
     handler: AnyFn,
-    params: unknown[]
+    params: unknown[],
+    isHisto: boolean = false,
+    auxNames: string[] | null = null,
+    auxIsArray: boolean = false,
+    BehaviorType: BehaviorTypeLike | null = null
 ): unknown {
-    const observations: Record<string, unknown> = {};
+    const observations: Record<string | symbol, unknown> = {};
     for (const [name, obs] of observerMap) {
         if (obs.isContinuation) {
             observations[name] = (...nextParams: unknown[]) => {
@@ -582,14 +611,161 @@ function executeFold(
                     nextInstance as Record<string, unknown>,
                     observerMap,
                     handler,
-                    nextParams
+                    nextParams,
+                    isHisto,
+                    auxNames,
+                    auxIsArray,
+                    BehaviorType
                 );
             };
         } else
             observations[name] = proxyInstance[name];
 
     }
+
+    // Histomorphism: inject [history] into observations.
+    // For behavior folds, history provides access to the sub-observations
+    // of continuations. Each continuation entry in history is a getter
+    // that lazily produces the observations of the next behavior instance.
+    if (isHisto) {
+        const historyObj: Record<string, unknown> = {};
+        for (const [name, obs] of observerMap) {
+            if (obs.isContinuation) {
+                Object.defineProperty(historyObj, name, {
+                    get: () => {
+                        const nextInstance = proxyInstance[name];
+                        const subObs: Record<string | symbol, unknown> = {};
+                        for (const [subName, subEntry] of observerMap) {
+                            if (!subEntry.isContinuation)
+                                subObs[subName] = (nextInstance as Record<string, unknown>)[subName];
+                        }
+                        // Recursively add [history] to sub-observations
+                        const subHistoryObj: Record<string, unknown> = {};
+                        for (const [subName, subEntry] of observerMap) {
+                            if (subEntry.isContinuation) {
+                                Object.defineProperty(subHistoryObj, subName, {
+                                    get: () => {
+                                        const nextNext = (nextInstance as Record<string, unknown>)[subName];
+                                        return executeFoldObservations(
+                                            nextNext as Record<string, unknown>,
+                                            observerMap,
+                                            true
+                                        );
+                                    },
+                                    enumerable: true,
+                                    configurable: true
+                                });
+                            }
+                        }
+                        subObs[history as unknown as symbol] = subHistoryObj;
+                        return subObs;
+                    },
+                    enumerable: true,
+                    configurable: true
+                });
+            }
+        }
+        observations[history as unknown as symbol] = historyObj;
+    }
+
+    // Zygomorphism: inject [aux] — auxiliary fold results on continuations.
+    // For behavior folds, each auxiliary fold is executed on the continuation's
+    // proxy instance. String aux → flat shape, array aux → nested shape.
+    if (auxNames && auxNames.length > 0 && BehaviorType) {
+        const auxObj: Record<string, unknown> = {};
+        const foldMap = (BehaviorType as Record<symbol, unknown>)[FoldOpsSymbol] as
+            Map<string, FoldOpEntry> | undefined;
+
+        if (foldMap) {
+            if (auxIsArray)
+                for (const auxName of auxNames) auxObj[auxName] = {};
+
+            // String form uses a single aux fold name; array form
+            // iterates all names.  Kept as distinct branches so flat
+            // mode cannot accidentally overwrite keys.
+            const singleAuxName = auxIsArray ? null : auxNames[0];
+            for (const [name, obs] of observerMap) {
+                if (obs.isContinuation) {
+                    const nextInstance = proxyInstance[name];
+                    if (singleAuxName !== null) {
+                        // Flat shape: auxObj[continuationName]
+                        const auxFoldOp = foldMap.get(singleAuxName);
+                        if (auxFoldOp) {
+                            auxObj[name] = auxFoldOp.hasInput
+                                ? (...p: unknown[]) => executeFold(
+                                    nextInstance as Record<string, unknown>,
+                                    observerMap, auxFoldOp.handler, p,
+                                    auxFoldOp.isHisto
+                                )
+                                : executeFold(
+                                    nextInstance as Record<string, unknown>,
+                                    observerMap, auxFoldOp.handler, [],
+                                    auxFoldOp.isHisto
+                                );
+                        }
+                    } else {
+                        // Nested shape: auxObj[foldName][continuationName]
+                        for (const auxName of auxNames) {
+                            const auxFoldOp = foldMap.get(auxName);
+                            if (auxFoldOp) {
+                                (auxObj[auxName] as Record<string, unknown>)[name] = auxFoldOp.hasInput
+                                    ? (...p: unknown[]) => executeFold(
+                                        nextInstance as Record<string, unknown>,
+                                        observerMap, auxFoldOp.handler, p,
+                                        auxFoldOp.isHisto
+                                    )
+                                    : executeFold(
+                                        nextInstance as Record<string, unknown>,
+                                        observerMap, auxFoldOp.handler, [],
+                                        auxFoldOp.isHisto
+                                    );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        observations[aux as unknown as symbol] = auxObj;
+    }
+
     return handler(observations, ...params);
+}
+
+/**
+ * Build an observations object for a behavior instance (used by histo
+ * to lazily produce sub-observations at deeper levels).
+ */
+function executeFoldObservations(
+    proxyInstance: Record<string, unknown>,
+    observerMap: Map<string, ObserverEntry>,
+    isHisto: boolean
+): Record<string | symbol, unknown> {
+    const obs: Record<string | symbol, unknown> = {};
+    for (const [name, entry] of observerMap) {
+        if (!entry.isContinuation)
+            obs[name] = proxyInstance[name];
+    }
+    if (isHisto) {
+        const historyObj: Record<string, unknown> = {};
+        for (const [name, entry] of observerMap) {
+            if (entry.isContinuation) {
+                Object.defineProperty(historyObj, name, {
+                    get: () => {
+                        const nextInstance = proxyInstance[name];
+                        return executeFoldObservations(
+                            nextInstance as Record<string, unknown>,
+                            observerMap,
+                            true
+                        );
+                    },
+                    enumerable: true,
+                    configurable: true
+                });
+            }
+        }
+        obs[history as unknown as symbol] = historyObj;
+    }
+    return obs;
 }
 
 // ---- Mapped handlers --------------------------------------------------------
@@ -645,13 +821,26 @@ function addFoldOperation(
 
 
     const parsedSpec = opSpecArg || {};
+    const parsedAux = parseAux(parsedSpec['aux']);
+
+    // String form invariant: exactly one aux fold name.
+    if (parsedAux.names && !parsedAux.isArray && parsedAux.names.length !== 1) {
+        throw new TypeError(
+            `Fold operation '${name}': string-form aux must reference exactly one fold, ` +
+            `got ${parsedAux.names.length}`
+        );
+    }
+
     ensureOwnMap<string, FoldOpEntry>(
         BehaviorType as unknown as Record<symbol, unknown>,
         FoldOpsSymbol
     ).set(name, {
         spec: parsedSpec,
         handler,
-        hasInput: handler.length > 1
+        hasInput: handler.length > 1,
+        isHisto: parsedSpec['history'] === true,
+        auxNames: parsedAux.names,
+        auxIsArray: parsedAux.isArray
     });
 }
 
@@ -754,14 +943,16 @@ function addMergeOperation(
                             instance as Record<string, unknown>,
                             observerMap,
                             foldOp.handler,
-                            rest
+                            rest,
+                            foldOp.isHisto
                         );
                     }
                     return executeFold(
                         instance as Record<string, unknown>,
                         observerMap,
                         foldOp.handler,
-                        []
+                        [],
+                        foldOp.isHisto
                     );
                 }
                 return instance;
@@ -778,7 +969,8 @@ function addMergeOperation(
                             instance as Record<string, unknown>,
                             observerMap,
                             foldOp.handler,
-                            []
+                            [],
+                            foldOp.isHisto
                         );
                     }
                     return instance;
@@ -798,6 +990,9 @@ function addMergeOperation(
             spec: foldOp.spec,
             handler: foldOp.handler,
             hasInput: foldOp.hasInput,
+            isHisto: foldOp.isHisto,
+            auxNames: foldOp.auxNames,
+            auxIsArray: foldOp.auxIsArray,
             preMaps: mapNames
         });
     }
@@ -846,7 +1041,8 @@ function createBehaviorInstance(
                             ? (bt[FoldOpsSymbol] as Map<string, FoldOpEntry>).get(prop)
                             : undefined;
                     if (foldOp) {
-                        const { hasInput, handler } = foldOp;
+                        const { hasInput, handler, isHisto: foldIsHisto,
+                            auxNames: foldAuxNames, auxIsArray: foldAuxIsArray } = foldOp;
                         if (foldOp.preMaps && foldOp.preMaps.length > 0) {
                             if (hasInput) {
                                 return function (...params: unknown[]) {
@@ -856,7 +1052,8 @@ function createBehaviorInstance(
 
                                     return executeFold(
                                         inst as Record<string, unknown>,
-                                        observerMap, handler, params
+                                        observerMap, handler, params, foldIsHisto,
+                                        foldAuxNames, foldAuxIsArray, bt ?? null
                                     );
                                 };
                             } else {
@@ -865,18 +1062,24 @@ function createBehaviorInstance(
                                     inst = (inst as Record<string, unknown>)[mapName];
 
                                 return executeFold(
-                                    inst as Record<string, unknown>, observerMap, handler, []
+                                    inst as Record<string, unknown>, observerMap, handler, [],
+                                    foldIsHisto,
+                                    foldAuxNames, foldAuxIsArray, bt ?? null
                                 );
                             }
                         } else if (hasInput) {
                             return function (...params: unknown[]) {
                                 return executeFold(
-                                    receiver as Record<string, unknown>, observerMap, handler, params
+                                    receiver as Record<string, unknown>, observerMap, handler, params,
+                                    foldIsHisto,
+                                    foldAuxNames, foldAuxIsArray, bt ?? null
                                 );
                             };
                         } else {
                             return executeFold(
-                                receiver as Record<string, unknown>, observerMap, handler, []
+                                receiver as Record<string, unknown>, observerMap, handler, [],
+                                foldIsHisto,
+                                foldAuxNames, foldAuxIsArray, bt ?? null
                             );
                         }
                     }
