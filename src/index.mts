@@ -14,5 +14,5 @@ export { checkedMode, DemandsError, EnsuresError, InvariantError, AssertionError
 export type { ContractSpec } from './contracts.mjs';
 
 // Type exports
-export type { DataADT, BehaviorADT, DataDeclParams, BehaviorDeclParams } from './types.mjs';
+export type { DataADT, DataADTWithParams, BehaviorADT, BehaviorADTWithParams, DataDeclParams, BehaviorDeclParams, Letter, CollectParams } from './types.mjs';
 export type { TypeSpec, FamilyRef, SelfRef, TypeParamRef } from './types.mjs';

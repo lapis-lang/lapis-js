@@ -40,7 +40,7 @@ describe('behavior [extend] — instanceof and observer inheritance', () => {
             })
         }));
 
-        const s = ChildStream(Number).Repeat(42);
+        const s = ChildStream({ T: Number }).Repeat(42);
         assert.equal(s.head, 42);
         assert.equal(s.tail.head, 42);
     });
@@ -110,7 +110,7 @@ describe('behavior [extend] — adding new observers', () => {
             })
         }));
 
-        const s = LabeledStream(Number).Tagged(1);
+        const s = LabeledStream({ T: Number }).Tagged(1);
         assert.equal(s.head, 1);
         assert.equal(s.label, 'tagged');
         assert.equal(s.tail.head, 2);
@@ -127,7 +127,7 @@ describe('behavior [extend] — adding new observers', () => {
             })
         }));
 
-        const s = IndexedStream(Number).FromIdx(10);
+        const s = IndexedStream({ T: Number }).FromIdx(10);
         assert.equal(s.head, 10);
         assert.equal(s.nth(3), 13);
     });
@@ -139,7 +139,7 @@ describe('behavior [extend] — adding new observers', () => {
                 extra: String,
                 Bad: unfold({ in: Number, out: Self })({})
             }));
-            BadChild(Number); // trigger type setup
+            BadChild({ T: Number }); // trigger type setup
         });
     });
 });

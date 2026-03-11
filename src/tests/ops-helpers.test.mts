@@ -187,7 +187,7 @@ describe('ops helpers — behavior() unfold', () => {
             })
         }));
 
-        const NumStream = Stream(Number);
+        const NumStream = Stream({ T: Number });
         const s = NumStream.From(5);
         assert.strictEqual(s.head, 5);
         assert.strictEqual(s.tail.head, 6);

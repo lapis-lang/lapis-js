@@ -99,7 +99,7 @@ describe('Merge pipeline (unfold + fold)', () => {
                 SumOfSquares: merge('Range', 'square', 'sum')
             }));
 
-            const NumList = List(Number);
+            const NumList = List({ T: Number });
 
             mapCallCount = 0;
             const result = NumList.SumOfSquares(4);
@@ -127,7 +127,7 @@ describe('Merge pipeline (unfold + fold)', () => {
                 Pipeline: merge('Range', 'double', 'increment', 'sum')
             }));
 
-            const NumList = List(Number);
+            const NumList = List({ T: Number });
 
             // n=3: [3,2,1] → double → [6,4,2] → increment → [7,5,3] → sum = 15
             assert.strictEqual(NumList.Pipeline(3), 15);
@@ -147,7 +147,7 @@ describe('Merge pipeline (unfold + fold)', () => {
                 SquareCountDown: merge('CountDown', 'square')
             }));
 
-            const NumList = List(Number);
+            const NumList = List({ T: Number });
             const result = NumList.SquareCountDown(3);
 
             assert.strictEqual(result.head, 9);        // 3²

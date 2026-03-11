@@ -1,3 +1,4 @@
+
 /**
  * Core type vocabulary for lapis-js
  *
@@ -28,6 +29,8 @@ import type {
 // Re-export so consumers can import all types from a single place
 export type { TypeSpec, FamilyRef, FamilyRefCallable, SelfRef, SelfRefCallable, TypeParamRef };
 
+
+
 // ---- SpecValue: TypeSpec → runtime value type ---------------------------------
 
 /**
@@ -47,12 +50,21 @@ export type SpecValue<S, Self = unknown> =
                                 S extends TypeParamRef ? unknown :
                                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
                                     S extends abstract new (...args: any[]) => infer I ? I :
-                                        unknown;
+                                        // DataADT<D> / BehaviorADT<D> carry their instance type
+                                        // on `readonly prototype`. This resolves fields whose
+                                        // type parameter was bound to a concrete ADT (issue #126).
+                                        // Checked before the generic function guard because ADT
+                                        // values are callable (parameterization overload) and would
+                                        // otherwise match `(...args) => any` and resolve to `unknown`.
+                                        S extends { readonly prototype: infer I } ? I :
+                                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                            S extends (...args: any[]) => any ? unknown :
+                                                unknown;
 
 // ---- Field values -----------------------------------------------------------
 
 /** Resolve all field specs to their runtime value types, excluding symbol keys (e.g. [invariant]). */
-export type FieldValues<Spec extends Record<string, TypeSpec>, Self = unknown> = {
+export type FieldValues<Spec extends Record<string, unknown>, Self = unknown> = {
     readonly [K in keyof Spec & string]: SpecValue<Spec[K], Self>
 };
 
@@ -66,8 +78,14 @@ export type VariantInstance<
 
 // ---- Variant spec ------------------------------------------------------------
 
-/** A variant field specification: maps field names to TypeSpec values. */
-export type VariantSpec = Record<string, TypeSpec>;
+/**
+ * A variant field specification: maps field names to type descriptors.
+ *
+ * Widened to `Record<string, unknown>` so that ADT values and other non-primitive
+ * type descriptors (e.g. `color: Color`) are accepted. `SpecValue` gracefully
+ * falls through to `unknown` for anything outside the TypeSpec union.
+ */
+export type VariantSpec = Record<string, unknown>;
 
 /** True when a VariantSpec has no fields (i.e. the variant is a singleton). */
 type IsEmpty<T> = keyof T extends never ? true : false;
@@ -299,7 +317,6 @@ type ExtendedParentCtors<D> = ExtendedParentCtorsImpl<D, D>;
  * The full type of the value returned by `data()`.
  *
  * It is:
- * - Callable as a function for parameterization: `List(Number)`
  * - Has static variant constructors/singletons as own properties
  * - Its instances have the declared operation methods/getters
  *
@@ -309,13 +326,12 @@ type ExtendedParentCtors<D> = ExtendedParentCtorsImpl<D, D>;
  * through typed observer getters and do not need the same escape hatch.
  */
 export type DataADT<D = Record<string, unknown>> =
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ((...typeArgs: any[]) => DataADT<D>) &
     VariantCtors<D, DataInstance<D>, CombinedOperationMethods<D, DataInstance<D>>> &
     ExtendedParentCtors<D> &
     UnfoldCtors<D, DataInstance<D>> &
     MergeCtors<D> & {
         readonly prototype: DataInstance<D>;
+        [Symbol.hasInstance](value: unknown): boolean;
         /** @internal */ _registerTransformer(
             name: string, transformer: unknown, skip?: boolean, variants?: unknown
         ): void;
@@ -405,15 +421,19 @@ type BehaviorMergeCtors<D>  = MergeCtorsFor<BehaviorMergeOpKeys<D> & string>;
 // ---- Full behavior type -----------------------------------------------------
 
 /**
+ * The full type of the value returned by `behavior()`.
  *
  * It is:
- * - Callable for parameterization: `Stream(Number)`
+ * - Callable for parameterization: `Stream({ T: Number })`
  * - Has static unfold factory methods (PascalCase)
+ * - Has static merge factory methods
  * - Its instances expose observer getters/methods
+ *
+ * Note: the string index `[key: string]: unknown` uses `unknown` (not `any`)
+ * because behavior instances are accessed only through typed observer getters
+ * and do not need the same escape hatch as `DataADT`.
  */
 export type BehaviorADT<D = Record<string, unknown>> =
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ((...typeArgs: any[]) => BehaviorADT<D>) &
     BehaviorUnfoldCtors<D, BehaviorObservers<D>> &
     BehaviorMergeCtors<D> & {
         readonly prototype: BehaviorObservers<D>;
@@ -422,20 +442,130 @@ export type BehaviorADT<D = Record<string, unknown>> =
         [key: string]: unknown;
     };
 
+// ---- Single-character type parameter universe --------------------------------
+
+/**
+ * The predefined universe of single uppercase letter type parameter names.
+ *
+ * By using a finite mapped type (instead of an index signature), TypeScript
+ * preserves the literal brand on each `TypeParamRef<K>` when the user
+ * destructures `{ T }` from the callback parameter.
+ */
+export type Letter =
+    | 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'I' | 'J' | 'K' | 'L' | 'M'
+    | 'N' | 'O' | 'P' | 'Q' | 'R' | 'S' | 'T' | 'U' | 'V' | 'W' | 'X' | 'Y' | 'Z';
+
 // ---- DeclParams types -------------------------------------------------------
 
-/** Context passed to the `data()` declaration callback. */
+/**
+ * Context passed to the `data()` declaration callback.
+ *
+ * Type parameter names are single uppercase letters A–Z.  Each destructured
+ * name resolves to `TypeParamRef<Name>` so that the literal brand propagates
+ * through the type algebra. Because this is a mapped type over a finite union
+ * (not an index signature), TypeScript preserves the literal key identity.
+ *
+ * `Family` is a reserved reference to the ADT being defined (for recursion).
+ */
 export type DataDeclParams = {
     readonly Family: FamilyRefCallable;
-    readonly [key: string]: TypeParamRef | FamilyRefCallable;
+} & {
+    readonly [K in Letter]: TypeParamRef<K>;
 };
 
-/** Extended context passed to the `behavior()` declaration callback. */
+/**
+ * Context passed to the `behavior()` declaration callback.
+ *
+ * Same strategy as `DataDeclParams`: single-letter type parameter names A–Z
+ * are predefined with branded `TypeParamRef<K>` values.
+ *
+ * `Self` is a reserved continuation reference (for corecursion).
+ */
 export type BehaviorDeclParams = {
     /** Callable as `Self` (continuation) or `Self(T)` (parameterized continuation). */
     readonly Self: SelfRefCallable;
-    readonly [key: string]: TypeParamRef | SelfRefCallable;
+} & {
+    readonly [K in Letter]: TypeParamRef<K>;
 };
+
+// ---- Type-level substitution (issue #126) -----------------------------------
+
+/**
+ * Recursively scan a declaration type `T` and collect all `TypeParamRef<N>`
+ * brand names that appear in variant field specs.
+ *
+ * Guards against `any` (from index signatures like `[key: string]: any`)
+ * and skips constructors/functions to avoid false positives.
+ */
+export type CollectParams<T> =
+    0 extends (1 & T)                     // T is `any` — skip
+        ? never
+        : T extends TypeParamRef<infer N>
+            ? N
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            : T extends abstract new (...args: any) => any
+                ? never                   // Skip constructors (Number, String, DataADT, …)
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                : T extends (...args: any) => any
+                    ? never               // Skip functions
+                    : T extends Record<string, unknown>
+                        ? { [K in keyof T]: CollectParams<T[K]> }[keyof T]
+                        : never;
+
+/**
+ * Substitute a single spec value: if it is `TypeParamRef<N>` and `N` is a key
+ * in `TArgs`, replace it with `TArgs[N]`; otherwise recurse into plain objects.
+ *
+ * Constructor and function types are returned as-is (not recursed into) because
+ * mapping over `keyof NumberConstructor` etc. would strip call/construct
+ * signatures, degrading inferred field types to `unknown`.
+ */
+type SubstTypeParam<S, TArgs extends Record<string, unknown>> =
+    S extends TypeParamRef<infer Name>
+        ? Name extends keyof TArgs ? TArgs[Name] : unknown
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        : S extends abstract new (...args: any) => any
+            ? S                           // Skip constructors (Number, String, DataADT, …)
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            : S extends (...args: any) => any
+                ? S                       // Skip functions
+                : S extends Record<string, unknown>
+                    ? { [K in keyof S]: SubstTypeParam<S[K], TArgs> }
+                    : S;
+
+/**
+ * Walk a declaration `D` (variant/operation entries), substituting
+ * `TypeParamRef` values at up to 3 levels of nesting.
+ */
+type SubstDecl<D, TArgs extends Record<string, unknown>> = {
+    [K in keyof D]: D[K] extends Record<string, unknown>
+        ? { [F in keyof D[K]]: SubstTypeParam<D[K][F], TArgs> }
+        : D[K]
+};
+
+/**
+ * A `DataADT` that additionally provides a callable overload for
+ * parameterized type instantiation.
+ *
+ * The callable accepts a record mapping type parameter names to concrete
+ * constructors and returns a `DataADT<SubstDecl<D, TArgs>>` where all
+ * `TypeParamRef`s are replaced with the supplied types.
+ *
+ * For non-parameterized ADTs, `SubstDecl` is a no-op (identity).
+ */
+export type DataADTWithParams<D> =
+    DataADT<D> & {
+        <TArgs extends Record<string, unknown>>(args: TArgs): DataADT<SubstDecl<D, TArgs>>;
+    };
+
+/**
+ * A `BehaviorADT` that additionally provides a callable overload for
+ * parameterized type instantiation.
+ */
+export type BehaviorADTWithParams<D> =
+    BehaviorADT<D> & {
+        <TArgs extends Record<string, unknown>>(args: TArgs): BehaviorADT<SubstDecl<D, TArgs>>;
+    };
 
 // Re-export symbols used as declaration keys
 export type { op, spec, operations, extend };

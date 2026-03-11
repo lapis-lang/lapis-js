@@ -157,7 +157,7 @@ describe('Invariant Support', () => {
                 }
             }));
 
-            const NumPair = Pair(Number, Number);
+            const NumPair = Pair({ T: Number, U: Number });
             const pair = NumPair.MakePair({ first: 1, second: 2 });
             assert.equal(pair.first, 1);
 

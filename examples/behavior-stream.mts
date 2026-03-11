@@ -29,7 +29,7 @@ const Stream = behavior(({ Self, T }) => ({
     })),
 
     // Instantiate for numbers
-    StreamNum = Stream(Number);
+    StreamNum = Stream({ T: Number });
 
 console.log('\n=== Basic Stream Examples ===');
 
@@ -65,7 +65,7 @@ const StreamWithNth = behavior(({ Self, T }) => ({
         })
     })),
 
-    StreamNumNth = StreamWithNth(Number);
+    StreamNumNth = StreamWithNth({ T: Number });
 
 console.log('\n=== Parametric Observer Example ===');
 

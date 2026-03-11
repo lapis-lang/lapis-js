@@ -110,7 +110,7 @@ describe('Transformer Infrastructure', () => {
             });
 
             const composed = composeTransformers(t1, t2);
-            const transform = composed.getCtorTransform!({} as any);
+            const transform = composed.getCtorTransform!({ name: 'dummy' });
 
             // Should apply t1 then t2: t2(t1(5)) = (5 + 1) * 2 = 12
             assert.ok(transform);
@@ -137,8 +137,8 @@ describe('Transformer Infrastructure', () => {
 
             const retrieved = Color._getTransformer('toHex');
 
-            assert.strictEqual((retrieved as any)?.name, 'toHex');
-            assert.ok((retrieved as any)?.getCtorTransform);
+            assert.strictEqual((retrieved as { name?: string })?.name, 'toHex');
+            assert.ok((retrieved as { getCtorTransform?: unknown })?.getCtorTransform);
         });
 
         test('can register multiple transformers', () => {
@@ -186,7 +186,7 @@ describe('Transformer Infrastructure', () => {
             // Extended ADT should be able to access parent transformer
             const retrieved = ExtendedColor._getTransformer('toHex');
 
-            assert.strictEqual((retrieved as any)?.name, 'toHex');
+            assert.strictEqual((retrieved as { name?: string })?.name, 'toHex');
         });
 
         test('extended ADT can have its own transformers', () => {
@@ -281,7 +281,7 @@ describe('Transformer Infrastructure', () => {
 
             const retrieved = Peano._getTransformer('toValue');
 
-            assert.strictEqual((retrieved as any)?.name, 'toValue');
+            assert.strictEqual((retrieved as { name?: string })?.name, 'toValue');
         });
 
         test('can register transformer on parameterized ADT', () => {
@@ -304,7 +304,7 @@ describe('Transformer Infrastructure', () => {
 
             const retrieved = List._getTransformer('length');
 
-            assert.strictEqual((retrieved as any)?.name, 'length');
+            assert.strictEqual((retrieved as { name?: string })?.name, 'length');
         });
     });
 });

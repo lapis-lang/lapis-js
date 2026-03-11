@@ -19,10 +19,12 @@ const List = data(({ Family, T }) => ({
             if (!ys || ys.constructor.name === 'Nil')
                 return [];
 
-            const PairType = Pair(typeof head === 'number' ? Number
-                : typeof head === 'string' ? String : Object,
-            typeof ys.head === 'number' ? Number
-                : typeof ys.head === 'string' ? String : Object);
+            const PairType = Pair({
+                T: typeof head === 'number' ? Number
+                    : typeof head === 'string' ? String : Object,
+                U: typeof ys.head === 'number' ? Number
+                    : typeof ys.head === 'string' ? String : Object
+            });
 
             return [
                 PairType.MakePair({ first: head, second: ys.head }),
@@ -32,8 +34,8 @@ const List = data(({ Family, T }) => ({
     })
 }));
 
-const NumList = List(Number),
-    StrList = List(String);
+const NumList = List({ T: Number }),
+    StrList = List({ T: String });
 
 describe('Binary Operations with Fold', () => {
     describe('Zip Operation', () => {

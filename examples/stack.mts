@@ -38,7 +38,7 @@ const Stack = data(({ Family, T }) => ({
     })),
 
     // Instantiate for numbers
-    NumStack = Stack(Number);
+    NumStack = Stack({ T: Number });
 
 console.log('=== Stack ADT Example ===\n');
 
@@ -90,12 +90,12 @@ console.log(`stack3.contains(5) = ${stack3.contains(5)}`);   // false
 
 // Type checking
 console.log('\nType checking:');
-console.log(`stack3 instanceof Stack(Number): ${stack3 instanceof NumStack}`);
-console.log(`Empty instanceof Stack(Number): ${Empty instanceof NumStack}`);
+console.log(`stack3 instanceof Stack({ T: Number }): ${stack3 instanceof NumStack}`);
+console.log(`Empty instanceof Stack({ T: Number }): ${Empty instanceof NumStack}`);
 
 // String stack
 console.log('\n=== String Stack ===');
-const StrStack = Stack(String),
+const StrStack = Stack({ T: String }),
     strStack = StrStack.FromArray(['first', 'second', 'third']);
 
 console.log(`strStack = ${strStack.show}`);

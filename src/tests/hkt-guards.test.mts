@@ -12,9 +12,9 @@ describe('Higher-Kinded Type Guards (issue #55)', () => {
         Cons: { head: T, tail: Family(T) }
     }));
 
-    test('BUG 1: plain string rejected where Pair(String, Number) expected', () => {
-        const PairSN = Pair(String, Number);
-        const ListOfPairs = List(PairSN);
+    test('BUG 1: plain string rejected where Pair({ T: String, U: Number }) expected', () => {
+        const PairSN = Pair({ T: String, U: Number });
+        const ListOfPairs = List({ T: PairSN });
 
         assert.throws(
             () => ListOfPairs.Cons({ head: 'not a pair', tail: ListOfPairs.Nil }),
@@ -23,10 +23,10 @@ describe('Higher-Kinded Type Guards (issue #55)', () => {
     });
 
     test('BUG 2: wrong parameterization rejected', () => {
-        const PairSN = Pair(String, Number);
-        const ListOfPairs = List(PairSN);
+        const PairSN = Pair({ T: String, U: Number });
+        const ListOfPairs = List({ T: PairSN });
 
-        const wrongPair = Pair(Number, Number).MakePair({ first: 1, second: 2 });
+        const wrongPair = Pair({ T: Number, U: Number }).MakePair({ first: 1, second: 2 });
 
         assert.throws(
             () => ListOfPairs.Cons({ head: wrongPair, tail: ListOfPairs.Nil }),
@@ -35,8 +35,8 @@ describe('Higher-Kinded Type Guards (issue #55)', () => {
     });
 
     test('correct parameterization accepted', () => {
-        const PairSN = Pair(String, Number);
-        const ListOfPairs = List(PairSN);
+        const PairSN = Pair({ T: String, U: Number });
+        const ListOfPairs = List({ T: PairSN });
 
         const goodPair = PairSN.MakePair({ first: 'hello', second: 42 });
         const list = ListOfPairs.Cons({ head: goodPair, tail: ListOfPairs.Nil }) as
@@ -48,7 +48,7 @@ describe('Higher-Kinded Type Guards (issue #55)', () => {
 
     test('non-parameterized ADT used as type argument', () => {
         const Color = data(() => ({ Red: {}, Green: {}, Blue: {} }));
-        const ListOfColors = List(Color);
+        const ListOfColors = List({ T: Color });
 
         // Valid: Color instances accepted
         const list = ListOfColors.Cons({ head: Color.Red, tail: ListOfColors.Nil });
@@ -68,8 +68,8 @@ describe('Higher-Kinded Type Guards (issue #55)', () => {
     });
 
     test('nested parameterized ADT type args', () => {
-        const PairSN = Pair(String, Number);
-        const ListOfPairs = List(PairSN);
+        const PairSN = Pair({ T: String, U: Number });
+        const ListOfPairs = List({ T: PairSN });
 
         const pair1 = PairSN.MakePair({ first: 'a', second: 1 });
         const pair2 = PairSN.MakePair({ first: 'b', second: 2 });

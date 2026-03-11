@@ -267,22 +267,37 @@ console.log(two.pred.pred === zero); // true
 
 In the above, `Family` is a reserved special reference to the ADT being defined, allowing recursive references. `Family` references are validated at **runtime** with `instanceof` checks against the ADT family. Since the `Peano` ADT is not parameterized, `Family` is used directly as a guard (it is not callable). In other words, `Family` is equivalent to `Family()` for non-parameterized recursive ADTs, but you write `Family` not `Family()`.
 
-For parameterized ADTs, arbitrary type parameter names can be used in the destructured callback:
+For parameterized ADTs, type parameter names are single uppercase letters (`A`–`Z`). This restriction enables full compile-time type propagation — when you instantiate a parameterized ADT with concrete types, TypeScript correctly resolves field types:
 
 ```ts
 const Pair = data(({ T, U }) => ({
     MakePair: { first: T, second: U }
 }));
 
-const numStrPair = Pair(Number, String);
+const numStrPair = Pair({ T: Number, U: String });
 
-const pair = numStrPair.MakePair(42, 'hello');
+const pair = numStrPair.MakePair({ first: 42, second: 'hello' });
 
 console.log(pair.first);  // 42
 console.log(pair.second); // 'hello'
 
 numStrPair.MakePair('bad', 100); // Throws TypeError at runtime
 ```
+
+When using the object form of type instantiation, TypeScript propagates type arguments at the type level:
+
+```ts
+const Dictionary = data(({ K, V }) => ({
+    Empty: {},
+    Entry: { key: K, value: V }
+}));
+
+const StrNumDict = Dictionary({ K: String, V: Number });
+// entry.key is typed as `string`, entry.value as `number`
+const entry = StrNumDict.Entry({ key: 'age', value: 30 });
+```
+
+> **Note:** `Family` (in `data()` declarations) and `Self` (in `behavior()` declarations) are reserved names and cannot be used as type parameter names.
 
 Recursive parameterized ADTs can combine `Family` and type parameters:
 
@@ -292,16 +307,16 @@ const List = data(({ Family, T }) => ({
     Cons: { head: T, tail: Family(T) }
 }));
 
-const {Cons, Nil} = List(Number);
+const {Cons, Nil} = List({ T: Number });
 
-const nums = Cons(1, Cons(2, Cons(3, Nil)));
+const nums = Cons({ head: 1, tail: Cons({ head: 2, tail: Cons({ head: 3, tail: Nil }) }) });
 console.log(nums.head);         // 1
 console.log(nums.tail.head);    // 2
 
-const badList = Cons('bad', Nil); // Throws TypeError at runtime
+const badList = Cons({ head: 'bad', tail: Nil }); // Throws TypeError at runtime
 ```
 
-Note that `List(Number)` in the above is equivalent to `List({ T: Number })` - both forms are supported for type instantiation.
+Type instantiation must use the object form (`List({ T: Number })`), which maps parameter names to concrete types.
 
 ## ADT Extension (Subtyping)
 
@@ -811,7 +826,7 @@ const List = data(({ Family, T }) => ({
     })
 }));
 
-const NumList = List(Number);
+const NumList = List({ T: Number });
 const nums = NumList.Cons(1, NumList.Cons(2, NumList.Nil));
 const result = nums.append(3);  // Returns NumList instance, not generic List
 ```
@@ -1454,11 +1469,11 @@ const GenericList = data(({ Family, T }) => ({
     })
 }));
 
-const NumList = GenericList(Number);
+const NumList = GenericList({ T: Number });
 
 // Unfold operation available on all instantiations
 const nums = NumList.Range(3);  // Works
-const strs = GenericList(String).Range(3);  // Also works
+const strs = GenericList({ T: String }).Range(3);  // Also works
 ```
 
 ### Binary Operations with Fold
@@ -1480,7 +1495,7 @@ const List = data(({ Family, T }) => ({
             if (!ys || ys.constructor.name === 'Nil')
                 return Family(T).Nil;
 
-            const PairType = Pair(typeof head, typeof ys.head);
+            const PairType = Pair({ T: Number, U: String });
             return Family(T).Cons({
                 head: PairType.MakePair({ first: head, second: ys.head }),
                 tail: tail(ys.tail)  // tail is a partially applied function
@@ -1490,8 +1505,8 @@ const List = data(({ Family, T }) => ({
 }));
 
 // Instantiate types
-const NumList = List(Number);
-const StrList = List(String);
+const NumList = List({ T: Number });
+const StrList = List({ T: String });
 
 // Usage
 const nums = NumList.Cons({ head: 1, tail: NumList.Cons({ head: 2, tail: NumList.Cons({ head: 3, tail: NumList.Nil }) }) });
@@ -1590,7 +1605,7 @@ const Stack = data(({ Family, T }) => ({
     DoubleFrom: merge('FromArray', 'double')
 }));
 
-const NumStack = Stack(Number);
+const NumStack = Stack({ T: Number });
 const { Empty, Push } = NumStack;
 
 const stack = Push({ value: 3, rest: Push({ value: 2, rest: Push({ value: 1, rest: Empty }) }) });
@@ -2218,12 +2233,12 @@ const Stack = data(({ Family, T }) => ({
         in: T,
         demands: (self, val) => val !== undefined && val !== null
     })({
-        Empty({}, val) { return Stack(Number).Push({ value: val, rest: Stack(Number).Empty }); },
-        Push({ rest }, val) { return Stack(Number).Push({ value: this.value, rest: rest(val) }); }
+        Empty({}, val) { return Stack({ T: Number }).Push({ value: val, rest: Stack({ T: Number }).Empty }); },
+        Push({ rest }, val) { return Stack({ T: Number }).Push({ value: this.value, rest: rest(val) }); }
     })
 }));
 
-const NumStack = Stack(Number);
+const NumStack = Stack({ T: Number });
 const { Empty, Push } = NumStack;
 
 const stack = Push({ value: 1, rest: Empty });
@@ -2282,8 +2297,8 @@ const Stack = data(({ Family, T }) => ({
         out: Family,
         ensures: (self, old, result) => result.size === old.size + 1
     })({
-        Empty({}, val) { return Stack(Number).Push({ value: val, rest: Stack(Number).Empty }); },
-        Push({ rest }, val) { return Stack(Number).Push({ value: this.value, rest: rest(val) }); }
+        Empty({}, val) { return Stack({ T: Number }).Push({ value: val, rest: Stack({ T: Number }).Empty }); },
+        Push({ rest }, val) { return Stack({ T: Number }).Push({ value: this.value, rest: rest(val) }); }
     })
 }));
 ```
@@ -2357,10 +2372,10 @@ const Stack = data(({ Family, T }) => ({
     })({
         Empty({}, val) {
             if (val === undefined) throw new Error('No value');
-            return Stack(Number).Push({ value: val, rest: Stack(Number).Empty });
+            return Stack({ T: Number }).Push({ value: val, rest: Stack({ T: Number }).Empty });
         },
         Push({ rest }, val) {
-            return Stack(Number).Push({ value: this.value, rest: rest(val) });
+            return Stack({ T: Number }).Push({ value: this.value, rest: rest(val) });
         }
     })
 }));
@@ -2624,7 +2639,7 @@ const Stream = behavior(({ Self, T }) => ({
     })
 }));
 
-const NumStream = Stream(Number);
+const NumStream = Stream({ T: Number });
 
 const nats = NumStream.From(0);
 console.log(nats.take(5)); // [0, 1, 2, 3, 4]

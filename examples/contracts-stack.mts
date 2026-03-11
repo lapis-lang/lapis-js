@@ -88,7 +88,7 @@ const Stack = data(({ Family, T }) => ({
     })
 }));
 
-const NumStack = Stack(Number);
+const NumStack = Stack({ T: Number });
 
 console.log('=== Contracts: Stack Example ===\n');
 

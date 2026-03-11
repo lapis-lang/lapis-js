@@ -41,8 +41,8 @@ describe('Behavior Stream', () => {
             tail: Self
         }));
 
-        // Create parameterized Stream(Number)
-        const NumberStream = Stream(Number);
+        // Create parameterized Stream({ T: Number })
+        const NumberStream = Stream({ T: Number });
 
         // Verify parameterized type exists
         assert.ok(NumberStream);

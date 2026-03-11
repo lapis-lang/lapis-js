@@ -44,7 +44,7 @@ describe('Fold Operation - `this` Context and Open Recursion', () => {
             })
         }));
 
-        const NumStack = Stack(Number);
+        const NumStack = Stack({ T: Number });
         const stack = NumStack.Push({ value: 3, rest: NumStack.Push({ value: 2, rest: NumStack.Empty }) });
 
         const [value, rest] = stack.pop;
@@ -182,7 +182,7 @@ describe('Fold Operation - `this` Context and Open Recursion', () => {
             })
         }));
 
-        const NumResult = Result(Number);
+        const NumResult = Result({ T: Number });
         const ok = NumResult.Ok({ value: 42 });
         const err = NumResult.Err({ error: 'failed' });
 
