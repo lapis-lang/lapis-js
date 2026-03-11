@@ -50,12 +50,15 @@ export type SpecValue<S, Self = unknown> =
                                 S extends TypeParamRef ? unknown :
                                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
                                     S extends abstract new (...args: any[]) => infer I ? I :
-                                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                        S extends (...args: any[]) => any ? unknown :
-                                            // DataADT<D> / BehaviorADT<D> carry their instance type
-                                            // on `readonly prototype`. This resolves fields whose
-                                            // type parameter was bound to a concrete ADT (issue #126).
-                                            S extends { readonly prototype: infer I } ? I :
+                                        // DataADT<D> / BehaviorADT<D> carry their instance type
+                                        // on `readonly prototype`. This resolves fields whose
+                                        // type parameter was bound to a concrete ADT (issue #126).
+                                        // Checked before the generic function guard because ADT
+                                        // values are callable (parameterization overload) and would
+                                        // otherwise match `(...args) => any` and resolve to `unknown`.
+                                        S extends { readonly prototype: infer I } ? I :
+                                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                                            S extends (...args: any[]) => any ? unknown :
                                                 unknown;
 
 // ---- Field values -----------------------------------------------------------
@@ -511,14 +514,24 @@ export type CollectParams<T> =
 
 /**
  * Substitute a single spec value: if it is `TypeParamRef<N>` and `N` is a key
- * in `TArgs`, replace it with `TArgs[N]`; otherwise recurse into objects.
+ * in `TArgs`, replace it with `TArgs[N]`; otherwise recurse into plain objects.
+ *
+ * Constructor and function types are returned as-is (not recursed into) because
+ * mapping over `keyof NumberConstructor` etc. would strip call/construct
+ * signatures, degrading inferred field types to `unknown`.
  */
 type SubstTypeParam<S, TArgs extends Record<string, unknown>> =
     S extends TypeParamRef<infer Name>
         ? Name extends keyof TArgs ? TArgs[Name] : unknown
-        : S extends Record<string, unknown>
-            ? { [K in keyof S]: SubstTypeParam<S[K], TArgs> }
-            : S;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        : S extends abstract new (...args: any) => any
+            ? S                           // Skip constructors (Number, String, DataADT, …)
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            : S extends (...args: any) => any
+                ? S                       // Skip functions
+                : S extends Record<string, unknown>
+                    ? { [K in keyof S]: SubstTypeParam<S[K], TArgs> }
+                    : S;
 
 /**
  * Walk a declaration `D` (variant/operation entries), substituting

@@ -1495,7 +1495,7 @@ const List = data(({ Family, T }) => ({
             if (!ys || ys.constructor.name === 'Nil')
                 return Family(T).Nil;
 
-            const PairType = Pair({ T: typeof head, U: typeof ys.head });
+            const PairType = Pair({ T: Number, U: String });
             return Family(T).Cons({
                 head: PairType.MakePair({ first: head, second: ys.head }),
                 tail: tail(ys.tail)  // tail is a partially applied function

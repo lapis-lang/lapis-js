@@ -129,7 +129,7 @@ const behaviorInstanceState = new WeakMap<object, BehaviorInstanceState>();
 
 function createSelf(): { [SelfRefSymbol]: true; (typeParam?: unknown): unknown } {
     const fn = function (_typeParam?: unknown): unknown {
-        return fn as unknown;
+        return fn;
     };
     (fn as unknown as Record<symbol, boolean>)[SelfRefSymbol] = true;
     return fn as unknown as { [SelfRefSymbol]: true; (typeParam?: unknown): unknown };
