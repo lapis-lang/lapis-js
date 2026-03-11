@@ -45,7 +45,7 @@ import {
     builtInTypeChecks
 } from './utils.mjs';
 
-import type { DataADT, DataDeclParams } from './types.mjs';
+import type { DataADTWithParams, DataDeclParams } from './types.mjs';
 
 // Re-export symbols
 export { extend };
@@ -146,13 +146,17 @@ type TransformerMethods = {
 
 /**
  * Main entry point: data(() => { variants and operations })
+ *
+ * When the declaration uses type parameters (single uppercase letters A–Z),
+ * the returned ADT is callable with a type-arg record for compile-time
+ * substitution: `List({ T: Number })` yields fields typed as `number`.
  */
 export function data<D extends Record<string, unknown>>(
     declFn: (params: DataDeclParams) => D
-): DataADT<D> {
+): DataADTWithParams<D> {
     const decl = parseDeclaration(declFn as unknown as (params: object) => Record<string, unknown>),
         ADT = createADT(decl);
-    return ADT as unknown as DataADT<D>;
+    return ADT as unknown as DataADTWithParams<D>;
 }
 
 // ---- Declaration parsing ----------------------------------------------------
@@ -480,19 +484,14 @@ function createADT(decl: ParsedDecl): ADTLike {
             if (isObjectLiteral(firstArg))
                 return createParameterized(ADT as unknown as ADTLike, firstArg as SpecRecord, decl);
 
-            const typeParamNames = Object.keys(decl.typeParams);
-            if (args.length <= typeParamNames.length) {
-                const typeArgs: SpecRecord = {};
-                for (let i = 0; i < args.length; i++)
-                    typeArgs[typeParamNames[i]] = args[i];
-
-                return createParameterized(ADT as unknown as ADTLike, typeArgs, decl);
-            }
+            throw new TypeError(
+                'Parameterized ADTs must be instantiated with an object: ' +
+                `e.g. MyADT({ ${Object.keys(decl.typeParams).map(k => `${k}: Number`).join(', ')} })`
+            );
         }
 
         if (new.target)
             return;
-
 
         throw new Error('Use ADT variants or parameterize with type arguments');
     }

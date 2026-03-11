@@ -38,10 +38,10 @@ const tree = RoseTree.Node({
 
 console.log('tree.value:', tree.value);                        // 1
 console.log('tree.children.length:', tree.children.length);    // 2
-console.log('tree.children[0].value:', (tree.children[0] as any).value); // 2
-console.log('tree.children[1].value:', (tree.children[1] as any).value); // 3
-console.log('tree.children[0].children[0].value:', (tree.children[0] as any).children[0].value); // 4
-console.log('tree.children[0].children[1].value:', (tree.children[0] as any).children[1].value); // 5
+console.log('tree.children[0].value:', (tree.children[0] as { value: number }).value); // 2
+console.log('tree.children[1].value:', (tree.children[1] as { value: number }).value); // 3
+console.log('tree.children[0].children[0].value:', (tree.children[0] as { children: { value: number }[] }).children[0].value); // 4
+console.log('tree.children[0].children[1].value:', (tree.children[0] as { children: { value: number }[] }).children[1].value); // 5
 
 // Leaf node
 const leaf = RoseTree.Leaf(42);

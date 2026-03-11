@@ -89,7 +89,7 @@ Parameterized stack ADT demonstrating:
 - Fold operations (`size`, `peek`, `toArray`)
 - Direct field access for stack operations (`.rest`)
 - Unfold from arrays (`FromArray`)
-- Multiple type instantiations (`Stack(Number)`, `Stack(String)`)
+- Multiple type instantiations (`Stack({ T: Number })`, `Stack({ T: String })`)
 - Incremental stack building
 
 **Demonstrates:** Stack data structure, unfold from collections, field access

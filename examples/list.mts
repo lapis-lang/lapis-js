@@ -94,7 +94,7 @@ const List = data(({ Family, T }) => ({
     },
 
     // Instantiate for numbers
-    NumList = List(Number);
+    NumList = List({ T: Number });
 
 console.log('=== List ADT Example ===\n');
 
@@ -149,7 +149,7 @@ console.log('\nZip operation:');
 // Create a list of objects (pairs) - Zip operation already defined in List base
 // Note: In declarative form, we use the Zip operation that's already defined
 // The show operation will need to handle pair objects appropriately
-const PairListWithZip = List(Object),
+const PairListWithZip = List({ T: Object }),
 
     zipped = PairListWithZip.Zip({ xs: list1, ys: list2 });
 // Note: show() for object lists will show the default representation
@@ -163,8 +163,8 @@ console.log('Zipped short result:', zippedShort);
 
 // Type checking
 console.log('\nType checking:');
-console.log(`list1 instanceof List(Number): ${list1 instanceof NumList}`);
-console.log(`Nil instanceof List(Number): ${Nil instanceof NumList}`);
+console.log(`list1 instanceof List({ T: Number }): ${list1 instanceof NumList}`);
+console.log(`Nil instanceof List({ T: Number }): ${Nil instanceof NumList}`);
 
 // Field access
 console.log('\nField access:');
@@ -181,7 +181,7 @@ console.log(`Range(1000).sum = ${largeRange.sum}`);
 // Using with strings
 console.log('\n=== String List ===');
 // Note: length and show operations already defined in base List
-const StrList = List(String),
+const StrList = List({ T: String }),
     { Cons: SCons, Nil: SNil } = StrList,
     words = SCons({ head: 'hello', tail: SCons({ head: 'world', tail: SNil }) });
 console.log(`words = ${words.show}`);

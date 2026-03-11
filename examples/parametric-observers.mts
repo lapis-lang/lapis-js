@@ -26,7 +26,7 @@ const Stream = behavior(({ Self, T }) => ({
         })
     })),
 
-    StreamNum = Stream(Number);
+    StreamNum = Stream({ T: Number });
 
 console.log('\n=== Stream with Parametric Observers ===');
 

@@ -39,7 +39,7 @@ import {
     type ContractSpec
 } from './contracts.mjs';
 
-import type { BehaviorADT, BehaviorDeclParams } from './types.mjs';
+import type { BehaviorADTWithParams, BehaviorDeclParams } from './types.mjs';
 
 // ---- Internal symbols -------------------------------------------------------
 
@@ -167,7 +167,7 @@ function ensureOwnMap<K, V>(
  */
 export function behavior<D extends Record<string, unknown>>(
     declFn: (params: BehaviorDeclParams) => D
-): BehaviorADT<D> {
+): BehaviorADTWithParams<D> {
     if (typeof declFn !== 'function') {
         throw new TypeError(
             'behavior() requires a callback function: behavior(({ Self, T }) => ({ observers }))'
@@ -318,12 +318,10 @@ export function behavior<D extends Record<string, unknown>>(
             !isConstructable(typeArgsList[0]))
             typeArgsObj = typeArgsList[0] as Record<string, unknown>;
         else {
-            typeArgsObj = {};
-            typeParamNames.forEach((paramName, index) => {
-                if (index < typeArgsList.length)
-                    typeArgsObj[paramName] = typeArgsList[index];
-
-            });
+            throw new TypeError(
+                'Parameterized behaviors must be instantiated with an object: ' +
+                `e.g. MyBehavior({ ${typeParamNames.map(k => `${k}: Number`).join(', ')} })`
+            );
         }
 
         const { class: parameterizedBehavior } =
@@ -496,7 +494,7 @@ export function behavior<D extends Record<string, unknown>>(
         }
     }
 
-    return callableBehavior as unknown as BehaviorADT<D>;
+    return callableBehavior as unknown as BehaviorADTWithParams<D>;
 }
 
 // ---- Unfold operation -------------------------------------------------------

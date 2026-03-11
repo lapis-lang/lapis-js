@@ -519,7 +519,7 @@ describe('Spec Validation - Runtime Type Checking', () => {
                 })
             }));
 
-            const NumStack = Stack(Number);
+            const NumStack = Stack({ T: Number });
             const s = NumStack.Push({ value: 1, rest: NumStack.Empty });
             const s2 = s.append(2);
 

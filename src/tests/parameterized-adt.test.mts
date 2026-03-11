@@ -143,9 +143,9 @@ describe('Parameterized ADTs', () => {
             tail: MaybeList.Cons({ head: justTwo, tail: MaybeList.Nil })
         });
 
-        // Type assertion needed because head is a union of Nothing | Just
-        assert.strictEqual((list.head as any).value, 1);
-        assert.strictEqual((list.tail.head as any).value, 2);
+        // With type-parameter propagation (issue #126), head is properly typed
+        assert.strictEqual(list.head.value, 1);
+        assert.strictEqual(list.tail.head.value, 2);
     });
 
     test('supports predicates', () => {

@@ -3,7 +3,7 @@
  *
  * Verifies that fold handlers on parameterized ADTs can use Family(T) from
  * the closure to construct instances of the current parameterized ADT without
- * hardcoding type arguments (e.g. Stack(Number)).
+ * hardcoding type arguments (e.g. Stack({ T: Number })).
  *
  * @see https://github.com/lapis-lang/lapis-js/issues/123
  */
@@ -46,7 +46,7 @@ describe('Family(T) in data fold handlers', () => {
             })
         }));
 
-        const NumStack = Stack(Number);
+        const NumStack = Stack({ T: Number });
         const s = NumStack.Push({ value: 1, rest: NumStack.Push({ value: 2, rest: NumStack.Empty }) });
 
         // append uses Family(T) — should work without hardcoding Stack(Number)
@@ -80,13 +80,13 @@ describe('Family(T) in data fold handlers', () => {
         }));
 
         // Number stack
-        const NumStack = Stack(Number);
+        const NumStack = Stack({ T: Number });
         const ns = NumStack.Push({ value: 10, rest: NumStack.Empty });
         const ns2 = ns.append(20);
         assert.deepStrictEqual(ns2.toArray, [10, 20]);
 
         // String stack — same fold logic, different parameterization
-        const StrStack = Stack(String);
+        const StrStack = Stack({ T: String });
         const ss = StrStack.Push({ value: 'a', rest: StrStack.Empty });
         const ss2 = ss.append('b');
         assert.deepStrictEqual(ss2.toArray, ['a', 'b']);
@@ -139,7 +139,7 @@ describe('Family(T) in data fold handlers', () => {
             })
         }));
 
-        const NumStack = Stack(Number);
+        const NumStack = Stack({ T: Number });
         const s = NumStack.Push({ value: 1, rest: NumStack.Empty });
         // Should not throw — Family(T) resolves even in getter folds
         const r = s.reversed;
@@ -159,7 +159,7 @@ describe('Family(T) in data fold handlers', () => {
             })
         }));
 
-        const NumStack = Stack(Number);
+        const NumStack = Stack({ T: Number });
         const s = NumStack.Push({ value: 42, rest: NumStack.Empty });
         assert.strictEqual(s.size, 1);
         assert.strictEqual(s.value, 42);
@@ -182,7 +182,7 @@ describe('Family(T) in data fold handlers', () => {
             })
         }));
 
-        const NumStack = Stack(Number);
+        const NumStack = Stack({ T: Number });
         const s = NumStack.Push({ value: 1, rest: NumStack.Empty });
         const s2 = s.append(2);
 

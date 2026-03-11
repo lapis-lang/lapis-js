@@ -142,10 +142,10 @@ describe('Behavior - Basic Declaration', () => {
         }));
         assert.ok(Pair, 'Should create behavior with multiple type params');
 
-        // Custom type parameter names
-        const CustomStream = behavior(({ Self, ItemType }) => ({
-            current: ItemType,
-            next: Self(ItemType)
+        // Custom type parameter names (single uppercase letters)
+        const CustomStream = behavior(({ Self, I }) => ({
+            current: I,
+            next: Self(I)
         }));
         assert.ok(CustomStream, 'Should create behavior with custom type param names');
     });

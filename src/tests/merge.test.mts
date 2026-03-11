@@ -83,7 +83,7 @@ describe('Merge Operation (Deforestation)', () => {
                 doubleSum: merge('double', 'sum')
             }));
 
-            const NumList = List(Number);
+            const NumList = List({ T: Number });
 
             const list = NumList.Cons(1, NumList.Cons(2, NumList.Cons(3, NumList.Nil)));
 
@@ -107,7 +107,7 @@ describe('Merge Operation (Deforestation)', () => {
                 SquareCountDown: merge('CountDown', 'square')
             }));
 
-            const NumList = List(Number);
+            const NumList = List({ T: Number });
             const result = NumList.SquareCountDown(5);
 
             // Should generate [5, 4, 3, 2, 1] then square each: [25, 16, 9, 4, 1]
@@ -137,7 +137,7 @@ describe('Merge Operation (Deforestation)', () => {
                 transformProduct: merge('double', 'increment', 'product')
             }));
 
-            const NumList = List(Number);
+            const NumList = List({ T: Number });
             const list = NumList.Cons(1, NumList.Cons(2, NumList.Cons(3, NumList.Nil)));
 
             // Transform each: (1*2)+1=3, (2*2)+1=5, (3*2)+1=7
@@ -165,7 +165,7 @@ describe('Merge Operation (Deforestation)', () => {
                 SumOfSquares: merge('Range', 'square', 'sum')
             }));
 
-            const NumList = List(Number);
+            const NumList = List({ T: Number });
 
             // Sum of squares: 1^2 + 2^2 + 3^2 + 4^2 + 5^2 = 1 + 4 + 9 + 16 + 25 = 55
             assert.strictEqual(NumList.SumOfSquares(5), 55);
@@ -194,7 +194,7 @@ describe('Merge Operation (Deforestation)', () => {
                 ComplexPipeline: merge('Range', 'double', 'increment', 'sum')
             }));
 
-            const NumList = List(Number);
+            const NumList = List({ T: Number });
 
             // For n=3: [3,2,1] -> double -> [6,4,2] -> increment -> [7,5,3] -> sum = 15
             assert.strictEqual(NumList.ComplexPipeline(3), 15);

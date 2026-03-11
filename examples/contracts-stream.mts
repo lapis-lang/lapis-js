@@ -63,7 +63,7 @@ const Stream = behavior(({ Self, T }) => ({
     })
 }));
 
-const NumStream = Stream(Number);
+const NumStream = Stream({ T: Number });
 
 console.log('=== Contracts: Stream Example ===\n');
 

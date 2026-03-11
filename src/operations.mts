@@ -113,9 +113,9 @@ export interface SelfRefCallable extends SelfRef {
     (typeParam?: unknown): SelfRefCallable;
 }
 
-/** A type parameter reference marker */
-export interface TypeParamRef {
-    readonly [TypeParamSymbol]: string;
+/** A type parameter reference marker, branded with the parameter name. */
+export interface TypeParamRef<Name extends string = string> {
+    readonly [TypeParamSymbol]: Name;
 }
 
 /**
