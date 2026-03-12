@@ -99,7 +99,7 @@ type FoldHandlerThis = { [k: string | symbol]: any };
  * cannot be inferred from the spec alone. Annotate explicitly when needed:
  *   `Cons: (ctx: { head: number; tail: number }) => ctx.head + ctx.tail`
  */
- 
+
 type FoldHandlerFn<S> = S extends { in: infer In; out: infer Out }
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ? (this: FoldHandlerThis, ctx: any, n: InstanceOf<In>) => InstanceOf<Out>
@@ -209,6 +209,12 @@ export function fold<S extends Record<string | symbol, unknown>>(s: S) {
  * Curried helper for declaring map (homomorphism) operations.
  *
  * Phase 1: pass the spec — typically `{ out: Family }` or `{ out: Self }`.
+ *   An optional `inverse` property names the forward map that this map
+ *   reverses, establishing a bijective (1:1) relationship. The system
+ *   registers the link bidirectionally and enforces that each operation
+ *   has at most one inverse.  In a `merge` pipeline, consecutive inverse
+ *   pairs are fused to the identity and eliminated at definition time.
+ *
  * Phase 2: pass the handlers — keyed by type parameter name (e.g., `T`).
  *
  * Note: the handler input type is the runtime instance type of the ADT's
@@ -218,12 +224,17 @@ export function fold<S extends Record<string | symbol, unknown>>(s: S) {
  *
  * @example
  * ```typescript
+ * // Basic map
  * increment: map({ out: Family })({
- *   T: (x) => x + 1   // x: any — annotate as number if desired
+ *   T: (x) => x + 1
  * })
+ *
+ * // Invertible map pair
+ * double: map({ out: Family })({ T: (x) => x * 2 }),
+ * halve:  map({ out: Family, inverse: 'double' })({ T: (x) => x / 2 }),
  * ```
  */
-export function map<S extends Record<string | symbol, unknown>>(s: S) {
+export function map<S extends Record<string | symbol, unknown> & { inverse?: string }>(s: S) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return <H extends Record<string, (x: any) => unknown>>(
         handlers: H

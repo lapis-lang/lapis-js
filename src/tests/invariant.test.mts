@@ -307,9 +307,9 @@ describe('Invariant Support', () => {
             assert.equal(Object.getOwnPropertySymbols(p).length, 1); // VariantName symbol
 
             const props: string[] = [];
-            for (const prop in p) 
+            for (const prop in p)
                 props.push(prop);
-            
+
             assert.deepEqual(props, ['x', 'y']);
         });
 
@@ -354,6 +354,17 @@ describe('Invariant Support', () => {
 
             // Not on instance
             assert.equal(p[invariant], undefined);
+        });
+    });
+
+    describe('Singleton invariant rejection', () => {
+        it('rejects [invariant] on a singleton variant', () => {
+            assert.throws(
+                () => data(() => ({
+                    Empty: { [invariant]: () => true }
+                })),
+                /Invariant on singleton variant 'Empty' is meaningless/
+            );
         });
     });
 });

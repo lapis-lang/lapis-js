@@ -4,12 +4,8 @@
  * - ensures (postconditions)
  * - rescue (structured recovery with retry)
  * - continuous invariants
- * - checked mode toggle
  */
-import { data, fold, unfold, invariant, checkedMode } from '@lapis-lang/lapis-js';
-
-// Ensure checked mode is on for demonstrations
-checkedMode(true);
+import { data, fold, unfold, invariant } from '@lapis-lang/lapis-js';
 
 const Stack = data(({ Family, T }) => ({
     Empty: {},
@@ -138,22 +134,4 @@ try {
     console.log(`   Caught: ${(e as Error).name}: ${(e as Error).message}`);
 }
 
-// --- Checked Mode ---
-console.log('\n5. Checked Mode toggle:');
-console.log(`   checkedMode() = ${checkedMode()}`);
-
-checkedMode(false);
-console.log(`   checkedMode(false) → ${checkedMode()}`);
-console.log('   Empty.peek with checked mode off:');
-try {
-    const result = Empty.peek;
-    console.log(`   Result: ${result} (no DemandsError thrown)`);
-} catch (e) {
-    console.log(`   Caught: ${(e as Error).message}`);
-}
-
-// Restore checked mode
-checkedMode(true);
-console.log(`   checkedMode(true) → ${checkedMode()}\n`);
-
-console.log('=== Done ===');
+console.log('\n=== Done ===');

@@ -34,7 +34,7 @@
         "lint:fix": "eslint . --fix",
         "lint:fix:tests": "eslint --fix \"src/tests/**/*.mts\" \"examples/**/*.mts\"",
         "pretest": "npm run build",
-        "test": "globstar -- node --import tsx --experimental-test-coverage --test ./src/tests/*.test.mts"
+        "test": "globstar -- node --import tsx --test ./src/tests/*.test.mts"
     },
     "repository": {
         "type": "git",

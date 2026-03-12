@@ -39,6 +39,7 @@ there is an emphasis on the Bird-Meertens Formalism (BMF) (Squiggol) of making p
   - [Circular Fold Protection](#circular-fold-protection)
   - [Polymorphic Recursion in Extended Folds](#polymorphic-recursion-in-extended-folds)
 - [Type Parameter Transformations with Map](#type-parameter-transformations-with-map)
+  - [Invertible Maps (Allegories)](#invertible-maps-allegories)
 - [Unfold Operations (Corecursion/Anamorphisms)](#unfold-operations-corecursionanamorphisms)
   - [Basic Unfold Operations](#basic-unfold-operations)
   - [Binary Operations with Fold](#binary-operations-with-fold)
@@ -56,8 +57,20 @@ there is an emphasis on the Bird-Meertens Formalism (BMF) (Squiggol) of making p
   - [Map (Lazy Type Transformation)](#map-lazy-type-transformation)
   - [Merge (Deforestation)](#merge-deforestation)
   - [Effect-like Behavior](#effect-like-behavior)
+- [Relation (Relational Operations on Data)](#relation-relational-operations-on-data)
+  - [Relation Declaration](#relation-declaration)
+  - [Auto-Generated Operations](#auto-generated-operations)
+  - [Join Invariant (Auto-Generated)](#join-invariant-auto-generated)
+  - [Logic Programming Interpretation (Relation)](#logic-programming-interpretation-relation)
+  - [Complete Example: Ancestor Relation](#complete-example-ancestor-relation)
+  - [Cycle Handling](#cycle-handling)
+- [Observer (Stepwise Exploration on Behavior)](#observer-stepwise-exploration-on-behavior)
+  - [Observer Declaration](#observer-declaration)
+  - [Auto-Generated Operation: `explore(seed, options?)`](#auto-generated-operation-exploreseed-options)
+  - [Complete Example: Graph Path Finder](#complete-example-graph-path-finder)
+  - [Relation vs Observer: When to Use Which](#relation-vs-observer-when-to-use-which)
+  - [Logic Programming Interpretation (Observer)](#logic-programming-interpretation-observer)
 - [Design by Contract](#design-by-contract)
-  - [Checked Mode](#checked-mode)
   - [Assertions](#assertions)
   - [Implies](#implies)
   - [Iff](#iff)
@@ -267,7 +280,7 @@ console.log(two.pred.pred === zero); // true
 
 In the above, `Family` is a reserved special reference to the ADT being defined, allowing recursive references. `Family` references are validated at **runtime** with `instanceof` checks against the ADT family. Since the `Peano` ADT is not parameterized, `Family` is used directly as a guard (it is not callable). In other words, `Family` is equivalent to `Family()` for non-parameterized recursive ADTs, but you write `Family` not `Family()`.
 
-For parameterized ADTs, type parameter names are single uppercase letters (`A`–`Z`). This restriction enables full compile-time type propagation — when you instantiate a parameterized ADT with concrete types, TypeScript correctly resolves field types:
+For parameterized ADTs, type parameter names are single uppercase letters (`A`–`Z`). This restriction enables full compile-time type propagation: when you instantiate a parameterized ADT with concrete types, TypeScript correctly resolves field types:
 
 ```ts
 const Pair = data(({ T, U }) => ({
@@ -395,7 +408,7 @@ console.log(letExpr instanceof FullExpr);    // true
 
 ## Fold Operations
 
-A fold (catamorphism) is the **universal observation** on an algebraic data type: every total function that consumes an ADT and respects its algebraic structure is expressible as a fold. This is why Lapis provides a single `fold` mechanism rather than distinguishing between `foldl` and `foldr` — that distinction is an artifact of lists being linear. For general algebraic data types (trees, expressions, etc.), there is only one canonical fold: the catamorphism, which replaces each constructor with a corresponding function and accumulates results bottom-up from leaves to root.
+A fold (catamorphism) is the **universal observation** on an algebraic data type: every total function that consumes an ADT and respects its algebraic structure is expressible as a fold. This is why Lapis provides a single `fold` mechanism rather than distinguishing between `foldl` and `foldr`: that distinction is an artifact of lists being linear. For general algebraic data types (trees, expressions, etc.), there is only one canonical fold: the catamorphism, which replaces each constructor with a corresponding function and accumulates results bottom-up from leaves to root.
 
 For non-recursive ADTs, folds perform simple pattern matching. For recursive ADTs, folds automatically recurse into `Family` fields, replacing constructors with functions. Operations are installed on variant class prototypes and support proper inheritance through the extension hierarchy.
 
@@ -435,10 +448,10 @@ The spec (first argument to `fold()`, `unfold()`, or `map()`) is an **object lit
 
 When provided, the spec can contain:
 
-- `in`: The input guard for parameters — validated at runtime for both fold and unfold operations
-- `out`: The return guard — **only validated at runtime for fold operations**; on unfold operations it carries no runtime enforcement
+- `in`: The input guard for parameters: validated at runtime for both fold and unfold operations
+- `out`: The return guard: **only validated at runtime for fold operations**; on unfold operations it carries no runtime enforcement
 
-**Why `out` is not checked on unfold:** fold handlers are *user code* that returns a value — the framework validates it against `out` because the handler could return the wrong type. Unfold handlers, by contrast, never return the ADT/behavior instance directly; they return either `null` or a plain fields object (e.g. `{ head: n, tail: n-1 }`), and the framework constructs the actual output instance itself. The output type is therefore a structural guarantee enforced by construction, not something a handler can violate. Stating `out: Family` or `out: Self` on an unfold is documentation of intent only.
+**Why `out` is not checked on unfold:** fold handlers are *user code* that returns a value: the framework validates it against `out` because the handler could return the wrong type. Unfold handlers, by contrast, never return the ADT/behavior instance directly; they return either `null` or a plain fields object (e.g. `{ head: n, tail: n-1 }`), and the framework constructs the actual output instance itself. The output type is therefore a structural guarantee enforced by construction, not something a handler can violate. Stating `out: Family` or `out: Self` on an unfold is documentation of intent only.
 
 **Summary:** omit `spec` entirely when there is no `in` to validate. Adding `out` to an unfold spec is always optional documentation, never runtime enforcement.
 
@@ -854,7 +867,7 @@ console.log(Color.Blue.matches('blue'));    // true (wildcard handler)
 
 ### Histomorphisms (Course-of-Values Recursion)
 
-A **histomorphism** extends a regular fold (catamorphism) by giving each handler access to the already-folded sub-results of all recursive children — not just the immediate fold result, but the entire "course of values" down the recursion.
+A **histomorphism** extends a regular fold (catamorphism) by giving each handler access to the already-folded sub-results of all recursive children: not just the immediate fold result, but the entire "course of values" down the recursion.
 
 Enable histomorphisms by adding `history: true` to the fold spec. Import the `history` symbol and destructure `[history]` from the fold argument to access an object keyed by recursive field names:
 
@@ -867,9 +880,9 @@ const Nat = data(({ Family }) => ({
     fib: fold({ history: true, out: Number })({
         Zero() { return 0; },
         Succ({ pred, [history]: h }) {
-            // pred  = fib(n-1) — the immediate fold result (standard catamorphism)
+            // pred  = fib(n-1) - the immediate fold result (standard catamorphism)
             // h.pred = the child's foldedFields object
-            // h.pred.pred = fib(n-2) — the grandchild's fold result
+            // h.pred.pred = fib(n-2) - the grandchild's fold result
             const fibN2 = h.pred?.pred;
             return fibN2 !== undefined ? pred + fibN2 : 1;
         }
@@ -881,7 +894,7 @@ Nat.Succ({ pred: Nat.Succ({ pred: Nat.Succ({ pred:
 // → 5 (fibonacci of 5)
 ```
 
-Each entry in the `[history]` object is the child's own `foldedFields`, which itself carries a `[history]` — forming a chain that lets you look back arbitrarily far:
+Each entry in the `[history]` object is the child's own `foldedFields`, which itself carries a `[history]`: forming a chain that lets you look back arbitrarily far:
 
 ```ts
 // In a Succ handler for fib(5):
@@ -908,7 +921,7 @@ const Tree = data(({ Family }) => ({
 }));
 ```
 
-Histomorphisms work with **parameterized folds** too — history entries become lazy getters that resolve after the child thunk is invoked:
+Histomorphisms work with **parameterized folds** too: history entries become lazy getters that resolve after the child thunk is invoked:
 
 ```ts
 const List = data(({ Family }) => ({
@@ -931,7 +944,7 @@ A **zygomorphism** fuses two (or more) folds into a single traversal. The primar
 
 Enable zygomorphisms by adding `aux` to the fold spec. Import the `aux` symbol and destructure `[aux]` from the fold argument:
 
-**String form** — a single auxiliary fold produces a *flat* shape keyed by recursive field names:
+**String form**: a single auxiliary fold produces a *flat* shape keyed by recursive field names:
 
 ```ts
 import { data, fold, aux } from '@lapis-lang/lapis-js';
@@ -955,7 +968,7 @@ const Tree = data(({ Family }) => ({
 }));
 ```
 
-**Array form** — multiple auxiliary folds produce a *nested* shape `a.<foldName>.<fieldName>`:
+**Array form**: multiple auxiliary folds produce a *nested* shape `a.<foldName>.<fieldName>`:
 
 ```ts
 const Tree = data(({ Family }) => ({
@@ -966,8 +979,8 @@ const Tree = data(({ Family }) => ({
     info: fold({ aux: ['depth', 'size'], out: String })({
         Leaf() { return 'leaf'; },
         Node({ [aux]: a }) {
-            // a.depth.left, a.depth.right — depth of each child
-            // a.size.left,  a.size.right  — size of each child
+            // a.depth.left, a.depth.right - depth of each child
+            // a.size.left,  a.size.right  - size of each child
             return `d:${a.depth.left}/${a.depth.right} s:${a.size.left}/${a.size.right}`;
         }
     })
@@ -976,7 +989,7 @@ const Tree = data(({ Family }) => ({
 
 For **base-case variants** (no recursive fields), `[aux]` is an empty object `{}` (string form) or an object with empty nested objects (array form).
 
-Zygomorphisms can be **combined with histomorphisms** — use both `history: true` and `aux` in the same fold spec to access both sub-result history and auxiliary fold results simultaneously.
+Zygomorphisms can be **combined with histomorphisms**: use both `history: true` and `aux` in the same fold spec to access both sub-result history and auxiliary fold results simultaneously.
 
 Zygomorphisms are supported on both **Data** (initial algebras) and **Behavior** (final coalgebras). For behavior folds with parameterized auxiliary folds, `[aux]` entries are functions that accept the auxiliary fold's parameters.
 
@@ -1270,7 +1283,7 @@ const List = data(({ Family }) => ({
     Nil: {},
     Cons: { head: Number, tail: Family },
 
-    // ✗ This will throw at runtime — circular fold
+    // ✗ This will throw at runtime - circular fold
     bad: fold({ out: Number })({
         Nil() { return 0; },
         Cons({ head }) {
@@ -1292,13 +1305,13 @@ list.bad;  // Error: Circular fold detected: operation 'bad' re-entered
            //        on the same instance during its own evaluation.
            //        Use destructured fields for structural recursion
            //        instead of `this.bad`.
-list.sum;  // 3 — works correctly
+list.sum;  // 3 - works correctly
 ```
 
 The guard also catches **mutual recursion** cycles where two operations call each other on the same node:
 
 ```ts
-// ✗ opA → opB → opA on same instance — detected and throws
+// ✗ opA → opB → opA on same instance - detected and throws
 const List = data(({ Family }) => ({
     Nil: {},
     Cons: { head: Number, tail: Family },
@@ -1317,8 +1330,8 @@ The following patterns remain valid and are **not** affected by the guard:
 
 | Pattern | Valid? | Reason |
 | ------- | ------ | ------ |
-| `fields.tail` (destructured) | ✓ | Structural recursion — always terminates |
-| `this.differentOp` | ✓ | Independent fold on same node — separate guard |
+| `fields.tail` (destructured) | ✓ | Structural recursion: always terminates |
+| `this.differentOp` | ✓ | Independent fold on same node: separate guard |
 | `this.childField.sameOp` | ✓ | Same operation on a smaller substructure |
 | `this.nonRecursiveField` | ✓ | Data access, no recursion |
 | `this.sameOp` | ✗ | Re-enters same fold on same instance |
@@ -1430,11 +1443,87 @@ const List2 = data(({ Family, T }) => ({
 const scaled = list.scale(10); // All values multiplied by 10
 ```
 
+### Invertible Maps (Allegories)
+
+Two map operations can be declared as inverses of each other using the `inverse` spec property. This establishes a bijective (one-to-one) relationship: applying the forward map followed by its inverse is the identity.
+
+```ts
+const TempList = data(({ Family, T }) => ({
+    Nil: {},
+    Cons: { head: T, tail: Family(T) },
+
+    // Celsius → Fahrenheit
+    toFahrenheit: map({ out: Family })({ T: (c) => c * 9 / 5 + 32 }),
+
+    // Fahrenheit → Celsius (declared as inverse of toFahrenheit)
+    toCelsius: map({ out: Family, inverse: 'toFahrenheit' })({
+        T: (f) => (f - 32) * 5 / 9
+    })
+}));
+
+const Temps = TempList({ T: Number });
+const readings = Temps.Cons(0, Temps.Cons(100, Temps.Nil));
+
+readings.toFahrenheit;                // [32, 212]
+readings.toFahrenheit.toCelsius;      // [0, 100] — round-trip identity
+```
+
+The declaration is **one-sided**: only the inverse operation declares the relationship via `inverse: 'forwardOpName'`. The system registers the link bidirectionally. A strict **1:1 constraint** is enforced — each operation may have at most one inverse. Attempting to declare a second inverse for the same operation throws a `TypeError`.
+
+#### Constructor-Time Fusion
+
+`merge` pipelines are automatically optimized at definition time through three fusion rules applied in sequence:
+
+**1. Inverse pair elimination (f° ∘ f = id)**
+
+Consecutive inverse pairs are removed. This is applied repeatedly so nested pairs (e.g., `['a', 'b', 'b_inv', 'a_inv']`) are fully eliminated.
+
+**2. Map-map fusion (g ∘ f in a single traversal)**
+
+Consecutive getter-map operations are composed into a single map whose per-parameter transform is the pipeline composition of each individual transform. This eliminates intermediate structures between adjacent maps.
+
+**3. Map-fold fusion (fold with f pre-applied)**
+
+A map getter immediately before a fold is fused: the fold pre-applies the map transforms to type-parameter fields, eliminating the intermediate mapped structure entirely.
+
+```ts
+const List = data(({ Family, T }) => ({
+    Nil: {},
+    Cons: { head: T, tail: Family(T) },
+
+    double:    map({ out: Family })({ T: (x) => x * 2 }),
+    halve:     map({ out: Family, inverse: 'double' })({ T: (x) => x / 2 }),
+    increment: map({ out: Family })({ T: (x) => x + 1 }),
+
+    sum: fold({ out: Number })({
+        Nil()              { return 0; },
+        Cons({ head, tail }) { return head + tail; }
+    }),
+
+    // Inverse elimination: double → halve cancels → [increment]
+    pipeline: merge('double', 'halve', 'increment'),
+
+    // Map-map fusion: double → increment → single map (2x + 1)
+    doubleThenInc: merge('double', 'increment'),
+
+    // Map-fold fusion: double → sum → single fold (no intermediate)
+    doubledSum: merge('double', 'sum'),
+
+    // Combined: double → halve → increment → double → sum
+    //   inverses cancel → [increment, double, sum]
+    //   map-map fuses   → [fusedMap, sum]
+    //   map-fold fuses  → single fold
+    combined: merge('double', 'halve', 'increment', 'double', 'sum')
+}));
+```
+
+Non-adjacent inverse pairs (e.g., `['a', 'c', 'a_inv']`) are preserved — only consecutive pairs are fused. Map operations with extra parameters (non-getters) are not eligible for map-map or map-fold fusion.
+
 ## Unfold Operations (Corecursion/Anamorphisms)
 
-Unfold operations (anamorphisms) generate ADT instances through corecursion — the dual of fold. Just as fold is the universal observation on a data type (every way of consuming an ADT factors through fold), unfold is the **universal generator** (every way of producing a recursive structure from a seed factors through unfold). Where fold replaces constructors with functions and accumulates bottom-up, unfold starts from a seed value and repeatedly decides which constructor to apply, building the structure top-down.
+Unfold operations (anamorphisms) generate ADT instances through corecursion: the dual of fold. Just as fold is the universal observation on a data type (every way of consuming an ADT factors through fold), unfold is the **universal generator** (every way of producing a recursive structure from a seed factors through unfold). Where fold replaces constructors with functions and accumulates bottom-up, unfold starts from a seed value and repeatedly decides which constructor to apply, building the structure top-down.
 
-Unfolds are defined inline within the `data` or `behavior` declaration using `unfold(spec)(handlers)`. The `spec` argument is optional — see [Specs](#specs) for details. This co-locates type definitions with their constructors for clarity.
+Unfolds are defined inline within the `data` or `behavior` declaration using `unfold(spec)(handlers)`. The `spec` argument is optional: see [Specs](#specs) for details. This co-locates type definitions with their constructors for clarity.
 
 ### Basic Unfold Operations
 
@@ -1518,7 +1607,15 @@ const zipped = nums.zip(strs);
 
 ## Merge Operations (Deforestation)
 
-Merge operations compose multiple operations (fold, map, unfold) into a single fused operation, eliminating intermediate allocations. Since unfold is the universal way to generate structure and fold is the universal way to consume it, their composition (a hylomorphism) represents the general pattern of "generate then consume" — without materializing the intermediate data structure. They are defined inline using `merge(...operationNames)`:
+Merge operations compose multiple operations (fold, map, unfold) into a single fused operation, eliminating intermediate allocations. Since unfold is the universal way to generate structure and fold is the universal way to consume it, their composition (a hylomorphism) represents the general pattern of "generate then consume": without materializing the intermediate data structure. They are defined inline using `merge(...operationNames)`.
+
+At definition time, three fusion rules are applied automatically to the pipeline:
+
+1. **Inverse pair elimination**: consecutive inverse pairs are removed (f° ∘ f = id)
+2. **Map-map fusion**: consecutive map getters are composed into a single traversal (g ∘ f)
+3. **Map-fold fusion**: a map getter before a fold is fused into the fold's field access
+
+See [Invertible Maps (Allegories)](#invertible-maps-allegories) for details on inverse declaration and the complete fusion rules.
 
 ### Recursion Schemes
 
@@ -1533,11 +1630,11 @@ Merge operations compose multiple operations (fold, map, unfold) into a single f
 | **Prepromorphism** | Map + fold | Transform then consume | Apply type transformation before consuming |
 | **Postpromorphism** | Unfold + map | Generate then transform | Apply type transformation after generating |
 
-> **Paramorphisms via `this`:** In a fold handler, `this` is the raw original instance. Recursive `Family` fields in `foldedFields` carry the already-folded result, while `this.<field>` accesses the original substructure — giving you both at once, which is the defining characteristic of a paramorphism. Note: `this.sameOp` on the same instance is guarded against (see [Circular Fold Protection](#circular-fold-protection)) — use `this.childField.sameOp` or destructured fields instead.
+> **Paramorphisms via `this`:** In a fold handler, `this` is the raw original instance. Recursive `Family` fields in `foldedFields` carry the already-folded result, while `this.<field>` accesses the original substructure: giving you both at once, which is the defining characteristic of a paramorphism. Note: `this.sameOp` on the same instance is guarded against (see [Circular Fold Protection](#circular-fold-protection)): use `this.childField.sameOp` or destructured fields instead.
 
 ### Examples
 
-**Hylomorphism — `List.Factorial`** (unfold → fold, no intermediate list):
+**Hylomorphism: `List.Factorial`** (unfold → fold, no intermediate list):
 
 ```js
 const List = data(({ Family }) => ({
@@ -1557,7 +1654,7 @@ const List = data(({ Family }) => ({
 console.log(List.Factorial(5)); // 120 (5 * 4 * 3 * 2 * 1) - no intermediate list created
 ```
 
-**All six schemes — `Stack`:**
+**All six schemes: `Stack`:**
 
 A single Stack ADT can illustrate every recursion scheme in the table. Each operation is annotated with its corresponding scheme:
 
@@ -1566,7 +1663,7 @@ const Stack = data(({ Family, T }) => ({
     Empty: {},
     Push: { value: T, rest: Family(T) },
 
-    // Catamorphism: plain fold — consumes structure bottom-up
+    // Catamorphism: plain fold - consumes structure bottom-up
     size: fold({ out: Number })({
         Empty() { return 0; },
         Push({ rest }) { return 1 + rest; }
@@ -1588,20 +1685,20 @@ const Stack = data(({ Family, T }) => ({
         Push({ value, rest }) { return [value, ...rest]; }
     }),
 
-    // Anamorphism: unfold — generates a Stack top-down from an array seed
+    // Anamorphism: unfold - generates a Stack top-down from an array seed
     FromArray: unfold({ in: Array, out: Family })({
         Empty: (arr) => (arr.length === 0 ? {} : null),
         Push: (arr) => (arr.length > 0 ? { value: arr[0], rest: arr.slice(1) } : null)
     }),
 
-    // Hylomorphism: unfold + fold — build from array then immediately count,
+    // Hylomorphism: unfold + fold - build from array then immediately count,
     // no intermediate Stack allocated
     SizeOf: merge('FromArray', 'size'),
 
-    // Prepromorphism: map + fold — double all values, then collect to array
+    // Prepromorphism: map + fold - double all values, then collect to array
     doubledArray: merge('double', 'toArray'),
 
-    // Postpromorphism: unfold + map — build from array, then double all values
+    // Postpromorphism: unfold + map - build from array, then double all values
     DoubleFrom: merge('FromArray', 'double')
 }));
 
@@ -1613,7 +1710,7 @@ const stack = Push({ value: 3, rest: Push({ value: 2, rest: Push({ value: 1, res
 // Catamorphism
 console.log(stack.size);                          // 3
 
-// Paramorphism — returns [topValue, remainingStack] via this.rest (original substructure)
+// Paramorphism - returns [topValue, remainingStack] via this.rest (original substructure)
 const [top, remaining] = stack.pop;
 console.log(top);                                 // 3
 console.log(remaining.size);                      // 2
@@ -1622,13 +1719,13 @@ console.log(remaining.size);                      // 2
 const fromArr = NumStack.FromArray([10, 20, 30]);
 console.log(fromArr.size);                        // 3
 
-// Hylomorphism — array → Stack → size, no intermediate Stack retained
+// Hylomorphism - array → Stack → size, no intermediate Stack retained
 console.log(NumStack.SizeOf([10, 20, 30]));       // 3
 
-// Prepromorphism — double values, then collect to array
+// Prepromorphism - double values, then collect to array
 console.log(stack.doubledArray);                  // [6, 4, 2]
 
-// Postpromorphism — build from array with all values doubled
+// Postpromorphism - build from array with all values doubled
 console.log(NumStack.DoubleFrom([1, 2, 3]).toArray); // [2, 4, 6]
 ```
 
@@ -1667,18 +1764,18 @@ Merged operations follow specific naming rules:
 
 ## Behavior (Final Coalgebras)
 
-Behavior types are the categorical dual of data (algebraic data types). Where data is defined by **constructors** (how to build it), behavior is defined by **observers** or **destructors** (how to observe it). Behavior types correspond formally to *final coalgebras* (νF) in category theory — the API uses `behavior()` because behavior types are defined by what they *do*, not what they *are*.
+Behavior types are the categorical dual of data (algebraic data types). Where data is defined by **constructors** (how to build it), behavior is defined by **observers** or **destructors** (how to observe it). Behavior types correspond formally to *final coalgebras* (νF) in category theory: the API uses `behavior()` because behavior types are defined by what they *do*, not what they *are*.
 
 ### Data vs Behavior
 
 Data types (initial algebras) and behavior types (final coalgebras) are **dual** to each other. This duality is the organizing principle of Lapis:
 
-- **Data** is defined by its constructors (variants) and is naturally open to new observations — you can always define new folds. Fold is the **universal observation**: every total function that consumes a data type and respects its structure is expressible as a fold.
-- **Behavior** is defined by its observations (methods/projections) and is naturally open to new implementations — you can always define new generators. Unfold is the **universal generator**: every way of producing behavior from a seed is expressible as an unfold.
+- **Data** is defined by its constructors (variants) and is naturally open to new observations: you can always define new folds. Fold is the **universal observation**: every total function that consumes a data type and respects its structure is expressible as a fold.
+- **Behavior** is defined by its observations (methods/projections) and is naturally open to new implementations: you can always define new generators. Unfold is the **universal generator**: every way of producing behavior from a seed is expressible as an unfold.
 
 This asymmetry is sometimes called the **Expression Problem**: data makes adding observations easy but adding variants hard, while behavior makes adding implementations easy but adding observations hard. Lapis addresses both sides: `extend` allows new variants to be added to data types (with inherited and overridable operations), and coalgebraic behavior definitions allow new implementations of existing observation interfaces.
 
-| Aspect | Data — Initial Algebra (μF) | Behavior — Final Coalgebra (νF) |
+| Aspect | Data: Initial Algebra (μF) | Behavior: Final Coalgebra (νF) |
 | --- | --- | --- |
 | **Defined by** | Constructors (how to build) | Observers / Destructors (how to observe) |
 | **Self-reference** | `Family` | `Self` |
@@ -1709,10 +1806,10 @@ const Stream = behavior(({ Self, T }) => ({
 
 **Observer types:**
 
-- **Simple observer** — `head: T` Returns a value of type T; installed as a getter
-- **Parametric observer** — `nth: { in: Number, out: T }` Takes input, returns output; installed as a method
-- **Continuation** — `tail: Self(T)` Returns the next behavior instance (lazy, memoized)
-- **Parametric continuation** — `advance: { in: Number, out: Self }` Takes input, returns next behavior instance
+- **Simple observer**: `head: T` Returns a value of type T; installed as a getter
+- **Parametric observer**: `nth: { in: Number, out: T }` Takes input, returns output; installed as a method
+- **Continuation**: `tail: Self(T)` Returns the next behavior instance (lazy, memoized)
+- **Parametric continuation**: `advance: { in: Number, out: Self }` Takes input, returns next behavior instance
 
 **Naming conventions:**
 
@@ -1749,7 +1846,7 @@ console.log(nums.tail.tail.head); // 2
 
 - **Simple observers**: `(seed) => value`
 - **Parametric observers**: `(seed) => (param) => value`
-- **Continuations (`Self`)**: `(seed) => nextSeed` — the framework creates the next instance lazily
+- **Continuations (`Self`)**: `(seed) => nextSeed`: the framework creates the next instance lazily
 
 **Parameterless unfold (UAP):**
 
@@ -1758,16 +1855,16 @@ If `spec` has no `in` property (or `spec` is omitted entirely), the unfold is in
 ```js
 const Console = behavior(() => ({
     log: { in: String, out: undefined },
-    Create: unfold({})({  // No spec — becomes getter, no runtime type checks
+    Create: unfold({})({  // No spec - becomes getter, no runtime type checks
         log: () => (msg) => console.log(msg)
     })
 }));
 
-const io = Console.Create;  // getter — no parentheses
+const io = Console.Create;  // getter - no parentheses
 io.log('hello');
 ```
 
-> **Note:** `out` in a behavior unfold `spec` is never validated at runtime — the framework constructs the behavior instance itself from the handler's returned seed, so the output type is guaranteed by construction, not by a value check. Only `in` matters for runtime type checking. Prefer omitting `spec` entirely when there is no `in` to validate.
+> **Note:** `out` in a behavior unfold `spec` is never validated at runtime: the framework constructs the behavior instance itself from the handler's returned seed, so the output type is guaranteed by construction, not by a value check. Only `in` matters for runtime type checking. Prefer omitting `spec` entirely when there is no `in` to validate.
 
 ### Multiple Unfold Constructors
 
@@ -1820,16 +1917,16 @@ console.log(nums.nth(10));  // 10
 
 Behavior instances use Proxy-based lazy evaluation:
 
-- **Simple observers** — recomputed on each access (no memoization)
-- **Parametric observers** — function wrapper is memoized
-- **Continuations (`Self`)** — instances are memoized (same instance on repeated access)
+- **Simple observers**: recomputed on each access (no memoization)
+- **Parametric observers**: function wrapper is memoized
+- **Continuations (`Self`)**: instances are memoized (same instance on repeated access)
 
 ```js
 const stream = Stream.From(0);
 
 const tail1 = stream.tail;
 const tail2 = stream.tail;
-console.log(tail1 === tail2);  // true — memoized
+console.log(tail1 === tail2);  // true - memoized
 
 stream.head;  // computed
 stream.head;  // computed again (no memoization for simple observers)
@@ -1866,14 +1963,14 @@ Fold is the dual elimination operation for behavior. Where data fold dispatches 
 **Data fold vs Behavior fold:**
 
 | | Data Fold | Behavior Fold |
-|---|---|---|
-| **Type structure** | Sum type — dispatch on variant | Product type — receive all observers |
+| --- | --- | --- |
+| **Type structure** | Sum type: dispatch on variant | Product type: receive all observers |
 | **Handlers** | Many (one per variant) | One (`_`) for the whole product |
 | **Recursive fields** | Pre-folded by framework (bottom-up) | Exposed as fold functions (top-down) |
 | **Base case** | A base-variant handler (e.g., `Nil`) | Not calling any continuation |
 | **Direction** | Bottom-up (leaves → root) | Top-down (root → leaves, user-controlled) |
 
-The `_` key is the sole canonical form — there is no per-observer alternative because behavior is a product type.
+The `_` key is the sole canonical form: there is no per-observer alternative because behavior is a product type.
 
 ```js
 const Stream = behavior(({ Self, T }) => ({
@@ -1898,7 +1995,7 @@ nums.take(5)  // [0, 1, 2, 3, 4]
 nums.sum(5)   // 10  (0+1+2+3+4)
 ```
 
-In the handler, `tail` is a **fold function** — calling `tail(n - 1)` recursively folds the continuation. Not calling it terminates the fold (the base case).
+In the handler, `tail` is a **fold function**: calling `tail(n - 1)` recursively folds the continuation. Not calling it terminates the fold (the base case).
 
 **Parameterless fold (UAP):**
 
@@ -1920,12 +2017,12 @@ const Countdown = behavior(({ Self }) => ({
 }));
 
 const cd = Countdown.Create(5);
-cd.collect  // [5, 4, 3, 2, 1]  — getter via UAP
+cd.collect  // [5, 4, 3, 2, 1]  - getter via UAP
 ```
 
 ### Map (Lazy Type Transformation)
 
-Map is the dual of data's map operation. Where data map eagerly reconstructs the entire structure O(n), behavior map is lazy — the transform is applied on-demand at observation time, O(1) to create.
+Map is the dual of data's map operation. Where data map eagerly reconstructs the entire structure O(n), behavior map is lazy: the transform is applied on-demand at observation time, O(1) to create.
 
 Map propagates through continuations automatically: accessing a `Self` observer on a mapped instance returns another mapped instance with the same transform applied.
 
@@ -1940,24 +2037,24 @@ const Stream = behavior(({ Self, T }) => ({
     take: fold({ in: Number, out: Array })({
         _: ({ head, tail }, n) => n > 0 ? [head, ...tail(n - 1)] : []
     }),
-    // Getter map — no extra args
+    // Getter map - no extra args
     doubled: map({})({ T: (x) => x * 2 }),
-    // Method map — extra args become method parameters
+    // Method map - extra args become method parameters
     apply: map({})({ T: (x, f) => f(x) })
 }));
 
 const nums = Stream.From(0);
-nums.doubled.take(5)            // [0, 2, 4, 6, 8]  — lazy, O(1) to create
+nums.doubled.take(5)            // [0, 2, 4, 6, 8]  - lazy, O(1) to create
 nums.apply(x => x * 3).take(5) // [0, 3, 6, 9, 12]
-nums.doubled.doubled.take(4)    // [0, 4, 8, 12]     — chained maps
-nums.take(5)                    // [0, 1, 2, 3, 4]   — original unaffected
+nums.doubled.doubled.take(4)    // [0, 4, 8, 12]     - chained maps
+nums.take(5)                    // [0, 1, 2, 3, 4]   - original unaffected
 ```
 
 **Key points:**
 
 - No extra args → getter (e.g., `nums.doubled`)
 - Extra args → method (e.g., `nums.apply(fn)`)
-- Map creation is O(1) — no observation happens at map time
+- Map creation is O(1): no observation happens at map time
 - Maps compose: `nums.doubled.doubled` = quadrupled
 - Original instance is never mutated
 
@@ -1985,13 +2082,13 @@ const Stream = behavior(({ Self, T }) => ({
     sum: fold({ in: Number, out: Number })({
         _: ({ head, tail }, n) => n > 0 ? head + tail(n - 1) : 0
     }),
-    // Static merge (includes unfold) — PascalCase, called on the type
+    // Static merge (includes unfold) - PascalCase, called on the type
     TakeDoubled: merge('From', 'doubled', 'take'),
-    // Instance merge (no unfold) — camelCase, called on instances
+    // Instance merge (no unfold) - camelCase, called on instances
     doubledSum: merge('doubled', 'sum')
 }));
 
-// Static — no intermediate stream created
+// Static - no intermediate stream created
 Stream.TakeDoubled(0, 5)          // [0, 2, 4, 6, 8]
 
 // Instance
@@ -2025,7 +2122,7 @@ const input = await io.read();
 - Behavior is defined by observers (destructors), not constructors
 - Unfold operations are PascalCase static factory methods/getters
 - Fold operations are camelCase instance methods/getters (single `_` handler receives the observation product)
-- Map operations are camelCase; lazy — O(1) creation, transform applied at observation time
+- Map operations are camelCase; lazy: O(1) creation, transform applied at observation time
 - Merge operations compose pipelines; naming follows whether an unfold is included
 - Lazy evaluation via Proxy enables infinite structures with no up-front cost
 - Continuations (`Self`) are memoized; simple observers are recomputed each access
@@ -2034,73 +2131,478 @@ const input = await io.read();
 
 - `examples/behavior-stream.mjs` - Comprehensive behavior examples
 
+## Relation (Relational Operations on Data)
+
+A relation is a `data()` type enriched with **endpoint projections** (`[origin]` and `[destination]`) that give each instance a "from" and "to" value:
+
+```text
+A ←origin- R -destination→ B
+```
+
+This lets `relation()` automatically derive operations familiar from Datalog-style logic programming: compute transitive closures (`closure`), and query reachability in both directions (`reachableFrom`, `reachingTo`).
+
+> Categorically, the `[origin]`/`[destination]` pair forms a *span* $A \leftarrow R \rightarrow B$, making the type an object in an allegory. The auto-generated operations correspond to allegory composition, relational image, and relational converse.
+
+```ts
+import { relation, fold, origin, destination } from '@lapis-lang/lapis-js';
+```
+
+### Relation Declaration
+
+A relation is declared like a `data()` type, with two required fold operations (`[origin]` and `[destination]`) that project each variant to its endpoints:
+
+```ts
+const Edge = relation(({ Family }) => ({
+    // Variants (same as data)
+    Direct: { from: String, to: String },
+    Path:   { first: Family, second: Family },
+
+    // Endpoint projections (required)
+    [origin]: fold({ out: String })({
+        Direct({ from }) { return from; },
+        Path({ first })  { return first; }
+    }),
+    [destination]: fold({ out: String })({
+        Direct({ to })     { return to; },
+        Path({ second })   { return second; }
+    }),
+
+    // Additional fold operations (same as data)
+    length: fold({ out: Number })({
+        Direct() { return 1; },
+        Path({ first, second }) { return first + second; }
+    })
+}));
+```
+
+**Special keys:**
+
+| Key | Purpose |
+| --- | --- |
+| `[origin]` | **Required.** `fold({ out: DomainType })({...})`: projects each variant to its origin endpoint |
+| `[destination]` | **Required.** `fold({ out: CodomainType })({...})`: projects each variant to its destination endpoint |
+
+The `out` type in each fold spec declares the endpoint type. All PascalCase keys are **variants** (same as `data()`). All other camelCase keys with `fold`/`map`/`merge`/`unfold` are **operations** (same as `data()`).
+
+### Auto-Generated Operations
+
+#### `closure(baseFacts, options?)`
+
+Computes the transitive closure: all endpoint pairs reachable by composing base facts through recursive variants, using semi-naive fixpoint iteration (the same strategy as bottom-up Datalog evaluation):
+
+1. Seed with base facts (leaf variants)
+2. Each iteration: compose existing facts through recursive variants, requiring at least one fact from the previous delta (semi-naive optimization)
+3. Invalid compositions (failing the join invariant) are silently skipped
+4. Deduplicate by endpoint pair (same as Datalog's flat-tuple semantics)
+5. Stop when no new pairs are derived
+
+```ts
+const edges = [
+    Edge.Direct('A', 'B'), Edge.Direct('B', 'C'), Edge.Direct('A', 'D'),
+    Edge.Direct('D', 'C'), Edge.Direct('C', 'E')
+];
+
+const allPairs = Edge.closure(edges);
+
+console.log(`${allPairs.length} reachable pairs`);
+allPairs.forEach(e =>
+    console.log(`  ${e.origin} → ${e.destination}  (length ${e.length})`)
+);
+```
+
+By default, two facts with the same `origin` and `destination` are considered identical: only the first derivation is kept. This mirrors Datalog, where `ancestor(alice, dave)` is one tuple regardless of the proof path. The number of facts is bounded by |domain| × |codomain|, so `closure()` always terminates without safety limits.
+
+To override dedup (e.g., distinguishing by an additional attribute), pass a custom `key`:
+
+```ts
+const allPairs = Edge.closure(edges, {
+    key: e => `${e.origin}→${e.destination}:${e.length}`
+});
+```
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `key` | endpoint-pair dedup | `(fact) => string`: custom dedup key function |
+
+Structurally, `closure()` is a **hylomorphism** — an interleaved unfold + fold. The unfold phase derives new proof trees by composing existing facts through recursive constructors (`Path({ first, second })`). The fold phase collapses each proof tree to its endpoint pair for deduplication. These two phases are fused inside the fixpoint loop: each iteration unfolds one derivation step, immediately folds (dedup), and feeds the result back — generating then consuming without materializing the full intermediate structure. The formula R⁺ = μX. R ∪ (R;X) captures this: the μ (least fixpoint) drives iteration, the union/composition is the unfold, and set-membership dedup is the fold.
+
+#### `reachableFrom(facts, domainValues)`
+
+Forward reachability: given a set of origin values, returns all destination values paired with them in the facts:
+
+```ts
+Edge.reachableFrom(allPairs, ['A']);  // ['B', 'C', 'D', 'E']
+Edge.reachableFrom(allPairs, ['D']);  // ['C', 'E']
+```
+
+#### `reachingTo(facts, codomainValues)`
+
+Backward reachability: given a set of destination values, returns all origin values paired with them in the facts:
+
+```ts
+Edge.reachingTo(allPairs, ['E']);  // ['A', 'B', 'C', 'D']
+Edge.reachingTo(allPairs, ['C']);  // ['A', 'B', 'D']
+```
+
+### Join Invariant (Auto-Generated)
+
+For any recursive variant with two or more `Family` fields, `relation()` automatically attaches an invariant enforcing composability on every adjacent pair:
+
+```text
+fields[0].destination === fields[1].origin
+fields[1].destination === fields[2].origin
+...
+```
+
+For the common two-field case `{ first: Family, second: Family }`, this reduces to:
+
+```text
+first.destination === second.origin
+```
+
+This is the definition of **relational composition** in an allegory: two relation instances can only be chained when the destination of the first matches the origin of the second. Without this invariant, `closure()` would attempt to compose every pair of facts, producing nonsensical derivations like composing `alice->bob` with `carol->dave` into a meaningless `alice->dave` that skips an unconnected gap.
+
+The invariant is what makes `closure()` correct: during fixpoint iteration, it silently rejects invalid compositions (they throw `TypeError` at construction time, which `closure()` catches and skips). Only connected chains survive, so every derived fact represents a valid path through the relation.
+
+You never write this invariant yourself: it is derived from the endpoint projections. If you were using plain `data()`, you would need to write `[invariant]: ({ first, second }) => first.destination === second.origin` by hand on every recursive variant. `relation()` generates it for you.
+
+### Logic Programming Interpretation (Relation)
+
+Because Lapis stores full **proof trees** (not flat Datalog tuples), the standard `data()` operations acquire logic-programming meanings when applied to a relation:
+
+| Operation | data() meaning | relation() LP meaning |
+| --- | --- | --- |
+| **fold** | Structural recursion (catamorphism): consume a value bottom-up | **Inspect/evaluate a proof**: walk the derivation tree and compute a result (e.g. `depth`, `origin`, `destination`) |
+| **unfold** | Corecursion (anamorphism): generate a structure from a seed | **Derive a proof**: apply rules to produce a proof tree (rule application, proof construction) |
+| **map** | Transform type parameters, preserving structure | **Relational homomorphism**: re-label endpoints or provenance while preserving the derivation structure |
+| **merge** | Deforestation: fuse an unfold into a fold (hylomorphism) | **Combine derivations**: compose proof generation with proof evaluation without materializing the intermediate tree |
+
+The key insight is that a relation instance IS a proof witness: a `Direct('alice', 'bob')` is an axiom, and a `Transitive({ hop, rest })` is a derivation step. Fold reads the proof; unfold writes the proof; map transforms it; merge fuses reading and writing.
+
+### Complete Example: Ancestor Relation
+
+```ts
+const Ancestor = relation(({ Family }) => ({
+    Direct:     { from: String, to: String },
+    Transitive: { hop: Family, rest: Family },
+
+    [origin]: fold({ out: String })({
+        Direct({ from })       { return from; },
+        Transitive({ hop })    { return hop; }
+    }),
+    [destination]: fold({ out: String })({
+        Direct({ to })         { return to; },
+        Transitive({ rest })   { return rest; }
+    }),
+
+    depth: fold({ out: Number })({
+        Direct() { return 1; },
+        Transitive({ hop, rest }) { return hop + rest; }
+    })
+}));
+
+const parents = [
+    Ancestor.Direct('alice', 'bob'), Ancestor.Direct('bob', 'carol'),
+    Ancestor.Direct('carol', 'dave'), Ancestor.Direct('dave', 'eve')
+];
+
+const all = Ancestor.closure(parents);
+
+// Who are all descendants of alice?
+Ancestor.reachableFrom(all, ['alice']);     // ['bob', 'carol', 'dave', 'eve']
+
+// Who are all ancestors of eve?
+Ancestor.reachingTo(all, ['eve']);    // ['alice', 'bob', 'carol', 'dave']
+```
+
+### Cycle Handling
+
+The default endpoint-pair dedup in `closure()` prevents infinite expansion on cyclic graphs:
+
+```ts
+const cyclic = [Edge.Direct('X', 'Y'), Edge.Direct('Y', 'Z'), Edge.Direct('Z', 'X')];
+const all = Edge.closure(cyclic);
+// 9 pairs - full connectivity, no infinite loop
+```
+
+## Observer (Stepwise Exploration on Behavior)
+
+An observer is a `behavior()` type enriched with **exploration structure**: fold operations that extract results, detect termination, and filter successes from the observation stream:
+
+```text
+Query →input- P ←output- Path[]
+```
+
+Where `relation()` computes exhaustively bottom-up (like Datalog), `observer()` explores lazily top-down (like Prolog). This makes `observer()` suited for large or infinite search spaces where you only need some results.
+
+> Categorically, the `[output]`/`[done]`/`[accept]` triple forms a *cospan*: the dual of a relation's span. `explore()` computes a greatest fixpoint, dual to `closure()`'s least fixpoint.
+
+**Relation vs Observer at a glance:**
+
+| Relation | Observer |
+| --- | --- |
+| Computes **all** reachable pairs (bottom-up) | Explores **lazily** from a seed (top-down) |
+| `[origin]` / `[destination]` project endpoints (fold ops) | `[output]` / `[done]` / `[accept]` observe state (field references) |
+| `closure()` iterates to a fixpoint | `explore()` steps until done or limit reached |
+| Join invariant auto-generated | `Self` continuation auto-detected |
+| Datalog-style | Prolog-style |
+
+```ts
+import { observer, unfold, fold, output, done, accept } from '@lapis-lang/lapis-js';
+```
+
+### Observer Declaration
+
+An observer is declared like a `behavior()` type, with three required cospan projections that define the cospan structure. This parallels how `relation()` requires `[origin]`/`[destination]` fold defs for its span structure.
+
+Each cospan key is a **string naming an observer field**. The framework auto-generates the corresponding fold projection:
+
+```ts
+const PathFinder = observer(({ Self }) => ({
+    // Observers (same as behavior)
+    path: Array,
+    found: Boolean,
+    exhausted: Boolean,
+    next: Self,
+
+    // Cospan projections — each names a field defined above
+    [output]: 'path',
+    [done]:   'exhausted',
+    [accept]: 'found',
+
+    // Unfold (coalgebra map, same as behavior)
+    Search: unfold({ in: Object, out: Self })({
+        path:      (s) => s.path,
+        found:     (s) => s.isFound,
+        exhausted: (s) => s.isExhausted,
+        next:      (s) => s.step
+    })
+}));
+```
+
+Any derived value (e.g. filtering, transforming) belongs in the unfold as a dedicated field, then referenced by name:
+
+```ts
+    // Computed in the unfold, referenced by name in the cospan:
+    isEven: Boolean,
+    [accept]: 'isEven',
+
+    Gen: unfold({ in: Number, out: Self })({
+        isEven: (n) => n % 2 === 0,
+        ...
+    })
+```
+
+**Required cospan projections:**
+
+| Key | Purpose |
+| --- | --- |
+| `[output]` | **Required.** String field reference. Extracts the result from the current observation |
+| `[done]` | **Required.** String field reference. When to stop stepping (termination) |
+| `[accept]` | **Required.** String field reference. Which observations are successes to collect |
+
+The referenced field's type serves as the projection type: the `[output]` field's type is the codomain (what `explore()` returns). The `in` type of the unfold serves as the domain type (the seed).
+
+The `Self` continuation is **auto-detected**: any field whose value is a `Self` reference becomes the stepping mechanism.
+
+All other keys follow the same rules as `behavior()`: observers, fold/unfold operations, etc.
+
+### Auto-Generated Operation: `explore(seed, options?)`
+
+The `explore()` method drives the observer step by step, collecting results along the way:
+
+1. Unfold the seed into an initial behavior instance
+2. At each step, read `[accept]` (fold getter) on the current instance
+3. If `[accept]` is true, collect `[output]` (fold getter) into results
+4. If `[done]` (fold getter) is true, stop
+5. Follow the `Self` continuation to the next state
+6. Repeat until done, exhausted, or limits reached
+
+```ts
+const results = PathFinder.explore(seed);
+const first   = PathFinder.explore(seed, { maxResults: 1 });
+```
+
+Options:
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `maxSteps` | 10000 | Maximum steps before giving up |
+| `maxResults` | Infinity | Maximum results to collect. Use `1` for **cut** semantics (commit to first solution, like Prolog `!`) |
+| `unfold` | first unfold in spec | Name of the unfold to use as the generator |
+
+**Rescue as backtracking:** If stepping to the next state throws (e.g. a demand failure on the unfold), `explore()` treats the branch as exhausted. The behavior's own `rescue` handler gets first chance to recover before the error propagates — this maps directly to Prolog backtracking: demand failure → try next alternative (rescue/retry), or fail the branch.
+
+**Tabling (always-on cycle detection):** `explore()` automatically tracks visited output values and terminates a branch when an output is revisited. Object outputs are tracked by identity (`WeakSet`), while primitive outputs are tracked by value (`Set`). This avoids `JSON.stringify` pitfalls with circular references, functions, or non-serializable values. The approach is dual to `closure()`'s always-on endpoint-pair deduplication — Datalog tables derived facts by tuple identity; here the output projection collapses behavior instances to comparable identities. No user configuration is needed.
+
+### Complete Example: Graph Path Finder
+
+This example uses `data()` for the search state ADT and `observer()` for the lazy path-finding behavior:
+
+```ts
+import { data, observer, fold, unfold, output, done, accept } from '@lapis-lang/lapis-js';
+
+// SearchState ::= Active | Found | Exhausted
+const SearchState = data(() => {
+    function resolve(target, adj, workList) {
+        const wl = [...workList];
+        while (wl.length > 0) {
+            const item = wl.pop();
+            if (item.node === target)
+                return SearchState.Found({
+                    target, adj, foundPath: item.path, workList: wl
+                });
+            const visited = new Set(item.path);
+            for (const n of adj[item.node].filter(x => !visited.has(x)))
+                wl.push({ node: n, path: [...item.path, n] });
+        }
+        return SearchState.Exhausted;
+    }
+
+    return {
+        Active:    { target: String, adj: Object, workList: Array },
+        Found:     { target: String, adj: Object, foundPath: Array, workList: Array },
+        Exhausted: {},
+
+        path: fold({ out: Array })({
+            Active()              { return []; },
+            Found({ foundPath })  { return foundPath; },
+            Exhausted()           { return []; }
+        }),
+        isFound: fold({ out: Boolean })({
+            Active()    { return false; },
+            Found()     { return true; },
+            Exhausted() { return false; }
+        }),
+        isExhausted: fold({ out: Boolean })({
+            Active()    { return false; },
+            Found()     { return false; },
+            Exhausted() { return true; }
+        }),
+        step: fold({ out: Object })({
+            Active({ target, adj, workList }) { return resolve(target, adj, workList); },
+            Found({ target, adj, workList })  { return resolve(target, adj, workList); },
+            Exhausted()                       { return SearchState.Exhausted; }
+        })
+    };
+});
+
+// Query ::= Query(adj, start, target)
+const Query = data(() => ({
+    Query: { adj: Object, start: String, target: String },
+    toState: fold({ out: Object })({
+        Query({ adj, start, target }) {
+            if (start === target)
+                return SearchState.Found({ target, adj, foundPath: [start], workList: [] });
+            const workList = (adj[start] ?? []).map(n => ({ node: n, path: [start, n] }));
+            return workList.length === 0
+                ? SearchState.Exhausted
+                : SearchState.Active({ target, adj, workList });
+        }
+    })
+}));
+
+// PathFinder - observer with cospan structure
+const PathFinder = observer(({ Self }) => ({
+    path: Array,
+    found: Boolean,
+    exhausted: Boolean,
+    next: Self,
+
+    [output]: 'path',
+    [done]:   'exhausted',
+    [accept]: 'found',
+
+    Search: unfold({ in: Object, out: Self })({
+        path:      (s) => s.path,
+        found:     (s) => s.isFound,
+        exhausted: (s) => s.isExhausted,
+        next:      (s) => s.step
+    })
+}));
+
+// Usage
+const dag = { A: ['B', 'D'], B: ['C'], D: ['C'], C: ['E'] };
+
+const paths = PathFinder.explore(
+    Query.Query(dag, 'A', 'E').toState,
+    { maxResults: 10 }
+);
+// paths = [['A', 'D', 'C', 'E'], ['A', 'B', 'C', 'E']]
+
+const first = PathFinder.explore(
+    Query.Query(dag, 'A', 'E').toState,
+    { maxResults: 1 }
+);
+// first = [['A', 'D', 'C', 'E']]
+```
+
+### Relation vs Observer: When to Use Which
+
+| Scenario | Use | Why |
+| --- | --- | --- |
+| Enumerate **all** reachable pairs | `relation()` + `closure()` | Bottom-up exhaustive computation |
+| Answer **one** specific query lazily | `observer()` + `explore()` | Top-down, stops after finding results |
+| Need `reachableFrom()` / `reachingTo()` projections | `relation()` | Built-in relational algebra |
+| Need to control search (DFS, BFS, heuristics) | `observer()` | Coalgebra map controls traversal strategy |
+| Small, finite relation | Either | Both produce correct results |
+| Large or infinite search space | `observer()` | Lazy evaluation avoids materializing all facts |
+
+### Logic Programming Interpretation (Observer)
+
+Just as `relation()` operations have LP meanings on proof trees, `observer()` operations have dual meanings on the **search process** (coalgebraic proof search):
+
+| Operation | behavior() meaning | observer() LP meaning |
+| --- | --- | --- |
+| **fold** | Observe/consume behavior state | **Read search state**: extract the current result (`[output]`), check termination (`[done]`), test acceptance (`[accept]`) |
+| **unfold** | Construct behavior from a seed | **Expand the search**: produce the next search state from a query (goal resolution, SLD-resolution step) |
+| **demands** | Precondition on unfold seed | **Mode declaration / pruning**: reject invalid seeds before expanding the search (constraint propagation at each step) |
+| **rescue** | Structured recovery on failure | **Backtracking**: when stepping fails, rescue provides alternative continuation (try next branch) |
+| **tabling** (auto-derived) | Cycle detection on state space | **Memoization**: prevent infinite loops by tracking visited output values (dual of `closure()` endpoint-pair dedup) |
+| **`maxResults: 1`** | Collect single result | **Cut** (Prolog `!`): commit to first accepted result, stop exploring |
+| **map** | Lazy type transformation on observations | **Transform the search space**: re-label states or results without altering the search strategy |
+| **merge** | Fuse observation pipeline (deforestation) | **Compose search strategies**: fuse goal expansion with result extraction, avoiding intermediate state materialization |
+
+Where `relation()` stores proof witnesses (data: what was proved), `observer()` drives proof search (behavior: how to prove it). The duality is:
+
+- **Relation**: $\mu$-side (initial algebra). Proof trees are constructed and inspected. `closure()` computes a least fixpoint (enumerate all proofs).
+- **Observer**: $\nu$-side (final coalgebra). Search processes are stepped and observed. `explore()` computes a greatest fixpoint (lazily find proofs on demand).
+
+Together they form a complete LP system: relations for exhaustive bottom-up derivation, observers for lazy top-down search.
+
 ## Design by Contract
 
-Lapis JS integrates [Design by Contract™](https://en.wikipedia.org/wiki/Design_by_contract) directly into `data` and `behavior` declarations. Contracts are specified inline in fold/unfold specs and are enforced at runtime when [Checked Mode](#checked-mode) is enabled.
+Lapis JS integrates [Design by Contract™](https://en.wikipedia.org/wiki/Design_by_contract) directly into `data` and `behavior` declarations. Contracts are specified inline in fold/unfold specs and are enforced at runtime.
 
-This enables enforcement of the [Liskov Substitution Principle](https://en.wikipedia.org/wiki/Liskov_substitution_principle) (LSP) and [Organized Panic](https://en.wikipedia.org/wiki/Exception_handling#Exception_handling_based_on_design_by_contract) — structured, localized error handling with optional retry.
+This enables enforcement of the [Liskov Substitution Principle](https://en.wikipedia.org/wiki/Liskov_substitution_principle) (LSP) and [Organized Panic](https://en.wikipedia.org/wiki/Exception_handling#Exception_handling_based_on_design_by_contract): structured, localized error handling with optional retry.
 
 The contract system supports several key software reliability principles:
 
-- **[Organized Panic](https://en.wikipedia.org/wiki/Exception_handling#Exception_handling_based_on_design_by_contract)** — Rather than scattering `try/catch` blocks throughout the call stack, exceptions are handled in a structured and localized manner. When an operation fails, the `rescue` handler at the point of failure recovers gracefully — either by returning a fallback value or by retrying with corrected arguments. You can always lexically determine where exception handling occurs.
-- **[Robustness](https://en.wikipedia.org/wiki/Robustness_(computer_science))** — The ability of a system to respond to situations not specified. The `rescue` mechanism enables implementations to cope with unanticipated failures by providing structured recovery logic at the declaration site, rather than relying on callers to anticipate every failure mode.
-- **[Fault-Tolerance](https://en.wikipedia.org/wiki/Fault_tolerance)** — The ability to continue operating despite failures. Rescue handlers work per-node during recursive fold traversal: when a handler throws for a particular node, `rescue` provides a fallback for that node while the rest of the tree continues folding normally.
-- **[Redundancy](https://en.wikipedia.org/wiki/Redundancy_(engineering))** — The `retry` mechanism allows an operation to re-execute with corrected arguments or after restoring invariants, providing a form of redundancy by attempting alternative strategies when the primary approach fails.
-- **[N-Version Programming](https://en.wikipedia.org/wiki/N-version_programming)** — The combination of `rescue` and `retry` provides a foundation for implementing multiple independent strategies for the same operation. When one approach fails, the rescue handler can retry with an entirely different algorithm or set of inputs.
+- **[Organized Panic](https://en.wikipedia.org/wiki/Exception_handling#Exception_handling_based_on_design_by_contract)**: Rather than scattering `try/catch` blocks throughout the call stack, exceptions are handled in a structured and localized manner. When an operation fails, the `rescue` handler at the point of failure recovers gracefully: either by returning a fallback value or by retrying with corrected arguments. You can always lexically determine where exception handling occurs.
+- **[Robustness](https://en.wikipedia.org/wiki/Robustness_(computer_science))**: The ability of a system to respond to situations not specified. The `rescue` mechanism enables implementations to cope with unanticipated failures by providing structured recovery logic at the declaration site, rather than relying on callers to anticipate every failure mode.
+- **[Fault-Tolerance](https://en.wikipedia.org/wiki/Fault_tolerance)**: The ability to continue operating despite failures. Rescue handlers work per-node during recursive fold traversal: when a handler throws for a particular node, `rescue` provides a fallback for that node while the rest of the tree continues folding normally.
+- **[Redundancy](https://en.wikipedia.org/wiki/Redundancy_(engineering))**: The `retry` mechanism allows an operation to re-execute with corrected arguments or after restoring invariants, providing a form of redundancy by attempting alternative strategies when the primary approach fails.
+- **[N-Version Programming](https://en.wikipedia.org/wiki/N-version_programming)**: The combination of `rescue` and `retry` provides a foundation for implementing multiple independent strategies for the same operation. When one approach fails, the rescue handler can retry with an entirely different algorithm or set of inputs.
 
 The contract system provides:
 
-- **Demands** (preconditions) — caller-blame checks before an operation executes
-- **Ensures** (postconditions) — implementer-blame checks after an operation completes
-- **Rescue** — structured recovery with optional retry when an operation fails
-- **Continuous invariants** — checked around every operation invocation
-- **Subcontracting** — LSP-safe composition through `[extend]` hierarchies
-- **Checked mode** — toggle all contract enforcement on/off at runtime
+- **Demands** (preconditions): caller-blame checks before an operation executes
+- **Ensures** (postconditions): implementer-blame checks after an operation completes
+- **Rescue**: structured recovery with optional retry when an operation fails
+- **Continuous invariants**: checked around every operation invocation
+- **Subcontracting**: LSP-safe composition through `[extend]` hierarchies
 
 ```ts
 import {
     data, fold, unfold, invariant,
-    checkedMode, DemandsError, EnsuresError, InvariantError,
+    DemandsError, EnsuresError, InvariantError,
     assert, implies, iff
 } from '@lapis-lang/lapis-js';
 ```
 
-### Checked Mode
-
-Checked Mode controls whether contract checking (demands, ensures, rescue, and continuous invariant checks around operations) is enabled or disabled at runtime. This allows you to turn off contract enforcement in production environments for maximum performance while keeping it enabled during development and testing.
-
-By default, Checked Mode is **enabled**.
-
-```ts
-import { checkedMode } from '@lapis-lang/lapis-js';
-
-checkedMode(false); // Disable contract checking
-checkedMode(true);  // Re-enable contract checking
-checkedMode();      // Query current state (returns boolean)
-```
-
-One approach to managing this is to leverage environment variables:
-
-```ts
-checkedMode(process.env.NODE_ENV === 'development');
-```
-
-**What is disabled:**
-
-- `demands` (precondition checks)
-- `ensures` (postcondition checks)
-- `rescue` (exception recovery handlers)
-- Continuous `[invariant]` checks around fold/unfold invocations
-
-**What remains active regardless:**
-
-- Field guards (`spec.in` / `spec.out`) — these are structural type checks, not contracts
-- Construction-time `[invariant]` checks — these are part of data construction, not operation contracts
-- `assert`, `implies`, `iff` — these are hard logical invariants (programmer errors), not operational contract checks
-
 ### Assertions
 
-`assert` is **always active** regardless of `checkedMode`. It targets hard logical invariants (programmer errors) that should never be silenced, as opposed to `demands`/`ensures`/`rescue` whose overhead may be acceptable to skip in production.
+`assert` is **always active**. It targets hard logical invariants (programmer errors) that should never be silenced.
 
 Use the `assert` function for inline assertions:
 
@@ -2132,7 +2634,7 @@ assert(false, 'Something went wrong');
 // Throws: AssertionError: Something went wrong
 ```
 
-**`assert` should not be used for validating operation arguments** — use `demands` for that purpose.
+**`assert` should not be used for validating operation arguments**: use `demands` for that purpose.
 
 ### Implies
 
@@ -2209,7 +2711,7 @@ const Stack = data(({ Family, T }) => ({
 
 ### Demands (Preconditions)
 
-Use `demands` in a fold or unfold spec to specify preconditions. If the condition fails, a `DemandsError` is thrown **before** the operation body executes. This represents **caller blame** — the caller invoked the operation with invalid state or arguments.
+Use `demands` in a fold or unfold spec to specify preconditions. If the condition fails, a `DemandsError` is thrown **before** the operation body executes. This represents **caller blame**: the caller invoked the operation with invalid state or arguments.
 
 ```ts
 const Stack = data(({ Family, T }) => ({
@@ -2242,10 +2744,10 @@ const NumStack = Stack({ T: Number });
 const { Empty, Push } = NumStack;
 
 const stack = Push({ value: 1, rest: Empty });
-console.log(stack.pop); // [1, Empty] — demands satisfied
+console.log(stack.pop); // [1, Empty] - demands satisfied
 
 try {
-    Empty.pop; // DemandsError — stack is empty
+    Empty.pop; // DemandsError - stack is empty
 } catch (e) {
     console.log(e instanceof DemandsError); // true
 }
@@ -2276,11 +2778,11 @@ List.Range(-1); // DemandsError: n must be >= 0
 - The demands predicate receives `(self, ...args)` where `self` is the instance (or ADT for unfolds)
 - If the predicate returns `false` (or throws), a `DemandsError` is thrown
 - The operation body is **never executed** when demands fail
-- `DemandsError` is never caught by `rescue` — demands failures are always propagated to the caller
+- `DemandsError` is never caught by `rescue`: demands failures are always propagated to the caller
 
 ### Ensures (Postconditions)
 
-Use `ensures` in a fold or unfold spec to specify postconditions. If the condition fails, an `EnsuresError` is thrown **after** the operation body completes. This represents **implementer blame** — the operation produced a result that violates its contract.
+Use `ensures` in a fold or unfold spec to specify postconditions. If the condition fails, an `EnsuresError` is thrown **after** the operation body completes. This represents **implementer blame**: the operation produced a result that violates its contract.
 
 ```ts
 const Stack = data(({ Family, T }) => ({
@@ -2305,27 +2807,25 @@ const Stack = data(({ Family, T }) => ({
 
 The ensures predicate receives `(self, old, result, ...args)`:
 
-- `self` — the instance the operation was called on
-- `old` — a snapshot of the instance state captured **before** the body executed
-- `result` — the value returned by the operation body
-- `...args` — any input arguments passed to the operation
+- `self`: the instance the operation was called on
+- `old`: a snapshot of the instance state captured **before** the body executed
+- `result`: the value returned by the operation body
+- `...args`: any input arguments passed to the operation
 
 **Key points:**
 
 - The ensures predicate is evaluated **after** the operation body returns
 - If the predicate returns `false` (or throws), an `EnsuresError` is thrown
-- `EnsuresError` **is** caught by `rescue` if one is defined — allowing recovery
+- `EnsuresError` **is** caught by `rescue` if one is defined: allowing recovery
 
 ### Rescue (Structured Recovery)
 
 Use `rescue` in a fold or unfold spec to handle exceptions thrown by the operation body or by `ensures`. Unlike traditional `try/catch` where exceptions are non-resumable and often handled far from the source (leading to scattered and redundant error handling), `rescue` provides **localized, declarative error handling** with optional retry.
 
-This is the mechanism underlying [Organized Panic](#design-by-contract) — you can lexically determine where exception handling occurs, restore invariants or perform corrective actions before retrying or failing, and implement alternative strategies for error recovery. This approach supports [Robustness](#design-by-contract), [Fault-Tolerance](#design-by-contract), [Redundancy](#design-by-contract), and [N-Version Programming](#design-by-contract) as described in the introduction above.
+This is the mechanism underlying [Organized Panic](#design-by-contract): you can lexically determine where exception handling occurs, restore invariants or perform corrective actions before retrying or failing, and implement alternative strategies for error recovery. This approach supports [Robustness](#design-by-contract), [Fault-Tolerance](#design-by-contract), [Redundancy](#design-by-contract), and [N-Version Programming](#design-by-contract) as described in the introduction above.
 
 ```ts
-import { data, fold, checkedMode } from '@lapis-lang/lapis-js';
-
-checkedMode(true);
+import { data, fold } from '@lapis-lang/lapis-js';
 
 const Expr = data(({ Family }) => ({
     Lit: { value: Number },
@@ -2387,10 +2887,10 @@ const Stack = data(({ Family, T }) => ({
 rescue: (self, error, args, retry) => result
 ```
 
-- `self` — the instance the operation was called on
-- `error` — the error that was thrown
-- `args` — the original arguments passed to the operation
-- `retry(...newArgs)` — re-execute the body with new arguments
+- `self`: the instance the operation was called on
+- `error`: the error that was thrown
+- `args`: the original arguments passed to the operation
+- `retry(...newArgs)`: re-execute the body with new arguments
 
 **Fault-tolerant recursive folds (Fault-Tolerance and Redundancy):**
 
@@ -2427,7 +2927,7 @@ console.log(expr.eval); // 5 (5 + 0)
 **Key points:**
 
 - `rescue` catches errors from the operation body **and** from `ensures` failures
-- `rescue` does **not** catch `DemandsError` — precondition failures are always propagated to the caller
+- `rescue` does **not** catch `DemandsError`: precondition failures are always propagated to the caller
 - `retry` re-executes the full contract cycle (demands → body → ensures), supporting [N-Version Programming](https://en.wikipedia.org/wiki/N-version_programming) by allowing alternative strategies on failure
 - A maximum retry count (100) prevents infinite retry loops
 - If rescue does not call `retry` and does not throw, its return value becomes the operation result
@@ -2435,12 +2935,10 @@ console.log(expr.eval); // 5 (5 + 0)
 
 ### Continuous Invariants
 
-When checked mode is enabled, `[invariant]` predicates are not only checked at construction time — they are also checked **around every fold/unfold operation**. The invariant is verified both **before** and **after** the operation executes, ensuring that operations maintain the structural integrity of the data.
+`[invariant]` predicates are not only checked at construction time: they are also checked **around every fold/unfold operation**. The invariant is verified both **before** and **after** the operation executes, ensuring that operations maintain the structural integrity of the data.
 
 ```ts
-import { data, fold, invariant, checkedMode, InvariantError } from '@lapis-lang/lapis-js';
-
-checkedMode(true);
+import { data, fold, invariant, InvariantError } from '@lapis-lang/lapis-js';
 
 const Stack = data(({ Family, T }) => ({
     Empty: {},
@@ -2459,7 +2957,7 @@ const Stack = data(({ Family, T }) => ({
 **Key points:**
 
 - Without contracts, `[invariant]` is only checked at construction time
-- With checked mode enabled, invariants are checked **before** and **after** every operation
+- Invariants are checked **before** and **after** every operation
 - If the invariant fails before the operation, an `InvariantError` is thrown (the body never executes)
 - If the invariant fails after the operation (or after rescue), an `InvariantError` is thrown
 - Invariants are AND-composed through `[extend]` hierarchies (see [Subcontracting](#subcontracting))
@@ -2475,7 +2973,7 @@ When a child ADT extends a parent ADT (via `[extend]`) and both define contracts
 | **Invariant** | AND (strengthen) | All invariants in the inheritance chain must hold |
 | **Rescue** | Override or inherit | The child's rescue replaces the parent's; if absent, the parent's is inherited |
 
-**Demands — weakening (OR):**
+**Demands: weakening (OR):**
 
 A child type can weaken preconditions to accept a wider range of inputs:
 
@@ -2509,7 +3007,7 @@ const ExtExpr = data(({ Family }) => ({
 // Value -50 fails parent demand but passes child demand → accepted
 ```
 
-**Ensures — strengthening (AND):**
+**Ensures: strengthening (AND):**
 
 ```ts
 const Base = data(({ Family }) => ({
@@ -2534,7 +3032,7 @@ const Extended = data(({ Family }) => ({
 // Result must be both >= 0 AND <= 100
 ```
 
-**Rescue — override or inherit:**
+**Rescue: override or inherit:**
 
 ```ts
 const Base = data(({ Family }) => ({
@@ -2563,23 +3061,23 @@ const Extended = data(({ Family }) => ({
 
 ### The Order of Assertions
 
-When an operation is invoked in checked mode, the assertions are evaluated in the following order:
+When an operation is invoked, the assertions are evaluated in the following order:
 
 **Happy path** (no errors):
 
-1. **Invariant pre-check** — verify invariant holds before the operation
-2. **Demands** — verify precondition
-3. **Capture old state** — snapshot for `ensures` predicate
-4. **Execute body** — run the operation handler
-5. **Ensures** — verify postcondition against old state and result
-6. **(Invariant post-check)** — verify invariant still holds after the operation
+1. **Invariant pre-check**: verify invariant holds before the operation
+2. **Demands**: verify precondition
+3. **Capture old state**: snapshot for `ensures` predicate
+4. **Execute body**: run the operation handler
+5. **Ensures**: verify postcondition against old state and result
+6. **(Invariant post-check)**: verify invariant still holds after the operation
 
 **Error path** (body or ensures throws):
 
 1. **Invariant pre-check**
 2. **Demands**
 3. **Execute body** → throws
-4. **Rescue** — if defined, handles the error
+4. **Rescue**: if defined, handles the error
    - If `retry` is called → go back to step 2
    - If rescue returns a value → that becomes the result
 5. **Invariant post-check**
@@ -2595,9 +3093,7 @@ When an operation is invoked in checked mode, the assertions are evaluated in th
 Contracts work on `behavior` types the same way they work on `data` types. Demands and ensures can be specified on both unfold (construction) and fold (consumption) operations:
 
 ```ts
-import { behavior, fold, unfold, checkedMode, DemandsError } from '@lapis-lang/lapis-js';
-
-checkedMode(true);
+import { behavior, fold, unfold, DemandsError } from '@lapis-lang/lapis-js';
 
 const Stream = behavior(({ Self, T }) => ({
     head: T,
@@ -2660,17 +3156,17 @@ try {
 
 **See also:**
 
-- `examples/contracts-stack.mts` — Stack with demands, ensures, rescue, and invariants
-- `examples/contracts-fault-tolerant.mts` — Expression tree with fault-tolerant fold
-- `examples/contracts-stream.mts` — Behavior stream with contracts
+- `examples/contracts-stack.mts`: Stack with demands, ensures, rescue, and invariants
+- `examples/contracts-fault-tolerant.mts`: Expression tree with fault-tolerant fold
+- `examples/contracts-stream.mts`: Behavior stream with contracts
 
 ## References, Inspirations, and Further Reading
 
 - [Algebraic Data Types in JavaScript (2008)](https://w3future.com/weblog/stories/2008/06/16/adtinjs.xml)
 - [Brevity - Michael Haufe (2022)](https://github.com/mlhaufe/brevity)
-- [Design by Contract — Wikipedia](https://en.wikipedia.org/wiki/Design_by_contract)
-- [Decorator Contracts — Final Hill](https://github.com/final-hill/decorator-contracts)
+- [Design by Contract - Wikipedia](https://en.wikipedia.org/wiki/Design_by_contract)
+- [Decorator Contracts - Final Hill](https://github.com/final-hill/decorator-contracts)
 - [From Object Algebras to Finally Tagless Interpreters - Oleksandr Manzyuk (2014)](https://web.archive.org/web/20181211210520/https://oleksandrmanzyuk.wordpress.com/2014/06/18/from-object-algebras-to-finally-tagless-interpreters-2/)
 - [Extensibility for the Masses - Bruno C. d. S. Oliveira and William R. Cook (2012)](https://www.cs.utexas.edu/~wcook/Drafts/2012/ecoop2012.pdf)
-- [Liskov Substitution Principle — Wikipedia](https://en.wikipedia.org/wiki/Liskov_substitution_principle)
-- [Object-Oriented Software Construction — Bertrand Meyer (1997)](https://en.wikipedia.org/wiki/Object-Oriented_Software_Construction)
+- [Liskov Substitution Principle - Wikipedia](https://en.wikipedia.org/wiki/Liskov_substitution_principle)
+- [Object-Oriented Software Construction - Bertrand Meyer (1997)](https://en.wikipedia.org/wiki/Object-Oriented_Software_Construction)
