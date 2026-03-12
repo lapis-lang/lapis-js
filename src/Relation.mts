@@ -126,7 +126,7 @@ export function relation<D extends Record<string, unknown>>(
             throw new Error("relation() destination fold must have an 'out' type, e.g. fold({ out: String })");
 
         // ---- Classify keys ----
-        const RESERVED = new Set(['closure', 'reachableFrom', 'reachingTo']);
+        const RESERVED = new Set(['closure', 'reachableFrom', 'reachingTo', 'origin', 'destination']);
         const transformed: Record<string | symbol, unknown> = {};
         const leafVariants: string[] = [];
         const recursiveVariants: RecursiveVariantInfo[] = [];
@@ -171,19 +171,23 @@ export function relation<D extends Record<string, unknown>>(
                 // Build a new variant spec with the auto-generated invariant.
                 // Preserve any existing non-invariant entries.
                 const augmented: Record<string | symbol, unknown> = {};
-                for (const [fk, fv] of Object.entries(fieldSpec))
-                    augmented[fk] = fv;
+                for (const fk of Reflect.ownKeys(fieldSpec))
+                    augmented[fk] = fieldSpec[fk as string];
 
                 // Enforce the join condition on every adjacent pair of Family fields:
                 // fields[0].destination === fields[1].origin &&
                 // fields[1].destination === fields[2].origin && ...
-                augmented[invariant] = (inst: Record<string, Record<string, unknown>>) => {
+                const userInvariant = augmented[invariant] as ((inst: object) => boolean) | undefined;
+                const joinInvariant = (inst: Record<string, Record<string, unknown>>) => {
                     for (let i = 0; i < familyFields.length - 1; i++) {
                         if (inst[familyFields[i]].destination !== inst[familyFields[i + 1]].origin)
                             return false;
                     }
                     return true;
                 };
+                augmented[invariant] = userInvariant
+                    ? (inst: object) => userInvariant(inst) && joinInvariant(inst as Record<string, Record<string, unknown>>)
+                    : joinInvariant;
 
                 transformed[key] = augmented;
             } else {
@@ -359,7 +363,15 @@ function computeClosure(
     }
 ): unknown[] {
     const keyFn = options?.key
-        ?? ((e: unknown) => `${(e as Record<string, unknown>).origin}\0${(e as Record<string, unknown>).destination}`);
+        ?? ((e: unknown) => {
+            const o = (e as Record<string, unknown>).origin;
+            const d = (e as Record<string, unknown>).destination;
+            if (o !== null && o !== undefined && typeof o === 'object' || typeof o === 'function' || typeof o === 'symbol')
+                throw new TypeError('closure(): default key cannot safely deduplicate non-primitive origin values — provide options.key');
+            if (d !== null && d !== undefined && typeof d === 'object' || typeof d === 'function' || typeof d === 'symbol')
+                throw new TypeError('closure(): default key cannot safely deduplicate non-primitive destination values — provide options.key');
+            return `${typeof o}:${String(o)}\0${typeof d}:${String(d)}`;
+        });
 
     // Build constructor references from the public ADT API
     const recursiveCtors = classification.recursiveVariants.map(rv => ({

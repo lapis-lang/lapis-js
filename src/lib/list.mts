@@ -31,8 +31,8 @@ const List: any = data(({ Family, T }: { Family: any; T: any }) => ({
      * Unfold: Array → List(T) (anamorphism).
      * Converts a JavaScript array into a linked list.
      */
-     
-    FromArray: unfold({ in: Object, out: Family(T) })({
+
+    FromArray: unfold({ in: Array, out: Family(T) })({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         Nil:  (arr: any) => arr.length === 0 ? {} : null,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -74,7 +74,7 @@ const List: any = data(({ Family, T }: { Family: any; T: any }) => ({
      * Returns a new List containing only elements satisfying the predicate.
      * Uses Family(T) to construct instances of the current specialization.
      */
-     
+
     filter: fold({ in: Function, out: Object })({
         Nil() { return Family(T).Nil; },
         // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -51,9 +51,17 @@ const Matrix: any = data(({ Family }: { Family: any }) => ({
     }),
 
     /** Block involution — groups elements by n×n blocks. */
-    boxs: fold({ in: Number, out: Object })({
+    boxs: fold({ in: Number, out: Object, demands: (self: any, blockSize: number) => {
+        const cells = self.toArray;
+        const n = cells.length;
+        if (n === 0) return true;
+        if (!Number.isInteger(blockSize) || blockSize <= 0) return false;
+        if (n % blockSize !== 0) return false;
+        return cells.every((row: unknown[]) => row.length === n);
+    }})({
         Matrix({ cells }: { cells: unknown[][] }, blockSize: number) {
             const n = cells.length;
+            if (n === 0) return Matrix.Matrix({ cells: [] });
             const blocks = n / blockSize;
             const result: unknown[][] = [];
             for (let bR = 0; bR < blocks; bR++) {
