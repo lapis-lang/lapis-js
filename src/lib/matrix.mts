@@ -51,6 +51,7 @@ const Matrix: any = data(({ Family }: { Family: any }) => ({
     }),
 
     /** Block involution — groups elements by n×n blocks. */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     boxs: fold({ in: Number, out: Object, demands: (self: any, blockSize: number) => {
         const cells = self.toArray;
         const n = cells.length;
