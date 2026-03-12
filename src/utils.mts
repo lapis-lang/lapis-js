@@ -28,7 +28,7 @@ export type TypeParamSymbol = typeof TypeParamSymbol;
 /**
  * Symbol for storing handler maps on transformers and observers.
  * Used internally to detect wildcard handlers and case structure.
- * Shared between Transformer.mjs (match handlers) and Observer.mjs (fold cases).
+ * Shared between DataOps.mts (match handlers) and BehaviorOps.mts (fold cases).
  */
 export const HandlerMapSymbol: unique symbol = Symbol('HandlerMap');
 export type HandlerMapSymbol = typeof HandlerMapSymbol;
@@ -236,4 +236,58 @@ export const BUILT_IN_TYPES: Set<unknown> = new Set(builtInTypeChecks.keys());
 /** Check if a value is a built-in type constructor */
 export function isBuiltInType(value: unknown): boolean {
     return builtInTypeChecks.has(value);
+}
+
+// ---- Structural equality ----------------------------------------------------
+
+/**
+ * Deep structural equality for frozen ADT instances.
+ *
+ * Two instances are structurally equal when they have the same constructor
+ * (variant identity) and every own-property value is either `===`-equal or
+ * recursively structurally equal.  Symbol-keyed properties are included
+ * so that variant brands are compared correctly.
+ *
+ * A `seen` pair set prevents infinite loops on cyclic references.
+ */
+export function structuralEquals(a: unknown, b: unknown, seen = new Set<string>()): boolean {
+    if (a === b) return true;
+    if (a == null || b == null) return false;
+    if (typeof a !== 'object' || typeof b !== 'object') return false;
+
+    // Cycle detection: if we've already started comparing this pair, assume equal
+    const idA = seenId(a), idB = seenId(b);
+    const cycleKey = `${idA}:${idB}`;
+    if (seen.has(cycleKey)) return true;
+    seen.add(cycleKey);
+
+    // Must be same variant constructor
+    if ((a as object).constructor !== (b as object).constructor) return false;
+
+    const keysA = Reflect.ownKeys(a as object),
+        keysB = Reflect.ownKeys(b as object);
+    if (keysA.length !== keysB.length) return false;
+
+    for (const key of keysA) {
+        if (!Object.prototype.hasOwnProperty.call(b, key)) return false;
+        const va = (a as Record<string | symbol, unknown>)[key],
+            vb = (b as Record<string | symbol, unknown>)[key];
+        if (!structuralEquals(va, vb, seen)) return false;
+    }
+
+    return true;
+}
+
+/** Monotonic counter for assigning stable identity to objects in cycle detection. */
+let _seenIdCounter = 0;
+const _seenIdMap = new WeakMap<object, number>();
+
+/** Return a stable numeric id for an object, assigned on first access. */
+function seenId(obj: unknown): number {
+    let id = _seenIdMap.get(obj as object);
+    if (id === undefined) {
+        id = _seenIdCounter++;
+        _seenIdMap.set(obj as object, id);
+    }
+    return id;
 }

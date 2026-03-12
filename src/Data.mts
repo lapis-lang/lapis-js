@@ -17,13 +17,13 @@ import {
 } from './operations.mjs';
 
 import {
-    isCheckedMode,
     resolveContracts,
     checkDemands,
     checkEnsures,
     checkInvariant,
     executeRescue,
     DemandsError,
+    EnsuresError,
     type ContractSpec
 } from './contracts.mjs';
 
@@ -35,14 +35,15 @@ import {
     type Transformer,
     type HandlerFn,
     type VariantConstructorLike
-} from './Transformer.mjs';
+} from './DataOps.mjs';
 
 import {
     isObjectLiteral,
     HandlerMapSymbol,
     hasInputSpec,
     omitSymbol,
-    builtInTypeChecks
+    builtInTypeChecks,
+    composeFunctions
 } from './utils.mjs';
 
 import type { DataADTWithParams, DataDeclParams } from './types.mjs';
@@ -71,11 +72,65 @@ export type IsSingleton = typeof IsSingleton;
 // reachable — no manual cleanup is needed.
 const rawToProxiedMap = new WeakMap<object, object>();
 
+// Per-ADT inverse map registry: bidirectional opName ↔ inverseOpName.
+// When map `halve` declares `inverse: 'double'`, both directions are
+// recorded so the system can detect inverse pairs in merge pipelines
+// and fuse them to identity.
+const inverseRegistry = new WeakMap<object, Map<string, string>>();
+
+/** Guard flag to prevent re-entrant round-trip verification. */
+let _inRoundTripCheck = false;
+
+/** Look up the inverse operation name for a given operation on an ADT. */
+function getInverse(ADT: ADTLike, opName: string): string | undefined {
+    return inverseRegistry.get(ADT as unknown as object)?.get(opName);
+}
+
+/**
+ * Extract the `inverse` target name from an operation definition's spec.
+ * Returns the target operation name string, or null if not declared.
+ */
+function getInverseTarget(opDef: Record<string, unknown>): string | null {
+    const mapSpec = opDef[spec as unknown as string] as Record<string, unknown> | undefined;
+
+    return mapSpec && typeof mapSpec['inverse'] === 'string'
+        ? mapSpec['inverse']
+        : null;
+}
+
+/** A map transformer: has param/atom transforms, no fold handler, no generator. */
+function isMapTransformer(t: Transformer): boolean {
+    return !t.generator && !t.getCtorTransform &&
+        (t.getParamTransform !== undefined || t.getAtomTransform !== undefined);
+}
+
+/** A fold transformer: has getCtorTransform, no generator. */
+function isFoldTransformer(t: Transformer): boolean {
+    return t.getCtorTransform !== undefined && !t.generator;
+}
+
+/** Check whether an operation is installed as a getter (no extra params). */
+function isGetterOp(ADT: ADTLike, opName: string): boolean {
+    let proto: object | null = ADT.prototype as object;
+    while (proto) {
+        const desc = Object.getOwnPropertyDescriptor(proto, opName);
+        if (desc)  return 'get' in desc;
+        proto = Object.getPrototypeOf(proto) as object | null;
+    }
+    return false;
+}
+
 // Module-level fold-execution context: holds the current parameterized
 // (proxied) ADT during fold handler invocation so that Family(T) can
 // resolve type-param markers to the correct parameterized ADT without
 // requiring the user to hardcode concrete type arguments.
 let _currentFoldParameterizedADT: object | null = null;
+
+// Module-level context: when set, fold operations pre-apply this map
+// transformer to non-recursive (type-parameter) fields before passing
+// them to the fold handler.  Used by merge pipelines to fuse adjacent
+// map → fold operations into a single traversal.
+let _currentMapFoldPreTransform: Transformer | null = null;
 
 const TypeArgsSymbol: unique symbol = Symbol('TypeArgs'),
     VariantNameSymbol: unique symbol = Symbol('VariantName'),
@@ -600,9 +655,14 @@ function createVariants(
 
         const isEmpty = !fieldSpec || Object.keys(fieldSpec).length === 0;
 
-        if (isEmpty)
+        if (isEmpty) {
+            if (invariantFn) {
+                throw new TypeError(
+                    `Invariant on singleton variant '${name}' is meaningless: singletons have no state to evaluate`
+                );
+            }
             variants[name] = createSingletonVariant(name, ADT);
-        else {
+        } else {
             variants[name] = createVariantConstructor({
                 name,
                 spec: fieldSpec,
@@ -878,6 +938,14 @@ function topologicalSortOperations(
                             }
                         }
                     }
+                }
+
+                // Map inverse dependency: the forward map must be registered
+                // before a map that declares `inverse: 'forwardName'`.
+                if (opDef[op as unknown as string] === 'map') {
+                    const invTarget = getInverseTarget(opDef);
+                    if (invTarget && !visited.has(invTarget))
+                        stack.push({ name: invTarget, phase: 'pre' });
                 }
             } else {
                 stack.pop();
@@ -1251,9 +1319,20 @@ function createFoldOperation(
                     } else
                         foldedFields[fieldName] = (fieldValue as Record<string, unknown>)[opName];
 
-                } else
-                    foldedFields[fieldName] = (self as Record<string, unknown>)[fieldName];
-
+                } else {
+                    let val = (self as Record<string, unknown>)[fieldName];
+                    // Map-fold fusion: pre-apply map transform to T-typed fields
+                    // so the fold handler sees mapped values without an
+                    // intermediate structure being created.
+                    if (_currentMapFoldPreTransform &&
+                        fieldSpec && typeof fieldSpec === 'object' && TypeParamSymbol in fieldSpec) {
+                        const paramName = (fieldSpec as Record<symbol, string>)[TypeParamSymbol],
+                            fn = _currentMapFoldPreTransform.getParamTransform?.(paramName) ??
+                                _currentMapFoldPreTransform.getAtomTransform?.(fieldName);
+                        if (fn)  val = fn(val);
+                    }
+                    foldedFields[fieldName] = val;
+                }
             }
 
             // Histomorphism: inject [history] into foldedFields.
@@ -1378,19 +1457,14 @@ function createFoldOperation(
                 // on a node are deterministic — checking once at the entry point
                 // is sufficient.  Rescue, however, is an error-recovery mechanism
                 // and must remain active at every recursion level.
-                //
-                // Invariant checks are gated by isCheckedMode() alone (not by
-                // hasAnyContracts) so that a fold with no demands/ensures/rescue
-                // still runs invariant pre-checks when the variant defines one.
-                const inCheckedMode = isCheckedMode();
 
                 // Get the invariant function for this instance's variant
                 const variantInvariantFn: ((instance: object) => boolean) | null =
-                    inCheckedMode && variantCtor
+                    variantCtor
                         ? (variantCtor as VariantLike)._invariant ?? null
                         : null;
 
-                const checked = contractDepth === 1 && inCheckedMode
+                const checked = contractDepth === 1
                 && (hasAnyContracts || variantInvariantFn !== null);
                 let result: unknown;
 
@@ -1448,7 +1522,7 @@ function createFoldOperation(
 
                     // 6. Invariant post-check on result (if it's a variant with an invariant)
                     checkResultInvariant(result, opName);
-                } else if (inCheckedMode && foldContracts?.rescue) {
+                } else if (foldContracts?.rescue) {
                 // Inner recursion level with rescue active:
                 // Skip demands/ensures/invariant but still wrap in rescue
                 // so handler errors can be recovered at every level.
@@ -1653,8 +1727,7 @@ function installUnfoldImpl(
         // so intermediate demands/ensures checks are redundant.
         // Rescue, however, is an error-recovery mechanism and must
         // remain active at every recursion level.
-        const inCheckedMode = hasAnyUnfoldContracts && isCheckedMode();
-        const checked = unfoldContractDepth === 1 && inCheckedMode;
+        const checked = unfoldContractDepth === 1 && hasAnyUnfoldContracts;
 
         if (checked) {
             let finalResult: unknown;
@@ -1691,7 +1764,7 @@ function installUnfoldImpl(
             }
 
             return finalResult;
-        } else if (inCheckedMode && unfoldContracts?.rescue) {
+        } else if (unfoldContracts?.rescue) {
             // Inner recursion level with rescue active
             try {
                 const innerResult = executeUnfold(seed);
@@ -1779,40 +1852,30 @@ function createUnfoldOperation(
     installUnfoldImpl(ADT, variants, opName, cases, opSpecObj);
 }
 
-function createMapOperation(
+// ---- Map implementation factory ---------------------------------------------
+
+/**
+ * Build a map implementation function.  Used by both `createMapOperation`
+ * (for user-declared maps) and `fuseConsecutiveMaps` (for synthetic fused maps).
+ *
+ * @param getTransform  Given a type-parameter name and a field name, return the
+ *   transform function to apply (or undefined to copy as-is).
+ * @param hasExtraParams  When true, the map is installed as a method that
+ *   forwards extra arguments through the recursive descent.
+ */
+function buildMapImpl(
     ADT: ADTLike,
     variants: Record<string, unknown>,
     opName: string,
-    opDef: Record<string, unknown>
-): void {
-    const {
-        [op as unknown as string]: _op,
-        [spec as unknown as string]: _opSpec = {},
-        ...transformers
-    } = opDef;
-
-    assertCamelCase(opName, 'Map operation');
-
-
-    const hasExtraParams = Object.values(transformers).some(t =>
-            typeof t === 'function' && (t as HandlerFn).length > 1
-        ),
-
-        transformer = createTransformer({
-            name: opName,
-            getParamTransform: (paramName) => transformers[paramName] as HandlerFn | undefined,
-            getAtomTransform: (fieldName) => transformers[fieldName] as HandlerFn | undefined
-        });
-
-    ADT._registerTransformer(opName, transformer, false, variants);
-
-    const mapImpl = function (this: Record<symbol, unknown>, ...args: unknown[]) {
+    getTransform: (paramName: string, fieldName: string) => HandlerFn | undefined,
+    hasExtraParams: boolean
+): (...args: unknown[]) => unknown {
+    return function (this: Record<symbol, unknown>, ...args: unknown[]) {
         const variantName = this[VariantNameSymbol] as string,
             variant = variants[variantName] || (ADT as Record<string, unknown>)[variantName];
 
         if (!variant || typeof variant !== 'function')
             return this;
-
 
         const variantSpec = (variant as VariantLike).spec;
         if (!variantSpec) return this;
@@ -1830,8 +1893,7 @@ function createMapOperation(
 
             } else if (fieldSpec && typeof fieldSpec === 'object' && TypeParamSymbol in fieldSpec) {
                 const paramName = (fieldSpec as Record<symbol, string>)[TypeParamSymbol],
-                    transformFn = transformers[paramName] as HandlerFn | undefined ??
-                        transformers[fieldName] as HandlerFn | undefined;
+                    transformFn = getTransform(paramName, fieldName);
                 if (transformFn)
                     mappedFields[fieldName] = transformFn(value, ...args);
                 else
@@ -1842,8 +1904,99 @@ function createMapOperation(
 
         }
 
-        return (variant as (f: object) => unknown)(mappedFields);
+        const result = (variant as (f: object) => unknown)(mappedFields);
+
+        // Round-trip verification for invertible maps (allegory ensures)
+        if (!hasExtraParams && !_inRoundTripCheck) {
+            const inverseName = getInverse(ADT, opName);
+            if (inverseName) {
+                _inRoundTripCheck = true;
+                try {
+                    const roundTripped = (result as Record<string, unknown>)[inverseName] as Record<string, unknown>;
+                    for (const [fn, fs] of Object.entries(variantSpec)) {
+                        if (fs && typeof fs === 'object' && TypeParamSymbol in fs) {
+                            if (roundTripped[fn] !== (this as Record<string, unknown>)[fn]) {
+                                throw new EnsuresError(
+                                    opName,
+                                    `Round-trip failed: ${opName} \u2192 ${inverseName} did not restore field '${fn}'`
+                                );
+                            }
+                        }
+                    }
+                } finally {
+                    _inRoundTripCheck = false;
+                }
+            }
+        }
+
+        return result;
     };
+}
+
+function createMapOperation(
+    ADT: ADTLike,
+    variants: Record<string, unknown>,
+    opName: string,
+    opDef: Record<string, unknown>
+): void {
+    const {
+        [op as unknown as string]: _op,
+        [spec as unknown as string]: _opSpec = {},
+        ...transformers
+    } = opDef;
+
+    assertCamelCase(opName, 'Map operation');
+
+    // ---- Inverse registration (allegory support) ----
+    const inverseTarget = getInverseTarget(opDef);
+
+    if (inverseTarget) {
+        // Validate the forward operation exists
+        const forwardTransformer = ADT._getTransformer(inverseTarget);
+        if (!forwardTransformer) {
+            throw new Error(
+                `Map '${opName}' declares inverse: '${inverseTarget}', but '${inverseTarget}' is not a registered operation`
+            );
+        }
+
+        // Enforce 1:1 — the forward operation must not already have an inverse
+        const existing = getInverse(ADT, inverseTarget);
+        if (existing) {
+            throw new Error(
+                `Map '${opName}' declares inverse: '${inverseTarget}', but '${inverseTarget}' already has inverse '${existing}' (inverses must be 1:1)`
+            );
+        }
+
+        // Register bidirectional link
+        let reg = inverseRegistry.get(ADT as unknown as object);
+        if (!reg) {
+            reg = new Map();
+            inverseRegistry.set(ADT as unknown as object, reg);
+        }
+        reg.set(opName, inverseTarget);
+        reg.set(inverseTarget, opName);
+    }
+
+
+    const hasExtraParams = Object.values(transformers).some(t =>
+            typeof t === 'function' && (t as HandlerFn).length > 1
+        ),
+
+        transformer = createTransformer({
+            name: opName,
+            getParamTransform: (paramName) => transformers[paramName] as HandlerFn | undefined,
+            getAtomTransform: (fieldName) => transformers[fieldName] as HandlerFn | undefined
+        });
+
+    ADT._registerTransformer(opName, transformer, false, variants);
+
+    const mapImpl = buildMapImpl(
+        ADT, variants, opName,
+        (paramName, fieldName) =>
+            transformers[paramName] as HandlerFn | undefined ??
+            transformers[fieldName] as HandlerFn | undefined,
+        hasExtraParams
+    );
 
     if (hasExtraParams)
         (ADT.prototype as Record<string, unknown>)[opName] = mapImpl;
@@ -1856,13 +2009,154 @@ function createMapOperation(
     }
 }
 
+// ---- Map-map fusion ---------------------------------------------------------
+
+/**
+ * Eliminate consecutive inverse pairs from a merge pipeline.
+ *
+ * When two adjacent operations in the pipeline are declared inverses
+ * of each other, their composition is the identity and both can be
+ * removed.  This is applied repeatedly until no more pairs remain.
+ *
+ * Example: `['double', 'halve', 'increment']` where `halve` is the
+ * declared inverse of `double` → fused to `['increment']`.
+ */
+function fuseInversePairs(ADT: ADTLike, opList: string[]): string[] {
+    let result = opList;
+    let changed = true;
+
+    while (changed) {
+        changed = false;
+        const next: string[] = [];
+        let i = 0;
+
+        while (i < result.length) {
+            if (i + 1 < result.length) {
+                const a = result[i], b = result[i + 1];
+                if (getInverse(ADT, a) === b) {
+                    // a and b are inverses — eliminate both
+                    i += 2;
+                    changed = true;
+                    continue;
+                }
+            }
+            next.push(result[i]);
+            i++;
+        }
+
+        result = next;
+    }
+
+    return result;
+}
+
+// Counter for generating unique synthetic fused-map names.
+let _fusedMapCounter = 0;
+
+/**
+ * Fuse runs of consecutive getter-map operations into a single map.
+ *
+ * Given `['double', 'triple', 'increment']` where `double` and `triple`
+ * are both map getters, the first two are replaced by a single synthetic
+ * map whose transforms are `triple ∘ double` for each type parameter.
+ * This eliminates the intermediate structure between the two maps.
+ *
+ * Only getter maps (no extra parameters) are eligible for fusion.
+ * The function returns a new opList with fused names substituted.
+ */
+function fuseConsecutiveMaps(
+    ADT: ADTLike,
+    variants: Record<string, unknown>,
+    opList: string[]
+): string[] {
+    const result: string[] = [];
+    let i = 0;
+
+    while (i < opList.length) {
+        const t = ADT._getTransformer(opList[i]);
+
+        // Start of a potential map run — must be a getter map
+        if (t && isMapTransformer(t) && isGetterOp(ADT, opList[i])) {
+            const run: { name: string; transformer: Transformer }[] =
+                [{ name: opList[i], transformer: t }];
+            let j = i + 1;
+
+            while (j < opList.length) {
+                const next = ADT._getTransformer(opList[j]);
+                if (next && isMapTransformer(next) && isGetterOp(ADT, opList[j])) {
+                    run.push({ name: opList[j], transformer: next });
+                    j++;
+                } else
+                    break;
+
+            }
+
+            if (run.length >= 2) {
+                // Compose transforms: for each param/atom, chain
+                // runN ∘ ... ∘ run1 (left-to-right pipeline order).
+                const fusedName = `_fused${_fusedMapCounter++}`;
+
+                const composedGetParamTransform = (paramName: string): HandlerFn | undefined => {
+                    let composed: HandlerFn | undefined;
+                    for (const { transformer: tr } of run) {
+                        const fn = tr.getParamTransform?.(paramName);
+                        if (fn)  composed = composed ? composeFunctions(composed, fn) as HandlerFn : fn;
+                    }
+                    return composed;
+                };
+
+                const composedGetAtomTransform = (fieldName: string): HandlerFn | undefined => {
+                    let composed: HandlerFn | undefined;
+                    for (const { transformer: tr } of run) {
+                        const fn = tr.getAtomTransform?.(fieldName);
+                        if (fn)  composed = composed ? composeFunctions(composed, fn) as HandlerFn : fn;
+                    }
+                    return composed;
+                };
+
+                // Register the composed transformer for introspection
+                const fusedTransformer = createTransformer({
+                    name: fusedName,
+                    getParamTransform: composedGetParamTransform,
+                    getAtomTransform: composedGetAtomTransform
+                });
+                ADT._registerTransformer(fusedName, fusedTransformer, false, variants);
+
+                // Install the fused map getter on the prototype
+                const fusedImpl = buildMapImpl(
+                    ADT, variants, fusedName,
+                    (paramName, fieldName) =>
+                        composedGetParamTransform(paramName) ?? composedGetAtomTransform(fieldName),
+                    false
+                );
+                Object.defineProperty(ADT.prototype, fusedName, {
+                    get: fusedImpl,
+                    enumerable: false,       // internal — not user-visible
+                    configurable: true
+                });
+
+                result.push(fusedName);
+                i = j;
+            } else {
+                result.push(opList[i]);
+                i++;
+            }
+        } else {
+            result.push(opList[i]);
+            i++;
+        }
+    }
+
+    return result;
+}
+
 function createMergeOperation(
     ADT: ADTLike,
     variants: Record<string, unknown>,
     opName: string,
     opDef: Record<string, unknown>
 ): void {
-    const opList = opDef[operations as unknown as string] as string[];
+    let opList = opDef[operations as unknown as string] as string[];
 
     /** Walk the prototype chain to find a property descriptor. */
     function getPrototypeDescriptor(propName: string): PropertyDescriptor | undefined {
@@ -1881,6 +2175,51 @@ function createMergeOperation(
 
     if (opList.length < 2)
         throw new Error(`Merge requires at least 2 operations`);
+
+    // ---- Allegory law: inverse pair elimination ----
+    // When consecutive operations in the pipeline are declared inverses
+    // of each other (f followed by f⁻¹, or f⁻¹ followed by f), they
+    // compose to the identity and can be eliminated entirely.
+    // This is the allegory law: f° ∘ f = id.
+    opList = fuseInversePairs(ADT, opList);
+
+    // ---- Map-map fusion ----
+    // Consecutive getter-map operations are composed into a single
+    // synthetic map whose transforms are the pipeline composition
+    // of each individual map's transform.  This eliminates intermediate
+    // structures between adjacent maps.
+    opList = fuseConsecutiveMaps(ADT, variants, opList);
+
+    // After fusion the pipeline may have fewer than 2 operations.
+    // If it collapsed to nothing, the merge is the identity.
+    if (opList.length === 0) {
+        Object.defineProperty(ADT.prototype, opName, {
+            get() { return this; },
+            enumerable: true,
+            configurable: true
+        });
+        // Still register a no-op transformer for introspection
+        ADT._registerTransformer(opName, createTransformer({
+            name: opName,
+            getParamTransform: () => undefined,
+            getAtomTransform: () => undefined
+        }), false, variants);
+        return;
+    }
+
+    if (opList.length === 1) {
+        // Pipeline collapsed to a single operation — alias it
+        const sole = opList[0];
+        Object.defineProperty(ADT.prototype, opName, {
+            get() { return (this as Record<string, unknown>)[sole]; },
+            enumerable: true,
+            configurable: true
+        });
+        const t = ADT._getTransformer(sole);
+        if (t)
+            ADT._registerTransformer(opName, t, false, variants);
+        return;
+    }
 
 
     const transformerList = opList.map(operationName => {
@@ -1906,11 +2245,74 @@ function createMergeOperation(
     const composedTransformer = composeMultipleTransformers(transformerList, opName);
     ADT._registerTransformer(opName, composedTransformer, false, variants);
 
+    // ---- Map-fold fusion: execution plan ----
+    // Build a plan that detects map → fold adjacencies and marks them
+    // for fused execution.  At runtime, when a mapFold step is reached
+    // the map transformer is set as a module-level context variable and
+    // the fold accesses pre-transformed type-parameter fields directly,
+    // eliminating the intermediate mapped structure.
+    type MergeStep =
+        | { kind: 'access'; name: string }
+        | { kind: 'mapFold'; mapTransformer: Transformer; foldName: string };
+
+    function buildPlan(ops: string[], startIdx: number): MergeStep[] {
+        const steps: MergeStep[] = [];
+        let k = startIdx;
+        while (k < ops.length) {
+            const tCur = ADT._getTransformer(ops[k]);
+            if (tCur && isMapTransformer(tCur) && isGetterOp(ADT, ops[k])
+                && k + 1 < ops.length) {
+                const tNext = ADT._getTransformer(ops[k + 1]);
+                if (tNext && isFoldTransformer(tNext)) {
+                    steps.push({
+                        kind: 'mapFold',
+                        mapTransformer: tCur,
+                        foldName: ops[k + 1]
+                    });
+                    k += 2;
+                    continue;
+                }
+            }
+            steps.push({ kind: 'access', name: ops[k] });
+            k++;
+        }
+        return steps;
+    }
+
+    /** Execute one step of the plan, returning the new result. */
+    function executeStep(
+        result: unknown,
+        step: MergeStep,
+        args: unknown[]
+    ): unknown {
+        if (step.kind === 'mapFold') {
+            _currentMapFoldPreTransform = step.mapTransformer;
+            try {
+                const descriptor = getPrototypeDescriptor(step.foldName);
+                if (descriptor && descriptor.get)
+                    return (result as Record<string, unknown>)[step.foldName];
+                else if (typeof (result as Record<string, unknown>)[step.foldName] === 'function')
+                    return ((result as Record<string, (...a: unknown[]) => unknown>)[step.foldName])(...args);
+
+                throw new Error(`Operation '${step.foldName}' not found`);
+            } finally {
+                _currentMapFoldPreTransform = null;
+            }
+        }
+        // kind === 'access'
+        const descriptor = getPrototypeDescriptor(step.name);
+        if (descriptor && descriptor.get)
+            return (result as Record<string, unknown>)[step.name];
+        else if (typeof (result as Record<string, unknown>)[step.name] === 'function')
+            return ((result as Record<string, (...a: unknown[]) => unknown>)[step.name])(...args);
+
+        throw new Error(`Operation '${step.name}' not found`);
+    }
+
     if (composedTransformer.generator) {
         // Sequential pipeline: unfold → [maps*] → [fold]
-        // Each operation runs through its own registered machinery,
-        // preserving proper `this` context, parent handlers, open recursion,
-        // instanceof, and all other documented fold-handler semantics.
+        const plan = buildPlan(opList, 1);
+
         (ADT as Record<string, unknown>)[opName] = function (seed: unknown) {
             const unfoldName = opList[0],
                 unfoldOp = (ADT as Record<string, unknown>)[unfoldName] as
@@ -1919,35 +2321,20 @@ function createMergeOperation(
             if (!unfoldOp)
                 throw new Error(`Unfold operation '${unfoldName}' not found`);
 
-            const intermediate = unfoldOp(seed);
-            let result = intermediate;
-            for (let i = 1; i < opList.length; i++) {
-                const nextOpName = opList[i],
-                    descriptor = getPrototypeDescriptor(nextOpName);
-
-                if (descriptor && descriptor.get)
-                    result = (result as Record<string, unknown>)[nextOpName];
-                else if (typeof (result as Record<string, unknown>)[nextOpName] === 'function')
-                    result = ((result as Record<string, () => unknown>)[nextOpName])();
-                else
-                    throw new Error(`Operation '${nextOpName}' not found on result`);
-            }
+            let result: unknown = unfoldOp(seed);
+            for (const step of plan)
+                result = executeStep(result, step, []);
 
             return result;
         };
     } else {
+        const plan = buildPlan(opList, 0);
+
         const mergeImpl = function (this: Record<string, unknown>, ...args: unknown[]) {
             let result: unknown = this;
-            for (const mOpName of opList) {
-                const descriptor = getPrototypeDescriptor(mOpName);
-                if (descriptor && descriptor.get)
-                    result = (result as Record<string, unknown>)[mOpName];
-                else if (typeof (result as Record<string, unknown>)[mOpName] === 'function')
-                    result = ((result as Record<string, (...a: unknown[]) => unknown>)[mOpName])(...args);
-                else
-                    throw new Error(`Operation '${mOpName}' not found`);
+            for (const step of plan)
+                result = executeStep(result, step, args);
 
-            }
             return result;
         };
 

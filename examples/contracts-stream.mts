@@ -6,9 +6,7 @@
  * - demands + ensures on fold (operation contracts)
  * - rescue on fold (recovery from observation failures)
  */
-import { behavior, fold, unfold, checkedMode, DemandsError } from '@lapis-lang/lapis-js';
-
-checkedMode(true);
+import { behavior, fold, unfold, DemandsError } from '@lapis-lang/lapis-js';
 
 // Stream behavior with contracts on operations
 const Stream = behavior(({ Self, T }) => ({
@@ -113,19 +111,5 @@ try {
 } catch (e) {
     console.log(`   Caught: ${(e as Error).name}: ${(e as Error).message}`);
 }
-
-// --- Checked mode ---
-console.log('\n6. Checked mode toggle:');
-checkedMode(false);
-console.log(`   checkedMode(false) → ${checkedMode()}`);
-try {
-    // Negative take should work with checked mode off (demands skipped)
-    const result = nats.take(3);
-    console.log(`   nats.take(3) with checked=false: [${result}]`);
-} catch (e) {
-    console.log(`   Caught: ${(e as Error).message}`);
-}
-checkedMode(true);
-console.log(`   checkedMode(true) → ${checkedMode()}`);
 
 console.log('\n=== Done ===');

@@ -1,5 +1,5 @@
-import { behaviorObservers } from './Observer.mjs';
-import type { Observer } from './Observer.mjs';
+import { behaviorObservers } from './BehaviorOps.mjs';
+import type { Observer } from './BehaviorOps.mjs';
 
 import {
     IsParameterizedInstance,
@@ -30,7 +30,6 @@ import {
 } from './operations.mjs';
 
 import {
-    isCheckedMode,
     resolveContracts,
     checkDemands,
     checkEnsures,
@@ -609,7 +608,7 @@ function addUnfoldOperation(
         BehaviorType[name] = function (seed: unknown) {
             validateTypeSpec(seed, parsedSpec['in'] as Parameters<typeof validateTypeSpec>[1], name, 'input of type');
 
-            if (isCheckedMode() && unfoldContracts) {
+            if (unfoldContracts) {
                 return checkedUnfold(seed, [seed],
                     (...newArgs: unknown[]) =>
                         (BehaviorType[name] as (s: unknown) => unknown)(newArgs[0]));
@@ -620,7 +619,7 @@ function addUnfoldOperation(
     } else {
         Object.defineProperty(BehaviorType, name, {
             get() {
-                if (isCheckedMode() && unfoldContracts) {
+                if (unfoldContracts) {
                     return checkedUnfold(undefined, [],
                         () => BehaviorType[name] as unknown);
                 }
@@ -781,7 +780,7 @@ function executeFold(
     }
 
     // Contract checking around the fold handler
-    if (isCheckedMode() && contracts) {
+    if (contracts) {
         // 1. Demands check
         if (contracts.demands)
             checkDemands(contracts.demands, opName, 'behavior', proxyInstance, params);

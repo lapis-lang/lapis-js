@@ -5,9 +5,7 @@
  * When a node handler throws, rescue provides a fallback value,
  * allowing the fold to continue instead of failing entirely.
  */
-import { data, fold, checkedMode } from '@lapis-lang/lapis-js';
-
-checkedMode(true);
+import { data, fold } from '@lapis-lang/lapis-js';
 
 // A simple expression tree that may contain bad nodes
 const Expr = data(({ Family }) => ({

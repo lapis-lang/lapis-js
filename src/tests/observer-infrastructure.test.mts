@@ -12,7 +12,7 @@ import {
     createFoldObserver,
     behaviorObservers,
     type FoldCases
-} from '../Observer.mjs';
+} from '../BehaviorOps.mjs';
 
 describe('Observer Infrastructure', () => {
     describe('createObserver', () => {

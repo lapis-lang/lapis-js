@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { behavior } from '../index.mjs';
-import { behaviorObservers } from '../Observer.mjs';
+import { behaviorObservers } from '../BehaviorOps.mjs';
 
 describe('Behavior Stream', () => {
     it('should define Stream behavior type with head and tail observers', () => {

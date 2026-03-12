@@ -2,7 +2,7 @@
  * Design by Contract infrastructure for Lapis JS
  *
  * Provides demands (preconditions), ensures (postconditions), rescue (structured
- * recovery with retry), continuous invariant enforcement, checked mode toggle,
+ * recovery with retry), continuous invariant enforcement,
  * and subcontracting rules for `[extend]` hierarchies.
  *
  * Semantics:
@@ -12,40 +12,13 @@
  * - invariant: checked around every operation invocation (before and after)
  * - Subcontracting: demands OR (weaken), ensures AND (strengthen), invariant AND (strengthen)
  *
- * Note: The {@link assert}, {@link implies}, and {@link iff} utilities are **always active**
- * regardless of checked mode. They represent hard logical invariants (programmer errors)
- * rather than operational contract checks, and bypassing them could mask bugs that no
- * amount of performance justifies ignoring.
+ * Contracts are always active. For data() folds, demands/ensures/invariant are
+ * enforced only at the top-level call (contractDepth === 1), not during recursive
+ * traversal of child nodes — since data instances are frozen, checking once at the
+ * entry point is sufficient. Rescue remains active at every recursion level.
  *
  * @module contracts
  */
-
-// ---- Checked Mode -----------------------------------------------------------
-
-let _checkedMode = true;
-
-/**
- * Toggle or query checked mode.
- *
- * When checked mode is disabled, all contract checks (demands, ensures, rescue,
- * and around-operation invariant checks) are skipped for maximum performance.
- * Guards (`spec.in` / `spec.out`) remain active regardless.
- *
- * @param enabled - If provided, sets checked mode. If omitted, returns current state.
- */
-export function checkedMode(enabled?: boolean): boolean {
-    if (enabled !== undefined)
-        _checkedMode = enabled;
-
-    return _checkedMode;
-}
-
-/**
- * Returns true if contract checking is currently enabled.
- */
-export function isCheckedMode(): boolean {
-    return _checkedMode;
-}
 
 // ---- Custom Error Types -----------------------------------------------------
 
@@ -353,10 +326,9 @@ export class AssertionError extends Error {
  * provided message (or a default). Supports TypeScript assertion signatures
  * so that the type system narrows after a successful call.
  *
- * Unlike demands/ensures/rescue/invariant, `assert` is **not** gated by
- * {@link checkedMode}. It targets hard logical invariants (programmer errors)
- * that should never be silenced, as opposed to operational contract checks
- * whose overhead may be acceptable to skip in production.
+ * Unlike demands/ensures/rescue/invariant which are gated by `contractDepth`,
+ * `assert` fires unconditionally.  It targets hard logical invariants
+ * (programmer errors) that should never be silenced.
  *
  * @param condition - The condition to test.
  * @param message - Optional message for the error if the assertion fails.
