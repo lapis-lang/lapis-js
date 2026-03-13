@@ -11,9 +11,9 @@
  *   TimeResult     ← GetTime
  *   StreamOpened   ← OpenStream
  *   StreamChunk    ← ReadChunk
- *   EventResult    ← Listen, AwaitEvent
+ *   EventResult    ← Listen, Subscribe, AwaitEvent
  *   TimerResult    ← Timer
- *   EndOfStream    ← ReadChunk (exhausted), Subscribe (stream closed)
+ *   EndOfStream    ← ReadChunk (stream exhausted)
  *   None           ← CloseStream, fallback / acknowledgement
  *
  * @module

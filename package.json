@@ -30,7 +30,7 @@
     "scripts": {
         "prebuild": "npm run typecheck && npm run lint:fix",
         "build": "webpack",
-        "postbuild": "tsc --emitDeclarationOnly && tsc -p tsconfig.io.json && cpy \"**\" ../../dist/lib/io --cwd=dist-io/lib/io && rimraf dist-io",
+        "postbuild": "tsc --emitDeclarationOnly && tsc -p tsconfig.io.json && cpy \"dist-io/lib/io/*\" dist/lib/io && rimraf dist-io",
         "typecheck": "tsc --noEmit",
         "typecheck:tests": "tsc --noEmit --project tsconfig.test.json",
         "lint": "eslint .",

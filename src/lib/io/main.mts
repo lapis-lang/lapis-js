@@ -24,19 +24,6 @@
  *       })
  *   }));
  *
- * Or define a standalone behavior with the same protocol:
- *
- *   const MyApp = behavior(({ Self }) => ({
- *       request: IORequest,
- *       respond: { in: IOResponse, out: Self },
- *       Start: unfold({ in: { args: Array }, out: Self })({
- *           request: ({ args }) => IORequest.Read({ path: args[0] }),
- *           respond: ({ args }) => (response) => ({
- *               phase: 'write', args, content: response.content
- *           })
- *       })
- *   }));
- *
  * @module
  */
 
