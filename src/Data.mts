@@ -2366,17 +2366,27 @@ function createParameterized(
     Object.assign(ParameterizedADT, createTransformerMethods(ParameterizedADT as unknown as ADTLike));
 
     const paramVariants = createVariants(
-            ParameterizedADT as unknown as ADTLike,
-            decl.variants,
-            decl.typeParams
-        ),
+        ParameterizedADT as unknown as ADTLike,
+        decl.variants,
+        decl.typeParams
+    );
 
-        ProxiedParameterized = createDelegationProxy(
-            ParameterizedADT as unknown as ADTLike,
-            paramVariants,
-            Base,
-            false
-        );
+    // Reinstall unfold operations from the base ADT, rebound to the
+    // parameterized variants so that constructed instances carry the
+    // parameterized ADT in their prototype chain (issue #130).
+    inheritUnfoldOperations(
+        ParameterizedADT as unknown as ADTLike,
+        paramVariants,
+        Base,
+        {}
+    );
+
+    const ProxiedParameterized = createDelegationProxy(
+        ParameterizedADT as unknown as ADTLike,
+        paramVariants,
+        Base,
+        false
+    );
 
     // Store raw ADT reference on the proxied parameterized ADT so that
     // describeADT can unwrap proxies before walking parentADTMap.
