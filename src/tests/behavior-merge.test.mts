@@ -247,3 +247,142 @@ describe('Behavior Merge - Deforestation', () => {
         assert.equal(s.tail.head, 1);
     });
 });
+
+// ---------------------------------------------------------------------------
+// Metamorphism (fold → unfold, instance getter, camelCase)
+// ---------------------------------------------------------------------------
+
+function makeMetaStream() {
+    return behavior(({ Self, T }) => ({
+        head: T,
+        tail: Self(T),
+        From: unfold({ in: Number, out: Self })({
+            head: (n) => n,
+            tail: (n) => n + 1
+        }),
+        take: fold({ in: Number, out: Array })({
+            _: ({ head, tail }, n) => n > 0 ? [head, ...tail(n - 1)] : []
+        }),
+        // Getter fold: extract the first element (no extra parameters)
+        first: fold({ out: Number })({
+            _: ({ head }) => head
+        }),
+        doubled: map({})({
+            T: (x) => x * 2
+        }),
+        negated: map({})({
+            T: (x) => -x
+        }),
+        // Metamorphism: fold first element, unfold into new stream
+        restart: merge('first', 'From'),
+        // Metamorphism with pre-fold map
+        doubledRestart: merge('doubled', 'first', 'From'),
+        // Metamorphism with post-unfold map
+        restartDoubled: merge('first', 'From', 'doubled'),
+        // Metamorphism with both pre-fold and post-unfold maps
+        doubledRestartNegated: merge('doubled', 'first', 'From', 'negated'),
+    }));
+}
+
+describe('Behavior Merge - Metamorphism (fold → unfold)', () => {
+    it('basic fold→unfold produces a new behavior instance', () => {
+        const Stream = makeMetaStream();
+        const s = Stream.From(5);
+        const restarted = s.restart;
+        // first folds to head (5), From(5) unfolds: 5,6,7,8,...
+        assert.deepEqual(restarted.take(4), [5, 6, 7, 8]);
+    });
+
+    it('metamorphism on a tail shifts the restart point', () => {
+        const Stream = makeMetaStream();
+        const s = Stream.From(5).tail; // head=6
+        const restarted = s.restart;
+        assert.deepEqual(restarted.take(4), [6, 7, 8, 9]);
+    });
+
+    it('metamorphism result is a valid behavior instance', () => {
+        const Stream = makeMetaStream();
+        const s = Stream.From(3);
+        const restarted = s.restart;
+        assert.equal(restarted.head, 3);
+        assert.equal(restarted.tail.head, 4);
+        assert.equal(restarted.tail.tail.head, 5);
+    });
+
+    it('metamorphism does not mutate the original instance', () => {
+        const Stream = makeMetaStream();
+        const s = Stream.From(10);
+        s.restart;
+        assert.equal(s.head, 10);
+        assert.equal(s.tail.head, 11);
+    });
+});
+
+describe('Behavior Merge - Metamorphism equivalence', () => {
+    it('stream.restart ≡ Stream.From(stream.first)', () => {
+        const Stream = makeMetaStream();
+        for (const seed of [0, 5, 10]) {
+            const s = Stream.From(seed);
+            assert.deepEqual(
+                s.restart.take(5),
+                Stream.From(s.first).take(5),
+                `seed=${seed}`
+            );
+        }
+    });
+
+    it('stream.doubledRestart ≡ Stream.From(stream.doubled.first)', () => {
+        const Stream = makeMetaStream();
+        for (const seed of [0, 3, 7]) {
+            const s = Stream.From(seed);
+            assert.deepEqual(
+                s.doubledRestart.take(4),
+                Stream.From(s.doubled.first).take(4),
+                `seed=${seed}`
+            );
+        }
+    });
+
+    it('stream.restartDoubled ≡ Stream.From(stream.first).doubled', () => {
+        const Stream = makeMetaStream();
+        for (const seed of [1, 5, 10]) {
+            const s = Stream.From(seed);
+            assert.deepEqual(
+                s.restartDoubled.take(4),
+                Stream.From(s.first).doubled.take(4),
+                `seed=${seed}`
+            );
+        }
+    });
+
+    it('stream.doubledRestartNegated ≡ Stream.From(stream.doubled.first).negated', () => {
+        const Stream = makeMetaStream();
+        for (const seed of [1, 4, 8]) {
+            const s = Stream.From(seed);
+            assert.deepEqual(
+                s.doubledRestartNegated.take(4),
+                Stream.From(s.doubled.first).negated.take(4),
+                `seed=${seed}`
+            );
+        }
+    });
+});
+
+describe('Behavior Merge - Metamorphism validation', () => {
+    it('metamorphism must be camelCase (fold→unfold is instance getter)', () => {
+        assert.throws(() => {
+            behavior(({ Self, T }) => ({
+                head: T,
+                tail: Self(T),
+                From: unfold({ in: Number, out: Self })({
+                    head: (n) => n,
+                    tail: (n) => n + 1
+                }),
+                first: fold({ out: Number })({
+                    _: ({ head }) => head
+                }),
+                RestartBad: merge('first', 'From')
+            }));
+        }, /camelCase/);
+    });
+});
