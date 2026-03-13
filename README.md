@@ -1626,6 +1626,7 @@ See [Invertible Maps (Allegories)](#invertible-maps-allegories) for details on i
 | **Zygomorphism** | Fold (`aux: 'name'`) | Bottom-up + auxiliary | Fold fused with one or more auxiliary folds |
 | **Anamorphism** | Unfold operation | Top-down (seed → structure) | Generate/produce structures |
 | **Hylomorphism** | Unfold + fold | Generate then consume | Transform without intermediate structure |
+| **Metamorphism** | Fold + unfold | Consume then generate | Transform structure via intermediate value |
 | **Paramorphism** | Fold (`this` context) | Bottom-up + substructure | Fold while retaining access to original substructures |
 | **Prepromorphism** | Map + fold | Transform then consume | Apply type transformation before consuming |
 | **Postpromorphism** | Unfold + map | Generate then transform | Apply type transformation after generating |
@@ -1654,7 +1655,7 @@ const List = data(({ Family }) => ({
 console.log(List.Factorial(5)); // 120 (5 * 4 * 3 * 2 * 1) - no intermediate list created
 ```
 
-**All six schemes: `Stack`:**
+**All seven schemes: `Stack`:**
 
 A single Stack ADT can illustrate every recursion scheme in the table. Each operation is annotated with its corresponding scheme:
 
@@ -1679,10 +1680,19 @@ const Stack = data(({ Family, T }) => ({
     // Map step used in prepromorphism and postpromorphism below
     double: map({ out: Family })({ T: (x) => x * 2 }),
 
-    // Fold step used in hylomorphism and prepromorphism below
+    // Fold steps used in hylomorphism, prepromorphism, and metamorphism below
     toArray: fold({ out: Array })({
         Empty() { return []; },
         Push({ value, rest }) { return [value, ...rest]; }
+    }),
+
+    toSortedArray: fold({ out: Array })({
+        Empty() { return []; },
+        Push({ value, rest }) {
+            const arr = [...rest, value];
+            arr.sort((a, b) => a - b);
+            return arr;
+        }
     }),
 
     // Anamorphism: unfold - generates a Stack top-down from an array seed
@@ -1699,7 +1709,11 @@ const Stack = data(({ Family, T }) => ({
     doubledArray: merge('double', 'toArray'),
 
     // Postpromorphism: unfold + map - build from array, then double all values
-    DoubleFrom: merge('FromArray', 'double')
+    DoubleFrom: merge('FromArray', 'double'),
+
+    // Metamorphism: fold + unfold - fold to sorted array, then rebuild as Stack.
+    // The intermediate value (sorted array) is essential and cannot be eliminated.
+    sorted: merge('toSortedArray', 'FromArray')
 }));
 
 const NumStack = Stack({ T: Number });
@@ -1727,6 +1741,9 @@ console.log(stack.doubledArray);                  // [6, 4, 2]
 
 // Postpromorphism - build from array with all values doubled
 console.log(NumStack.DoubleFrom([1, 2, 3]).toArray); // [2, 4, 6]
+
+// Metamorphism - fold to sorted array, then unfold into a new sorted Stack
+console.log(stack.sorted.toArray);                // [1, 2, 3]
 ```
 
 **Composition rules:**
@@ -1742,10 +1759,12 @@ The merge operation validates composition to ensure correctness:
 ```ts
 // Valid compositions
 Factorial:  merge('unfold1', 'fold1')            // hylomorphism
-doubleSum:  merge('map1', 'fold1')               // paramorphism
-generate:   merge('unfold1', 'map1')             // apomorphism
+sorted:     merge('fold1', 'unfold1')            // metamorphism
+doubleSum:  merge('map1', 'fold1')               // prepromorphism
+generate:   merge('unfold1', 'map1')             // postpromorphism
 pipeline:   merge('map1', 'map2', 'fold1')       // multiple maps
-full:       merge('unfold1', 'map1', 'fold1')    // full pipeline
+full:       merge('unfold1', 'map1', 'fold1')    // full hylomorphism pipeline
+fullMeta:   merge('map1', 'fold1', 'unfold1')    // full metamorphism pipeline
 
 // Invalid compositions (would throw errors)
 // merge('fold1')                          // ✗ Error: need at least 2 operations
@@ -1759,8 +1778,8 @@ full:       merge('unfold1', 'map1', 'fold1')    // full pipeline
 
 Merged operations follow specific naming rules:
 
-- Static methods (with unfold): Must be PascalCase (e.g., `'Factorial'`, `'Range'`)
-- Instance methods (without unfold): Must be camelCase (e.g., `'doubleSum'`, `'sumOfSquares'`)
+- Static methods (hylomorphism — unfold first): Must be PascalCase (e.g., `'Factorial'`, `'Range'`)
+- Instance methods (all others — no unfold, or metamorphism): Must be camelCase (e.g., `'doubleSum'`, `'sorted'`)
 
 ## Behavior (Final Coalgebras)
 

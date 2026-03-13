@@ -2237,15 +2237,19 @@ function createMergeOperation(
             return t;
         }),
 
-        hasUnfold = transformerList.some(t => t.generator);
+        hasUnfold = transformerList.some(t => t.generator),
+        unfoldIndex = transformerList.findIndex(t => t.generator),
+        // Hylomorphism: unfold is first. Metamorphism: unfold is not first (fold→unfold).
+        isHylomorphism = hasUnfold && unfoldIndex === 0,
+        isMetamorphism = hasUnfold && unfoldIndex > 0;
 
-    if (hasUnfold)
+    if (isHylomorphism)
         assertPascalCase(opName, 'Merged operation (with unfold)');
     else
         assertCamelCase(opName, 'Merged operation (without unfold)');
 
 
-    if (hasUnfold && opName in variants)
+    if (isHylomorphism && opName in variants)
         throw new Error(`Merged operation name '${opName}' conflicts with existing variant`);
 
 
@@ -2262,13 +2266,14 @@ function createMergeOperation(
         | { kind: 'access'; name: string }
         | { kind: 'mapFold'; mapTransformer: Transformer; foldName: string };
 
-    function buildPlan(ops: string[], startIdx: number): MergeStep[] {
+    function buildPlan(ops: string[], startIdx: number, endIdx?: number): MergeStep[] {
         const steps: MergeStep[] = [];
+        const endIndex = endIdx ?? ops.length;
         let k = startIdx;
-        while (k < ops.length) {
+        while (k < endIndex) {
             const tCur = ADT._getTransformer(ops[k]);
             if (tCur && isMapTransformer(tCur) && isGetterOp(ADT, ops[k])
-                && k + 1 < ops.length) {
+                && k + 1 < endIndex) {
                 const tNext = ADT._getTransformer(ops[k + 1]);
                 if (tNext && isFoldTransformer(tNext)) {
                     steps.push({
@@ -2286,6 +2291,29 @@ function createMergeOperation(
         return steps;
     }
 
+    /**
+     * Resolve a named operation on `obj` and invoke it (getter or function call).
+     *
+     * @param obj  The target object to invoke the operation on.
+     * @param opName  The name of the operation to resolve and invoke.
+     * @param args  Arguments to pass if the operation is a function (ignored for getters).
+     * @returns The result of the getter access or function call.
+     * @throws {Error} If `opName` does not correspond to a getter or function on the prototype chain.
+     */
+    function invokeOp(
+        obj: unknown,
+        opName: string,
+        args: unknown[]
+    ): unknown {
+        const descriptor = getPrototypeDescriptor(opName);
+        if (descriptor && descriptor.get)
+            return (obj as Record<string, unknown>)[opName];
+        else if (typeof (obj as Record<string, unknown>)[opName] === 'function')
+            return ((obj as Record<string, (...a: unknown[]) => unknown>)[opName])(...args);
+
+        throw new Error(`Operation '${opName}' not found`);
+    }
+
     /** Execute one step of the plan, returning the new result. */
     function executeStep(
         result: unknown,
@@ -2295,29 +2323,51 @@ function createMergeOperation(
         if (step.kind === 'mapFold') {
             _currentMapFoldPreTransform = step.mapTransformer;
             try {
-                const descriptor = getPrototypeDescriptor(step.foldName);
-                if (descriptor && descriptor.get)
-                    return (result as Record<string, unknown>)[step.foldName];
-                else if (typeof (result as Record<string, unknown>)[step.foldName] === 'function')
-                    return ((result as Record<string, (...a: unknown[]) => unknown>)[step.foldName])(...args);
-
-                throw new Error(`Operation '${step.foldName}' not found`);
+                return invokeOp(result, step.foldName, args);
             } finally {
                 _currentMapFoldPreTransform = null;
             }
         }
-        // kind === 'access'
-        const descriptor = getPrototypeDescriptor(step.name);
-        if (descriptor && descriptor.get)
-            return (result as Record<string, unknown>)[step.name];
-        else if (typeof (result as Record<string, unknown>)[step.name] === 'function')
-            return ((result as Record<string, (...a: unknown[]) => unknown>)[step.name])(...args);
-
-        throw new Error(`Operation '${step.name}' not found`);
+        return invokeOp(result, step.name, args);
     }
 
-    if (composedTransformer.generator) {
-        // Sequential pipeline: unfold → [maps*] → [fold]
+    if (isMetamorphism) {
+        // Metamorphism pipeline: [maps*] → fold → [maps*] → unfold → [maps*]
+        // Instance method: fold consumes the structure, result seeds the unfold.
+        const prePlan = buildPlan(opList, 0, unfoldIndex);
+        const postPlan = buildPlan(opList, unfoldIndex + 1);
+
+        const mergeImpl = function (this: Record<string, unknown>, ...args: unknown[]) {
+            // Phase 1: execute pre-unfold steps (maps and fold) on the instance
+            let result: unknown = this;
+            for (const step of prePlan)
+                result = executeStep(result, step, args);
+
+            // Phase 2: unfold — the fold result becomes the seed
+            const unfoldOpName = opList[unfoldIndex],
+                callerADT = ADT as Record<string, unknown>,
+                unfoldOp = callerADT[unfoldOpName] as
+                    ((s: unknown) => unknown) | undefined;
+
+            if (!unfoldOp)
+                throw new Error(`Unfold operation '${unfoldOpName}' not found`);
+
+            result = unfoldOp(result);
+
+            // Phase 3: execute post-unfold steps (maps) on the generated structure
+            for (const step of postPlan)
+                result = executeStep(result, step, []);
+
+            return result;
+        };
+
+        Object.defineProperty(ADT.prototype, opName, {
+            get: mergeImpl,
+            enumerable: true,
+            configurable: true
+        });
+    } else if (isHylomorphism) {
+        // Hylomorphism pipeline: unfold → [maps*] → [fold]
         const plan = buildPlan(opList, 1);
 
         (ADT as Record<string, unknown>)[opName] = function (this: unknown, seed: unknown) {

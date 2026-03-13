@@ -1081,7 +1081,14 @@ function addMergeOperation(
         foldName = foldNames[0],
         foldOp = foldName ? foldMap?.get(foldName) ?? null : null;
 
-    if (hasUnfold) assertPascalCase(name, 'Merge operation (with unfold)');
+    // Determine pipeline shape: hylomorphism (unfold first) vs metamorphism (fold first)
+    const unfoldIndex = hasUnfold
+            ? operationNames.indexOf(unfoldNames[0])
+            : -1,
+        isHylomorphism = hasUnfold && unfoldIndex === 0,
+        isMetamorphism = hasUnfold && unfoldIndex > 0;
+
+    if (isHylomorphism) assertPascalCase(name, 'Merge operation (with unfold)');
     else assertCamelCase(name, 'Merge operation (without unfold)');
 
     // Reject non-getter maps: merge pipelines cannot supply map parameters
@@ -1097,12 +1104,95 @@ function addMergeOperation(
 
     const mapTransforms = collectMapTransforms(mapOpsMap, mapNames);
 
-    if (hasUnfold) {
-        const unfoldName = unfoldNames[0],
-            unfoldDescriptor = Object.getOwnPropertyDescriptor(BehaviorType, unfoldName),
-            unfoldIsGetter = unfoldDescriptor?.get !== undefined,
-            unfoldEntry = unfoldOpsMap?.get(unfoldName);
+    // ---- Shared unfold setup (used by both metamorphism and hylomorphism) ----
+    const unfoldName = hasUnfold ? unfoldNames[0] : '',
+        unfoldDescriptor = hasUnfold
+            ? Object.getOwnPropertyDescriptor(BehaviorType, unfoldName) : undefined,
+        unfoldIsGetter = unfoldDescriptor?.get !== undefined,
+        unfoldEntry = hasUnfold ? unfoldOpsMap?.get(unfoldName) : undefined;
 
+    /**
+     * Unfold a seed into a new behavior instance, then sequentially apply
+     * getter-map operations to the result.
+     *
+     * When pre-composed `handlers` are available (deforestation path), a single
+     * behavior instance is created directly from the fused handlers, bypassing
+     * intermediate structures.  Otherwise, the unfold is executed first and each
+     * map is applied in pipeline order as a sequential fallback.
+     *
+     * Shared between metamorphism (post-unfold phase) and hylomorphism pipelines.
+     *
+     * @param seed  The value used to seed the unfold operation.
+     * @param handlers  Pre-composed unfold+map handler set, or `null` to fall
+     *   back to sequential unfold → map application.
+     * @param mapNamesToApply  Ordered list of getter-map operation names to
+     *   apply after the unfold (ignored when `handlers` is non-null).
+     * @returns The resulting behavior instance (possibly map-transformed).
+     */
+    const unfoldAndApplyMaps = (
+        seed: unknown,
+        handlers: Record<string, AnyFn> | null,
+        mapNamesToApply: string[]
+    ): unknown => {
+        if (handlers)
+            return createBehaviorInstance(BehaviorType, observerMap, seed, handlers);
+
+        // Fallback: sequential application
+        let instance: unknown = unfoldIsGetter
+            ? BehaviorType[unfoldName]
+            : (BehaviorType[unfoldName] as AnyFn)(seed);
+        for (const mapName of mapNamesToApply) {
+            const mapOp = mapOpsMap?.get(mapName);
+            if (mapOp?.isGetter) instance = (instance as Record<string, unknown>)[mapName];
+        }
+
+        return instance;
+    };
+
+    if (isMetamorphism) {
+        // Metamorphism: fold → unfold (instance method)
+        // The fold consumes the current instance, the result seeds the unfold.
+
+        // Collect map operations that appear AFTER the unfold in the pipeline
+        const postUnfoldMapNames = operationNames.slice(unfoldIndex + 1)
+            .filter(opName => mapNames.includes(opName));
+        const postUnfoldMapTransforms = collectMapTransforms(mapOpsMap, postUnfoldMapNames);
+
+        // Pre-compose post-unfold map transforms into unfold handlers when possible
+        const composedHandlers = postUnfoldMapTransforms && unfoldEntry
+            ? composeHandlers(unfoldEntry.handlers, observerMap, postUnfoldMapTransforms)
+            : null;
+
+        // Collect map operations that appear BEFORE the fold in the pipeline
+        const preFoldMapNames = operationNames.slice(0, unfoldIndex)
+            .filter(opName => mapNames.includes(opName));
+        const preFoldMapTransforms = collectMapTransforms(mapOpsMap, preFoldMapNames);
+
+        // Build a fold entry enriched with pre-map transforms if applicable
+        const foldOpWithPreMaps = foldOp ? {
+            ...foldOp,
+            preMapTransforms: preFoldMapTransforms && preFoldMapTransforms.length > 0
+                ? preFoldMapTransforms : foldOp.preMapTransforms
+        } : null;
+
+        // Metamorphism is always an instance getter (starts with fold on existing structure)
+        Object.defineProperty(
+            (BehaviorType as { prototype?: object }).prototype || BehaviorType,
+            name,
+            {
+                get() {
+                    // Phase 1: fold the current instance
+                    const foldResult = maybeFold(
+                        this, observerMap, foldOpWithPreMaps, [], BehaviorType, foldName
+                    );
+                    // Phase 2: unfold the fold result into a new behavior instance
+                    return unfoldAndApplyMaps(foldResult, composedHandlers, postUnfoldMapNames);
+                },
+                enumerable: true,
+                configurable: true
+            }
+        );
+    } else if (isHylomorphism) {
         // Pre-compose map transforms into unfold handlers when possible
         const composedHandlers = mapTransforms && unfoldEntry
             ? composeHandlers(unfoldEntry.handlers, observerMap, mapTransforms)
@@ -1113,29 +1203,9 @@ function addMergeOperation(
             Parameters<typeof validateTypeSpec>[1] | undefined;
 
         const buildInstance = (seed: unknown): unknown => {
-            if (composedHandlers) {
-                if (unfoldInSpec)
-                    validateTypeSpec(seed, unfoldInSpec, unfoldName, 'input of type');
-                return createBehaviorInstance(BehaviorType, observerMap, seed, composedHandlers);
-            }
-
-            // Fallback: sequential application (non-getter maps or no maps)
-            let instance: unknown = unfoldIsGetter
-                ? BehaviorType[unfoldName]
-                : (BehaviorType[unfoldName] as AnyFn)(seed);
-            if (!unfoldIsGetter) {
-                for (const mapName of mapNames) {
-                    const mapOp = mapOpsMap?.get(mapName);
-                    if (mapOp?.isGetter) instance = (instance as Record<string, unknown>)[mapName];
-                }
-            } else {
-                for (const mapName of mapNames) {
-                    const mapOp = mapOpsMap?.get(mapName);
-                    if (mapOp?.isGetter) instance = (instance as Record<string, unknown>)[mapName];
-                }
-            }
-
-            return instance;
+            if (composedHandlers && unfoldInSpec)
+                validateTypeSpec(seed, unfoldInSpec, unfoldName, 'input of type');
+            return unfoldAndApplyMaps(seed, composedHandlers, mapNames);
         };
 
         if (!unfoldIsGetter) {
