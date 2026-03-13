@@ -137,7 +137,7 @@ describe('Map-map fusion', () => {
             Nil: {},
             Cons: { head: T, tail: Family(T) },
 
-            Range: unfold({ in: Number, out: Family })({
+            Range: unfold({ in: Number, out: Family(T) })({
                 Nil: (n: number) => (n <= 0 ? {} : null),
                 Cons: (n: number) => (n > 0 ? { head: n, tail: n - 1 } : null)
             }),
@@ -227,7 +227,7 @@ describe('Map-fold fusion', () => {
             Nil: {},
             Cons: { head: T, tail: Family(T) },
 
-            Range: unfold({ in: Number, out: Family })({
+            Range: unfold({ in: Number, out: Family(T) })({
                 Nil: (n: number) => (n <= 0 ? {} : null),
                 Cons: (n: number) => (n > 0 ? { head: n, tail: n - 1 } : null)
             }),

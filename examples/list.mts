@@ -39,13 +39,13 @@ const List = data(({ Family, T }) => ({
         square: map({ out: Family })({
             T: (x) => x * x
         }),
-        Range: unfold({ in: Number, out: Family })({
+        Range: unfold({ in: Number, out: Family(T) })({
             Nil: (n) => (n <= 0 ? {} : null),
             Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
         }),
         Factorial: merge('Range', 'product'),
         sumOfSquares: merge('square', 'sum'),
-        Zip: unfold({ in: Object, out: Family })({
+        Zip: unfold({ in: Object, out: Family(T) })({
             // @ts-expect-error -- intentional type violation for test
             Nil: ({ xs, ys }) => (listIsEmpty(xs) || listIsEmpty(ys) ? {} : null),
             // @ts-expect-error -- intentional type violation for test
@@ -132,6 +132,7 @@ const range5 = NumList.Range(5),
 
 console.log(`Range(5) = ${range5.show}`);
 console.log(`Range(10) = ${range10.show}`);
+console.log(`Range(5) instanceof NumList: ${range5 instanceof NumList}`);  // true — unfold respects parameterization
 
 // Merged operations (deforestation)
 console.log('\nMerged operations (deforestation):');
