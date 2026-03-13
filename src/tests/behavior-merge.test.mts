@@ -280,7 +280,7 @@ function makeMetaStream() {
         // Metamorphism with post-unfold map
         restartDoubled: merge('first', 'From', 'doubled'),
         // Metamorphism with both pre-fold and post-unfold maps
-        doubledRestartNegated: merge('doubled', 'first', 'From', 'negated'),
+        doubledRestartNegated: merge('doubled', 'first', 'From', 'negated')
     }));
 }
 
@@ -288,7 +288,7 @@ describe('Behavior Merge - Metamorphism (fold → unfold)', () => {
     it('basic fold→unfold produces a new behavior instance', () => {
         const Stream = makeMetaStream();
         const s = Stream.From(5);
-        const restarted = s.restart;
+        const restarted: any = s.restart;
         // first folds to head (5), From(5) unfolds: 5,6,7,8,...
         assert.deepEqual(restarted.take(4), [5, 6, 7, 8]);
     });
@@ -296,14 +296,14 @@ describe('Behavior Merge - Metamorphism (fold → unfold)', () => {
     it('metamorphism on a tail shifts the restart point', () => {
         const Stream = makeMetaStream();
         const s = Stream.From(5).tail; // head=6
-        const restarted = s.restart;
+        const restarted: any = s.restart;
         assert.deepEqual(restarted.take(4), [6, 7, 8, 9]);
     });
 
     it('metamorphism result is a valid behavior instance', () => {
         const Stream = makeMetaStream();
         const s = Stream.From(3);
-        const restarted = s.restart;
+        const restarted: any = s.restart;
         assert.equal(restarted.head, 3);
         assert.equal(restarted.tail.head, 4);
         assert.equal(restarted.tail.tail.head, 5);
@@ -324,7 +324,7 @@ describe('Behavior Merge - Metamorphism equivalence', () => {
         for (const seed of [0, 5, 10]) {
             const s = Stream.From(seed);
             assert.deepEqual(
-                s.restart.take(5),
+                (s.restart as any).take(5),
                 Stream.From(s.first).take(5),
                 `seed=${seed}`
             );
@@ -336,7 +336,7 @@ describe('Behavior Merge - Metamorphism equivalence', () => {
         for (const seed of [0, 3, 7]) {
             const s = Stream.From(seed);
             assert.deepEqual(
-                s.doubledRestart.take(4),
+                (s.doubledRestart as any).take(4),
                 Stream.From(s.doubled.first).take(4),
                 `seed=${seed}`
             );
@@ -348,7 +348,7 @@ describe('Behavior Merge - Metamorphism equivalence', () => {
         for (const seed of [1, 5, 10]) {
             const s = Stream.From(seed);
             assert.deepEqual(
-                s.restartDoubled.take(4),
+                (s.restartDoubled as any).take(4),
                 Stream.From(s.first).doubled.take(4),
                 `seed=${seed}`
             );
@@ -360,7 +360,7 @@ describe('Behavior Merge - Metamorphism equivalence', () => {
         for (const seed of [1, 4, 8]) {
             const s = Stream.From(seed);
             assert.deepEqual(
-                s.doubledRestartNegated.take(4),
+                (s.doubledRestartNegated as any).take(4),
                 Stream.From(s.doubled.first).negated.take(4),
                 `seed=${seed}`
             );

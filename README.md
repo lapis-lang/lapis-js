@@ -5,7 +5,7 @@
 [![Downloads](https://img.shields.io/npm/dm/@lapis-lang/lapis-js.svg)](https://www.npmjs.com/package/@lapis-lang/lapis-js)
 
 Lapis JS is an embedded DSL for experimentation of the semantics for the upcoming Lapis programming language.
-This is best described informally as a Bialgebraic programming language with support for Algebraic Data Types (Initial Algebras), Subtyping, Behavior (Final Coalgebras), Protocols, Effects, and Contracts.
+This is best described informally as a programming language with support for Algebraic Data Types, Subtyping, Behavior types, Protocols, and Contracts. (In category-theoretic terms, Lapis is bialgebraic: ADTs are initial algebras and behaviors are final coalgebras.)
 
 This should feel familiar to users of functional programming languages like Haskell, OCaml, F#, and Scala, but here
 there is an emphasis on the Bird-Meertens Formalism (BMF) (Squiggol) of making programs by combining data and behavior through folds and unfolds (and their various duals and combinations).
@@ -13,7 +13,7 @@ there is an emphasis on the Bird-Meertens Formalism (BMF) (Squiggol) of making p
 ## Table of Contents
 
 - [Installation](#installation)
-- [Algebraic Data Types (Initial Algebras)](#algebraic-data-types-initial-algebras)
+- [Algebraic Data Types](#algebraic-data-types)
   - [Simple Enumerated Types](#simple-enumerated-types)
   - [Structured Data](#structured-data)
   - [Guards and Validation](#guards-and-validation)
@@ -29,10 +29,10 @@ there is an emphasis on the Bird-Meertens Formalism (BMF) (Squiggol) of making p
   - [Wildcard Handlers](#wildcard-handlers)
   - [Exhaustiveness Checking](#exhaustiveness-checking)
   - [Multiple Fold Operations](#multiple-fold-operations)
-  - [Structural Recursion (Catamorphisms)](#structural-recursion-catamorphisms)
+  - [Structural Recursion](#structural-recursion)
   - [Parameterized Folds](#parameterized-folds)
-  - [Histomorphisms (Course-of-Values Recursion)](#histomorphisms-course-of-values-recursion)
-  - [Zygomorphisms (Auxiliary Folds)](#zygomorphisms-auxiliary-folds)
+  - [Course-of-Values Recursion (Histomorphisms)](#course-of-values-recursion-histomorphisms)
+  - [Auxiliary Folds (Zygomorphisms)](#auxiliary-folds-zygomorphisms)
   - [Integration with ADT Extension](#integration-with-adt-extension)
   - [Extending Fold Operations](#extending-fold-operations)
   - [Recursion and Stack Safety](#recursion-and-stack-safety)
@@ -40,12 +40,12 @@ there is an emphasis on the Bird-Meertens Formalism (BMF) (Squiggol) of making p
   - [Polymorphic Recursion in Extended Folds](#polymorphic-recursion-in-extended-folds)
 - [Type Parameter Transformations with Map](#type-parameter-transformations-with-map)
   - [Invertible Maps (Allegories)](#invertible-maps-allegories)
-- [Unfold Operations (Corecursion/Anamorphisms)](#unfold-operations-corecursionanamorphisms)
+- [Unfold Operations (Corecursion)](#unfold-operations-corecursion)
   - [Basic Unfold Operations](#basic-unfold-operations)
   - [Binary Operations with Fold](#binary-operations-with-fold)
 - [Merge Operations (Deforestation)](#merge-operations-deforestation)
   - [Recursion Schemes](#recursion-schemes)
-- [Behavior (Final Coalgebras)](#behavior-final-coalgebras)
+- [Behavior](#behavior)
   - [Data vs Behavior](#data-vs-behavior)
   - [Basic Behavior Declaration](#basic-behavior-declaration)
   - [Unfold Operations (Constructing Behavior)](#unfold-operations-constructing-behavior)
@@ -81,6 +81,16 @@ there is an emphasis on the Bird-Meertens Formalism (BMF) (Squiggol) of making p
   - [Subcontracting](#subcontracting)
   - [The Order of Assertions](#the-order-of-assertions)
   - [Contracts on Behavior (Codata)](#contracts-on-behavior-codata)
+- [IO (Effects and the Mealy Machine)](#io-effects-and-the-mealy-machine)
+  - [What is a Mealy Machine?](#what-is-a-mealy-machine)
+  - [Sync Program, Async Runtime](#sync-program-async-runtime)
+  - [IORequest and IOResponse](#iorequest-and-ioresponse)
+  - [The Main Behavior](#the-main-behavior)
+  - [Extending Main](#extending-main)
+  - [The IO Loop](#the-io-loop)
+  - [Running a Program](#running-a-program)
+  - [Contracts on IO](#contracts-on-io)
+  - [Event Handling (Listen, Subscribe, AwaitEvent)](#event-handling-listen-subscribe-awaitevent)
 - [References, Inspirations, and Further Reading](#references-inspirations-and-further-reading)
 
 ## Installation
@@ -114,7 +124,7 @@ console.log(typeof data); // "function"
 </script>
 ```
 
-## Algebraic Data Types (Initial Algebras)
+## Algebraic Data Types
 
 ### Simple Enumerated Types
 
@@ -408,7 +418,23 @@ console.log(letExpr instanceof FullExpr);    // true
 
 ## Fold Operations
 
-A fold (catamorphism) is the **universal observation** on an algebraic data type: every total function that consumes an ADT and respects its algebraic structure is expressible as a fold. This is why Lapis provides a single `fold` mechanism rather than distinguishing between `foldl` and `foldr`: that distinction is an artifact of lists being linear. For general algebraic data types (trees, expressions, etc.), there is only one canonical fold: the catamorphism, which replaces each constructor with a corresponding function and accumulates results bottom-up from leaves to root.
+A fold is the **universal observation** on an algebraic data type: every total function that consumes an ADT and respects its algebraic structure is expressible as a fold. A fold replaces each constructor with a corresponding handler function, then evaluates bottom-up from leaves to root. (This is called a *catamorphism* in the recursion-schemes literature.)
+
+```text
+Tree: Node(Leaf(1), Node(Leaf(2), Leaf(3)))
+
+       Node                  g
+      /    \              /     \
+    Leaf   Node   ->     h       g
+     |    /    \         |     /   \
+     1  Leaf  Leaf       1    h     h
+         |     |              |     |
+         2     3              2     3
+
+= g(h(1), g(h(2), h(3)))
+```
+
+The result has the same shape as the input — only the constructor labels change.
 
 For non-recursive ADTs, folds perform simple pattern matching. For recursive ADTs, folds automatically recurse into `Family` fields, replacing constructors with functions. Operations are installed on variant class prototypes and support proper inheritance through the extension hierarchy.
 
@@ -718,9 +744,9 @@ console.log(Color.Red.toHex); // '#FF0000'
 console.log(Color.Red.toRGB); // 'rgb(255, 0, 0)'
 ```
 
-### Structural Recursion (Catamorphisms)
+### Structural Recursion
 
-For recursive ADTs, fold operations perform **catamorphisms** - structural recursion from leaves to root. The framework automatically recurses into `Family` fields, passing already-folded values to handlers.
+For recursive ADTs, fold operations perform **structural recursion** from leaves to root (also known as *catamorphisms*). The framework automatically recurses into `Family` fields, passing already-folded values to handlers.
 
 ```ts
 const Peano = data(({ Family }) => ({
@@ -865,11 +891,11 @@ console.log(Color.Green.matches('green')); // true (wildcard handler)
 console.log(Color.Blue.matches('blue'));    // true (wildcard handler)
 ```
 
-### Histomorphisms (Course-of-Values Recursion)
+### Course-of-Values Recursion (Histomorphisms)
 
-A **histomorphism** extends a regular fold (catamorphism) by giving each handler access to the already-folded sub-results of all recursive children: not just the immediate fold result, but the entire "course of values" down the recursion.
+A **course-of-values fold** (also called a *histomorphism*) extends a regular fold by giving each handler access to the already-folded sub-results of all recursive children: not just the immediate fold result, but the entire "course of values" down the recursion.
 
-Enable histomorphisms by adding `history: true` to the fold spec. Import the `history` symbol and destructure `[history]` from the fold argument to access an object keyed by recursive field names:
+Enable course-of-values recursion by adding `history: true` to the fold spec. Import the `history` symbol and destructure `[history]` from the fold argument to access an object keyed by recursive field names:
 
 ```ts
 import { data, fold, history } from '@lapis-lang/lapis-js';
@@ -880,7 +906,7 @@ const Nat = data(({ Family }) => ({
     fib: fold({ history: true, out: Number })({
         Zero() { return 0; },
         Succ({ pred, [history]: h }) {
-            // pred  = fib(n-1) - the immediate fold result (standard catamorphism)
+            // pred  = fib(n-1) - the immediate fold result (standard fold)
             // h.pred = the child's foldedFields object
             // h.pred.pred = fib(n-2) - the grandchild's fold result
             const fibN2 = h.pred?.pred;
@@ -936,13 +962,13 @@ const List = data(({ Family }) => ({
 }));
 ```
 
-Histomorphisms are supported on both **Data** (initial algebras) and **Behavior** (final coalgebras). For behavior folds, `[history]` provides lazy access to the sub-observations of continuation fields.
+Course-of-values recursion is supported on both **Data** and **Behavior** types. For behavior folds, `[history]` provides lazy access to the sub-observations of continuation fields.
 
-### Zygomorphisms (Auxiliary Folds)
+### Auxiliary Folds (Zygomorphisms)
 
-A **zygomorphism** fuses two (or more) folds into a single traversal. The primary fold has access to the results of one or more *auxiliary* folds at every recursive position, without requiring a separate pass over the structure.
+An **auxiliary fold** (also called a *zygomorphism*) fuses two (or more) folds into a single traversal. The primary fold has access to the results of one or more *auxiliary* folds at every recursive position, without requiring a separate pass over the structure.
 
-Enable zygomorphisms by adding `aux` to the fold spec. Import the `aux` symbol and destructure `[aux]` from the fold argument:
+Enable auxiliary folds by adding `aux` to the fold spec. Import the `aux` symbol and destructure `[aux]` from the fold argument:
 
 **String form**: a single auxiliary fold produces a *flat* shape keyed by recursive field names:
 
@@ -959,7 +985,7 @@ const Tree = data(({ Family }) => ({
     isBalanced: fold({ aux: 'depth', out: Boolean })({
         Leaf() { return true; },
         Node({ left, right, [aux]: a }) {
-            // left, right = isBalanced results of children (standard catamorphism)
+            // left, right = isBalanced results of children (standard fold)
             // a.left     = depth of left child  (auxiliary fold result)
             // a.right    = depth of right child
             return left && right && Math.abs(a.left - a.right) <= 1;
@@ -989,9 +1015,9 @@ const Tree = data(({ Family }) => ({
 
 For **base-case variants** (no recursive fields), `[aux]` is an empty object `{}` (string form) or an object with empty nested objects (array form).
 
-Zygomorphisms can be **combined with histomorphisms**: use both `history: true` and `aux` in the same fold spec to access both sub-result history and auxiliary fold results simultaneously.
+Auxiliary folds can be **combined with course-of-values recursion**: use both `history: true` and `aux` in the same fold spec to access both sub-result history and auxiliary fold results simultaneously.
 
-Zygomorphisms are supported on both **Data** (initial algebras) and **Behavior** (final coalgebras). For behavior folds with parameterized auxiliary folds, `[aux]` entries are functions that accept the auxiliary fold's parameters.
+Auxiliary folds are supported on both **Data** and **Behavior** types. For behavior folds with parameterized auxiliary folds, `[aux]` entries are functions that accept the auxiliary fold's parameters.
 
 ### Integration with ADT Extension
 
@@ -1519,9 +1545,27 @@ const List = data(({ Family, T }) => ({
 
 Non-adjacent inverse pairs (e.g., `['a', 'c', 'a_inv']`) are preserved — only consecutive pairs are fused. Map operations with extra parameters (non-getters) are not eligible for map-map or map-fold fusion.
 
-## Unfold Operations (Corecursion/Anamorphisms)
+## Unfold Operations (Corecursion)
 
-Unfold operations (anamorphisms) generate ADT instances through corecursion: the dual of fold. Just as fold is the universal observation on a data type (every way of consuming an ADT factors through fold), unfold is the **universal generator** (every way of producing a recursive structure from a seed factors through unfold). Where fold replaces constructors with functions and accumulates bottom-up, unfold starts from a seed value and repeatedly decides which constructor to apply, building the structure top-down.
+Unfold operations generate ADT instances through corecursion — the dual of fold. (In the recursion-schemes literature, an unfold is called an *anamorphism*.) Just as fold is the universal observation on a data type (every way of consuming an ADT factors through fold), unfold is the **universal generator** (every way of producing a recursive structure from a seed factors through unfold). Where fold replaces constructors with handler functions, unfold does the reverse: a decision function examines each seed and chooses which constructor to produce, building the structure top-down.
+
+```text
+Unfold: seed [1,2,3] → Tree
+
+        p                  Node
+      /   \              /     \
+    p       p    ->    Leaf    Node
+    |     /   \         |    /    \
+    1    p     p        1  Leaf  Leaf
+         |     |             |     |
+         2     3             2     3
+
+p([1,2,3]) → Node, seeds [1] and [2,3]
+p([1])     → Leaf(1)
+p([2,3])   → Node, seeds [2] and [3]
+```
+
+Compare with the fold diagram: fold replaces constructor labels with functions (left → right); unfold replaces decision functions with constructor labels (left → right).
 
 Unfolds are defined inline within the `data` or `behavior` declaration using `unfold(spec)(handlers)`. The `spec` argument is optional: see [Specs](#specs) for details. This co-locates type definitions with their constructors for clarity.
 
@@ -1607,7 +1651,7 @@ const zipped = nums.zip(strs);
 
 ## Merge Operations (Deforestation)
 
-Merge operations compose multiple operations (fold, map, unfold) into a single fused operation, eliminating intermediate allocations. Since unfold is the universal way to generate structure and fold is the universal way to consume it, their composition (a hylomorphism) represents the general pattern of "generate then consume": without materializing the intermediate data structure. They are defined inline using `merge(...operationNames)`.
+Merge operations compose multiple operations (fold, map, unfold) into a single fused operation, eliminating intermediate allocations. Since unfold is the universal way to generate structure and fold is the universal way to consume it, their composition represents the general pattern of "generate then consume" without materializing the intermediate data structure. (This fused unfold+fold is called a *hylomorphism* in the recursion-schemes literature.) They are defined inline using `merge(...operationNames)`.
 
 At definition time, three fusion rules are applied automatically to the pipeline:
 
@@ -1619,23 +1663,25 @@ See [Invertible Maps (Allegories)](#invertible-maps-allegories) for details on i
 
 ### Recursion Schemes
 
+The table below maps each standard recursion scheme to its Lapis operations. The scheme names (catamorphism, anamorphism, etc.) come from the recursion-schemes literature and are included for reference.
+
 | Scheme | Operations | Direction | Use Case |
 | ------ | ----------- | ----------- | ----------- |
-| **Catamorphism** | Fold operation | Bottom-up (leaves → root) | Consume/reduce structures |
-| **Histomorphism** | Fold (`history: true`) | Bottom-up + history | Fold with access to sub-results of recursive children |
-| **Zygomorphism** | Fold (`aux: 'name'`) | Bottom-up + auxiliary | Fold fused with one or more auxiliary folds |
-| **Anamorphism** | Unfold operation | Top-down (seed → structure) | Generate/produce structures |
-| **Hylomorphism** | Unfold + fold | Generate then consume | Transform without intermediate structure |
-| **Metamorphism** | Fold + unfold | Consume then generate | Transform structure via intermediate value |
-| **Paramorphism** | Fold (`this` context) | Bottom-up + substructure | Fold while retaining access to original substructures |
-| **Prepromorphism** | Map + fold | Transform then consume | Apply type transformation before consuming |
-| **Postpromorphism** | Unfold + map | Generate then transform | Apply type transformation after generating |
+| **Fold** *(catamorphism)* | Fold operation | Bottom-up (leaves → root) | Consume/reduce structures |
+| **Course-of-values fold** *(histomorphism)* | Fold (`history: true`) | Bottom-up + history | Fold with access to sub-results of recursive children |
+| **Auxiliary fold** *(zygomorphism)* | Fold (`aux: 'name'`) | Bottom-up + auxiliary | Fold fused with one or more auxiliary folds |
+| **Unfold** *(anamorphism)* | Unfold operation | Top-down (seed → structure) | Generate/produce structures |
+| **Unfold + fold** *(hylomorphism)* | Unfold + fold | Generate then consume | Transform without intermediate structure |
+| **Fold + unfold** *(metamorphism)* | Fold + unfold | Consume then generate | Transform structure via intermediate value |
+| **Fold with substructure** *(paramorphism)* | Fold (`this` context) | Bottom-up + substructure | Fold while retaining access to original substructures |
+| **Map + fold** *(prepromorphism)* | Map + fold | Transform then consume | Apply type transformation before consuming |
+| **Unfold + map** *(postpromorphism)* | Unfold + map | Generate then transform | Apply type transformation after generating |
 
-> **Paramorphisms via `this`:** In a fold handler, `this` is the raw original instance. Recursive `Family` fields in `foldedFields` carry the already-folded result, while `this.<field>` accesses the original substructure: giving you both at once, which is the defining characteristic of a paramorphism. Note: `this.sameOp` on the same instance is guarded against (see [Circular Fold Protection](#circular-fold-protection)): use `this.childField.sameOp` or destructured fields instead.
+> **Fold with substructure access via `this`:** In a fold handler, `this` is the raw original instance. Recursive `Family` fields in `foldedFields` carry the already-folded result, while `this.<field>` accesses the original substructure: giving you both at once, which is the defining characteristic of a fold-with-substructure (also called a *paramorphism*). Note: `this.sameOp` on the same instance is guarded against (see [Circular Fold Protection](#circular-fold-protection)): use `this.childField.sameOp` or destructured fields instead.
 
 ### Examples
 
-**Hylomorphism: `List.Factorial`** (unfold → fold, no intermediate list):
+**Unfold + Fold: `List.Factorial`** (no intermediate list materialized):
 
 ```js
 const List = data(({ Family }) => ({
@@ -1664,23 +1710,23 @@ const Stack = data(({ Family, T }) => ({
     Empty: {},
     Push: { value: T, rest: Family(T) },
 
-    // Catamorphism: plain fold - consumes structure bottom-up
+    // Fold: plain fold - consumes structure bottom-up (catamorphism)
     size: fold({ out: Number })({
         Empty() { return 0; },
         Push({ rest }) { return 1 + rest; }
     }),
 
-    // Paramorphism: fold using `this` to retain the original substructure.
+    // Fold with substructure: fold using `this` to retain the original substructure (paramorphism).
     // `this.rest` is the original Stack; the folded `rest` field is not needed here.
     pop: fold({})({
         Empty() { return null; },
         Push() { return [this.value, this.rest]; }
     }),
 
-    // Map step used in prepromorphism and postpromorphism below
+    // Map step used in map+fold and unfold+map below
     double: map({ out: Family })({ T: (x) => x * 2 }),
 
-    // Fold steps used in hylomorphism, prepromorphism, and metamorphism below
+    // Fold steps used in unfold+fold, map+fold, and fold+unfold below
     toArray: fold({ out: Array })({
         Empty() { return []; },
         Push({ value, rest }) { return [value, ...rest]; }
@@ -1695,23 +1741,23 @@ const Stack = data(({ Family, T }) => ({
         }
     }),
 
-    // Anamorphism: unfold - generates a Stack top-down from an array seed
+    // Unfold: generates a Stack top-down from an array seed (anamorphism)
     FromArray: unfold({ in: Array, out: Family })({
         Empty: (arr) => (arr.length === 0 ? {} : null),
         Push: (arr) => (arr.length > 0 ? { value: arr[0], rest: arr.slice(1) } : null)
     }),
 
-    // Hylomorphism: unfold + fold - build from array then immediately count,
-    // no intermediate Stack allocated
+    // Unfold + fold: build from array then immediately count,
+    // no intermediate Stack allocated (hylomorphism)
     SizeOf: merge('FromArray', 'size'),
 
-    // Prepromorphism: map + fold - double all values, then collect to array
+    // Map + fold: double all values, then collect to array (prepromorphism)
     doubledArray: merge('double', 'toArray'),
 
-    // Postpromorphism: unfold + map - build from array, then double all values
+    // Unfold + map: build from array, then double all values (postpromorphism)
     DoubleFrom: merge('FromArray', 'double'),
 
-    // Metamorphism: fold + unfold - fold to sorted array, then rebuild as Stack.
+    // Fold + unfold: fold to sorted array, then rebuild as Stack (metamorphism).
     // The intermediate value (sorted array) is essential and cannot be eliminated.
     sorted: merge('toSortedArray', 'FromArray')
 }));
@@ -1721,28 +1767,28 @@ const { Empty, Push } = NumStack;
 
 const stack = Push({ value: 3, rest: Push({ value: 2, rest: Push({ value: 1, rest: Empty }) }) });
 
-// Catamorphism
+// Fold (catamorphism)
 console.log(stack.size);                          // 3
 
-// Paramorphism - returns [topValue, remainingStack] via this.rest (original substructure)
+// Fold with substructure (paramorphism) - returns [topValue, remainingStack] via this.rest
 const [top, remaining] = stack.pop;
 console.log(top);                                 // 3
 console.log(remaining.size);                      // 2
 
-// Anamorphism
+// Unfold (anamorphism)
 const fromArr = NumStack.FromArray([10, 20, 30]);
 console.log(fromArr.size);                        // 3
 
-// Hylomorphism - array → Stack → size, no intermediate Stack retained
+// Unfold + fold (hylomorphism) - array → Stack → size, no intermediate Stack retained
 console.log(NumStack.SizeOf([10, 20, 30]));       // 3
 
-// Prepromorphism - double values, then collect to array
+// Map + fold (prepromorphism) - double values, then collect to array
 console.log(stack.doubledArray);                  // [6, 4, 2]
 
-// Postpromorphism - build from array with all values doubled
+// Unfold + map (postpromorphism) - build from array with all values doubled
 console.log(NumStack.DoubleFrom([1, 2, 3]).toArray); // [2, 4, 6]
 
-// Metamorphism - fold to sorted array, then unfold into a new sorted Stack
+// Fold + unfold (metamorphism) - fold to sorted array, then unfold into a new sorted Stack
 console.log(stack.sorted.toArray);                // [1, 2, 3]
 ```
 
@@ -1758,13 +1804,13 @@ The merge operation validates composition to ensure correctness:
 
 ```ts
 // Valid compositions
-Factorial:  merge('unfold1', 'fold1')            // hylomorphism
-sorted:     merge('fold1', 'unfold1')            // metamorphism
-doubleSum:  merge('map1', 'fold1')               // prepromorphism
-generate:   merge('unfold1', 'map1')             // postpromorphism
+Factorial:  merge('unfold1', 'fold1')            // unfold + fold (hylomorphism)
+sorted:     merge('fold1', 'unfold1')            // fold + unfold (metamorphism)
+doubleSum:  merge('map1', 'fold1')               // map + fold (prepromorphism)
+generate:   merge('unfold1', 'map1')             // unfold + map (postpromorphism)
 pipeline:   merge('map1', 'map2', 'fold1')       // multiple maps
-full:       merge('unfold1', 'map1', 'fold1')    // full hylomorphism pipeline
-fullMeta:   merge('map1', 'fold1', 'unfold1')    // full metamorphism pipeline
+full:       merge('unfold1', 'map1', 'fold1')    // full unfold+map+fold pipeline (hylomorphism)
+fullMeta:   merge('map1', 'fold1', 'unfold1')    // full map+fold+unfold pipeline (metamorphism)
 
 // Invalid compositions (would throw errors)
 // merge('fold1')                          // ✗ Error: need at least 2 operations
@@ -1778,37 +1824,39 @@ fullMeta:   merge('map1', 'fold1', 'unfold1')    // full metamorphism pipeline
 
 Merged operations follow specific naming rules:
 
-- Static methods (hylomorphism — unfold first): Must be PascalCase (e.g., `'Factorial'`, `'Range'`)
-- Instance methods (all others — no unfold, or metamorphism): Must be camelCase (e.g., `'doubleSum'`, `'sorted'`)
+- Static methods (unfold first, i.e. *hylomorphism*): Must be PascalCase (e.g., `'Factorial'`, `'Range'`)
+- Instance methods (all others): Must be camelCase (e.g., `'doubleSum'`, `'sorted'`)
 
-## Behavior (Final Coalgebras)
+## Behavior
 
-Behavior types are the categorical dual of data (algebraic data types). Where data is defined by **constructors** (how to build it), behavior is defined by **observers** or **destructors** (how to observe it). Behavior types correspond formally to *final coalgebras* (νF) in category theory: the API uses `behavior()` because behavior types are defined by what they *do*, not what they *are*.
+Behavior types are the dual of data (algebraic data types). Where data is defined by **constructors** (how to build it), behavior is defined by **observers** or **destructors** (how to observe it). Behavior types are defined by what they *do*, not what they *are*. (In category theory these correspond to *final coalgebras*, written νF.)
 
 ### Data vs Behavior
 
-Data types (initial algebras) and behavior types (final coalgebras) are **dual** to each other. This duality is the organizing principle of Lapis:
+Data types and behavior types are **dual** to each other. This duality is the organizing principle of Lapis:
 
 - **Data** is defined by its constructors (variants) and is naturally open to new observations: you can always define new folds. Fold is the **universal observation**: every total function that consumes a data type and respects its structure is expressible as a fold.
 - **Behavior** is defined by its observations (methods/projections) and is naturally open to new implementations: you can always define new generators. Unfold is the **universal generator**: every way of producing behavior from a seed is expressible as an unfold.
 
-This asymmetry is sometimes called the **Expression Problem**: data makes adding observations easy but adding variants hard, while behavior makes adding implementations easy but adding observations hard. Lapis addresses both sides: `extend` allows new variants to be added to data types (with inherited and overridable operations), and coalgebraic behavior definitions allow new implementations of existing observation interfaces.
+This asymmetry is sometimes called the **Expression Problem**: data makes adding observations easy but adding variants hard, while behavior makes adding implementations easy but adding observations hard. Lapis addresses both sides: `extend` allows new variants to be added to data types (with inherited and overridable operations), and behavior definitions allow new implementations of existing observation interfaces.
 
-| Aspect | Data: Initial Algebra (μF) | Behavior: Final Coalgebra (νF) |
+| Aspect | Data | Behavior |
 | --- | --- | --- |
 | **Defined by** | Constructors (how to build) | Observers / Destructors (how to observe) |
 | **Self-reference** | `Family` | `Self` |
 | **Naturally open to** | New observations (folds) | New generators (unfolds) |
 | **Extensible via** | `extend` (add variants + inherit ops) | New unfold implementations |
-| **Universal arrow** | Fold (catamorphism) | Unfold (anamorphism) |
+| **Universal arrow** | Fold | Unfold |
 | **Direction** | Consumes structure bottom-up | Produces structure top-down |
-| **Natural introduction** | Construction (calling constructors) | Unfold (anamorphism from seed) |
-| **Natural elimination** | Fold (catamorphism) | Observation (accessing observers) |
+| **Natural introduction** | Construction (calling constructors) | Unfold (generate from seed) |
+| **Natural elimination** | Fold (consume bottom-up) | Observation (accessing observers) |
 | **Dual operation** | Unfold (build from seed) | Fold (bounded consumption) |
-| **Structure** | Finite, inductive | Potentially infinite, coinductive |
+| **Structure** | Finite, recursive | Potentially infinite, corecursive |
 | **Evaluation** | Eager (constructed fully, then frozen) | Lazy (observed on-demand via Proxy) |
-| **Equality** | Structural (frozen objects) | Bisimulation (same observations) |
+| **Equality** | Structural (frozen objects) | Observational (same observations → equivalent) |
 | **Example** | Lists, trees, Peano numbers | Streams, infinite sequences, state machines |
+
+> *CT note:* Data corresponds to initial algebras (μF), behavior to final coalgebras (νF). Fold is a catamorphism, unfold an anamorphism. Observational equality on behaviors is formally called *bisimulation*.
 
 ### Basic Behavior Declaration
 
@@ -2243,7 +2291,7 @@ const allPairs = Edge.closure(edges, {
 | --- | --- | --- |
 | `key` | endpoint-pair dedup | `(fact) => string`: custom dedup key function |
 
-Structurally, `closure()` is a **hylomorphism** — an interleaved unfold + fold. The unfold phase derives new proof trees by composing existing facts through recursive constructors (`Path({ first, second })`). The fold phase collapses each proof tree to its endpoint pair for deduplication. These two phases are fused inside the fixpoint loop: each iteration unfolds one derivation step, immediately folds (dedup), and feeds the result back — generating then consuming without materializing the full intermediate structure. The formula R⁺ = μX. R ∪ (R;X) captures this: the μ (least fixpoint) drives iteration, the union/composition is the unfold, and set-membership dedup is the fold.
+Structurally, `closure()` is a fused unfold + fold (a *hylomorphism*). The unfold phase derives new proof trees by composing existing facts through recursive constructors (`Path({ first, second })`). The fold phase collapses each proof tree to its endpoint pair for deduplication. These two phases are fused inside the fixpoint loop: each iteration unfolds one derivation step, immediately folds (dedup), and feeds the result back — generating then consuming without materializing the full intermediate structure. The formula R⁺ = μX. R ∪ (R;X) captures this: the μ (least fixpoint) drives iteration, the union/composition is the unfold, and set-membership dedup is the fold.
 
 #### `reachableFrom(facts, domainValues)`
 
@@ -2291,10 +2339,10 @@ Because Lapis stores full **proof trees** (not flat Datalog tuples), the standar
 
 | Operation | data() meaning | relation() LP meaning |
 | --- | --- | --- |
-| **fold** | Structural recursion (catamorphism): consume a value bottom-up | **Inspect/evaluate a proof**: walk the derivation tree and compute a result (e.g. `depth`, `origin`, `destination`) |
-| **unfold** | Corecursion (anamorphism): generate a structure from a seed | **Derive a proof**: apply rules to produce a proof tree (rule application, proof construction) |
+| **fold** | Structural recursion: consume a value bottom-up | **Inspect/evaluate a proof**: walk the derivation tree and compute a result (e.g. `depth`, `origin`, `destination`) |
+| **unfold** | Corecursion: generate a structure from a seed | **Derive a proof**: apply rules to produce a proof tree (rule application, proof construction) |
 | **map** | Transform type parameters, preserving structure | **Relational homomorphism**: re-label endpoints or provenance while preserving the derivation structure |
-| **merge** | Deforestation: fuse an unfold into a fold (hylomorphism) | **Combine derivations**: compose proof generation with proof evaluation without materializing the intermediate tree |
+| **merge** | Fuse unfold + fold (deforestation) | **Combine derivations**: compose proof generation with proof evaluation without materializing the intermediate tree |
 
 The key insight is that a relation instance IS a proof witness: a `Direct('alice', 'bob')` is an axiom, and a `Transitive({ hop, rest })` is a derivation step. Fold reads the proof; unfold writes the proof; map transforms it; merge fuses reading and writing.
 
@@ -2389,7 +2437,7 @@ const PathFinder = observer(({ Self }) => ({
     [done]:   'exhausted',
     [accept]: 'found',
 
-    // Unfold (coalgebra map, same as behavior)
+    // Unfold (observer map, same as behavior)
     Search: unfold({ in: Object, out: Self })({
         path:      (s) => s.path,
         found:     (s) => s.isFound,
@@ -2563,13 +2611,13 @@ const first = PathFinder.explore(
 | Enumerate **all** reachable pairs | `relation()` + `closure()` | Bottom-up exhaustive computation |
 | Answer **one** specific query lazily | `observer()` + `explore()` | Top-down, stops after finding results |
 | Need `reachableFrom()` / `reachingTo()` projections | `relation()` | Built-in relational algebra |
-| Need to control search (DFS, BFS, heuristics) | `observer()` | Coalgebra map controls traversal strategy |
+| Need to control search (DFS, BFS, heuristics) | `observer()` | Observer map controls traversal strategy |
 | Small, finite relation | Either | Both produce correct results |
 | Large or infinite search space | `observer()` | Lazy evaluation avoids materializing all facts |
 
 ### Logic Programming Interpretation (Observer)
 
-Just as `relation()` operations have LP meanings on proof trees, `observer()` operations have dual meanings on the **search process** (coalgebraic proof search):
+Just as `relation()` operations have LP meanings on proof trees, `observer()` operations have dual meanings on the **search process** (proof search driven by behavior):
 
 | Operation | behavior() meaning | observer() LP meaning |
 | --- | --- | --- |
@@ -2584,8 +2632,8 @@ Just as `relation()` operations have LP meanings on proof trees, `observer()` op
 
 Where `relation()` stores proof witnesses (data: what was proved), `observer()` drives proof search (behavior: how to prove it). The duality is:
 
-- **Relation**: $\mu$-side (initial algebra). Proof trees are constructed and inspected. `closure()` computes a least fixpoint (enumerate all proofs).
-- **Observer**: $\nu$-side (final coalgebra). Search processes are stepped and observed. `explore()` computes a greatest fixpoint (lazily find proofs on demand).
+- **Relation**: data side. Proof trees are constructed and inspected. `closure()` computes a least fixpoint (enumerate all proofs). *(CT: initial algebra, μ-side.)*
+- **Observer**: behavior side. Search processes are stepped and observed. `explore()` computes a greatest fixpoint (lazily find proofs on demand). *(CT: final coalgebra, ν-side.)*
 
 Together they form a complete LP system: relations for exhaustive bottom-up derivation, observers for lazy top-down search.
 
@@ -3178,6 +3226,357 @@ try {
 - `examples/contracts-stack.mts`: Stack with demands, ensures, rescue, and invariants
 - `examples/contracts-fault-tolerant.mts`: Expression tree with fault-tolerant fold
 - `examples/contracts-stream.mts`: Behavior stream with contracts
+
+## IO (Effects and the Mealy Machine)
+
+Lapis programs model IO as a **Mealy machine** — a pure state machine that separates *describing* effects from *performing* them. The program itself never executes side effects; it only produces data values that a platform runtime interprets.
+
+This is available as a separate sub-package:
+
+```ts
+import { IORequest, IOResponse, Main, run } from '@lapis-lang/lapis-js/io';
+```
+
+### What is a Mealy Machine?
+
+A [Mealy machine](https://en.wikipedia.org/wiki/Mealy_machine) is a finite-state machine where outputs depend on both the current state and the current input. In Lapis, the IO system has four parts:
+
+- **State** — the program’s internal seed, threaded through each IO cycle
+- **Output** — an `IORequest` value describing what IO to perform next
+- **Input** — an `IOResponse` value carrying the result of that IO
+- **Transition** — `respond(IOResponse) → nextState`
+
+Formally, each step is a function:
+
+$$\text{step}: S \to \text{IORequest} \times (\text{IOResponse} \to S)$$
+
+where $S$ is the state type. The first projection (`request`) produces the output, and the second projection (`respond`) consumes the input and returns the next state. The loop terminates when `request` returns `IORequest.Done`.
+
+This is why `Main` is defined as a `behavior()` in Lapis: it describes what can be *observed* (the next request) and how to *step* (respond and continue). *(CT note: this is a coalgebra for the functor $F(S) = \text{IORequest} \times (\text{IOResponse} \to S)$, i.e. a final coalgebra.)*
+
+### Sync Program, Async Runtime
+
+The Mealy machine design creates a clean boundary between synchronous program logic and asynchronous IO execution:
+
+| | Program | Runtime |
+| --- | --- | --- |
+| **Purity** | Pure — no side effects | Impure — performs actual IO |
+| **Sync/Async** | Synchronous — `request` and `respond` are plain values and functions | Asynchronous — `run()` and `executeRequest()` are `async` |
+| **Determinism** | Deterministic — same `IOResponse` sequence always produces same `IORequest` sequence | Non-deterministic — network, timing, user input |
+| **Testability** | Mock interpreter drives the loop synchronously | Real IO requires browser APIs |
+
+The program never encounters `Promise`, `async`, `await`, or callbacks. All asynchrony is encapsulated inside the runtime:
+
+```ts
+// Program side (sync, pure) — this is what you write
+const app = MyApp.Start({ url: '/api/data' });
+app.request;                        // IORequest.HttpGet({ url: '/api/data' })
+app.respond(someResponse);          // next Main state (synchronous)
+
+// Runtime side (async, impure) — this is what runs it
+const exitCode = await run(app);    // internally awaits fetch, setTimeout, etc.
+```
+
+This means programs can be tested with a fully synchronous mock interpreter:
+
+```ts
+function testRun(main, responses) {
+    let state = main;
+    const requests = [];
+    for (const response of responses) {
+        requests.push(state.request);
+        state = state.respond(response);
+    }
+    requests.push(state.request);
+    return requests;
+}
+
+// No async needed — pure deterministic state transitions
+const requests = testRun(
+    MyApp.Start({ url: '/data' }),
+    [IOResponse.HttpResult({ status: 200, body: '{"ok":true}' })]
+);
+```
+
+### IORequest and IOResponse
+
+`IORequest` is an algebraic data type describing what IO operation to perform. `IOResponse` describes the result. Both are defined with `data()` and cover four IO quadrants:
+
+|  | **Single** (one value) | **Multiple** (stream) |
+| --- | --- | --- |
+| **Pull** (program asks) | `Read` → `ReadResult`<br> `Write` → `WriteResult`<br> `HttpGet` → `HttpResult`<br> `GetTime` → `TimeResult` | `OpenStream` → `StreamOpened`<br> `ReadChunk` → `StreamChunk` / `EndOfStream`<br> `CloseStream` → `None` |
+| **Push** (environment notifies) | `Listen` → `EventResult`<br> `Timer` → `TimerResult` | `Subscribe` → `EventResult`<br> `AwaitEvent` → `EventResult` |
+| **Terminal** | `Done({ code })` — exits the loop | |
+
+| Quadrant | IORequest | IOResponse | Description |
+| --- | --- | --- | --- |
+| Pull/Single | `Read({ path })` | `ReadResult({ content })` | Fetch a resource by URL/path |
+| Pull/Single | `Write({ message })` | `WriteResult` | Output a message |
+| Pull/Single | `HttpGet({ url })` | `HttpResult({ status, body })` | HTTP GET request |
+| Pull/Single | `GetTime` | `TimeResult({ now })` | Current timestamp |
+| Pull/Multiple | `OpenStream({ path })` | `StreamOpened({ handle })` | Open a readable stream |
+| Pull/Multiple | `ReadChunk({ handle })` | `StreamChunk({ data })` | Read the next chunk |
+| Pull/Multiple | `ReadChunk({ handle })` | `EndOfStream` | Stream exhausted |
+| Pull/Multiple | `CloseStream({ handle })` | `None` | Close an open stream |
+| Push/Single | `Listen({ event })` | `EventResult({ payload })` | Wait for a named event |
+| Push/Single | `Timer({ ms })` | `TimerResult` | Delay for a duration |
+| Push/Multiple | `Subscribe({ source })` | `EventResult({ payload })` | Subscribe to an event source |
+| Push/Multiple | `AwaitEvent` | `EventResult({ payload })` | Wait for a generic event |
+| Terminal | `Done({ code })` | — | Terminate with exit code |
+
+```ts
+import { IORequest, IOResponse } from '@lapis-lang/lapis-js/io';
+
+// Structured variants are constructed with fields
+const req = IORequest.Read({ path: '/data.json' });
+console.log(req.path);                   // '/data.json'
+console.log(req instanceof IORequest);    // true
+
+// Singleton variants are accessed as properties
+const time = IORequest.GetTime;
+console.log(time instanceof IORequest);   // true
+
+// Responses follow the same pattern
+const res = IOResponse.HttpResult({ status: 200, body: '{"ok":true}' });
+console.log(res.status);                  // 200
+console.log(res instanceof IOResponse);   // true
+```
+
+Guards are enforced on construction — passing the wrong type throws a `TypeError`:
+
+```ts
+IORequest.Read({ path: 42 });   // TypeError: path must be a String
+IORequest.Done({ code: 'ok' }); // TypeError: code must be a Number
+```
+
+### The Main Behavior
+
+`Main` is a `behavior()` type defining the Mealy machine protocol with two observers:
+
+- **`request`** — projects the current `IORequest` from the state (what IO to do next)
+- **`respond`** — a continuation accepting an `IOResponse`, returning the next state
+
+```ts
+import { behavior, unfold, extend } from '@lapis-lang/lapis-js';
+import { IORequest, IOResponse, Main } from '@lapis-lang/lapis-js/io';
+
+const MyApp = behavior(({ Self }) => ({
+    [extend]: Main,
+
+    Start: unfold({ in: { message: String }, out: Self })({
+        request: ({ message }) => IORequest.Write({ message }),
+        respond: () => () => ({ message: 'done' })
+    })
+}));
+
+const app = MyApp.Start({ message: 'Hello, world!' });
+console.log(app.request.message); // 'Hello, world!'
+console.log(app instanceof Main); // true
+```
+
+Each unfold constructor provides handlers for both observers:
+
+- `request(seed)` — receives the current seed, returns an `IORequest`
+- `respond(seed)` — receives the current seed, returns a function `(IOResponse) → nextSeed`
+
+The seed is the internal state threaded through each IO cycle.
+
+### Extending Main
+
+Programs can extend `Main` using the `[extend]` symbol, inheriting the `request`/`respond` observer protocol:
+
+```ts
+import { behavior, unfold, extend } from '@lapis-lang/lapis-js';
+import { IORequest, IOResponse, Main } from '@lapis-lang/lapis-js/io';
+
+const FetchAndDisplay = behavior(({ Self }) => ({
+    [extend]: Main,
+
+    Start: unfold({ in: { phase: String, url: String, content: String }, out: Self })({
+        request: ({ phase, url, content }) => {
+            if (phase === 'fetch') return IORequest.HttpGet({ url });
+            if (phase === 'display') return IORequest.Write({ message: content });
+            return IORequest.Done({ code: 0 });
+        },
+        respond: ({ phase, url }) => (response) => {
+            if (phase === 'fetch')
+                return { phase: 'display', url, content: response.body };
+            return { phase: 'done', url, content: '' };
+        }
+    })
+}));
+
+const app = FetchAndDisplay.Start({ phase: 'fetch', url: '/api/data', content: '' });
+console.log(app instanceof Main); // true
+```
+
+### The IO Loop
+
+The Mealy machine protocol proceeds as a deterministic loop:
+
+```text
+┌─────────────────────────────────────────────┐
+│                                             │
+│  ┌──────┐  request   ┌─────────┐  execute   │
+│  │ Main ├───────────►│IORequest├──────────┐ │
+│  │state │            └─────────┘          │ │
+│  │      │◄───────────┬──────────┐         │ │
+│  └──────┘  respond   │IOResponse│◄────────┘ │
+│                      └──────────┘           │
+│           repeats until Done                │
+└─────────────────────────────────────────────┘
+```
+
+1. Read `main.request` → an `IORequest` value
+2. The runtime performs the described IO → an `IOResponse` value
+3. Call `main.respond(response)` → the next `Main` state
+4. Repeat until `IORequest.Done` is observed
+
+The program is pure at every step — the runtime is the sole source of side effects.
+
+### Running a Program
+
+The `run` function drives the IO loop using browser-native APIs (`fetch`, `console.log`, `setTimeout`, `addEventListener`):
+
+```ts
+import { run } from '@lapis-lang/lapis-js/io';
+
+const exitCode = await run(FetchAndDisplay.Start({
+    phase: 'fetch', url: '/api/data', content: ''
+}));
+
+console.log('Exited with code:', exitCode);
+```
+
+`run` returns a `Promise<number>` that resolves with the exit code from `IORequest.Done`.
+
+The reference runtime maps each `IORequest` to browser APIs:
+
+| IORequest | Browser API |
+| --- | --- |
+| `Read({ path })` | `fetch(path)` → `response.text()` |
+| `Write({ message })` | `console.log(message)` |
+| `HttpGet({ url })` | `fetch(url)` → `{ status, body }` |
+| `GetTime` | `Date.now()` |
+| `OpenStream({ path })` | `fetch(path)` → `response.body.getReader()` |
+| `ReadChunk({ handle })` | `reader.read()` → `TextDecoder.decode(chunk)` |
+| `CloseStream({ handle })` | `reader.cancel()` |
+| `Timer({ ms })` | `setTimeout` (via Promise) |
+| `Listen({ event })` | `window.addEventListener(event, ..., { once: true })` |
+| `Subscribe({ source })` | `window.addEventListener(source, ..., { once: true })` |
+| `AwaitEvent` | `window.addEventListener('lapis-event', ..., { once: true })` |
+
+You can also call `executeRequest(request)` directly for custom interpreters or testing:
+
+```ts
+import { executeRequest } from '@lapis-lang/lapis-js/io';
+
+const response = await executeRequest(IORequest.GetTime);
+console.log(response.now); // e.g. 1700000000000
+```
+
+### Contracts on IO
+
+Contracts integrate naturally with the IO protocol. Place `demands` on unfold constructors to validate seeds:
+
+```ts
+import { behavior, unfold, extend, DemandsError } from '@lapis-lang/lapis-js';
+import { IORequest, IOResponse, Main } from '@lapis-lang/lapis-js/io';
+
+const App = behavior(({ Self }) => ({
+    [extend]: Main,
+
+    Start: unfold({
+        in: { args: Array },
+        out: Self,
+        demands: (_self, seed) => Array.isArray(seed.args) && seed.args.length > 0
+    })({
+        request: ({ args }) => IORequest.Write({ message: args[0] }),
+        respond: () => () => ({ args: ['done'] })
+    })
+}));
+
+App.Start({ args: ['hello'] }); // OK
+
+try {
+    App.Start({ args: [] }); // DemandsError
+} catch (e) {
+    console.log(e instanceof DemandsError); // true
+}
+```
+
+### Event Handling (Listen, Subscribe, AwaitEvent)
+
+The event-related IO requests integrate with the browser's `CustomEvent` system:
+
+- **`Listen({ event })`** — waits for a single `CustomEvent` with the given event name on `window`
+- **`Subscribe({ source })`** — waits for a single `CustomEvent` with the given source name on `window`
+- **`AwaitEvent`** — waits for a single `CustomEvent` named `'lapis-event'` on `window`
+
+External code dispatches events to drive the program:
+
+```ts
+// From the Lapis program:
+// request: () => IORequest.Listen({ event: 'user-action' })
+
+// From external code (e.g., a button click handler):
+window.dispatchEvent(new CustomEvent('user-action', {
+    detail: 'button-clicked'
+}));
+
+// The runtime delivers IOResponse.EventResult({ payload: 'button-clicked' })
+// to the program's respond continuation.
+```
+
+This enables reactive patterns like the Elm architecture — the program declares what events it wants, and the runtime bridges them:
+
+```ts
+const Counter = behavior(({ Self }) => ({
+    [extend]: Main,
+
+    Start: unfold({ in: { phase: String, count: Number }, out: Self })({
+        request: ({ phase, count }) => {
+            if (phase === 'render')
+                return IORequest.Write({ message: `Count: ${count}` });
+            if (phase === 'listen')
+                return IORequest.Listen({ event: 'counter-action' });
+            return IORequest.Done({ code: 0 });
+        },
+        respond: ({ phase, count }) => (response) => {
+            if (phase === 'render')
+                return { phase: 'listen', count };
+            if (phase === 'listen') {
+                const action = response.payload;
+                if (action === 'increment')
+                    return { phase: 'render', count: count + 1 };
+                if (action === 'decrement')
+                    return { phase: 'render', count: count - 1 };
+                if (action === 'quit')
+                    return { phase: 'done', count };
+                return { phase: 'listen', count };
+            }
+            return { phase: 'done', count };
+        }
+    })
+}));
+
+run(Counter.Start({ phase: 'render', count: 0 }));
+```
+
+**Key points:**
+
+- IO is modeled as a Mealy machine — programs emit `IORequest` descriptions, never perform side effects directly
+- `Main` defines the protocol: `request` (current IO description) and `respond` (state transition on IO result)
+- Programs must extend `Main` — `run()` enforces this with an `instanceof Main` check
+- The platform runtime is the sole interpreter of IO descriptions — replaceable for testing or different environments
+- `run(main)` drives the loop using browser-native APIs until `IORequest.Done` is observed
+- Contracts (`demands`, `ensures`) apply to unfold constructors and fold operations as usual
+
+**See also:**
+
+- `examples/io-cli-cat.mts`: Fetch a resource and display its contents
+- `examples/io-echo-server.mts`: Cyclic event handler with Listen/Write loop
+- `examples/io-counter-reactive.mts`: Reactive counter with Subscribe/AwaitEvent
 
 ## References, Inspirations, and Further Reading
 
