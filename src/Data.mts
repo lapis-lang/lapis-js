@@ -484,6 +484,19 @@ function resolveFoldParameterizedADT(variantCtor: VariantLike): object | null {
     const proto = Object.getPrototypeOf(
         (variantCtor as unknown as { prototype: object }).prototype
     );
+    return resolveProxiedADT(proto);
+}
+
+/**
+ * Given a prototype object whose `constructor` points at a (possibly raw)
+ * ADT constructor, return the proxied parameterized ADT — or `null` when
+ * the ADT is not parameterized.
+ *
+ * Shared by `resolveFoldParameterizedADT` (starting from a variant
+ * constructor's prototype chain) and the metamorphism runtime (starting
+ * from an instance's prototype chain).
+ */
+function resolveProxiedADT(proto: object | null): object | null {
     const adtCtor = proto?.constructor ?? null;
     const proxied = adtCtor ? rawToProxiedMap.get(adtCtor as object) : null;
     return proxied && TypeArgsSymbol in (proxied as Record<symbol, unknown>)
@@ -2343,9 +2356,14 @@ function createMergeOperation(
             for (const step of prePlan)
                 result = executeStep(result, step, args);
 
-            // Phase 2: unfold — the fold result becomes the seed
+            // Phase 2: unfold — the fold result becomes the seed.
+            // Resolve unfold from the instance's parameterized ADT (if any)
+            // so that parameterized specializations use their rebound unfold
+            // rather than the base ADT's. Falls back to the closure-captured
+            // ADT for non-parameterized types.
             const unfoldOpName = opList[unfoldIndex],
-                callerADT = ADT as Record<string, unknown>,
+                adtProto = Object.getPrototypeOf(Object.getPrototypeOf(this)),
+                callerADT = (resolveProxiedADT(adtProto) ?? ADT) as Record<string, unknown>,
                 unfoldOp = callerADT[unfoldOpName] as
                     ((s: unknown) => unknown) | undefined;
 

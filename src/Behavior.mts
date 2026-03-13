@@ -1164,16 +1164,9 @@ function addMergeOperation(
             : null;
 
         // Collect map operations that appear BEFORE the fold in the pipeline
-        const preFoldMapNames = operationNames.slice(0, unfoldIndex)
+        const foldIndex = foldName ? operationNames.indexOf(foldName) : unfoldIndex;
+        const preFoldMapNames = operationNames.slice(0, foldIndex)
             .filter(opName => mapNames.includes(opName));
-        const preFoldMapTransforms = collectMapTransforms(mapOpsMap, preFoldMapNames);
-
-        // Build a fold entry enriched with pre-map transforms if applicable
-        const foldOpWithPreMaps = foldOp ? {
-            ...foldOp,
-            preMapTransforms: preFoldMapTransforms && preFoldMapTransforms.length > 0
-                ? preFoldMapTransforms : foldOp.preMapTransforms
-        } : null;
 
         // Metamorphism is always an instance getter (starts with fold on existing structure)
         Object.defineProperty(
@@ -1181,9 +1174,17 @@ function addMergeOperation(
             name,
             {
                 get() {
-                    // Phase 1: fold the current instance
+                    // Phase 1a: apply pre-fold maps to the instance
+                    let foldTarget: unknown = this;
+                    for (const mapName of preFoldMapNames) {
+                        const mapOp = mapOpsMap?.get(mapName);
+                        if (mapOp?.isGetter)
+                            foldTarget = (foldTarget as Record<string, unknown>)[mapName];
+                    }
+
+                    // Phase 1b: fold the (possibly mapped) instance
                     const foldResult = maybeFold(
-                        this, observerMap, foldOpWithPreMaps, [], BehaviorType, foldName
+                        foldTarget, observerMap, foldOp, [], BehaviorType, foldName
                     );
                     // Phase 2: unfold the fold result into a new behavior instance
                     return unfoldAndApplyMaps(foldResult, composedHandlers, postUnfoldMapNames);

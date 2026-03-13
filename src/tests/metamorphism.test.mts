@@ -338,6 +338,39 @@ describe('Metamorphism (fold + unfold)', () => {
             assert.strictEqual(result.tail.head, 2);
             assert.strictEqual(result.tail.tail.head, 3);
         });
+
+        test('metamorphism unfold produces instances of the parameterized ADT, not the base', () => {
+            const List = data(({ Family, T }) => ({
+                Nil: {},
+                Cons: { head: T, tail: Family },
+
+                toArray: fold({ out: Array })({
+                    Nil() { return []; },
+                    Cons({ head, tail }) { return [head, ...tail]; }
+                }),
+
+                FromArray: unfold({ in: Array, out: Family })({
+                    Nil: (arr) => (arr.length === 0 ? {} : null),
+                    Cons: (arr) => (arr.length > 0 ? { head: arr[0], tail: arr.slice(1) } : null)
+                }),
+
+                roundTrip: merge('toArray', 'FromArray')
+            }));
+
+            const NumList = List({ T: Number });
+            const list = NumList.Cons(1, NumList.Cons(2, NumList.Nil));
+
+            const result = list.roundTrip;
+
+            // The result should be an instance of NumList (parameterized), not base List
+            assert.ok(result instanceof NumList, 'roundTrip result should be instanceof NumList');
+            assert.ok(result.tail instanceof NumList, 'nested result should be instanceof NumList');
+
+            // Verify type enforcement: NumList requires Number heads
+            assert.throws(() => {
+                NumList.FromArray(['a', 'b']);
+            }, /type/i);
+        });
     });
 
     describe('Existing hylomorphism still works', () => {
