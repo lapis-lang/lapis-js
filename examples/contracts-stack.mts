@@ -76,7 +76,7 @@ const Stack = data(({ Family, T }) => ({
     // FromArray: unfold with demands that input is a valid array
     FromArray: unfold({
         in: Array,
-        out: Family,
+        out: Family(T),
         demands: (_self: unknown, arr: unknown) => Array.isArray(arr)
     })({
         Empty: (arr: unknown[]) => (arr.length === 0 ? {} : null),

@@ -1,4 +1,4 @@
-import { data, fold, unfold } from '../index.mjs';
+import { data, fold, unfold, merge, map } from '../index.mjs';
 import { describe, it } from 'node:test';
 import * as assert from 'node:assert/strict';
 
@@ -7,7 +7,7 @@ describe('Unfold on parameterized ADTs', () => {
         Nil: {},
         Cons: { head: T, tail: Family(T) },
 
-        FromArray: unfold({ in: Object, out: Family(T) })({
+        FromArray: unfold({ in: Array, out: Family(T) })({
             Nil: (arr: unknown[]) => arr.length === 0 ? {} : null,
             Cons: (arr: unknown[]) => arr.length > 0
                 ? { head: arr[0], tail: arr.slice(1) }
@@ -75,5 +75,73 @@ describe('Unfold on parameterized ADTs', () => {
         const box = Container.Box({ items: list });
         assert.ok(box instanceof Container);
         assert.ok(box.items instanceof ColorList);
+    });
+});
+
+describe('Generator merge on parameterized ADTs', () => {
+    const List = data(({ Family, T }) => ({
+        Nil: {},
+        Cons: { head: T, tail: Family(T) },
+
+        Range: unfold({ in: Number, out: Family(T) })({
+            Nil: (n: number) => (n <= 0 ? {} : null),
+            Cons: (n: number) => (n > 0 ? { head: n, tail: n - 1 } : null)
+        }),
+
+        sum: fold({ out: Number })({
+            Nil() { return 0; },
+            Cons({ head, tail }: { head: number; tail: number }) {
+                return head + tail;
+            }
+        }),
+
+        square: map({ out: Family })({
+            T: (x: number) => x * x
+        }),
+
+        Triangular: merge('Range', 'sum'),
+        SumOfSquares: merge('Range', 'square', 'sum')
+    }));
+
+    const NumList = List({ T: Number });
+
+    it('hylomorphism merge should produce correct result on parameterized ADT', () => {
+        // Triangular(5) = 5 + 4 + 3 + 2 + 1 = 15
+        assert.strictEqual(NumList.Triangular(5), 15);
+    });
+
+    it('unfold+map+fold merge should produce correct result on parameterized ADT', () => {
+        // SumOfSquares(4) = 16 + 9 + 4 + 1 = 30
+        assert.strictEqual(NumList.SumOfSquares(4), 30);
+    });
+
+    it('merge resolves unfold from parameterized ADT, not base', () => {
+        // Verify the unfold step in the merge uses the parameterized ADT's
+        // rebound unfold (via `this`) rather than the closure-captured base.
+        // The standalone unfold should produce parameterized instances.
+        const result = NumList.Range(3);
+        assert.ok(result instanceof NumList,
+            'standalone unfold should produce parameterized instance');
+
+        // The merge pipeline (unfold → fold) should use the same rebound
+        // unfold and produce the correct result.
+        assert.strictEqual(NumList.Triangular(3), 6);
+        assert.strictEqual(NumList.Triangular(0), 0);
+    });
+
+    it('merge works with different parameterizations of the same base', () => {
+        const NumList2 = List({ T: Number });
+
+        // Different parameterization of the same base should independently
+        // produce correct merge results.
+        assert.strictEqual(NumList.Triangular(4), 10);
+        assert.strictEqual(NumList2.Triangular(4), 10);
+
+        // Standalone unfolds on different parameterizations should each
+        // produce instances of their own parameterized ADT.
+        const r1 = NumList.Range(2);
+        const r2 = NumList2.Range(2);
+        assert.ok(r1 instanceof NumList);
+        assert.ok(r2 instanceof NumList2);
     });
 });

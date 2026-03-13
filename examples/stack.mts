@@ -31,7 +31,7 @@ const Stack = data(({ Family, T }) => ({
             Empty() { return false; },
             Push({ value, rest }, searchValue) { return value === searchValue || rest(searchValue); }
         }),
-        FromArray: unfold({ in: Array, out: Family })({
+        FromArray: unfold({ in: Array, out: Family(T) })({
             Empty: (arr) => (arr.length === 0 ? {} : null),
             Push: (arr) => (arr.length > 0 ? { value: arr[0], rest: arr.slice(1) } : null)
         })
@@ -82,6 +82,7 @@ console.log(`FromArray([10, 20, 30, 40, 50]) = ${stackFromArray.show}`);
 console.log(`size = ${stackFromArray.size}`);
 console.log(`peek = ${stackFromArray.peek}`);
 console.log(`toArray = [${stackFromArray.toArray}]`);
+console.log(`stackFromArray instanceof NumStack: ${stackFromArray instanceof NumStack}`);  // true — unfold respects parameterization
 
 // Contains
 console.log('\nContains:');

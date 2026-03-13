@@ -1819,10 +1819,17 @@ function inheritUnfoldOperations(
         // Only inherit unfold operations not overridden by the child
         if (!tx.unfoldCases || name in childOperations) continue;
 
+        // Strip demands/ensures/rescue from the inherited spec so that
+        // installUnfoldImpl inherits the parent's contracts verbatim
+        // (via the transformer lookup) instead of composing them with
+        // an identical copy extracted from the spec.
+        const parentSpec = (tx.unfoldSpec ?? {}) as Record<string, unknown>;
+        const { demands: _, ensures: _e, rescue: _r, ...cleanSpec } = parentSpec;
+
         installUnfoldImpl(
             childADT, ownVariants, name,
             tx.unfoldCases as Record<string, (seed: unknown) => unknown | null>,
-            (tx.unfoldSpec ?? {}) as Record<string, unknown>
+            cleanSpec as Record<string, unknown>
         );
     }
 }
@@ -2313,9 +2320,13 @@ function createMergeOperation(
         // Sequential pipeline: unfold → [maps*] → [fold]
         const plan = buildPlan(opList, 1);
 
-        (ADT as Record<string, unknown>)[opName] = function (seed: unknown) {
+        (ADT as Record<string, unknown>)[opName] = function (this: unknown, seed: unknown) {
             const unfoldName = opList[0],
-                unfoldOp = (ADT as Record<string, unknown>)[unfoldName] as
+                // Resolve unfold from the call receiver so that parameterized
+                // ADT proxies use their rebound unfold rather than the base's.
+                // Falls back to the closure-captured ADT for detached calls.
+                callerADT = (this ?? ADT) as Record<string, unknown>,
+                unfoldOp = callerADT[unfoldName] as
                     ((s: unknown) => unknown) | undefined;
 
             if (!unfoldOp)
@@ -2373,7 +2384,7 @@ function createParameterized(
 
     // Reinstall unfold operations from the base ADT, rebound to the
     // parameterized variants so that constructed instances carry the
-    // parameterized ADT in their prototype chain (issue #130).
+    // parameterized ADT in their prototype chain.
     inheritUnfoldOperations(
         ParameterizedADT as unknown as ADTLike,
         paramVariants,
