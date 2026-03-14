@@ -25,6 +25,9 @@ export type VariantDeclSymbol = typeof VariantDeclSymbol;
 export const TypeParamSymbol: unique symbol = Symbol('TypeParam');
 export type TypeParamSymbol = typeof TypeParamSymbol;
 
+export const SortNameSymbol: unique symbol = Symbol('SortName');
+export type SortNameSymbol = typeof SortNameSymbol;
+
 /**
  * Symbol for storing handler maps on transformers and observers.
  * Used internally to detect wildcard handlers and case structure.

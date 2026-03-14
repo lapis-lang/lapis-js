@@ -21,6 +21,12 @@ there is an emphasis on the Bird-Meertens Formalism (BMF) (Squiggol) of making p
 - [Parameterized and Recursive ADTs](#parameterized-and-recursive-adts)
 - [ADT Extension (Subtyping)](#adt-extension-subtyping)
   - [Extending recursive ADTs](#extending-recursive-adts)
+- [Multi-Sorted Algebras](#multi-sorted-algebras)
+  - [Declaring Multi-Sorted ADTs](#declaring-multi-sorted-adts)
+  - [Sort-Typed Field Validation](#sort-typed-field-validation)
+  - [Sort Reflection](#sort-reflection)
+  - [Folds on Multi-Sorted ADTs](#folds-on-multi-sorted-adts)
+  - [Extending Multi-Sorted ADTs](#extending-multi-sorted-adts)
 - [Fold Operations](#fold-operations)
   - [Basic Fold Operations](#basic-fold-operations)
   - [Specs](#specs)
@@ -415,6 +421,193 @@ console.log(letExpr instanceof FullExpr);    // true
 - Singleton and constructor identity preserved
 - `Family` accepts instances from any hierarchy level
 - Variant name collisions throw errors
+
+## Multi-Sorted Algebras
+
+A standard (single-sorted) ADT has one carrier type — every constructor produces values of the same sort, and every fold handler returns the same result type. Some domains, however, require **multiple syntactic sorts** within a single ADT. An expression language, for example, may distinguish *expressions* from *statements* — each sort gets its own carrier type in a fold.
+
+Multi-sorted algebras add **sort parameters** (`$A`–`$Z`) alongside the existing type parameters (`A`–`Z`) and self-reference (`Family`). Import the `sort` and `isSort` symbols:
+
+```ts
+import { data, fold, sort, isSort } from '@lapis-lang/lapis-js';
+```
+
+| Category | Syntax | Example | Bound when |
+| --- | --- | --- | --- |
+| Self-reference | `Family` | `tail: Family` | Always (the ADT itself) |
+| Type parameter | `A`–`Z` | `head: T` | At instantiation: `List({T: Number})` |
+| Sort parameter | `$A`–`$Z` | `left: $E` | At fold definition |
+
+### Declaring Multi-Sorted ADTs
+
+Sort parameters are destructured from the callback parameter alongside `Family` and type parameters. Each variant declares its sort using the `[sort]` symbol:
+
+```ts
+const Lang = data(({ $E, $S }) => ({
+    // Exp sort
+    Lit:    { [sort]: $E, value: Number },
+    Add:    { [sort]: $E, left: $E, right: $E },
+    // Stmt sort
+    Assign: { [sort]: $S, name: String, expr: $E },
+    Seq:    { [sort]: $S, first: $S, second: $S }
+}));
+
+const lit5 = Lang.Lit(5);
+const lit3 = Lang.Lit(3);
+const sum  = Lang.Add(lit5, lit3);
+const assign = Lang.Assign('x', sum);
+const seq  = Lang.Seq(assign, Lang.Assign('y', Lang.Lit(1)));
+```
+
+**`[sort]` annotation rules:**
+
+- **Optional when single-sorted:** If only one sort parameter is used (e.g., only `$E`), the annotation is optional — all variants are inferred to belong to that single sort.
+- **Required when multi-sorted:** If two or more sort parameters appear, every variant MUST have a `[sort]` annotation. Missing annotations throw an error.
+- **Not present = single-sorted (backward compatible):** ADTs that don't destructure any `$`-prefixed names work exactly as before. `Family` remains the sole recursion marker.
+
+Single-sorted example without explicit `[sort]`:
+
+```ts
+const Nat = data(({ $N }) => ({
+    Zero: {},
+    Succ: { pred: $N },
+    toNum: fold({ out: Number })({
+        Zero() { return 0; },
+        Succ({ pred }) { return 1 + pred; }
+    })
+}));
+
+const two = Nat.Succ(Nat.Succ(Nat.Zero));
+console.log(two.toNum); // 2
+```
+
+### Sort-Typed Field Validation
+
+Sort parameters serve double duty as both `[sort]` annotation values and **field type guards**. At construction time, the framework validates that sort-typed fields receive values of the correct sort:
+
+```ts
+const Lang = data(({ $E, $S }) => ({
+    Lit:    { [sort]: $E, value: Number },
+    Add:    { [sort]: $E, left: $E, right: $E },
+    Assign: { [sort]: $S, name: String, expr: $E },
+    Seq:    { [sort]: $S, first: $S, second: $S }
+}));
+
+// Assign.expr expects $E — Lit is $E, so this works:
+Lang.Assign('x', Lang.Lit(1)); // OK
+
+// Seq expects $S fields — passing a $E value throws:
+Lang.Seq(Lang.Lit(1), Lang.Assign('x', Lang.Lit(2)));
+// TypeError: Field 'first' expected a variant of sort '$S', but got sort '$E'
+```
+
+`Family`-typed fields impose no sort restriction — they accept any variant regardless of sort.
+
+### Sort Reflection
+
+The `[isSort]` symbol on a multi-sorted ADT checks sort membership at runtime:
+
+```ts
+const lit = Lang.Lit(42);
+const assign = Lang.Assign('x', lit);
+
+Lang[isSort](lit, '$E');     // true
+Lang[isSort](lit, '$S');     // false
+Lang[isSort](assign, '$S');  // true
+Lang[isSort](assign, '$E');  // false
+```
+
+### Folds on Multi-Sorted ADTs
+
+#### Sort-erasing folds
+
+A fold with a plain `out` spec collapses all sorts to a single carrier type — the same as standard single-sorted folds:
+
+```ts
+const Lang = data(({ $E, $S }) => ({
+    Lit:    { [sort]: $E, value: Number },
+    Add:    { [sort]: $E, left: $E, right: $E },
+    Assign: { [sort]: $S, name: String, expr: $E },
+    Seq:    { [sort]: $S, first: $S, second: $S },
+
+    pretty: fold({ out: String })({
+        Lit({ value }) { return String(value); },
+        Add({ left, right }) { return `(${left} + ${right})`; },
+        Assign({ name, expr }) { return `${name} = ${expr}`; },
+        Seq({ first, second }) { return `${first}; ${second}`; }
+    })
+}));
+
+const program = Lang.Seq(
+    Lang.Assign('x', Lang.Add(Lang.Lit(1), Lang.Lit(2))),
+    Lang.Assign('y', Lang.Lit(42))
+);
+
+console.log(program.pretty); // 'x = (1 + 2); y = 42'
+```
+
+Sort-typed fields are structurally recursive — inside handlers, `left`, `right`, `expr`, `first`, and `second` are already folded to their carrier values (strings in this case).
+
+#### Per-sort carrier folds
+
+When each sort needs a distinct carrier type, pass an object keyed by sort parameter names as the `out` value:
+
+```ts
+eval: fold({ out: { $E: Number, $S: undefined } })({
+    Lit({ value })         { return value; },
+    Add({ left, right })   { return left + right; },
+    Assign({ name, expr }) { console.log(`${name} = ${expr}`); },
+    Seq({ first, second }) { first; second; }
+})
+```
+
+Inside handlers, sort-typed fields are folded to their sort's carrier: the `Add` handler receives `left` and `right` as numbers (the `$E` carrier), and the `Seq` handler receives `first` and `second` as `undefined` (the `$S` carrier).
+
+If `out` is an object with sort-name keys, ALL declared sort names must be present.
+
+### Extending Multi-Sorted ADTs
+
+Multi-sorted ADTs can be extended with `[extend]`, just like single-sorted ADTs. Sort identity is matched by name — parent's `$E` and child's `$E` are the same sort:
+
+```ts
+const BaseLang = data(({ $E, $S }) => ({
+    Lit:    { [sort]: $E, value: Number },
+    Add:    { [sort]: $E, left: $E, right: $E },
+    Assign: { [sort]: $S, name: String, expr: $E },
+
+    pretty: fold({ out: String })({
+        Lit({ value }) { return String(value); },
+        Add({ left, right }) { return `(${left} + ${right})`; },
+        Assign({ name, expr }) { return `${name} = ${expr}`; }
+    })
+}));
+
+const ExtLang = data(({ $E, $S }) => ({
+    [extend]: BaseLang,
+    Mul:  { [sort]: $E, left: $E, right: $E },
+    Seq:  { [sort]: $S, first: $S, second: $S },
+
+    pretty: fold({ out: String })({
+        Mul({ left, right }) { return `(${left} * ${right})`; },
+        Seq({ first, second }) { return `${first}; ${second}`; }
+    })
+}));
+
+const program = ExtLang.Seq(
+    ExtLang.Assign('x', ExtLang.Mul(ExtLang.Lit(2), ExtLang.Lit(3))),
+    ExtLang.Assign('y', ExtLang.Add(ExtLang.Lit(1), ExtLang.Lit(1)))
+);
+
+console.log(program.pretty); // 'x = (2 * 3); y = (1 + 1)'
+```
+
+**Key points:**
+
+- Inherited variants keep their parent sort assignment
+- The child can introduce sort parameters not present in the parent
+- The child's sort set is the union of parent's and child's sorts
+- Fold handlers are inherited from the parent; the child only provides handlers for new variants
+- `[isSort]` works on inherited variants: `ExtLang[isSort](ExtLang.Lit(42), '$E')` returns `true`
 
 ## Fold Operations
 

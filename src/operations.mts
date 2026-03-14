@@ -29,6 +29,18 @@ export type SelfRefSymbol = typeof SelfRefSymbol;
 /** Marks type parameters — re-exported from utils.mts (single canonical symbol) */
 export { TypeParamSymbol };
 
+/** Marks sort parameters for multi-sorted algebras */
+export const SortRefSymbol: unique symbol = Symbol('SortRef');
+export type SortRefSymbol = typeof SortRefSymbol;
+
+/** Declares the sort annotation on a variant spec */
+export const sort: unique symbol = Symbol('sort');
+export type sort = typeof sort;
+
+/** Checks sort membership on a multi-sorted ADT instance */
+export const isSort: unique symbol = Symbol('isSort');
+export type isSort = typeof isSort;
+
 /** Marks parent ADT for declarative extension */
 export const extend: unique symbol = Symbol('extend');
 export type extend = typeof extend;
@@ -118,6 +130,11 @@ export interface TypeParamRef<Name extends string = string> {
     readonly [TypeParamSymbol]: Name;
 }
 
+/** A sort parameter reference marker, branded with the sort name (e.g. '$E'). */
+export interface SortRef<Name extends string = string> {
+    readonly [SortRefSymbol]: Name;
+}
+
 /**
  * Valid type specifications for field declarations and operation specs.
  * Covers primitive constructors, ADT constructors, Family/Self references,
@@ -131,6 +148,7 @@ export type TypeSpec =
     | BigIntConstructor
     | FamilyRef
     | TypeParamRef
+    | SortRef
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     | (abstract new (...args: any[]) => unknown)
     | ((value: unknown) => unknown);
@@ -169,6 +187,23 @@ export function isSelfRef(value: unknown): value is SelfRef {
  */
 export function isTypeParam(value: unknown): value is TypeParamRef {
     return typeof value === 'object' && value !== null && TypeParamSymbol in value;
+}
+
+/**
+ * Checks if a value is a SortRef
+ */
+export function isSortRef(value: unknown): value is SortRef {
+    return typeof value === 'object' && value !== null && SortRefSymbol in value;
+}
+
+/**
+ * Checks whether a field spec references a sort parameter.
+ * Uses `in` (prototype-chain walk) to detect the SortRefSymbol brand.
+ */
+export function isSortRefSpec(fieldSpec: unknown): boolean {
+    return !!fieldSpec &&
+        (typeof fieldSpec === 'object' || typeof fieldSpec === 'function') &&
+        SortRefSymbol in (fieldSpec as object);
 }
 
 // ---- Operation definition predicates ----------------------------------------

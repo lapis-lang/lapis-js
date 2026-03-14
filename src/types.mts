@@ -23,11 +23,12 @@ import type {
     SelfRef,
     SelfRefCallable,
     TypeParamRef,
+    SortRef,
     TypeSpec
 } from './operations.mjs';
 
 // Re-export so consumers can import all types from a single place
-export type { TypeSpec, FamilyRef, FamilyRefCallable, SelfRef, SelfRefCallable, TypeParamRef };
+export type { TypeSpec, FamilyRef, FamilyRefCallable, SelfRef, SelfRefCallable, TypeParamRef, SortRef };
 
 
 
@@ -47,19 +48,20 @@ export type SpecValue<S, Self = unknown> =
                     S extends BigIntConstructor ? bigint :
                         S extends FamilyRef ? Self :
                             S extends SelfRef ? Self :
-                                S extends TypeParamRef ? unknown :
+                                S extends SortRef ? Self :
+                                    S extends TypeParamRef ? unknown :
                                     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                    S extends abstract new (...args: any[]) => infer I ? I :
+                                        S extends abstract new (...args: any[]) => infer I ? I :
                                         // DataADT<D> / BehaviorADT<D> carry their instance type
                                         // on `readonly prototype`. This resolves fields whose
                                         // type parameter was bound to a concrete ADT (issue #126).
                                         // Checked before the generic function guard because ADT
                                         // values are callable (parameterization overload) and would
                                         // otherwise match `(...args) => any` and resolve to `unknown`.
-                                        S extends { readonly prototype: infer I } ? I :
+                                            S extends { readonly prototype: infer I } ? I :
                                             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                            S extends (...args: any[]) => any ? unknown :
-                                                unknown;
+                                                S extends (...args: any[]) => any ? unknown :
+                                                    unknown;
 
 // ---- Field values -----------------------------------------------------------
 
@@ -455,6 +457,14 @@ export type Letter =
     | 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'I' | 'J' | 'K' | 'L' | 'M'
     | 'N' | 'O' | 'P' | 'Q' | 'R' | 'S' | 'T' | 'U' | 'V' | 'W' | 'X' | 'Y' | 'Z';
 
+/**
+ * The predefined universe of `$`-prefixed sort parameter names.
+ *
+ * Sort parameters are visually distinct from type parameters (A–Z) and
+ * are bound at fold time (per-sort carriers) rather than at instantiation.
+ */
+export type SortLetter = `$${Letter}`;
+
 // ---- DeclParams types -------------------------------------------------------
 
 /**
@@ -471,6 +481,8 @@ export type DataDeclParams = {
     readonly Family: FamilyRefCallable;
 } & {
     readonly [K in Letter]: TypeParamRef<K>;
+} & {
+    readonly [K in SortLetter]: SortRef<K>;
 };
 
 /**
