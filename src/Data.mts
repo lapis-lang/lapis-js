@@ -1,6 +1,9 @@
 import {
     FamilyRefSymbol,
     TypeParamSymbol,
+    SortRefSymbol,
+    sort,
+    isSort,
     isOperationDef,
     extend,
     op,
@@ -12,6 +15,7 @@ import {
     validateTypeSpec,
     validateReturnType,
     isFamilyRefSpec,
+    isSortRefSpec,
     assertCamelCase,
     assertPascalCase
 } from './operations.mjs';
@@ -40,6 +44,7 @@ import {
 import {
     isObjectLiteral,
     HandlerMapSymbol,
+    SortNameSymbol,
     hasInputSpec,
     omitSymbol,
     builtInTypeChecks,
@@ -71,6 +76,10 @@ export type IsSingleton = typeof IsSingleton;
 // garbage collection once the raw constructor (key) is no longer
 // reachable — no manual cleanup is needed.
 const rawToProxiedMap = new WeakMap<object, object>();
+
+// Per-ADT sort declaration info: stores sort params and sort→variant mappings.
+// Entries are set during createADT for multi-sorted ADTs.
+const sortDeclMap = new WeakMap<object, { sortParams: SpecRecord; sortVariants: Map<string, string[]> }>();
 
 // Per-ADT inverse map registry: bidirectional opName ↔ inverseOpName.
 // When map `halve` declares `inverse: 'double'`, both directions are
@@ -177,6 +186,8 @@ type ADTLike = {
 
 type ParsedDecl = {
     typeParams: SpecRecord;
+    sortParams: SpecRecord;
+    sortVariants: Map<string, string[]>;
     variants: SpecRecord;
     operations: SpecRecord;
     parentADT: ADTLike | null;
@@ -220,6 +231,7 @@ function parseDeclaration(
     declFn: (params: object) => Record<string, unknown>
 ): ParsedDecl {
     const typeParams: SpecRecord = {},
+        sortParams: SpecRecord = {},
         variantsObj: SpecRecord = {},
         operationsObj: SpecRecord = {};
     let parentADT: ADTLike | null = null,
@@ -237,6 +249,12 @@ function parseDeclaration(
         typeParamProxy = new Proxy({} as Record<string, unknown>, {
             get(_target, prop: string | symbol) {
                 if (prop === 'Family') return context.Family;
+                if (typeof prop === 'string' && /^\$[A-Z]$/.test(prop)) {
+                    if (!sortParams[prop])
+                        sortParams[prop] = createSortParam(prop);
+
+                    return sortParams[prop];
+                }
                 if (typeof prop === 'string' && /^[A-Z]$/.test(prop)) {
                     if (!typeParams[prop])
                         typeParams[prop] = createTypeParam(prop);
@@ -269,7 +287,41 @@ function parseDeclaration(
         }
     }
 
-    return { typeParams, variants: variantsObj, operations: operationsObj, parentADT, Family };
+    // ---- Sort scanning ----
+    // Collect [sort] annotations from variant specs and build the
+    // sort → variants mapping.
+    const hasSorts = Object.keys(sortParams).length > 0;
+    const sortVariants = new Map<string, string[]>();
+
+    if (hasSorts) {
+        for (const [variantName, rawSpec] of Object.entries(variantsObj)) {
+            if (!rawSpec || typeof rawSpec !== 'object') continue;
+            const rawObj = rawSpec as Record<string | symbol, unknown>;
+            const sortAnnotation = rawObj[sort as unknown as string];
+
+            if (sortAnnotation && isSortRefSpec(sortAnnotation)) {
+                const sortName = (sortAnnotation as Record<symbol, string>)[SortRefSymbol];
+                if (!sortVariants.has(sortName))
+                    sortVariants.set(sortName, []);
+                sortVariants.get(sortName)!.push(variantName);
+            } else if (Object.keys(sortParams).length > 1) {
+                throw new Error(
+                    `Multi-sorted ADT requires [sort] annotation on every variant, ` +
+                    `but variant '${variantName}' is missing one`
+                );
+            }
+        }
+
+        // Single-sort inference: if only one sort param and no [sort] annotations,
+        // assign all variants to the single sort.
+        if (Object.keys(sortParams).length === 1 && sortVariants.size === 0) {
+            const singleSortName = Object.keys(sortParams)[0];
+            const allVariants = Object.keys(variantsObj);
+            sortVariants.set(singleSortName, allVariants);
+        }
+    }
+
+    return { typeParams, sortParams, sortVariants, variants: variantsObj, operations: operationsObj, parentADT, Family };
 }
 
 // ---- Variant constructor factories ------------------------------------------
@@ -310,11 +362,13 @@ function createVariantConstructor({
     return Variant as unknown as VariantLike;
 }
 
-function createSingletonVariant(name: string, ADT: ADTLike): SingletonInstance {
+function createSingletonVariant(name: string, ADT: ADTLike, sortName?: string | null): SingletonInstance {
     function Variant(this: object) {
         if (!new.target) return new (Variant as unknown as new () => unknown)();
         (this as Record<symbol, unknown>)[VariantNameSymbol] = name;
         (this as Record<symbol, unknown>)[IsVariantSymbol] = true;
+        if (sortName)
+            (this as Record<symbol, unknown>)[SortNameSymbol] = sortName;
         Object.freeze(this);
     }
 
@@ -539,6 +593,12 @@ function createTypeParam(name: string): object {
     return marker;
 }
 
+function createSortParam(name: string): object {
+    const marker: Record<symbol, unknown> = {};
+    marker[SortRefSymbol] = name;
+    return marker;
+}
+
 // ---- ADT creation -----------------------------------------------------------
 
 function createADT(decl: ParsedDecl): ADTLike {
@@ -573,7 +633,25 @@ function createADT(decl: ParsedDecl): ADTLike {
 
     Object.assign(ADT, createTransformerMethods(ADT as unknown as ADTLike));
 
-    const ownVariants = createVariants(ADT as unknown as ADTLike, decl.variants, decl.typeParams);
+    // Store sort info on the ADT for fold/unfold/map to access
+    if (decl.sortVariants.size > 0) {
+        sortDeclMap.set(ADT as unknown as object, {
+            sortParams: decl.sortParams,
+            sortVariants: decl.sortVariants
+        });
+
+        // Sort reflection: ADT[isSort](instance, '$E') → boolean
+        Object.defineProperty(ADT, isSort, {
+            value: (instance: unknown, sortName: string): boolean =>
+                instance !== null && instance !== undefined &&
+                (instance as Record<symbol, unknown>)[SortNameSymbol] === sortName,
+            writable: false,
+            enumerable: false,
+            configurable: true
+        });
+    }
+
+    const ownVariants = createVariants(ADT as unknown as ADTLike, decl.variants, decl.typeParams, decl.sortVariants);
 
     createOperations(ADT as unknown as ADTLike, ownVariants, decl.operations, decl.typeParams);
 
@@ -611,6 +689,23 @@ function createADT(decl: ParsedDecl): ADTLike {
 
 // ---- Child variant -----------------------------------------------------------
 
+/** Resolve the sort name for a variant by walking the ADT's ancestry chain. */
+function resolveInheritedSortName(
+    adt: ADTLike,
+    variantName: string
+): string | null {
+    let current: object | undefined = adt as unknown as object;
+    while (current) {
+        const info = sortDeclMap.get(current);
+        if (info) {
+            const sortName = resolveSortName(variantName, info.sortVariants);
+            if (sortName !== null) return sortName;
+        }
+        current = parentADTMap.get(current) as object | undefined;
+    }
+    return null;
+}
+
 function createChildVariant(
     ChildADT: ADTLike,
     variantName: string,
@@ -619,8 +714,11 @@ function createChildVariant(
     const parentSpec = (ParentVariant as VariantLike).spec || {},
         parentInvariantFn = (ParentVariant as VariantLike)._invariant || null;
 
+    // Resolve sort name for inherited variant from the ancestry chain
+    const childSortName = resolveInheritedSortName(ChildADT, variantName);
+
     if (Object.keys(parentSpec).length === 0)
-        return createSingletonVariant(variantName, ChildADT);
+        return createSingletonVariant(variantName, ChildADT, childSortName);
     else {
         return createVariantConstructor({
             name: variantName,
@@ -632,6 +730,8 @@ function createChildVariant(
                 validateAndAssignFields(this, fields, parentSpec, ChildADT);
                 checkConstructorInvariant(this, parentInvariantFn, variantName);
                 (this as Record<symbol, unknown>)[VariantNameSymbol] = variantName;
+                if (childSortName !== null)
+                    (this as Record<symbol, unknown>)[SortNameSymbol] = childSortName;
                 Object.freeze(this);
             }
         });
@@ -640,16 +740,31 @@ function createChildVariant(
 
 // ---- Variant creation -------------------------------------------------------
 
+/** Resolve the sort name for a variant, given the sort→variants mapping. */
+function resolveSortName(
+    variantName: string,
+    sortVariants: Map<string, string[]>
+): string | null {
+    for (const [sortName, variants] of sortVariants)
+        if (variants.includes(variantName))  return sortName;
+
+
+    return null;
+}
+
 function createVariants(
     ADT: ADTLike,
     variantSpecs: SpecRecord,
-    _typeParams: SpecRecord
+    _typeParams: SpecRecord,
+    sortVariants?: Map<string, string[]>
 ): Record<string, VariantLike | SingletonInstance> {
-    const variants: Record<string, VariantLike | SingletonInstance> = {};
+    const variants: Record<string, VariantLike | SingletonInstance> = {},
+        hasSorts = sortVariants !== undefined && sortVariants.size > 0;
 
     for (const [name, rawSpec] of Object.entries(variantSpecs)) {
         assertPascalCase(name, 'Variant');
 
+        const variantSortName = hasSorts ? resolveSortName(name, sortVariants!) : null;
 
         let invariantFn: ((instance: object) => boolean) | null = null,
             fieldSpec = rawSpec as SpecRecord;
@@ -660,6 +775,9 @@ function createVariants(
                 invariantFn = rawObj[invariant as unknown as string] as (instance: object) => boolean;
                 fieldSpec = omitSymbol(rawObj, invariant as unknown as symbol) as SpecRecord;
             }
+            // Strip [sort] annotation from variant spec — it's metadata, not a field
+            if (sort in rawObj)
+                fieldSpec = omitSymbol(fieldSpec as Record<string | symbol, unknown>, sort as unknown as symbol) as SpecRecord;
 
             for (const fieldName of Object.keys(fieldSpec))
                 assertCamelCase(fieldName, 'Field');
@@ -674,7 +792,7 @@ function createVariants(
                     `Invariant on singleton variant '${name}' is meaningless: singletons have no state to evaluate`
                 );
             }
-            variants[name] = createSingletonVariant(name, ADT);
+            variants[name] = createSingletonVariant(name, ADT, variantSortName);
         } else {
             variants[name] = createVariantConstructor({
                 name,
@@ -686,6 +804,8 @@ function createVariants(
                     validateAndAssignFields(this, fields, fieldSpec, ADT);
                     checkConstructorInvariant(this, invariantFn, name);
                     (this as Record<symbol, unknown>)[VariantNameSymbol] = name;
+                    if (variantSortName !== null)
+                        (this as Record<symbol, unknown>)[SortNameSymbol] = variantSortName;
                     Object.freeze(this);
                 }
             });
@@ -817,6 +937,27 @@ function validateField(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         if (!(value instanceof (rootBase as unknown as abstract new (...args: any[]) => unknown)))
             throw new TypeError(`Field '${fieldName}' must be an instance of the same ADT family`);
+
+        return;
+    }
+
+    // Sort reference — check instanceof ADT family AND sort name match
+    if (isSortRefSpec(fieldSpec)) {
+        let rootBase: object = ADT as object;
+        while (parentADTMap.has(rootBase))
+            rootBase = parentADTMap.get(rootBase)!;
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        if (!(value instanceof (rootBase as unknown as abstract new (...args: any[]) => unknown)))
+            throw new TypeError(`Field '${fieldName}' must be an instance of the same ADT family`);
+
+        const expectedSort = (fieldSpec as Record<symbol, string>)[SortRefSymbol];
+        const actualSort = (value as Record<symbol, unknown>)[SortNameSymbol];
+        if (actualSort !== expectedSort) {
+            throw new TypeError(
+                `Field '${fieldName}' expected a variant of sort '${expectedSort}', but got sort '${String(actualSort ?? 'none')}'`
+            );
+        }
 
         return;
     }
@@ -1324,7 +1465,7 @@ function createFoldOperation(
 
             const foldedFields: Record<string | symbol, unknown> = {};
             for (const [fieldName, fieldSpec] of specEntries) {
-                if (isFamilyRefSpec(fieldSpec)) {
+                if (isFamilyRefSpec(fieldSpec) || isSortRefSpec(fieldSpec)) {
                     const fieldValue = (self as Record<string, unknown>)[fieldName];
                     if (hasInput || hasExtraParams) {
                         foldedFields[fieldName] = (...params: unknown[]) =>
@@ -1361,7 +1502,7 @@ function createFoldOperation(
                     // after the child thunk has been invoked.
                     const historyObj: Record<string | symbol, unknown> = {};
                     for (const [fieldName, fieldSpec] of specEntries) {
-                        if (isFamilyRefSpec(fieldSpec)) {
+                        if (isFamilyRefSpec(fieldSpec) || isSortRefSpec(fieldSpec)) {
                             const fieldValue = (self as Record<string, unknown>)[fieldName];
                             Object.defineProperty(historyObj, fieldName, {
                                 get: () => histoFieldsCache?.get(fieldValue as object),
@@ -1376,7 +1517,7 @@ function createFoldOperation(
                     // (bottom-up), so their foldedFields are in the cache.
                     const historyObj: Record<string | symbol, unknown> = {};
                     for (const [fieldName, fieldSpec] of specEntries) {
-                        if (isFamilyRefSpec(fieldSpec)) {
+                        if (isFamilyRefSpec(fieldSpec) || isSortRefSpec(fieldSpec)) {
                             const fieldValue = (self as Record<string, unknown>)[fieldName];
                             const childFields = histoFieldsCache.get(fieldValue as object);
                             if (childFields)
@@ -1401,7 +1542,7 @@ function createFoldOperation(
                 // mode cannot accidentally overwrite keys.
                 const singleAuxName = auxIsArray ? null : auxNames[0];
                 for (const [fieldName, fieldSpec] of specEntries) {
-                    if (isFamilyRefSpec(fieldSpec)) {
+                    if (isFamilyRefSpec(fieldSpec) || isSortRefSpec(fieldSpec)) {
                         const fieldValue = (self as Record<string, unknown>)[fieldName];
                         if (singleAuxName !== null) {
                             // Flat shape: auxObj[fieldName]
@@ -1714,7 +1855,7 @@ function installUnfoldImpl(
                     if (Variant.spec) {
                         const transformedResult = { ...(result as Record<string, unknown>) };
                         for (const [fieldName, fieldSpec] of Object.entries(Variant.spec)) {
-                            if (isFamilyRefSpec(fieldSpec)) {
+                            if (isFamilyRefSpec(fieldSpec) || isSortRefSpec(fieldSpec)) {
                                 if (fieldName in (result as object)) {
                                     transformedResult[fieldName] =
                                         (ADT as Record<string, unknown>)[opName] as ((s: unknown) => unknown);
@@ -1904,7 +2045,7 @@ function buildMapImpl(
         for (const [fieldName, fieldSpec] of Object.entries(variantSpec)) {
             const value = (this as Record<string, unknown>)[fieldName];
 
-            if (isFamilyRefSpec(fieldSpec)) {
+            if (isFamilyRefSpec(fieldSpec) || isSortRefSpec(fieldSpec)) {
                 if (hasExtraParams && args.length > 0) {
                     mappedFields[fieldName] =
                         (value as Record<string, (...a: unknown[]) => unknown>)[opName](...args);
@@ -2442,12 +2583,21 @@ function createParameterized(
     (ParameterizedADT as unknown as Record<symbol, unknown>)[TypeArgsSymbol] = typeArgs;
     parentADTMap.set(ParameterizedADT as unknown as object, Base as unknown as object);
 
+    // Propagate sort info from the base ADT to the parameterized specialization
+    if (decl.sortVariants.size > 0) {
+        sortDeclMap.set(ParameterizedADT as unknown as object, {
+            sortParams: decl.sortParams,
+            sortVariants: decl.sortVariants
+        });
+    }
+
     Object.assign(ParameterizedADT, createTransformerMethods(ParameterizedADT as unknown as ADTLike));
 
     const paramVariants = createVariants(
         ParameterizedADT as unknown as ADTLike,
         decl.variants,
-        decl.typeParams
+        decl.typeParams,
+        decl.sortVariants
     );
 
     // Reinstall unfold operations from the base ADT, rebound to the
