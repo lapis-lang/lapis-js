@@ -312,12 +312,20 @@ function parseDeclaration(
             }
         }
 
-        // Single-sort inference: if only one sort param and no [sort] annotations,
-        // assign all variants to the single sort.
-        if (Object.keys(sortParams).length === 1 && sortVariants.size === 0) {
+        // Single-sort inference: if only one sort param, default any
+        // unannotated variants to that single sort.
+        if (Object.keys(sortParams).length === 1) {
             const singleSortName = Object.keys(sortParams)[0];
-            const allVariants = Object.keys(variantsObj);
-            sortVariants.set(singleSortName, allVariants);
+            const annotated = new Set(
+                Array.from(sortVariants.values()).flat()
+            );
+            if (!sortVariants.has(singleSortName))
+                sortVariants.set(singleSortName, []);
+            const list = sortVariants.get(singleSortName)!;
+            for (const vn of Object.keys(variantsObj)) {
+                if (!annotated.has(vn))
+                    list.push(vn);
+            }
         }
     }
 
@@ -1239,6 +1247,34 @@ function createFoldOperation(
 
     assertCamelCase(opName, 'Fold operation');
 
+    // Detect per-sort carrier out specification (e.g. out: { $E: Number, $S: undefined })
+    let perSortOut: Record<string, unknown> | null = null;
+    const resolvedOut = finalSpec['out'];
+    if (resolvedOut !== null && resolvedOut !== undefined && typeof resolvedOut === 'object' && typeof resolvedOut !== 'function') {
+        const sortInfo = sortDeclMap.get(ADT as unknown as object);
+        if (!sortInfo || sortInfo.sortVariants.size === 0) {
+            throw new Error(
+                `Operation '${opName}': object-valued 'out' requires a multi-sorted ADT with declared sorts`
+            );
+        }
+        const outObj = resolvedOut as Record<string, unknown>,
+            outKeys = Object.keys(outObj),
+            sortNames = [...sortInfo.sortVariants.keys()],
+            missing = sortNames.filter(s => !(s in outObj)),
+            extra = outKeys.filter(k => !sortNames.includes(k));
+
+        if (missing.length > 0) {
+            throw new Error(
+                `Operation '${opName}': per-sort 'out' is missing sort(s): ${missing.join(', ')}`
+            );
+        }
+        if (extra.length > 0) {
+            throw new Error(
+                `Operation '${opName}': per-sort 'out' has unknown sort(s): ${extra.join(', ')}`
+            );
+        }
+        perSortOut = outObj;
+    }
 
     const transformer = createFoldTransformer(
         opName,
@@ -1603,6 +1639,11 @@ function createFoldOperation(
             const prevFoldADT = _currentFoldParameterizedADT;
             _currentFoldParameterizedADT = resolveFoldParameterizedADT(variantCtor);
             try {
+                // Resolve per-sort carrier: if the out spec is per-sort,
+                // pick the carrier matching this variant's sort.
+                const effectiveOut = perSortOut !== null
+                    ? perSortOut[(self as Record<symbol, unknown>)[SortNameSymbol] as string]
+                    : opSpecObj['out'];
 
                 // ---- Contract enforcement (Design by Contract) ----
                 // Demands/ensures/invariants only enforce at the top-level call
@@ -1640,7 +1681,7 @@ function createFoldOperation(
                     const executeBody = (...bodyArgs: unknown[]): unknown => {
                         const bodyResult = (handler as HandlerFn).call(context, foldedFields, ...bodyArgs);
                         if (hasOutput)
-                            validateReturnType(bodyResult, opSpecObj['out'] as Parameters<typeof validateReturnType>[1], opName);
+                            validateReturnType(bodyResult, effectiveOut as Parameters<typeof validateReturnType>[1], opName);
 
                         // 4. Ensures check (postcondition)
                         if (foldContracts?.ensures)
@@ -1683,13 +1724,13 @@ function createFoldOperation(
                     try {
                         result = (handler as HandlerFn).call(context, foldedFields, ...args);
                         if (hasOutput)
-                            validateReturnType(result, opSpecObj['out'] as Parameters<typeof validateReturnType>[1], opName);
+                            validateReturnType(result, effectiveOut as Parameters<typeof validateReturnType>[1], opName);
                     } catch (error) {
                         if (!(error instanceof DemandsError)) {
                             const innerBody = (...newArgs: unknown[]): unknown => {
                                 const r = (handler as HandlerFn).call(context, foldedFields, ...newArgs);
                                 if (hasOutput)
-                                    validateReturnType(r, opSpecObj['out'] as Parameters<typeof validateReturnType>[1], opName);
+                                    validateReturnType(r, effectiveOut as Parameters<typeof validateReturnType>[1], opName);
                                 return r;
                             };
 
@@ -1714,7 +1755,7 @@ function createFoldOperation(
                 // skipping closure allocation for executeBody and rescue machinery.
                     result = (handler as HandlerFn).call(context, foldedFields, ...args);
                     if (hasOutput)
-                        validateReturnType(result, opSpecObj['out'] as Parameters<typeof validateReturnType>[1], opName);
+                        validateReturnType(result, effectiveOut as Parameters<typeof validateReturnType>[1], opName);
                 }
 
                 if (canCache) dagCache!.set(self, result);

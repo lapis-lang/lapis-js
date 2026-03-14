@@ -31,6 +31,53 @@ describe('Multi-Sorted Algebras', () => {
             assert.strictEqual(e.eval, 3);
         });
 
+        test('single-sorted ADT: unannotated variants default to sole sort when some are annotated', () => {
+            const Expr = data(({ $E }) => ({
+                Lit: { [sort]: $E, value: Number },
+                Neg: { inner: $E },           // no explicit [sort]
+                Add: { left: $E, right: $E }, // no explicit [sort]
+                eval: fold({ out: Number })({
+                    Lit({ value }) { return value; },
+                    Neg({ inner }) { return -inner; },
+                    Add({ left, right }) { return left + right; }
+                })
+            }));
+
+            // Unannotated variants should still be $E and accepted in $E fields
+            const e = Expr.Add(Expr.Neg(Expr.Lit(3)), Expr.Lit(2));
+            assert.strictEqual(e.eval, -1);
+
+            // isSort should work on unannotated variants too
+            assert.strictEqual((Expr as any)[isSort](Expr.Lit(1), '$E'), true);
+            assert.strictEqual((Expr as any)[isSort](Expr.Neg(Expr.Lit(1)), '$E'), true);
+        });
+
+        test('regression: partial [sort] annotations brand all variants including singletons', () => {
+            // Only Succ has [sort]: $N; Zero (singleton) and Dbl (structured) omit it.
+            // All three must receive SortNameSymbol branding for the single sort $N.
+            const Nat = data(({ $N }) => ({
+                Zero: {},                                   // singleton, no [sort]
+                Succ: { [sort]: $N, pred: $N },             // annotated
+                Dbl:  { inner: $N },                        // structured, no [sort]
+                toNum: fold({ out: Number })({
+                    Zero() { return 0; },
+                    Succ({ pred }) { return 1 + pred; },
+                    Dbl({ inner }) { return inner * 2; }
+                })
+            }));
+
+            // Construction: unannotated variants accepted in $N-typed fields
+            const two = Nat.Succ(Nat.Succ(Nat.Zero));
+            assert.strictEqual(two.toNum, 2);
+            const six = Nat.Dbl(Nat.Succ(Nat.Succ(Nat.Succ(Nat.Zero))));
+            assert.strictEqual(six.toNum, 6);
+
+            // Sort branding present on all variants
+            assert.strictEqual((Nat as any)[isSort](Nat.Zero, '$N'), true);
+            assert.strictEqual((Nat as any)[isSort](Nat.Succ(Nat.Zero), '$N'), true);
+            assert.strictEqual((Nat as any)[isSort](Nat.Dbl(Nat.Zero), '$N'), true);
+        });
+
         test('multi-sorted ADT: $E and $S with explicit [sort]', () => {
             const Lang = data(({ $E, $S }) => ({
                 // Exp sort
@@ -202,6 +249,96 @@ describe('Multi-Sorted Algebras', () => {
 
             const three = Nat.Succ(Nat.Succ(Nat.Succ(Nat.Zero)));
             assert.strictEqual(three.toNumber, 3);
+        });
+
+        test('per-sort carrier fold: distinct carrier types per sort', () => {
+            const Lang = data(({ $E, $S }) => ({
+                Lit:    { [sort]: $E, value: Number },
+                Add:    { [sort]: $E, left: $E, right: $E },
+                Assign: { [sort]: $S, name: String, expr: $E },
+                Seq:    { [sort]: $S, first: $S, second: $S },
+
+                eval: fold({ out: { $E: Number, $S: undefined } })({
+                    Lit({ value })         { return value; },
+                    Add({ left, right })   { return left + right; },
+                    Assign({ name, expr }) { void name; void expr; },
+                    Seq({ first, second }) { void first; void second; }
+                })
+            }));
+
+            const program = Lang.Seq(
+                Lang.Assign('x', Lang.Add(Lang.Lit(1), Lang.Lit(2))),
+                Lang.Assign('y', Lang.Lit(42))
+            );
+
+            // $S carriers return undefined
+            assert.strictEqual(program.eval, undefined);
+
+            // $E carriers return Number
+            const expr = Lang.Add(Lang.Lit(10), Lang.Lit(20));
+            assert.strictEqual(expr.eval, 30);
+        });
+
+        test('per-sort carrier fold: validates return types per sort', () => {
+            const Lang = data(({ $E, $S }) => ({
+                Lit:    { [sort]: $E, value: Number },
+                Add:    { [sort]: $E, left: $E, right: $E },
+                Print:  { [sort]: $S, expr: $E },
+
+                bad: fold({ out: { $E: Number, $S: String } })({
+                    Lit({ value }) { return value; },
+                    Add({ left, right }) { return left + right; },
+                    // Return wrong type for $S: should be String, returns Number
+                    Print({ expr }) { return expr; }
+                })
+            }));
+
+            // $E handler returns Number → should pass
+            assert.strictEqual(Lang.Lit(5).bad, 5);
+
+            // $S handler returns Number instead of String → should fail
+            assert.throws(
+                () => Lang.Print(Lang.Lit(5)).bad,
+                /expected to return/i
+            );
+        });
+
+        test('per-sort carrier fold: missing sort key throws', () => {
+            assert.throws(() => {
+                data(({ $E, $S }) => ({
+                    Lit:  { [sort]: $E, value: Number },
+                    Skip: { [sort]: $S },
+                    // Missing $S key
+                    bad: fold({ out: { $E: Number } })({
+                        Lit({ value }) { return value; },
+                        Skip() { return undefined; }
+                    })
+                }));
+            }, /missing sort.*\$S/i);
+        });
+
+        test('per-sort carrier fold: extra sort key throws', () => {
+            assert.throws(() => {
+                data(({ $E, $S }) => ({
+                    Lit:  { [sort]: $E, value: Number },
+                    Skip: { [sort]: $S },
+                    bad: fold({ out: { $E: Number, $S: undefined, $X: String } })({
+                        Lit({ value }) { return value; },
+                        Skip() { return undefined; }
+                    })
+                }));
+            }, /unknown sort.*\$X/i);
+        });
+
+        test('per-sort carrier fold: object out on non-sorted ADT throws', () => {
+            assert.throws(() => {
+                data(({ Family }) => ({
+                    Leaf: { value: Number },
+                    bad: fold({ out: { $E: Number } })({
+                        Leaf({ value }) { return value; }
+                    })
+                }));
+            }, /requires a multi-sorted ADT/i);
         });
     });
 
