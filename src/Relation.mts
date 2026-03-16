@@ -21,7 +21,7 @@
  */
 
 import { data, invariant } from './Data.mjs';
-import { op, spec as specSym, isOperationDef, isFamilyRefSpec } from './operations.mjs';
+import { op, spec as specSym, isOperationDef, isFamilyRefSpec, LapisTypeSymbol } from './operations.mjs';
 import type { DataDeclParams } from './types.mjs';
 
 // ---- Symbols ----------------------------------------------------------------
@@ -313,6 +313,7 @@ export function relation<D extends Record<string, unknown>>(
         configurable: true
     });
 
+    (ADT as unknown as Record<symbol, boolean>)[LapisTypeSymbol] = true;
     return ADT;
 }
 

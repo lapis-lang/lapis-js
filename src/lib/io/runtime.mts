@@ -1,10 +1,10 @@
 /**
  * Platform Runtime — Browser reference implementation of the IO loop driver.
  *
- * The runtime constructs a Main behavior instance and drives the Mealy machine:
- *   1. Read main.request           → IORequest value
- *   2. Perform the described IO    → IOResponse value
- *   3. Call main.respond(response) → next Main state
+ * Drives a MealyMachine (returned by system()) through its IO loop:
+ *   1. machine.request(state)         → IORequest value
+ *   2. Perform the described IO       → IOResponse value
+ *   3. machine.respond(state)(result) → next state
  *   4. Repeat until IORequest.Done is observed
  *
  * This module is inherently impure — it is the boundary between the pure
@@ -12,17 +12,19 @@
  * the runtime is the sole interpreter of IORequest descriptions.
  *
  * Usage:
- *   import { run } from '@lapis-lang/lapis-js/io';
- *   import { MyApp } from './my-app.mjs';
+ *   import { system } from '@lapis-lang/lapis-js';
+ *   import { IORequest, IOResponse, run } from '@lapis-lang/lapis-js/io';
  *
- *   run(MyApp.Start({ args: ['hello'] }));
+ *   const app = system({ ... }, (mods) => ({ init, request, respond }));
+ *   await run(app);
  *
  * @module
  */
 
+import type { MealyMachine } from '../../index.mjs';
+import { validateMealyMachine } from '../../Module.mjs';
 import { IORequest } from './request.mjs';
 import { IOResponse } from './response.mjs';
-import { Main } from './main.mjs';
 
 // Cast to any for instanceof checks on structured variants
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -174,33 +176,35 @@ async function executeRequest(request: any, ctx?: RuntimeContext): Promise<any> 
 }
 
 /**
- * Drive the Main behavior's IO loop until IORequest.Done is observed.
+ * Drive a MealyMachine's IO loop until IORequest.Done is observed.
  *
- * @param main - A constructed Main behavior instance (e.g., MyApp.Start(seed))
+ * @param machine - A MealyMachine returned by system() with init, request, and respond
  * @returns The exit code from IORequest.Done
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function run(main: any): Promise<number> {
-    if (!(main instanceof Main))
-        throw new TypeError('run() requires a Main behavior instance');
+
+async function run(machine: MealyMachine<unknown, unknown, unknown>): Promise<number> {
+    validateMealyMachine(machine);
+
 
     const ctx: RuntimeContext = {
         openStreams: new Map(),
         streamCounter: 0
     };
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const m = machine as any;
+
     try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        let state: any = main;
+        let state: unknown = machine.init;
 
         while (true) {
-            const request = state.request;
+            const request = m.request(state);
 
             if (request instanceof Req.Done)
                 return request.code;
 
             const response = await executeRequest(request, ctx);
-            state = state.respond(response);
+            state = m.respond(state)(response);
         }
     } finally {
         await cleanup(ctx);

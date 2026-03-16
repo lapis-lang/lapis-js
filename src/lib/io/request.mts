@@ -1,7 +1,7 @@
 /**
  * IORequest — algebraic data type describing IO operations.
  *
- * Programs emit IORequest values from their Main behavior's `request` observer.
+ * Programs emit IORequest values from the `request` function of a MealyMachine.
  * The platform runtime interprets these descriptions and performs the actual IO.
  *
  * Covers all four IO quadrants:

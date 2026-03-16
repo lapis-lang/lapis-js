@@ -29,7 +29,7 @@
  */
 
 import { behavior } from './Behavior.mjs';
-import { isOperationDef, isSelfRef, op, spec as specSym } from './operations.mjs';
+import { isOperationDef, isSelfRef, op, spec as specSym, LapisTypeSymbol } from './operations.mjs';
 import type { BehaviorDeclParams } from './types.mjs';
 
 // ---- Symbols ----------------------------------------------------------------
@@ -246,6 +246,7 @@ export function observer<D extends Record<string, unknown>>(
         configurable: true
     });
 
+    (ADT as unknown as Record<symbol, boolean>)[LapisTypeSymbol] = true;
     return ADT;
 }
 

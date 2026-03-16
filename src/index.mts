@@ -17,6 +17,10 @@ export type { ContractSpec } from './contracts.mjs';
 export type { DataADT, DataADTWithParams, BehaviorADT, BehaviorADTWithParams, DataDeclParams, BehaviorDeclParams, Letter, SortLetter, CollectParams } from './types.mjs';
 export type { TypeSpec, FamilyRef, SelfRef, TypeParamRef, SortRef } from './types.mjs';
 
+// Module system exports
+export { module, system } from './Module.mjs';
+export type { ModuleSpec, ModuleDef, MealyMachine, LapisValue } from './Module.mjs';
+
 // Utility exports
 export { structuralEquals } from './utils.mjs';
 

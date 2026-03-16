@@ -28,7 +28,8 @@
  */
 export class DemandsError extends Error {
     override name = 'DemandsError';
-    constructor(opName: string, context: string, demandFn?: ((...args: unknown[]) => boolean)) {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
+    constructor(opName: string, context: string, demandFn?: Function) {
         const fnStr = demandFn ? `\n  Demand: ${demandFn.toString()}` : '';
         super(`Precondition failed for operation '${opName}' on ${context}${fnStr}`);
     }
@@ -40,7 +41,8 @@ export class DemandsError extends Error {
  */
 export class EnsuresError extends Error {
     override name = 'EnsuresError';
-    constructor(opName: string, context: string, ensuresFn?: ((...args: unknown[]) => boolean)) {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
+    constructor(opName: string, context: string, ensuresFn?: Function) {
         const fnStr = ensuresFn ? `\n  Ensures: ${ensuresFn.toString()}` : '';
         super(`Postcondition failed for operation '${opName}' on ${context}${fnStr}`);
     }
@@ -52,7 +54,8 @@ export class EnsuresError extends Error {
  */
 export class InvariantError extends Error {
     override name = 'InvariantError';
-    constructor(opName: string, context: string, phase: 'pre' | 'post', invariantFn?: ((...args: unknown[]) => boolean)) {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
+    constructor(opName: string, context: string, phase: 'pre' | 'post', invariantFn?: Function) {
         const phaseStr = phase === 'pre' ? 'before' : 'after';
         const fnStr = invariantFn ? `\n  Invariant: ${invariantFn.toString()}` : '';
         super(`Invariant violated ${phaseStr} operation '${opName}' on ${context}${fnStr}`);
@@ -130,10 +133,10 @@ export function checkInvariant(
 ): void {
     try {
         if (!invariantFn(self))
-            throw new InvariantError(opName, context, phase, invariantFn as unknown as (...args: unknown[]) => boolean);
+            throw new InvariantError(opName, context, phase, invariantFn);
     } catch (e) {
         if (e instanceof InvariantError) throw e;
-        throw new InvariantError(opName, context, phase, invariantFn as unknown as (...args: unknown[]) => boolean);
+        throw new InvariantError(opName, context, phase, invariantFn);
     }
 }
 
