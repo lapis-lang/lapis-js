@@ -17,7 +17,8 @@ import {
     isFamilyRefSpec,
     isSortRefSpec,
     assertCamelCase,
-    assertPascalCase
+    assertPascalCase,
+    LapisTypeSymbol
 } from './operations.mjs';
 
 import {
@@ -222,6 +223,7 @@ export function data<D extends Record<string, unknown>>(
 ): DataADTWithParams<D> {
     const decl = parseDeclaration(declFn as unknown as (params: object) => Record<string, unknown>),
         ADT = createADT(decl);
+    (ADT as unknown as Record<symbol, boolean>)[LapisTypeSymbol] = true;
     return ADT as unknown as DataADTWithParams<D>;
 }
 

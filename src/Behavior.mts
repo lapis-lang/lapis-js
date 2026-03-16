@@ -26,7 +26,8 @@ import {
     aux,
     parseAux,
     assertCamelCase,
-    assertPascalCase
+    assertPascalCase,
+    LapisTypeSymbol
 } from './operations.mjs';
 
 import {
@@ -493,6 +494,7 @@ export function behavior<D extends Record<string, unknown>>(
         }
     }
 
+    (callableBehavior as unknown as Record<symbol, boolean>)[LapisTypeSymbol] = true;
     return callableBehavior as unknown as BehaviorADTWithParams<D>;
 }
 

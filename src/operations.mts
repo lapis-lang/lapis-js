@@ -65,6 +65,14 @@ export type history = typeof history;
 export const aux: unique symbol = Symbol('aux');
 export type aux = typeof aux;
 
+/**
+ * Stamps values produced by data(), behavior(), relation(), and observer().
+ * Used by module() at instantiation time to validate that all exported values
+ * are Lapis types rather than arbitrary JavaScript values.
+ */
+export const LapisTypeSymbol: unique symbol = Symbol('LapisType');
+export type LapisTypeSymbol = typeof LapisTypeSymbol;
+
 /** Parsed auxiliary-fold configuration from a fold spec's `aux` key. */
 export interface ParsedAux {
     /** Normalised list of auxiliary fold names, or `null` when absent. */

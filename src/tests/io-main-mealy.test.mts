@@ -1,8 +1,8 @@
 /**
- * Tests for the Main Mealy machine behavior — IO loop via mock interpreter.
+ * Tests for the system() Mealy machine — IO loop via mock interpreter.
  *
  * Verifies:
- *   - Main behavior protocol with request/respond observers
+ *   - system() returns a valid MealyMachine: { init, request, respond }
  *   - Deterministic state threading through mock IO responses
  *   - Linear CLI-style state machine (read → write → done)
  *   - Cyclic server-style state machine (listen → handle → listen)
@@ -11,65 +11,42 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { behavior, unfold, extend } from '../index.mjs';
+import { system } from '../index.mjs';
 import { IORequest } from '../lib/io/request.mjs';
 import { IOResponse } from '../lib/io/response.mjs';
-import { Main } from '../lib/io/main.mjs';
+import { testRun } from '../lib/io/mock.mjs';
 
-/**
- * Deterministic mock interpreter — drives Main through a sequence of
- * pre-defined IOResponse values and collects the emitted IORequest values.
- */
-
-function testRun(main: any, responses: any[]): any[] {
-
-    let state: any = main;
-
-    const requests: any[] = [];
-
-    for (const response of responses) {
-        requests.push(state.request);
-        state = state.respond(response);
-    }
-
-    // Capture the final request (typically Done)
-    requests.push(state.request);
-
-    return requests;
-}
-
-describe('Main Mealy Machine', () => {
-    it('should define Main behavior type with request and respond observers', () => {
-        assert.ok(Main);
+describe('system() Mealy Machine', () => {
+    it('should return a MealyMachine with init, request, and respond', () => {
+        const app = system({}, () => ({
+            init: {},
+            request: (_s: unknown) => IORequest.Done({ code: 0 }),
+            respond: (_s: unknown) => (_r: unknown) => ({})
+        }));
+        assert.ok('init' in app);
+        assert.strictEqual(typeof app.request, 'function');
+        assert.strictEqual(typeof app.respond, 'function');
     });
 
     describe('CLI-style linear state machine (read → write → done)', () => {
 
-        const CliApp: any = behavior(({ Self }: { Self: any }) => ({
-            [extend]: Main,
+        type CliState = { phase: string; args: string[]; content: string };
 
-            Start: unfold({ in: { phase: String, args: Array, content: String }, out: Self })({
-                request: ({ phase, args, content }: { phase: string; args: unknown[]; content: string }) => {
-                    if (phase === 'read')  return IORequest.Read({ path: args[0] as string });
-                    if (phase === 'write') return IORequest.Write({ message: content });
-
-                    return IORequest.Done({ code: 0 });
-                },
-                respond: ({ phase, args }: { phase: string; args: unknown[] }) =>
-
-                    (response: any) => {
-                        if (phase === 'read')
-                            return { phase: 'write', args, content: response.content };
-
-                        return { phase: 'done', args, content: '' };
-                    }
-            })
+        const cliApp = system({}, () => ({
+            init: { phase: 'read', args: ['hello.txt'], content: '' } as CliState,
+            request: ({ phase, args, content }: CliState) => {
+                if (phase === 'read')  return IORequest.Read({ path: args[0] });
+                if (phase === 'write') return IORequest.Write({ message: content });
+                return IORequest.Done({ code: 0 });
+            },
+            respond: ({ phase, args }: CliState) => (response: any): CliState => {
+                if (phase === 'read') return { phase: 'write', args, content: response.content };
+                return { phase: 'done', args, content: '' };
+            }
         }));
 
         it('should emit Read, then Write, then Done', () => {
-            const main = CliApp.Start({ phase: 'read', args: ['hello.txt'], content: '' });
-
-            const requests = testRun(main, [
+            const requests = testRun(cliApp, [
                 IOResponse.ReadResult({ content: 'file contents' }),
                 IOResponse.WriteResult
             ]);
@@ -85,82 +62,50 @@ describe('Main Mealy Machine', () => {
         });
 
         it('should propagate file content through state', () => {
-            const main = CliApp.Start({ phase: 'read', args: ['data.csv'], content: '' });
+            type S = { phase: string; args: string[]; content: string };
+            const app = system({}, () => ({
+                init: { phase: 'read', args: ['data.csv'], content: '' } as S,
+                request: ({ phase, args, content }: S) => {
+                    if (phase === 'read')  return IORequest.Read({ path: args[0] });
+                    if (phase === 'write') return IORequest.Write({ message: content });
+                    return IORequest.Done({ code: 0 });
+                },
+                respond: ({ phase, args }: S) => (response: any): S => {
+                    if (phase === 'read') return { phase: 'write', args, content: response.content };
+                    return { phase: 'done', args, content: '' };
+                }
+            }));
 
-            const requests = testRun(main, [
+            const requests = testRun(app, [
                 IOResponse.ReadResult({ content: 'a,b,c\n1,2,3' }),
                 IOResponse.WriteResult
             ]);
 
-            assert.strictEqual(requests[1].message, 'a,b,c\n1,2,3');
-        });
-    });
-
-    describe('Standalone behavior (no extend)', () => {
-
-        const EchoApp: any = behavior(({ Self }: { Self: any }) => ({
-            request: IORequest,
-            respond: { in: IOResponse, out: Self },
-
-            Start: unfold({ in: { phase: String, message: String }, out: Self })({
-                request: ({ phase, message }: { phase: string; message: string }) => {
-                    if (phase === 'write') return IORequest.Write({ message });
-
-                    return IORequest.Done({ code: 0 });
-                },
-                respond: ({ phase }: { phase: string }) =>
-                    () => {
-                        if (phase === 'write') return { phase: 'done', message: '' };
-
-                        return { phase: 'done', message: '' };
-                    }
-            })
-        }));
-
-        it('should work without extending Main', () => {
-            const main = EchoApp.Start({ phase: 'write', message: 'hello' });
-
-            const requests = testRun(main, [
-                IOResponse.WriteResult
-            ]);
-
-            assert.ok(requests[0] instanceof IORequest.Write);
-            assert.strictEqual(requests[0].message, 'hello');
-
-            assert.ok(requests[1] instanceof IORequest.Done);
+            assert.strictEqual((requests[1] as { message: string }).message, 'a,b,c\n1,2,3');
         });
     });
 
     describe('Cyclic state machine (server-style)', () => {
 
-        const ServerApp: any = behavior(({ Self }: { Self: any }) => ({
-            [extend]: Main,
+        type ServerState = { phase: string; count: number };
 
-            Start: unfold({ in: { phase: String, count: Number }, out: Self })({
-                request: ({ phase, count }: { phase: string; count: number }) => {
-                    if (phase === 'listen') return IORequest.Listen({ event: 'request' });
-                    if (phase === 'respond') return IORequest.Write({ message: `handled ${count}` });
-                    if (phase === 'done') return IORequest.Done({ code: 0 });
-
-                    return IORequest.Done({ code: 1 });
-                },
-                respond: ({ phase, count }: { phase: string; count: number }) =>
-
-                    (_response: any) => {
-                        if (phase === 'listen')
-                            return { phase: 'respond', count: count + 1 };
-                        if (phase === 'respond' && count < 2)
-                            return { phase: 'listen', count };
-
-                        return { phase: 'done', count };
-                    }
-            })
+        const serverApp = system({}, () => ({
+            init: { phase: 'listen', count: 0 } as ServerState,
+            request: ({ phase, count }: ServerState) => {
+                if (phase === 'listen')  return IORequest.Listen({ event: 'request' });
+                if (phase === 'respond') return IORequest.Write({ message: `handled ${count}` });
+                if (phase === 'done')    return IORequest.Done({ code: 0 });
+                return IORequest.Done({ code: 1 });
+            },
+            respond: ({ phase, count }: ServerState) => (_response: unknown): ServerState => {
+                if (phase === 'listen')  return { phase: 'respond', count: count + 1 };
+                if (phase === 'respond' && count < 2) return { phase: 'listen', count };
+                return { phase: 'done', count };
+            }
         }));
 
         it('should cycle through listen → respond → listen', () => {
-            const main = ServerApp.Start({ phase: 'listen', count: 0 });
-
-            const requests = testRun(main, [
+            const requests = testRun(serverApp, [
                 IOResponse.EventResult({ payload: 'req1' }),       // listen → respond
                 IOResponse.WriteResult,                            // respond → listen (count < 2)
                 IOResponse.EventResult({ payload: 'req2' }),       // listen → respond
@@ -179,79 +124,75 @@ describe('Main Mealy Machine', () => {
         });
     });
 
-    describe('Instance relationships', () => {
+    describe('State transitions', () => {
 
-        const SimpleApp: any = behavior(({ Self }: { Self: any }) => ({
-            [extend]: Main,
+        it('should thread state through multiple respond calls', () => {
+            type S = { step: number };
+            const app = system({}, () => ({
+                init: { step: 0 } as S,
+                request: ({ step }: S) =>
+                    step === 0 ? IORequest.Write({ message: 'step 0' }) : IORequest.Done({ code: step }),
+                respond: ({ step }: S) => (): S => ({ step: step + 1 })
+            }));
 
-            Start: unfold({ in: { done: Boolean }, out: Self })({
-                request: ({ done }: { done: boolean }) =>
-                    done ? IORequest.Done({ code: 0 }) : IORequest.GetTime,
-                respond: () => () => ({ done: true })
-            })
-        }));
+            let state: any = app.init;
+            assert.ok(app.request(state) instanceof IORequest.Write);
+            assert.strictEqual((app.request(state) as { message: string }).message, 'step 0');
 
-        it('extended behavior instances should be instanceof Main', () => {
-            const main = SimpleApp.Start({ done: false });
-            assert.ok(main instanceof Main);
-            assert.ok(main instanceof SimpleApp);
+            state = app.respond(state)(IOResponse.WriteResult);
+            assert.ok(app.request(state) instanceof IORequest.Done);
+            assert.strictEqual((app.request(state) as { code: number }).code, 1);
         });
 
-        it('should transition through respond correctly', () => {
-            const main = SimpleApp.Start({ done: false });
-            assert.strictEqual(main.request, IORequest.GetTime);
+        it('GetTime singleton request should be returned correctly', () => {
+            type S = { done: boolean };
+            const app = system({}, () => ({
+                init: { done: false } as S,
+                request: ({ done }: S) => done ? IORequest.Done({ code: 0 }) : IORequest.GetTime,
+                respond: (_s: S) => (): S => ({ done: true })
+            }));
 
-            const next = main.respond(IOResponse.TimeResult({ now: 12345 }));
-            assert.ok(next.request instanceof IORequest);
-            assert.strictEqual(next.request.code, 0);
+            assert.strictEqual(app.request(app.init), IORequest.GetTime);
+
+            const next = app.respond(app.init)(IOResponse.TimeResult({ now: 12345 }));
+            assert.ok(app.request(next) instanceof IORequest.Done);
+            assert.strictEqual((app.request(next) as { code: number }).code, 0);
         });
     });
 
     describe('Pull/Multiple streaming state machine (open → read chunks → close → done)', () => {
 
-        const StreamReader: any = behavior(({ Self }: { Self: any }) => ({
-            [extend]: Main,
+        type StreamState = { phase: string; path: string; handle: string; chunks: string[] };
 
-            Start: unfold({ in: { phase: String, path: String, handle: String, chunks: Array }, out: Self })({
-                request: ({ phase, path, handle }: {
-                    phase: string; path: string; handle: string;
-                }) => {
-                    if (phase === 'open')  return IORequest.OpenStream({ path });
-                    if (phase === 'read')  return IORequest.ReadChunk({ handle });
-                    if (phase === 'close') return IORequest.CloseStream({ handle });
+        const streamApp = system({}, () => ({
+            init: { phase: 'open', path: '/large.csv', handle: '', chunks: [] } as StreamState,
+            request: ({ phase, path, handle }: StreamState) => {
+                if (phase === 'open')  return IORequest.OpenStream({ path });
+                if (phase === 'read')  return IORequest.ReadChunk({ handle });
+                if (phase === 'close') return IORequest.CloseStream({ handle });
+                return IORequest.Done({ code: 0 });
+            },
+            respond: ({ phase, path, handle, chunks }: StreamState) => (response: any): StreamState => {
+                if (phase === 'open')
+                    return { phase: 'read', path, handle: response.handle, chunks };
 
-                    return IORequest.Done({ code: 0 });
-                },
-                respond: ({ phase, path, handle, chunks }: {
-                    phase: string; path: string; handle: string; chunks: unknown[];
-
-                }) => (response: any) => {
-                    if (phase === 'open')
-                        return { phase: 'read', path, handle: response.handle, chunks };
-
-                    if (phase === 'read') {
-                        // EndOfStream → close the stream
-                        if (response === IOResponse.EndOfStream)
-                            return { phase: 'close', path, handle, chunks };
-
-                        return { phase: 'read', path, handle, chunks: [...chunks, response.data] };
-                    }
-
-                    // After close → done
-                    return { phase: 'done', path, handle: '', chunks };
+                if (phase === 'read') {
+                    if (response === IOResponse.EndOfStream)
+                        return { phase: 'close', path, handle, chunks };
+                    return { phase: 'read', path, handle, chunks: [...chunks, response.data] };
                 }
-            })
+
+                return { phase: 'done', path, handle: '', chunks };
+            }
         }));
 
         it('should emit OpenStream, ReadChunk(s), CloseStream, Done', () => {
-            const main = StreamReader.Start({ phase: 'open', path: '/large.csv', handle: '', chunks: [] });
-
-            const requests = testRun(main, [
+            const requests = testRun(streamApp, [
                 IOResponse.StreamOpened({ handle: 'stream-1' }),    // open → read
-                IOResponse.StreamChunk({ data: 'line1\n' }),       // read → read
-                IOResponse.StreamChunk({ data: 'line2\n' }),       // read → read
-                IOResponse.EndOfStream,                            // read → close
-                IOResponse.None                                    // close → done
+                IOResponse.StreamChunk({ data: 'line1\n' }),        // read → read
+                IOResponse.StreamChunk({ data: 'line2\n' }),        // read → read
+                IOResponse.EndOfStream,                             // read → close
+                IOResponse.None                                     // close → done
             ]);
 
             assert.ok(requests[0] instanceof IORequest.OpenStream);
@@ -270,25 +211,39 @@ describe('Main Mealy Machine', () => {
             assert.strictEqual(requests[5].code, 0);
         });
 
-        it('should accumulate chunk data in seed state', () => {
-            const main = StreamReader.Start({ phase: 'open', path: '/data.txt', handle: '', chunks: [] });
+        it('should accumulate chunk data through state', () => {
+            type S = StreamState;
+            const app = system({}, () => ({
+                init: { phase: 'open', path: '/data.txt', handle: '', chunks: [] } as S,
+                request: ({ phase, path, handle }: S) => {
+                    if (phase === 'open')  return IORequest.OpenStream({ path });
+                    if (phase === 'read')  return IORequest.ReadChunk({ handle });
+                    if (phase === 'close') return IORequest.CloseStream({ handle });
+                    return IORequest.Done({ code: 0 });
+                },
+                respond: ({ phase, path, handle, chunks }: S) => (response: any): S => {
+                    if (phase === 'open')   return { phase: 'read', path, handle: response.handle, chunks };
+                    if (phase === 'read')   {
+                        return response === IOResponse.EndOfStream
+                            ? { phase: 'close', path, handle, chunks }
+                            : { phase: 'read', path, handle, chunks: [...chunks, response.data] };
+                    }
+                    return { phase: 'done', path, handle: '', chunks };
+                }
+            }));
 
-            // Drive through open + 2 chunks + end + close
-            let state: any = main;
-            state = state.respond(IOResponse.StreamOpened({ handle: 'h1' }));
-            state = state.respond(IOResponse.StreamChunk({ data: 'alpha' }));
-            state = state.respond(IOResponse.StreamChunk({ data: 'beta' }));
-            state = state.respond(IOResponse.EndOfStream);
-            state = state.respond(IOResponse.None);
+            let state: any = app.init;
+            state = app.respond(state)(IOResponse.StreamOpened({ handle: 'h1' }));
+            state = app.respond(state)(IOResponse.StreamChunk({ data: 'alpha' }));
+            state = app.respond(state)(IOResponse.StreamChunk({ data: 'beta' }));
+            state = app.respond(state)(IOResponse.EndOfStream);
+            state = app.respond(state)(IOResponse.None);
 
-            // Final request is Done; seed accumulated both chunks
-            assert.ok(state.request instanceof IORequest.Done);
+            assert.ok(app.request(state) instanceof IORequest.Done);
         });
 
         it('should handle immediate EndOfStream (empty resource)', () => {
-            const main = StreamReader.Start({ phase: 'open', path: '/empty', handle: '', chunks: [] });
-
-            const requests = testRun(main, [
+            const requests = testRun(streamApp, [
                 IOResponse.StreamOpened({ handle: 'stream-2' }),
                 IOResponse.EndOfStream,                           // read → close immediately
                 IOResponse.None                                   // close → done

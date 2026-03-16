@@ -91,12 +91,17 @@ there is an emphasis on the Bird-Meertens Formalism (BMF) (Squiggol) of making p
   - [What is a Mealy Machine?](#what-is-a-mealy-machine)
   - [Sync Program, Async Runtime](#sync-program-async-runtime)
   - [IORequest and IOResponse](#iorequest-and-ioresponse)
-  - [The Main Behavior](#the-main-behavior)
-  - [Extending Main](#extending-main)
+  - [Building an IO Program](#building-an-io-program)
   - [The IO Loop](#the-io-loop)
   - [Running a Program](#running-a-program)
   - [Contracts on IO](#contracts-on-io)
   - [Event Handling (Listen, Subscribe, AwaitEvent)](#event-handling-listen-subscribe-awaitevent)
+- [Module System](#module-system)
+  - [Defining a Module](#defining-a-module)
+  - [Module Contracts](#module-contracts)
+  - [Module Extension with `[extend]`](#module-extension-with-extend)
+  - [Contract Subcontracting in Modules](#contract-subcontracting-in-modules)
+  - [system() — Programs as Mealy Machines](#system--programs-as-mealy-machines)
 - [References, Inspirations, and Further Reading](#references-inspirations-and-further-reading)
 
 ## Installation
@@ -3424,37 +3429,36 @@ try {
 
 Lapis programs model IO as a **Mealy machine** — a pure state machine that separates *describing* effects from *performing* them. The program itself never executes side effects; it only produces data values that a platform runtime interprets.
 
-This is available as a separate sub-package:
+IO programs are built with `system()` and run with `run()`, both available as a separate sub-package:
 
 ```ts
-import { IORequest, IOResponse, Main, run } from '@lapis-lang/lapis-js/io';
+import { system } from '@lapis-lang/lapis-js';
+import { IORequest, IOResponse, run } from '@lapis-lang/lapis-js/io';
 ```
 
 ### What is a Mealy Machine?
 
 A [Mealy machine](https://en.wikipedia.org/wiki/Mealy_machine) is a finite-state machine where outputs depend on both the current state and the current input. In Lapis, the IO system has four parts:
 
-- **State** — the program’s internal seed, threaded through each IO cycle
+- **State** — the program’s internal state, threaded through each IO cycle
 - **Output** — an `IORequest` value describing what IO to perform next
 - **Input** — an `IOResponse` value carrying the result of that IO
-- **Transition** — `respond(IOResponse) → nextState`
+- **Transition** — `respond(state)(IOResponse) → nextState`
 
 Formally, each step is a function:
 
 $$\text{step}: S \to \text{IORequest} \times (\text{IOResponse} \to S)$$
 
-where $S$ is the state type. The first projection (`request`) produces the output, and the second projection (`respond`) consumes the input and returns the next state. The loop terminates when `request` returns `IORequest.Done`.
-
-This is why `Main` is defined as a `behavior()` in Lapis: it describes what can be *observed* (the next request) and how to *step* (respond and continue). *(CT note: this is a coalgebra for the functor $F(S) = \text{IORequest} \times (\text{IOResponse} \to S)$, i.e. a final coalgebra.)*
+where $S$ is the state type. The first projection (`request`) produces the output, and the second projection (`respond`) consumes the input and returns the next state. The loop terminates when `request(state)` returns `IORequest.Done`.
 
 ### Sync Program, Async Runtime
 
-The Mealy machine design creates a clean boundary between synchronous program logic and asynchronous IO execution:
+The Mealy machine design creates a clean boundary between synchronous program logic and asynchronous IO execution. This separation is reflected in the package structure: `system()` lives in the platform-agnostic core (`@lapis-lang/lapis-js`) and returns a plain data value — a `MealyMachine` record with `init`, `request`, and `respond`. The runtime (`run`, `executeRequest`) lives in the platform sub-package (`@lapis-lang/lapis-js/io`) and is the only place that touches `Promise`, browser APIs, or timers. Because the machine is just a plain object, any interpreter can drive it — the reference browser runtime, a Node adapter, or a fully synchronous test mock.
 
 | | Program | Runtime |
 | --- | --- | --- |
 | **Purity** | Pure — no side effects | Impure — performs actual IO |
-| **Sync/Async** | Synchronous — `request` and `respond` are plain values and functions | Asynchronous — `run()` and `executeRequest()` are `async` |
+| **Sync/Async** | Synchronous — `request` and `respond` are pure functions over immutable state | Asynchronous — `run()` and `executeRequest()` are `async` |
 | **Determinism** | Deterministic — same `IOResponse` sequence always produces same `IORequest` sequence | Non-deterministic — network, timing, user input |
 | **Testability** | Mock interpreter drives the loop synchronously | Real IO requires browser APIs |
 
@@ -3462,9 +3466,14 @@ The program never encounters `Promise`, `async`, `await`, or callbacks. All asyn
 
 ```ts
 // Program side (sync, pure) — this is what you write
-const app = MyApp.Start({ url: '/api/data' });
-app.request;                        // IORequest.HttpGet({ url: '/api/data' })
-app.respond(someResponse);          // next Main state (synchronous)
+const app = system({}, () => ({
+    init: { url: '/api/data', phase: 'fetch' },
+    request: ({ url }) => IORequest.HttpGet({ url }),
+    respond: (_s) => (res) => ({ phase: 'done', body: res.body })
+}));
+
+app.request(app.init);              // IORequest.HttpGet({ url: '/api/data' })
+app.respond(app.init)(someResult);  // next state (synchronous)
 
 // Runtime side (async, impure) — this is what runs it
 const exitCode = await run(app);    // internally awaits fetch, setTimeout, etc.
@@ -3473,20 +3482,19 @@ const exitCode = await run(app);    // internally awaits fetch, setTimeout, etc.
 This means programs can be tested with a fully synchronous mock interpreter:
 
 ```ts
-function testRun(main, responses) {
-    let state = main;
+function testRun(machine, responses) {
+    let state = machine.init;
     const requests = [];
     for (const response of responses) {
-        requests.push(state.request);
-        state = state.respond(response);
+        requests.push(machine.request(state));
+        state = machine.respond(state)(response);
     }
-    requests.push(state.request);
+    requests.push(machine.request(state));
     return requests;
 }
 
 // No async needed — pure deterministic state transitions
-const requests = testRun(
-    MyApp.Start({ url: '/data' }),
+const requests = testRun(app,
     [IOResponse.HttpResult({ status: 200, body: '{"ok":true}' })]
 );
 ```
@@ -3542,66 +3550,37 @@ IORequest.Read({ path: 42 });   // TypeError: path must be a String
 IORequest.Done({ code: 'ok' }); // TypeError: code must be a Number
 ```
 
-### The Main Behavior
+### Building an IO Program
 
-`Main` is a `behavior()` type defining the Mealy machine protocol with two observers:
-
-- **`request`** — projects the current `IORequest` from the state (what IO to do next)
-- **`respond`** — a continuation accepting an `IOResponse`, returning the next state
+Use `system()` to define a Mealy machine as a plain object with three properties:
 
 ```ts
-import { behavior, unfold, extend } from '@lapis-lang/lapis-js';
-import { IORequest, IOResponse, Main } from '@lapis-lang/lapis-js/io';
+import { system } from '@lapis-lang/lapis-js';
+import { IORequest, IOResponse, run } from '@lapis-lang/lapis-js/io';
 
-const MyApp = behavior(({ Self }) => ({
-    [extend]: Main,
+type State = { phase: string; url: string; content: string };
 
-    Start: unfold({ in: { message: String }, out: Self })({
-        request: ({ message }) => IORequest.Write({ message }),
-        respond: () => () => ({ message: 'done' })
-    })
+const app = system({}, () => ({
+    init: { phase: 'fetch', url: '/api/data', content: '' } as State,
+    request: ({ phase, url, content }: State) => {
+        if (phase === 'fetch')   return IORequest.HttpGet({ url });
+        if (phase === 'display') return IORequest.Write({ message: content });
+        return IORequest.Done({ code: 0 });
+    },
+    respond: ({ phase, url }: State) => (response: any): State => {
+        if (phase === 'fetch')
+            return { phase: 'display', url, content: response.body };
+        return { phase: 'done', url, content: '' };
+    }
 }));
 
-const app = MyApp.Start({ message: 'Hello, world!' });
-console.log(app.request.message); // 'Hello, world!'
-console.log(app instanceof Main); // true
+const exitCode = await run(app);
+console.log('Exited with code:', exitCode);
 ```
 
-Each unfold constructor provides handlers for both observers:
-
-- `request(seed)` — receives the current seed, returns an `IORequest`
-- `respond(seed)` — receives the current seed, returns a function `(IOResponse) → nextSeed`
-
-The seed is the internal state threaded through each IO cycle.
-
-### Extending Main
-
-Programs can extend `Main` using the `[extend]` symbol, inheriting the `request`/`respond` observer protocol:
-
-```ts
-import { behavior, unfold, extend } from '@lapis-lang/lapis-js';
-import { IORequest, IOResponse, Main } from '@lapis-lang/lapis-js/io';
-
-const FetchAndDisplay = behavior(({ Self }) => ({
-    [extend]: Main,
-
-    Start: unfold({ in: { phase: String, url: String, content: String }, out: Self })({
-        request: ({ phase, url, content }) => {
-            if (phase === 'fetch') return IORequest.HttpGet({ url });
-            if (phase === 'display') return IORequest.Write({ message: content });
-            return IORequest.Done({ code: 0 });
-        },
-        respond: ({ phase, url }) => (response) => {
-            if (phase === 'fetch')
-                return { phase: 'display', url, content: response.body };
-            return { phase: 'done', url, content: '' };
-        }
-    })
-}));
-
-const app = FetchAndDisplay.Start({ phase: 'fetch', url: '/api/data', content: '' });
-console.log(app instanceof Main); // true
-```
+- **`init`** — the initial state value
+- **`request(state)`** — returns an `IORequest` description of the next IO action
+- **`respond(state)(response)`** — returns the next state given the IO result
 
 ### The IO Loop
 
@@ -3610,20 +3589,20 @@ The Mealy machine protocol proceeds as a deterministic loop:
 ```text
 ┌─────────────────────────────────────────────┐
 │                                             │
-│  ┌──────┐  request   ┌─────────┐  execute   │
-│  │ Main ├───────────►│IORequest├──────────┐ │
-│  │state │            └─────────┘          │ │
-│  │      │◄───────────┬──────────┐         │ │
-│  └──────┘  respond   │IOResponse│◄────────┘ │
+│  ┌───────┐  request   ┌─────────┐  execute   │
+│  │ state ├───────────►│IORequest├──────────┐ │
+│  │       │            └─────────┘          │ │
+│  │       │◄───────────┬──────────┐         │ │
+│  └───────┘  respond   │IOResponse│◄────────┘ │
 │                      └──────────┘           │
-│           repeats until Done                │
+│            repeats until Done                │
 └─────────────────────────────────────────────┘
 ```
 
-1. Read `main.request` → an `IORequest` value
+1. Call `request(state)` → an `IORequest` value
 2. The runtime performs the described IO → an `IOResponse` value
-3. Call `main.respond(response)` → the next `Main` state
-4. Repeat until `IORequest.Done` is observed
+3. Call `respond(state)(response)` → the next state
+4. Repeat until `request(state)` returns `IORequest.Done`
 
 The program is pure at every step — the runtime is the sole source of side effects.
 
@@ -3634,10 +3613,7 @@ The `run` function drives the IO loop using browser-native APIs (`fetch`, `conso
 ```ts
 import { run } from '@lapis-lang/lapis-js/io';
 
-const exitCode = await run(FetchAndDisplay.Start({
-    phase: 'fetch', url: '/api/data', content: ''
-}));
-
+const exitCode = await run(app);
 console.log('Exited with code:', exitCode);
 ```
 
@@ -3670,37 +3646,33 @@ console.log(response.now); // e.g. 1700000000000
 
 ### Contracts on IO
 
-Contracts integrate naturally with the IO protocol. Place `demands` on unfold constructors to validate seeds:
+Contracts integrate naturally with the IO protocol. Use `DemandsError` to validate state in `request`:
 
 ```ts
-import { behavior, unfold, extend, DemandsError } from '@lapis-lang/lapis-js';
-import { IORequest, IOResponse, Main } from '@lapis-lang/lapis-js/io';
+import { system, DemandsError } from '@lapis-lang/lapis-js';
+import { IORequest, run } from '@lapis-lang/lapis-js/io';
 
-const App = behavior(({ Self }) => ({
-    [extend]: Main,
+type State = { args: string[] };
 
-    Start: unfold({
-        in: { args: Array },
-        out: Self,
-        demands: (_self, seed) => Array.isArray(seed.args) && seed.args.length > 0
-    })({
-        request: ({ args }) => IORequest.Write({ message: args[0] }),
-        respond: () => () => ({ args: ['done'] })
-    })
+const app = system({}, () => ({
+    init: { args: ['/input.txt'] } as State,
+    request({ args }: State) {
+        if (!args || args.length === 0)
+            throw new DemandsError('request', 'app', ({ args }: State) => args.length > 0);
+        return IORequest.Write({ message: args[0] });
+    },
+    respond(_state: State) {
+        return (_response: any): State => ({ args: [] });
+    }
 }));
 
-App.Start({ args: ['hello'] }); // OK
-
-try {
-    App.Start({ args: [] }); // DemandsError
-} catch (e) {
-    console.log(e instanceof DemandsError); // true
-}
+app.request({ args: ['hello'] }); // OK
+app.request({ args: [] });        // throws DemandsError
 ```
 
 ### Event Handling (Listen, Subscribe, AwaitEvent)
 
-The event-related IO requests integrate with the browser's `CustomEvent` system:
+The event-related IO requests integrate with the browser’s `CustomEvent` system:
 
 - **`Listen({ event })`** — waits for a single `CustomEvent` with the given event name on `window`
 - **`Subscribe({ source })`** — waits for a single `CustomEvent` with the given source name on `window`
@@ -3724,52 +3696,342 @@ window.dispatchEvent(new CustomEvent('user-action', {
 This enables reactive patterns like the Elm architecture — the program declares what events it wants, and the runtime bridges them:
 
 ```ts
-const Counter = behavior(({ Self }) => ({
-    [extend]: Main,
+import { system } from '@lapis-lang/lapis-js';
+import { IORequest, IOResponse, run } from '@lapis-lang/lapis-js/io';
 
-    Start: unfold({ in: { phase: String, count: Number }, out: Self })({
-        request: ({ phase, count }) => {
-            if (phase === 'render')
-                return IORequest.Write({ message: `Count: ${count}` });
-            if (phase === 'listen')
-                return IORequest.Listen({ event: 'counter-action' });
-            return IORequest.Done({ code: 0 });
-        },
-        respond: ({ phase, count }) => (response) => {
-            if (phase === 'render')
-                return { phase: 'listen', count };
-            if (phase === 'listen') {
-                const action = response.payload;
-                if (action === 'increment')
-                    return { phase: 'render', count: count + 1 };
-                if (action === 'decrement')
-                    return { phase: 'render', count: count - 1 };
-                if (action === 'quit')
-                    return { phase: 'done', count };
-                return { phase: 'listen', count };
-            }
-            return { phase: 'done', count };
+type State = { phase: 'render' | 'listen' | 'done'; count: number };
+
+const counter = system({}, () => ({
+    init: { phase: 'render', count: 0 } as State,
+    request: ({ phase, count }: State) => {
+        if (phase === 'render')
+            return IORequest.Write({ message: `Count: ${count}` });
+        if (phase === 'listen')
+            return IORequest.Listen({ event: 'counter-action' });
+        return IORequest.Done({ code: 0 });
+    },
+    respond: ({ phase, count }: State) => (response: any): State => {
+        if (phase === 'render') return { phase: 'listen', count };
+        if (phase === 'listen') {
+            const action = response.payload;
+            if (action === 'increment') return { phase: 'render', count: count + 1 };
+            if (action === 'decrement') return { phase: 'render', count: count - 1 };
+            if (action === 'quit')      return { phase: 'done', count };
         }
-    })
+        return { phase: 'done', count };
+    }
 }));
 
-run(Counter.Start({ phase: 'render', count: 0 }));
+run(counter);
 ```
 
 **Key points:**
 
 - IO is modeled as a Mealy machine — programs emit `IORequest` descriptions, never perform side effects directly
-- `Main` defines the protocol: `request` (current IO description) and `respond` (state transition on IO result)
-- Programs must extend `Main` — `run()` enforces this with an `instanceof Main` check
+- `system()` defines the protocol: `init` (starting state), `request(state)` (current IO description), and `respond(state)(response)` (state transition on IO result)
+- `run(app)` drives the loop using browser-native APIs until `IORequest.Done` is observed
 - The platform runtime is the sole interpreter of IO descriptions — replaceable for testing or different environments
-- `run(main)` drives the loop using browser-native APIs until `IORequest.Done` is observed
-- Contracts (`demands`, `ensures`) apply to unfold constructors and fold operations as usual
+- Contracts (`DemandsError`, `EnsuresError`) can be applied inside `request` or `respond` functions
 
 **See also:**
 
 - `examples/io-cli-cat.mts`: Fetch a resource and display its contents
 - `examples/io-echo-server.mts`: Cyclic event handler with Listen/Write loop
 - `examples/io-counter-reactive.mts`: Reactive counter with Subscribe/AwaitEvent
+
+## Module System
+
+Lapis JS provides a first-class module system following Bracha's
+["Ban on Imports"](http://gbracha.blogspot.com/2009/06/ban-on-imports.html) philosophy:
+modules are values, not declarations. A module is a function from its dependencies to its
+exports — dependencies are injected explicitly rather than resolved through a global import
+mechanism.
+
+```ts
+import { module, system, extend } from '@lapis-lang/lapis-js';
+```
+
+### Defining a Module
+
+`module(spec, body)` creates a **`ModuleDef`** — a callable that accepts a dependency object
+and returns a frozen record of exports. Module bodies may only export Lapis types: values
+produced by `data()`, `behavior()`, `relation()`, or `observer()`.
+
+```ts
+import { module, data } from '@lapis-lang/lapis-js';
+
+// A module with no dependencies
+const GeometryModule = module({}, () => ({
+    Point: data(() => ({
+        Point2D: { x: Number, y: Number },
+        Point3D: { x: Number, y: Number, z: Number }
+    }))
+}));
+
+const geo = GeometryModule({});
+const { Point } = geo;
+const p = Point.Point2D({ x: 3, y: 4 });
+console.log(p.x); // 3
+console.log(p.y); // 4
+
+// Exports are frozen — mutation throws at runtime
+(geo as any).Point = null; // TypeError
+```
+
+Modules receive their dependencies at instantiation time:
+
+```ts
+const TypedListModule = module({}, ({ T }: { T: Function }) => ({
+    List: data(({ Family }) => ({
+        Nil:  {},
+        Cons: { head: T, tail: Family }
+    }))
+}));
+
+const NumList = TypedListModule({ T: Number });
+const StrList = TypedListModule({ T: String });
+```
+
+Each call to a `ModuleDef` produces an independent instance — `body` is re-executed, so
+every instantiation gets its own fresh ADT class:
+
+```ts
+const a = TypedListModule({ T: Number });
+const b = TypedListModule({ T: String });
+console.log(a.List !== b.List); // true — different ADT types
+```
+
+### Module Contracts
+
+The first argument to `module()` is a **`ModuleSpec`** — an optional contract object with
+three optional predicates and an optional `name`:
+
+| Field | Purpose |
+| --- | --- |
+| `name` | Human-readable identifier included in contract error messages |
+| `demands(deps)` | Precondition on supplied dependencies — checked before the body runs |
+| `invariant(deps)` | Coherence constraint across dependencies — checked after `demands` passes |
+| `ensures(exports)` | Postcondition on produced exports — checked after exports are built |
+
+#### Naming modules for better error messages
+
+When a system has many modules, contract errors that say `on ModuleDef` are hard to
+diagnose. Supplying `name` adds the identifier to every error thrown during instantiation:
+
+```ts
+import { module, data, DemandsError } from '@lapis-lang/lapis-js';
+
+const AuthModule = module(
+    {
+        name: 'AuthModule',
+        demands: ({ db }: { db: unknown }) => db != null
+    },
+    ({ db }) => ({
+        // ...
+    })
+);
+
+AuthModule({ db: null });
+// DemandsError: Precondition failed for operation 'module:instantiate' on ModuleDef 'AuthModule'
+//   Demand: ({ db }) => db != null
+```
+
+Without `name`, the error reads `on ModuleDef`. `name` is purely advisory — it has no
+effect on contract evaluation or module behaviour.
+
+Violating a predicate throws the corresponding error class (`DemandsError`, `InvariantError`,
+`EnsuresError` from `@lapis-lang/lapis-js`):
+
+```ts
+import { module, data, DemandsError } from '@lapis-lang/lapis-js';
+
+const ValidatedListModule = module(
+    {
+        demands:   ({ T }: { T: Function }) => typeof T === 'function',
+        ensures:   (exp: { List: unknown }) => 'List' in exp,
+        invariant: ({ T }: { T: Function }) => T !== null
+    },
+    ({ T }: { T: Function }) => ({
+        List: data(({ Family }) => ({
+            Nil:  {},
+            Cons: { head: T, tail: Family }
+        }))
+    })
+);
+
+ValidatedListModule({ T: Number });           // passes
+ValidatedListModule({ T: null as any });      // InvariantError — T is null
+```
+
+Contracts fire in the order: `demands` → `invariant` → body → `ensures`.
+
+### Module Extension with `[extend]`
+
+A module body may include `[extend]: ParentModuleDef` to inherit the parent's exports.
+Child exports are layered on top of the parent — child keys override parent keys.
+Dependencies are shared: the same `deps` object is passed to both parent and child bodies:
+
+```ts
+import { module, extend, data } from '@lapis-lang/lapis-js';
+
+const Stack = data(({ Family }) => ({
+    Empty: {},
+    Push:  { top: Number, rest: Family }
+}));
+
+const BaseCollectionModule = module({}, () => ({ Stack }));
+
+const ExtendedCollectionModule = module({}, () => ({
+    [extend]: BaseCollectionModule,         // inherit Stack
+    Queue: data(({ Family }) => ({          // add Queue
+        Empty:   {},
+        Enqueue: { front: Number, rest: Family }
+    }))
+}));
+
+const coll = ExtendedCollectionModule({});
+console.log('Stack' in coll); // true  (inherited)
+console.log('Queue' in coll); // true  (own)
+
+// Original module is unmodified
+console.log('Queue' in BaseCollectionModule({})); // false
+```
+
+Extension chains are resolved depth-first, root-first — a grandparent's exports are
+underlaid by the parent's, which are underlaid by the child's:
+
+```ts
+const TypeA = data(() => ({ A: {} }));
+const TypeB = data(() => ({ B: {} }));
+const TypeC = data(() => ({ C: {} }));
+
+const A = module({}, () => ({ TypeA }));
+const B = module({}, () => ({ [extend]: A, TypeB }));
+const C = module({}, () => ({ [extend]: B, TypeC }));
+
+const c = C({});
+console.log('TypeA' in c); // true  (from A)
+console.log('TypeB' in c); // true  (from B)
+console.log('TypeC' in c); // true  (from C)
+```
+
+TypeScript infers the merged export type automatically — `c.TypeA`, `c.TypeB`, and `c.TypeC`
+are all fully typed without any manual annotation.
+
+### Contract Subcontracting in Modules
+
+When modules are composed via `[extend]`, contracts are composed using
+[Liskov Substitution Principle (LSP)](https://en.wikipedia.org/wiki/Liskov_substitution_principle)
+subcontracting rules across the full ancestor chain:
+
+| Contract | Composition rule | Meaning |
+| --- | --- | --- |
+| `demands` | OR-weakened (∨) | Either parent's or child's precondition is sufficient |
+| `ensures` | AND-strengthened (∧) | Both parent's and child's postcondition must hold |
+| `invariant` | AND-strengthened (∧) | Both parent's and child's invariant must hold |
+
+```ts
+const SharedADT = data(() => ({ Item: {} }));
+
+const Strict = module(
+    { demands: ({ T }: { T: Function }) => T === Number || T === String },
+    ({ T: _T }: { T: Function }) => ({ Item: SharedADT })
+);
+
+const Relaxed = module(
+    { demands: ({ T }: { T: Function }) => typeof T === 'function' }, // weaker
+    ({ T: _T }: { T: Function }) => ({
+        [extend]: Strict,
+        ExtItem: data(() => ({ Ext: {} }))
+    })
+);
+
+// T=Boolean: fails Strict (only Number|String) but passes Relaxed (any function) → OR → allowed
+Relaxed({ T: Boolean }); // ok
+
+// T=null: fails both → DemandsError
+Relaxed({ T: null as any }); // throws DemandsError
+```
+
+### system() — Programs as Mealy Machines
+
+`system(modules, wiring)` is the program entry point. It composes a set of module
+definitions and returns a **Mealy machine**: `{ init, request, respond }`.
+
+The distinction from plain module instantiation is intentional:
+
+- **Library composition** — plain module calls: `const { MyType } = MyModule({ dep })`
+- **IO programs** — `system()`: returns `{ init, request, respond }` for the platform runtime
+
+```ts
+import { module, system, data } from '@lapis-lang/lapis-js';
+
+const ShapeModule = module({}, () => ({
+    Shape: data(() => ({
+        Circle: { radius: Number },
+        Square: { side: Number }
+    }))
+}));
+
+const app = system(
+    { Shapes: ShapeModule },
+    ({ Shapes }) => {
+        const { Shape } = Shapes({});
+        const init = Shape.Circle({ radius: 5 });
+        return {
+            init,
+            request: (s: { radius: number }) => ({
+                type: 'Write',
+                message: `Circle area: ${(Math.PI * s.radius ** 2).toFixed(2)}`
+            }),
+            respond: (s: { radius: number }) => (_r: unknown) => s
+        };
+    }
+);
+
+console.log(app.request(app.init));
+// { type: 'Write', message: 'Circle area: 78.54' }
+```
+
+The second argument — the `wiring` callback — receives the module *definitions* (not
+instances). It is responsible for instantiating them with their dependencies and connecting
+them together:
+
+```ts
+const TagModule = module({}, () => ({
+    Tag: data(() => ({ Tag: { label: String } }))
+}));
+
+const WrappedModule = module(
+    {},
+    ({ TagClass }: { TagClass: object }) => ({
+        Wrapped: data(() => ({ Wrapped: { source: TagClass } }))
+    })
+);
+
+const app = system(
+    { Tags: TagModule, Wrapped: WrappedModule },
+    ({ Tags, Wrapped }) => {
+        const { Tag } = Tags({});
+        const { Wrapped: WrappedADT } = Wrapped({ TagClass: Tag });
+        const t = Tag.Tag({ label: 'startup' });
+        const init = WrappedADT.Wrapped({ source: t });
+        return {
+            init,
+            request: (s: { source: { label: string } }) => ({ output: `INFO: ${s.source.label}` }),
+            respond: (_s: unknown) => (_r: unknown) => init
+        };
+    }
+);
+
+console.log(app.request(app.init).output); // 'INFO: startup'
+```
+
+`system()` validates the return value — it throws `TypeError` if `init`, `request`, or
+`respond` is missing or has the wrong shape.
+
+The returned Mealy machine is driven by the platform runtime (e.g. `run()` from
+`@lapis-lang/lapis-js/io`), which executes the IO loop until `IORequest.Done` is observed.
 
 ## References, Inspirations, and Further Reading
 
