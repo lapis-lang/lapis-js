@@ -3658,7 +3658,7 @@ const app = system({}, () => ({
     init: { args: ['/input.txt'] } as State,
     request({ args }: State) {
         if (!args || args.length === 0)
-            throw new DemandsError('args must be non-empty');
+            throw new DemandsError('request', 'app', ({ args }: State) => args.length > 0);
         return IORequest.Write({ message: args[0] });
     },
     respond(_state: State) {

@@ -18,7 +18,7 @@ export type { DataADT, DataADTWithParams, BehaviorADT, BehaviorADTWithParams, Da
 export type { TypeSpec, FamilyRef, SelfRef, TypeParamRef, SortRef } from './types.mjs';
 
 // Module system exports
-export { module, system } from './Module.mjs';
+export { module, system, validateMealyMachine } from './Module.mjs';
 export type { ModuleSpec, ModuleDef, MealyMachine, LapisValue } from './Module.mjs';
 
 // Utility exports

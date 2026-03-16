@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { module, data, behavior } from '../index.mjs';
+import { module, data, behavior, extend } from '../index.mjs';
 import { DemandsError, EnsuresError, InvariantError } from '../index.mjs';
 
 describe('module() — core definition and instantiation', () => {
@@ -239,6 +239,110 @@ describe('module() — core definition and instantiation', () => {
                     err.message.startsWith(
                         'module() exports may only be Lapis types (data, behavior, relation, or observer).'
                     )
+            );
+        });
+    });
+
+    describe('[extend] safety', () => {
+        test('self-extend throws TypeError with cycle message', () => {
+            // TypeScript allows closures that capture their own const binding:
+            // the arrow function is not called during module() evaluation.
+            const A = module({}, () => ({ [extend]: A as any, Tag: data(() => ({ Tag: {} })) }));
+            assert.throws(
+                () => A({}),
+                (err: unknown) =>
+                    err instanceof TypeError &&
+                    err.message.includes('cycle detected')
+            );
+        });
+
+        test('mutual cycle (A extends B, B extends A) throws TypeError with cycle message', () => {
+            // Use a container to avoid let/prefer-const conflicts.
+            // Closures capture refs.A / refs.B lazily, so the cycle is only
+            // traversed at instantiation time, not at definition time.
+            const refs: { A?: ReturnType<typeof module>; B?: ReturnType<typeof module> } = {};
+            refs.A = module({}, () => ({ [extend]: refs.B as any, Tag: data(() => ({ Tag: {} })) }));
+            refs.B = module({}, () => ({ [extend]: refs.A as any, OtherTag: data(() => ({ OtherTag: {} })) }));
+            assert.throws(
+                () => refs.B!({}),
+                (err: unknown) =>
+                    err instanceof TypeError &&
+                    err.message.includes('cycle detected')
+            );
+        });
+
+        test('[extend]: string literal throws TypeError with invalid-ModuleDef message', () => {
+            const M = module({}, () => ({ [extend]: 'not-a-module' as any, Tag: data(() => ({ Tag: {} })) }));
+            assert.throws(
+                () => M({}),
+                (err: unknown) =>
+                    err instanceof TypeError &&
+                    err.message.includes('[extend] must reference a ModuleDef')
+            );
+        });
+
+        test('[extend]: null throws TypeError with invalid-ModuleDef message', () => {
+            const M = module({}, () => ({ [extend]: null as any, Tag: data(() => ({ Tag: {} })) }));
+            assert.throws(
+                () => M({}),
+                (err: unknown) =>
+                    err instanceof TypeError &&
+                    err.message.includes('[extend] must reference a ModuleDef')
+            );
+        });
+
+        test('[extend]: plain object throws TypeError with invalid-ModuleDef message', () => {
+            const M = module({}, () => ({ [extend]: {} as any, Tag: data(() => ({ Tag: {} })) }));
+            assert.throws(
+                () => M({}),
+                (err: unknown) =>
+                    err instanceof TypeError &&
+                    err.message.includes('[extend] must reference a ModuleDef')
+            );
+        });
+
+        test('[extend]: plain function (no _body/_spec) throws TypeError with invalid-ModuleDef message', () => {
+            const M = module({}, () => ({ [extend]: (() => {}) as any, Tag: data(() => ({ Tag: {} })) }));
+            assert.throws(
+                () => M({}),
+                (err: unknown) =>
+                    err instanceof TypeError &&
+                    err.message.includes('[extend] must reference a ModuleDef')
+            );
+        });
+    });
+
+    describe('body return validation', () => {
+        test('body returning null throws TypeError with descriptive message', () => {
+            const M = module({}, () => null as any);
+            assert.throws(
+                () => M({}),
+                (err: unknown) =>
+                    err instanceof TypeError &&
+                    err.message.includes('body must return a plain object') &&
+                    err.message.includes('null')
+            );
+        });
+
+        test('body returning a string throws TypeError with descriptive message', () => {
+            const M = module({}, () => 'oops' as any);
+            assert.throws(
+                () => M({}),
+                (err: unknown) =>
+                    err instanceof TypeError &&
+                    err.message.includes('body must return a plain object') &&
+                    err.message.includes('string')
+            );
+        });
+
+        test('body returning a number throws TypeError with descriptive message', () => {
+            const M = module({}, () => 42 as any);
+            assert.throws(
+                () => M({}),
+                (err: unknown) =>
+                    err instanceof TypeError &&
+                    err.message.includes('body must return a plain object') &&
+                    err.message.includes('number')
             );
         });
     });

@@ -22,7 +22,7 @@
  */
 
 import type { MealyMachine } from '../../index.mjs';
-import { validateMealyMachine } from '../../Module.mjs';
+import { validateMealyMachine } from '../../index.mjs';
 import { IORequest } from './request.mjs';
 import { IOResponse } from './response.mjs';
 

@@ -65,11 +65,12 @@ export interface MealyMachine<State = unknown, Req = unknown, Res = unknown> {
  * carry incompatible index signatures that cannot be unified into a single union
  * without producing TypeScript errors at every call site.
  *
- * The structural constraint ("must be an object with string keys") is enough to
- * exclude primitive values and plain functions at the type level. The actual
- * semantic constraint — "must have been produced by one of the four factories" —
- * is enforced at runtime by {@link isLapisValue}, which checks for the
- * {@link LapisTypeSymbol} brand stamped onto every factory return value.
+ * At the type level this constraint only rules out primitives (`string`, `number`,
+ * `boolean`, `bigint`, `symbol`, `null`, `undefined`) — plain objects and plain
+ * functions both satisfy it. The actual semantic constraint — "must have been
+ * produced by one of the four factories" — is enforced exclusively at runtime by
+ * {@link isLapisValue}, which checks for the {@link LapisTypeSymbol} brand stamped
+ * onto every factory return value.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type LapisValue = { [key: string]: any };
@@ -173,15 +174,44 @@ function composeModuleSpecs(parent: InternalModuleSpec, child: InternalModuleSpe
  * Collect the full inheritance chain for a ModuleDef by running each body once.
  * Returns entries root-first (grandparent → parent → child).
  * Does NOT check contracts — used to gather the chain for composition.
+ *
+ * Validates that `moduleDef` is a proper ModuleDef at entry, and detects cycles
+ * via a WeakSet of already-visited definitions. The caller pre-seeds `visited`
+ * with the current (child) module so back-references to self are also caught.
  */
-function collectAncestorChain(moduleDef: ModuleDef, deps: unknown): ChainEntry[] {
+function collectAncestorChain(
+    moduleDef: ModuleDef,
+    deps: unknown,
+    visited = new WeakSet<ModuleDef>()
+): ChainEntry[] {
+    // Runtime guard: the argument is typed as ModuleDef but may have been
+    // unsafely cast (e.g. from rawReturn[extend] as ModuleDef).
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const m = moduleDef as any;
+    if (
+        typeof moduleDef !== 'function' ||
+        typeof m._body !== 'function' ||
+        m._spec === null ||
+        typeof m._spec !== 'object'
+    ) {
+        throw new TypeError(
+            `module() [extend] must reference a ModuleDef returned by module(). ` +
+            `Got: ${moduleDef === null ? 'null' : typeof moduleDef}.`
+        );
+    }
+
+    if (visited.has(moduleDef)) {
+        throw new TypeError(
+            'module() [extend] cycle detected: a module definition appears more than once in the ancestor chain.'
+        );
+    }
+    visited.add(moduleDef);
+
     const rawReturn = (moduleDef._body as (d: unknown) => Record<string | symbol, unknown>)(deps);
     const entry: ChainEntry = { rawReturn, spec: moduleDef._spec as InternalModuleSpec };
 
-    if (extend in rawReturn) {
-        const parentDef = rawReturn[extend] as ModuleDef;
-        return [...collectAncestorChain(parentDef, deps), entry];
-    }
+    if (extend in rawReturn)
+        return [...collectAncestorChain(rawReturn[extend] as ModuleDef, deps, visited), entry];
 
     return [entry];
 }
@@ -281,31 +311,47 @@ export function module<
     body: (deps: Deps) => BodyReturn
 ): ModuleDef<Deps, MergedExports<BodyReturn>> {
     const createModuleInstance = (deps: Deps): Readonly<MergedExports<BodyReturn>> => {
-        // Run current body once to get raw return (may contain [extend])
-        const rawReturn = body(deps) as Record<string | symbol, unknown>;
+        // Use the local spec name (if provided) for error context.
+        // This identifies the module definition being instantiated rather than
+        // the ancestor whose composed contract happened to fail.
+        const errorContext = spec.name ? `ModuleDef '${spec.name}'` : 'ModuleDef';
+
+        // NOTE: body(deps) — and all ancestor bodies via collectAncestorChain —
+        // run before contract checks because the composed demands predicate
+        // (OR-weakened across the [extend] chain) cannot be known until every
+        // ancestor body has executed to reveal the full chain structure.
+        // Consequence: body side-effects may occur before a DemandsError or
+        // InvariantError is raised. Module bodies should therefore be kept pure.
+        // See: https://github.com/lapis-lang/lapis-js/issues/<TBD>
+        const bodyResult = body(deps);
+        if (bodyResult === null || typeof bodyResult !== 'object') {
+            throw new TypeError(
+                `module() body must return a plain object. ` +
+                `Got: ${bodyResult === null ? 'null' : typeof bodyResult}.`
+            );
+        }
+        const rawReturn = bodyResult as Record<string | symbol, unknown>;
         const selfEntry: ChainEntry = { rawReturn, spec: spec as InternalModuleSpec };
 
         // Collect full chain: root-first (grandparent → parent → self)
         let chain: ChainEntry[];
         if (extend in rawReturn) {
-            const parentDef = rawReturn[extend] as ModuleDef;
-            chain = [...collectAncestorChain(parentDef, deps), selfEntry];
+            // Pre-seed visited with the current module so any back-reference
+            // to self in the ancestor chain is detected as a cycle.
+            const visited = new WeakSet<ModuleDef>();
+            visited.add(createModuleInstance as unknown as ModuleDef);
+            chain = [...collectAncestorChain(rawReturn[extend] as ModuleDef, deps, visited), selfEntry];
         } else
             chain = [selfEntry];
 
         // Compose specs across the entire chain (LSP rules)
         const effectiveSpec = composeChain(chain);
 
-        // Use the local spec name (if provided) for error context.
-        // This identifies the module definition being instantiated rather than
-        // the ancestor whose composed contract happened to fail.
-        const errorContext = spec.name ? `ModuleDef '${spec.name}'` : 'ModuleDef';
-
-        // Check demands
+        // Check composed demands (OR-weakened: passes if any module in the chain accepts deps)
         if (effectiveSpec.demands && !tryEval(effectiveSpec.demands, deps))
             throw new DemandsError('module:instantiate', errorContext, effectiveSpec.demands);
 
-        // Check invariant
+        // Check composed invariant (AND-strengthened: all modules' invariants must hold)
         if (effectiveSpec.invariant && !tryEval(effectiveSpec.invariant, deps))
             throw new InvariantError('module:instantiate', errorContext, 'pre', effectiveSpec.invariant);
 
@@ -325,7 +371,7 @@ export function module<
             }
         }
 
-        // Check ensures
+        // Check ensures (postcondition — always after exports are built)
         if (effectiveSpec.ensures && !tryEval(effectiveSpec.ensures, exports as unknown as Readonly<MergedExports<BodyReturn>>))
             throw new EnsuresError('module:instantiate', errorContext, effectiveSpec.ensures);
 
