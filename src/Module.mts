@@ -7,13 +7,13 @@
  *
  * Design:
  *   - module(spec, body) → ModuleDef: callable with deps, returns frozen exports
- *   - [extend] in body return: merge parent exports + LSP contract subcontracting
+ *   - extend in spec: merge parent exports + LSP contract subcontracting
  *   - system(modules, wiring) → MealyMachine: { init, request, respond }
  *
  * @module Module
  */
 
-import { extend, LapisTypeSymbol } from './operations.mjs';
+import { LapisTypeSymbol } from './operations.mjs';
 import { DemandsError, EnsuresError, InvariantError } from './contracts.mjs';
 
 // ---- Types ------------------------------------------------------------------
@@ -22,15 +22,18 @@ import { DemandsError, EnsuresError, InvariantError } from './contracts.mjs';
  * Contract specification for a module definition.
  * Mirrors fold/behavior spec but with module-specific signatures:
  *   - name:      optional human-readable identifier, used in contract error messages
- *   - demands: precondition on supplied dependencies
- *   - ensures: postcondition on produced exports
+ *   - demands:   precondition on supplied dependencies
+ *   - ensures:   postcondition on produced exports
  *   - invariant: coherence constraint across dependencies
+ *   - extend:    parent ModuleDef whose exports are inherited and contracts composed
  */
 export interface ModuleSpec<Deps = unknown, Exports = unknown> {
     name?: string;
-    demands?: (deps: Deps) => boolean;
-    ensures?: (exports: Exports) => boolean;
-    invariant?: (deps: Deps) => boolean;
+    demands?(deps: Deps): boolean;
+    ensures?(exports: Exports): boolean;
+    invariant?(deps: Deps): boolean;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    extend?: ModuleDef<any, any>;
 }
 
 /**
@@ -75,40 +78,48 @@ export interface MealyMachine<State = unknown, Req = unknown, Res = unknown> {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type LapisValue = { [key: string]: any };
 
-// ---- Type helpers for [extend] chain resolution ----------------------------
+// ---- Type helpers for extend chain resolution ------------------------------
 
 /**
- * Resolves the effective exports type after merging parent exports via [extend].
+ * Resolves the effective exports type after merging parent exports.
  *
- * Uses an inline mapped type with key remapping (not Omit) so TypeScript
- * evaluates the result eagerly to a concrete object type. Omit<T, unique symbol>
- * is deferred and stays opaque, breaking property access; the mapped form below
- * is evaluated per-key at instantiation time.
+ * Takes two type parameters:
+ *   S — the spec type (carries the optional `extend` parent reference)
+ *   B — the body return type (own exports only)
  *
- * - No [extend]: returns the body return type unchanged.
- * - Has [extend]: strips the key and intersects with the parent's export type.
+ * - No `extend` in S: returns B unchanged.
+ * - Has `extend` in S: intersects B with the parent's export type PE.
  */
-type MergedExports<B> =
-    typeof extend extends keyof B
-        ? { [K in keyof B as K extends typeof extend ? never : K]: B[K] } &
+type MergedExports<S, B> =
+    'extend' extends keyof S
+        ? { [K in keyof B]: B[K] } &
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (B[typeof extend] extends ModuleDef<any, infer PE> ? PE : unknown)
-        : { [K in keyof B as K extends typeof extend ? never : K]: B[K] };
+          (S['extend'] extends ModuleDef<any, infer PE> ? PE : unknown)
+        : { [K in keyof B]: B[K] };
 
 // ---- Internal types ---------------------------------------------------------
 
 /**
  * ModuleSpec with all type parameters resolved to `unknown`, used internally
- * after the [extend] chain is collected and composed. Avoids the need for
+ * after the extend chain is collected and composed. Avoids the need for
  * double casts (`as unknown as`) when passing predicates to error constructors.
  */
 interface InternalModuleSpec {
     name?: string;
-    demands?: (arg: unknown) => boolean;
-    ensures?: (arg: unknown) => boolean;
-    invariant?: (arg: unknown) => boolean;
+    demands?(arg: unknown): boolean;
+    ensures?(arg: unknown): boolean;
+    invariant?(arg: unknown): boolean;
+    /** Parent ModuleDef whose exports are inherited and contracts composed. */
+    extend?: ModuleDef;
 }
 
+/** Spec + body pair for a single link in the ancestor chain (pre-execution). */
+interface ChainLink {
+    spec: InternalModuleSpec;
+    body: (deps: unknown) => Record<string | symbol, unknown>;
+}
+
+/** Body result + spec pair produced after a body has executed. */
 interface ChainEntry {
     rawReturn: Record<string | symbol, unknown>;
     spec: InternalModuleSpec;
@@ -171,21 +182,19 @@ function composeModuleSpecs(parent: InternalModuleSpec, child: InternalModuleSpe
 }
 
 /**
- * Collect the full inheritance chain for a ModuleDef by running each body once.
- * Returns entries root-first (grandparent → parent → child).
- * Does NOT check contracts — used to gather the chain for composition.
+ * Walk the extend chain via spec pointers without executing any body.
+ * Returns links root-first (grandparent → parent → child).
  *
- * Validates that `moduleDef` is a proper ModuleDef at entry, and detects cycles
+ * Validates that each `moduleDef` is a proper ModuleDef and detects cycles
  * via a WeakSet of already-visited definitions. The caller pre-seeds `visited`
  * with the current (child) module so back-references to self are also caught.
  */
-function collectAncestorChain(
+function collectSpecChain(
     moduleDef: ModuleDef,
-    deps: unknown,
     visited = new WeakSet<ModuleDef>()
-): ChainEntry[] {
+): ChainLink[] {
     // Runtime guard: the argument is typed as ModuleDef but may have been
-    // unsafely cast (e.g. from rawReturn[extend] as ModuleDef).
+    // unsafely cast (e.g. from spec.extend as ModuleDef).
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const m = moduleDef as any;
     if (
@@ -195,47 +204,48 @@ function collectAncestorChain(
         typeof m._spec !== 'object'
     ) {
         throw new TypeError(
-            `module() [extend] must reference a ModuleDef returned by module(). ` +
+            `module() spec 'extend' must reference a ModuleDef returned by module(). ` +
             `Got: ${moduleDef === null ? 'null' : typeof moduleDef}.`
         );
     }
 
     if (visited.has(moduleDef)) {
         throw new TypeError(
-            'module() [extend] cycle detected: a module definition appears more than once in the ancestor chain.'
+            'module() extend cycle detected: a module definition appears more than once in the ancestor chain.'
         );
     }
     visited.add(moduleDef);
 
-    const rawReturn = (moduleDef._body as (d: unknown) => Record<string | symbol, unknown>)(deps);
-    const entry: ChainEntry = { rawReturn, spec: moduleDef._spec as InternalModuleSpec };
+    const spec = m._spec as InternalModuleSpec;
+    const link: ChainLink = {
+        spec,
+        body: m._body as (deps: unknown) => Record<string | symbol, unknown>
+    };
 
-    if (extend in rawReturn)
-        return [...collectAncestorChain(rawReturn[extend] as ModuleDef, deps, visited), entry];
+    if ('extend' in spec)
+        return [...collectSpecChain(spec.extend as ModuleDef, visited), link];
 
-    return [entry];
+    return [link];
 }
 
-/** Compose a chain of specs from root to child. */
-function composeChain(entries: ChainEntry[]): InternalModuleSpec {
-    if (entries.length === 0) return {};
-    return entries.slice(1).reduce(
+/** Compose a chain of specs root-to-child. */
+function composeChain(links: { spec: InternalModuleSpec }[]): InternalModuleSpec {
+    if (links.length === 0) return {};
+    return links.slice(1).reduce(
         (acc, { spec }) => composeModuleSpecs(acc, spec),
-        entries[0].spec
+        links[0].spec
     );
 }
 
 /**
  * Build merged exports by reducing the chain root-to-child.
- * Each child's exports override parent exports; [extend] symbol is stripped.
+ * Each child's exports override parent exports.
  */
 function buildExports(entries: ChainEntry[]): Record<string | symbol, unknown> {
     return entries.reduce((acc, { rawReturn }) => {
         const extra: Record<string | symbol, unknown> = {};
-        for (const key of Reflect.ownKeys(rawReturn)) {
-            if (key !== extend)
-                extra[key as string | symbol] = rawReturn[key as string | symbol];
-        }
+        for (const key of Reflect.ownKeys(rawReturn))
+            extra[key as string | symbol] = rawReturn[key as string | symbol];
         return { ...acc, ...extra };
     }, {} as Record<string | symbol, unknown>);
 }
@@ -271,13 +281,13 @@ export function validateMealyMachine(machine: unknown): asserts machine is Mealy
 /**
  * Define a parameterized module.
  *
- * @param spec - Optional contract specification (demands, ensures, invariant).
- *               Follows LSP subcontracting rules when [extend] is used.
- * @param body - Dependency receiver returning the module's public exports.
- *               May include `[extend]: ParentModuleDef` to inherit parent exports
- *               and compose contracts across the hierarchy.
+ * @param spec - Contract specification and optional parent reference.
+ *               Use `extend: ParentModuleDef` to inherit parent exports and
+ *               compose contracts across the hierarchy following LSP rules.
+ *               Contract predicates: `demands`, `ensures`, `invariant`.
+ * @param body - Dependency receiver returning this module's own exports.
  * @returns A ModuleDef — callable with concrete dependencies to produce a frozen
- *          module instance. Carries _spec and _body for [extend] chain resolution.
+ *          module instance. Carries _spec and _body for extend chain resolution.
  *
  * @example
  * const PointModule = module({}, () => ({
@@ -298,69 +308,65 @@ export function module<
     // any record shape — the runtime validation is structural, not nominal.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     Deps extends Record<string, any> = Record<string, any>,
-    // `ModuleDef<any, any>` is required for the [extend] constraint because
-    // `ModuleDef` is generic and covariant in its return but contravariant in its
-    // argument. `ModuleDef<unknown, unknown>` would reject a concrete `ModuleDef<X, Y>`
-    // due to function-parameter contravariance, making every extend usage a type error.
-    // `any` bypasses variance checks so the constraint means "any ModuleDef,
-    // regardless of its Deps/Exports parameters" — which is all we need here.
+    BodyReturn extends Record<string, LapisValue> = Record<string, LapisValue>,
+    // S carries the spec literal so TypeScript can read S['extend'] for MergedExports.
+    // `any` on the Exports param avoids a circular constraint with MergedExports<S, BodyReturn>.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    BodyReturn extends { [extend]?: ModuleDef<any, any> } & Record<string, LapisValue> = Record<string, LapisValue>
+    S extends ModuleSpec<Deps, any> = ModuleSpec<Deps, any>
 >(
-    spec: ModuleSpec<Deps, Readonly<MergedExports<BodyReturn>>>,
+    spec: S,
     body: (deps: Deps) => BodyReturn
-): ModuleDef<Deps, MergedExports<BodyReturn>> {
-    const createModuleInstance = (deps: Deps): Readonly<MergedExports<BodyReturn>> => {
+): ModuleDef<Deps, MergedExports<S, BodyReturn>> {
+    const createModuleInstance = (deps: Deps): Readonly<MergedExports<S, BodyReturn>> => {
         // Use the local spec name (if provided) for error context.
         // This identifies the module definition being instantiated rather than
         // the ancestor whose composed contract happened to fail.
         const errorContext = spec.name ? `ModuleDef '${spec.name}'` : 'ModuleDef';
 
-        // NOTE: body(deps) — and all ancestor bodies via collectAncestorChain —
-        // run before contract checks because the composed demands predicate
-        // (OR-weakened across the [extend] chain) cannot be known until every
-        // ancestor body has executed to reveal the full chain structure.
-        // Consequence: body side-effects may occur before a DemandsError or
-        // InvariantError is raised. Module bodies should therefore be kept pure.
-        // See: https://github.com/lapis-lang/lapis-js/issues/<TBD>
-        const bodyResult = body(deps);
-        if (bodyResult === null || typeof bodyResult !== 'object') {
-            throw new TypeError(
-                `module() body must return a plain object. ` +
-                `Got: ${bodyResult === null ? 'null' : typeof bodyResult}.`
-            );
-        }
-        const rawReturn = bodyResult as Record<string | symbol, unknown>;
-        const selfEntry: ChainEntry = { rawReturn, spec: spec as InternalModuleSpec };
+        // Pre-seed visited set with the current module so any back-reference to self
+        // in the spec chain is detected as a cycle before any body runs.
+        const visited = new WeakSet<ModuleDef>();
+        visited.add(createModuleInstance as unknown as ModuleDef);
 
-        // Collect full chain: root-first (grandparent → parent → self)
-        let chain: ChainEntry[];
-        if (extend in rawReturn) {
-            // Pre-seed visited with the current module so any back-reference
-            // to self in the ancestor chain is detected as a cycle.
-            const visited = new WeakSet<ModuleDef>();
-            visited.add(createModuleInstance as unknown as ModuleDef);
-            chain = [...collectAncestorChain(rawReturn[extend] as ModuleDef, deps, visited), selfEntry];
-        } else
-            chain = [selfEntry];
+        // Step 1: Walk the extend chain via spec pointers — no body execution.
+        const selfLink: ChainLink = {
+            spec: spec as unknown as InternalModuleSpec,
+            body: body as unknown as (deps: unknown) => Record<string | symbol, unknown>
+        };
+        const chain: ChainLink[] = 'extend' in spec
+            ? [...collectSpecChain(spec.extend as unknown as ModuleDef, visited), selfLink]
+            : [selfLink];
 
-        // Compose specs across the entire chain (LSP rules)
+        // Step 2: Compose specs across the full chain (LSP rules).
         const effectiveSpec = composeChain(chain);
 
-        // Check composed demands (OR-weakened: passes if any module in the chain accepts deps)
+        // Step 3: Check composed demands BEFORE running any body.
+        // (OR-weakened: passes if any module in the chain accepts deps)
         if (effectiveSpec.demands && !tryEval(effectiveSpec.demands, deps))
             throw new DemandsError('module:instantiate', errorContext, effectiveSpec.demands);
 
-        // Check composed invariant (AND-strengthened: all modules' invariants must hold)
+        // Step 4: Check composed invariant BEFORE running any body.
+        // (AND-strengthened: all modules' invariants must hold)
         if (effectiveSpec.invariant && !tryEval(effectiveSpec.invariant, deps))
             throw new InvariantError('module:instantiate', errorContext, 'pre', effectiveSpec.invariant);
 
-        // Build merged exports (root contributions first, child overrides last)
-        const exports = buildExports(chain);
+        // Step 5: Run all bodies root-first to produce raw exports.
+        const entries: ChainEntry[] = chain.map(({ spec: entrySpec, body: entryBody }) => {
+            const rawReturn = entryBody(deps);
+            if (rawReturn === null || typeof rawReturn !== 'object') {
+                throw new TypeError(
+                    `module() body must return a plain object. ` +
+                    `Got: ${rawReturn === null ? 'null' : typeof rawReturn}.`
+                );
+            }
+            return { rawReturn: rawReturn as Record<string | symbol, unknown>, spec: entrySpec };
+        });
 
-        // Validate all exports are Lapis types
+        // Step 6: Build merged exports (root contributions first, child overrides last).
+        const exports = buildExports(entries);
+
+        // Validate all exports are Lapis types.
         for (const key of Reflect.ownKeys(exports)) {
-            if (key === extend) continue;
             const v = exports[key as string | symbol];
             if (!isLapisValue(v)) {
                 const keyName = typeof key === 'symbol' ? String(key) : `"${key}"`;
@@ -371,20 +377,20 @@ export function module<
             }
         }
 
-        // Check ensures (postcondition — always after exports are built)
-        if (effectiveSpec.ensures && !tryEval(effectiveSpec.ensures, exports as unknown as Readonly<MergedExports<BodyReturn>>))
+        // Step 7: Check ensures (postcondition — always after exports are built).
+        if (effectiveSpec.ensures && !tryEval(effectiveSpec.ensures, exports as unknown as Readonly<MergedExports<S, BodyReturn>>))
             throw new EnsuresError('module:instantiate', errorContext, effectiveSpec.ensures);
 
-        return Object.freeze(exports) as unknown as Readonly<MergedExports<BodyReturn>>;
+        return Object.freeze(exports) as unknown as Readonly<MergedExports<S, BodyReturn>>;
     };
 
-    // Attach spec and body for [extend] chain resolution in subclasses
+    // Attach spec and body for extend chain resolution in child modules.
     Object.defineProperties(createModuleInstance, {
         _spec: { value: spec, writable: false, configurable: false, enumerable: false },
         _body: { value: body, writable: false, configurable: false, enumerable: false }
     });
 
-    return createModuleInstance as unknown as ModuleDef<Deps, MergedExports<BodyReturn>>;
+    return createModuleInstance as unknown as ModuleDef<Deps, MergedExports<S, BodyReturn>>;
 }
 
 /**
