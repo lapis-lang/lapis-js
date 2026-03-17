@@ -3809,6 +3809,7 @@ three optional predicates and an optional `name`:
 | Field | Purpose |
 | --- | --- |
 | `name` | Human-readable identifier included in contract error messages |
+| `extend` | Parent `ModuleDef` whose exports are inherited and contracts composed (LSP rules) |
 | `demands(deps)` | Precondition on supplied dependencies — checked before the body runs |
 | `invariant(deps)` | Coherence constraint across dependencies — checked after `demands` passes |
 | `ensures(exports)` | Postcondition on produced exports — checked after exports are built |
@@ -3865,14 +3866,14 @@ ValidatedListModule({ T: null as any });      // InvariantError — T is null
 
 Contracts fire in the order: `demands` → `invariant` → body → `ensures`.
 
-### Module Extension with `[extend]`
+### Module Extension with `extend`
 
-A module body may include `[extend]: ParentModuleDef` to inherit the parent's exports.
+A module's spec may include `extend: ParentModuleDef` to inherit the parent's exports.
 Child exports are layered on top of the parent — child keys override parent keys.
 Dependencies are shared: the same `deps` object is passed to both parent and child bodies:
 
 ```ts
-import { module, extend, data } from '@lapis-lang/lapis-js';
+import { module, data } from '@lapis-lang/lapis-js';
 
 const Stack = data(({ Family }) => ({
     Empty: {},
@@ -3881,8 +3882,7 @@ const Stack = data(({ Family }) => ({
 
 const BaseCollectionModule = module({}, () => ({ Stack }));
 
-const ExtendedCollectionModule = module({}, () => ({
-    [extend]: BaseCollectionModule,         // inherit Stack
+const ExtendedCollectionModule = module({ extend: BaseCollectionModule }, () => ({
     Queue: data(({ Family }) => ({          // add Queue
         Empty:   {},
         Enqueue: { front: Number, rest: Family }
@@ -3906,8 +3906,8 @@ const TypeB = data(() => ({ B: {} }));
 const TypeC = data(() => ({ C: {} }));
 
 const A = module({}, () => ({ TypeA }));
-const B = module({}, () => ({ [extend]: A, TypeB }));
-const C = module({}, () => ({ [extend]: B, TypeC }));
+const B = module({ extend: A }, () => ({ TypeB }));
+const C = module({ extend: B }, () => ({ TypeC }));
 
 const c = C({});
 console.log('TypeA' in c); // true  (from A)
@@ -3920,7 +3920,7 @@ are all fully typed without any manual annotation.
 
 ### Contract Subcontracting in Modules
 
-When modules are composed via `[extend]`, contracts are composed using
+When modules are composed via `extend` in the spec, contracts are composed using
 [Liskov Substitution Principle (LSP)](https://en.wikipedia.org/wiki/Liskov_substitution_principle)
 subcontracting rules across the full ancestor chain:
 
@@ -3939,9 +3939,8 @@ const Strict = module(
 );
 
 const Relaxed = module(
-    { demands: ({ T }: { T: Function }) => typeof T === 'function' }, // weaker
+    { extend: Strict, demands: ({ T }: { T: Function }) => typeof T === 'function' }, // weaker
     ({ T: _T }: { T: Function }) => ({
-        [extend]: Strict,
         ExtItem: data(() => ({ Ext: {} }))
     })
 );

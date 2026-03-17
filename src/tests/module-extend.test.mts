@@ -1,16 +1,16 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { module, extend, data } from '../index.mjs';
+import { module, data } from '../index.mjs';
 import { DemandsError, EnsuresError, InvariantError } from '../index.mjs';
 
-describe('module() — [extend] extension and subcontracting', () => {
+describe('module() — extend extension and subcontracting', () => {
     describe('export inheritance', () => {
         test('child inherits all parent exports', () => {
             const TypeA = data(() => ({ A: {} }));
             const TypeB = data(() => ({ B: {} }));
             const TypeC = data(() => ({ C: {} }));
             const Base = module({}, () => ({ TypeA, TypeB }));
-            const Child = module({}, () => ({ [extend]: Base, TypeC }));
+            const Child = module({ extend: Base }, () => ({ TypeC }));
             const instance = Child({});
             assert.strictEqual(instance.TypeA, TypeA);
             assert.strictEqual(instance.TypeB, TypeB);
@@ -22,7 +22,7 @@ describe('module() — [extend] extension and subcontracting', () => {
             const V2 = data(() => ({ V: {} }));
             const TypeB = data(() => ({ B: {} }));
             const Base = module({}, () => ({ Versioned: V1, TypeB }));
-            const Child = module({}, () => ({ [extend]: Base, Versioned: V2 }));
+            const Child = module({ extend: Base }, () => ({ Versioned: V2 }));
             const instance = Child({});
             assert.strictEqual(instance.Versioned, V2);
             assert.strictEqual(instance.TypeB, TypeB);
@@ -33,7 +33,7 @@ describe('module() — [extend] extension and subcontracting', () => {
             const TypeA2  = data(() => ({ A: {}, Extra: {} }));
             const TypeB   = data(() => ({ B: {} }));
             const Base  = module({}, () => ({ Export: TypeA }));
-            const Child = module({}, () => ({ [extend]: Base, Export: TypeA2, Extra: TypeB }));
+            const Child = module({ extend: Base }, () => ({ Export: TypeA2, Extra: TypeB }));
             const base  = Base({});
             const child = Child({});
             assert.strictEqual(base.Export, TypeA);
@@ -47,7 +47,7 @@ describe('module() — [extend] extension and subcontracting', () => {
             const NamedADT = data(() => ({ Item: {} }));
             const ValADT   = data(() => ({ Val: {} }));
             const Base  = module({}, () => ({ [ns]: NamedADT, Val: ValADT }));
-            const Child = module({}, () => ({ [extend]: Base, Extra: data(() => ({ Extra: {} })) }));
+            const Child = module({ extend: Base }, () => ({ Extra: data(() => ({ Extra: {} })) }));
             const instance = Child({}) as unknown as { [ns]: typeof NamedADT; Val: typeof ValADT; Extra: unknown };
             assert.strictEqual(instance[ns], NamedADT);
             assert.strictEqual(instance.Val, ValADT);
@@ -60,7 +60,7 @@ describe('module() — [extend] extension and subcontracting', () => {
             const ADT_B = data(() => ({ B: {} }));
             const Common = data(() => ({ X: {} }));
             const Base  = module({}, () => ({ [ns]: ADT_A, Common }));
-            const Child = module({}, () => ({ [extend]: Base, [ns]: ADT_B, Common }));
+            const Child = module({ extend: Base }, () => ({ [ns]: ADT_B, Common }));
             const instance = Child({}) as any;
             assert.strictEqual(instance[ns], ADT_B);
             assert.strictEqual(instance.Common, Common);
@@ -75,9 +75,9 @@ describe('module() — [extend] extension and subcontracting', () => {
                 parentReceived = deps;
                 return { BaseADT: SharedADT };
             });
-            const Child = module({}, (deps: { multiplier: number }) => {
+            const Child = module({ extend: Base }, (deps: { multiplier: number }) => {
                 childReceived = deps;
-                return { [extend]: Base, ChildADT: SharedADT };
+                return { ChildADT: SharedADT };
             });
             const d = { multiplier: 5 };
             Child(d);
@@ -92,8 +92,8 @@ describe('module() — [extend] extension and subcontracting', () => {
             const TypeB = data(() => ({ B: {} }));
             const TypeC = data(() => ({ C: {} }));
             const A = module({}, () => ({ TypeA }));
-            const B = module({}, () => ({ [extend]: A, TypeB }));
-            const C = module({}, () => ({ [extend]: B, TypeC }));
+            const B = module({ extend: A }, () => ({ TypeB }));
+            const C = module({ extend: B }, () => ({ TypeC }));
             const instance = C({});
             assert.strictEqual(instance.TypeA, TypeA);
             assert.strictEqual(instance.TypeB, TypeB);
@@ -105,8 +105,8 @@ describe('module() — [extend] extension and subcontracting', () => {
             const V2 = data(() => ({ V: {} }));
             const V3 = data(() => ({ V: {} }));
             const A = module({}, () => ({ Versioned: V1 }));
-            const B = module({}, () => ({ [extend]: A, Versioned: V2 }));
-            const C = module({}, () => ({ [extend]: B, Versioned: V3 }));
+            const B = module({ extend: A }, () => ({ Versioned: V2 }));
+            const C = module({ extend: B }, () => ({ Versioned: V3 }));
             assert.strictEqual(C({}).Versioned, V3);
             assert.strictEqual(B({}).Versioned, V2);
             assert.strictEqual(A({}).Versioned, V1);
@@ -120,9 +120,9 @@ describe('module() — [extend] extension and subcontracting', () => {
             const GRAND_SHARED = data(() => ({ GS: {} }));
             const GC_SHARED    = data(() => ({ GCS: {} }));
             const Grand      = module({}, () => ({ TypeA: TA, Shared: GRAND_SHARED }));
-            const Parent     = module({}, () => ({ [extend]: Grand, TypeB: TB }));
-            const Child2     = module({}, () => ({ [extend]: Parent, TypeC: TC }));
-            const GrandChild = module({}, () => ({ [extend]: Child2, Shared: GC_SHARED, TypeD: TD }));
+            const Parent     = module({ extend: Grand }, () => ({ TypeB: TB }));
+            const Child2     = module({ extend: Parent }, () => ({ TypeC: TC }));
+            const GrandChild = module({ extend: Child2 }, () => ({ Shared: GC_SHARED, TypeD: TD }));
             const instance = GrandChild({});
             assert.strictEqual(instance.TypeA, TA);
             assert.strictEqual(instance.TypeB, TB);
@@ -140,8 +140,8 @@ describe('module() — [extend] extension and subcontracting', () => {
                 () => ({ Parent: SharedADT })
             );
             const Child = module(
-                { demands: ({ x }: { x: number }) => x > 0 },
-                ({ x: _x }: { x: number }) => ({ [extend]: Parent, Child: SharedADT })
+                { extend: Parent, demands: ({ x }: { x: number }) => x > 0 },
+                ({ x: _x }: { x: number }) => ({ Child: SharedADT })
             );
             // x=5: fails parent (>100) but passes child (>0) → overall passes (OR)
             assert.doesNotThrow(() => Child({ x: 5 }));
@@ -154,8 +154,8 @@ describe('module() — [extend] extension and subcontracting', () => {
                 () => ({ Parent: SharedADT })
             );
             const Child = module(
-                { demands: ({ x }: { x: number }) => x > 100 },
-                ({ x: _x }: { x: number }) => ({ [extend]: Parent, Child: SharedADT })
+                { extend: Parent, demands: ({ x }: { x: number }) => x > 100 },
+                ({ x: _x }: { x: number }) => ({ Child: SharedADT })
             );
             // x=5: fails child (>100) but passes parent (>0) → overall passes (OR)
             assert.doesNotThrow(() => Child({ x: 5 }));
@@ -168,8 +168,8 @@ describe('module() — [extend] extension and subcontracting', () => {
                 () => ({ Parent: SharedADT })
             );
             const Child = module(
-                { demands: ({ x }: { x: number }) => x > 50 },
-                ({ x: _x }: { x: number }) => ({ [extend]: Parent, Child: SharedADT })
+                { extend: Parent, demands: ({ x }: { x: number }) => x > 50 },
+                ({ x: _x }: { x: number }) => ({ Child: SharedADT })
             );
             assert.throws(() => Child({ x: 10 }), DemandsError);
         });
@@ -178,8 +178,8 @@ describe('module() — [extend] extension and subcontracting', () => {
             const SharedADT = data(() => ({ D: {} }));
             const Parent = module({}, () => ({ Parent: SharedADT }));
             const Child = module(
-                { demands: ({ x }: { x: number }) => x > 0 },
-                ({ x: _x }: { x: number }) => ({ [extend]: Parent, Child: SharedADT })
+                { extend: Parent, demands: ({ x }: { x: number }) => x > 0 },
+                ({ x: _x }: { x: number }) => ({ Child: SharedADT })
             );
             assert.doesNotThrow(() => Child({ x: 5 }));
             assert.throws(() => Child({ x: -1 }), DemandsError);
@@ -194,8 +194,8 @@ describe('module() — [extend] extension and subcontracting', () => {
                 () => ({ TypeA })
             );
             const Child = module(
-                { ensures: (exp: { TypeA: unknown }) => exp.TypeA !== null },
-                () => ({ [extend]: Parent })
+                { extend: Parent, ensures: (exp: { TypeA: unknown }) => exp.TypeA !== null },
+                () => ({})
             );
             assert.doesNotThrow(() => Child({}));
         });
@@ -207,8 +207,8 @@ describe('module() — [extend] extension and subcontracting', () => {
                 () => ({ TypeA })
             );
             const Child = module(
-                { ensures: (exp: { TypeA: unknown }) => 'TypeA' in exp },
-                () => ({ [extend]: Parent })
+                { extend: Parent, ensures: (exp: { TypeA: unknown }) => 'TypeA' in exp },
+                () => ({})
             );
             assert.throws(() => Child({}), EnsuresError);
         });
@@ -221,8 +221,8 @@ describe('module() — [extend] extension and subcontracting', () => {
                 () => ({ TypeA })
             );
             const Child = module(
-                { ensures: (exp: any) => 'Missing' in exp },
-                () => ({ [extend]: Parent, Extra: ExtraADT })
+                { extend: Parent, ensures: (exp: any) => 'Missing' in exp },
+                () => ({ Extra: ExtraADT })
             );
             assert.throws(() => Child({}), EnsuresError);
         });
@@ -236,8 +236,8 @@ describe('module() — [extend] extension and subcontracting', () => {
                 () => ({ Data: SharedADT })
             );
             const Child = module(
-                { invariant: ({ b }: { a: number; b: number }) => b > 0 },
-                () => ({ [extend]: Parent })
+                { extend: Parent, invariant: ({ b }: { a: number; b: number }) => b > 0 },
+                () => ({})
             );
             assert.doesNotThrow(() => Child({ a: 1, b: 2 }));
             assert.throws(() => Child({ a: -1, b: 2 }), InvariantError);
@@ -253,8 +253,8 @@ describe('module() — [extend] extension and subcontracting', () => {
                 () => ({ Data: SharedADT })
             );
             const Child = module(
-                {},
-                ({ x: _x }: { x: number }) => ({ [extend]: Parent, Extra: SharedADT })
+                { extend: Parent },
+                ({ x: _x }: { x: number }) => ({ Extra: SharedADT })
             );
             assert.throws(() => Child({ x: -1 }), DemandsError);
             assert.doesNotThrow(() => Child({ x: 5 }));
@@ -264,8 +264,8 @@ describe('module() — [extend] extension and subcontracting', () => {
             const SharedADT = data(() => ({ D: {} }));
             const Parent = module({}, () => ({ Data: SharedADT }));
             const Child = module(
-                { demands: ({ x }: { x: number }) => x > 0 },
-                ({ x: _x }: { x: number }) => ({ [extend]: Parent })
+                { extend: Parent, demands: ({ x }: { x: number }) => x > 0 },
+                ({ x: _x }: { x: number }) => ({})
             );
             assert.throws(() => Child({ x: -1 }), DemandsError);
             assert.doesNotThrow(() => Child({ x: 5 }));
