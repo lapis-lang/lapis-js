@@ -38,7 +38,7 @@ export interface ModuleSpec<Deps = unknown, Exports = unknown> {
 
 /**
  * A module definition — callable with concrete dependencies to produce a frozen instance.
- * Carries _spec and _body for [extend] chain contract composition.
+ * Carries _spec and _body for extend chain contract composition.
  */
 export interface ModuleDef<Deps = unknown, Exports = unknown> {
     (deps: Deps): Readonly<Exports>;
@@ -77,25 +77,6 @@ export interface MealyMachine<State = unknown, Req = unknown, Res = unknown> {
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type LapisValue = { [key: string]: any };
-
-// ---- Type helpers for extend chain resolution ------------------------------
-
-/**
- * Resolves the effective exports type after merging parent exports.
- *
- * Takes two type parameters:
- *   S — the spec type (carries the optional `extend` parent reference)
- *   B — the body return type (own exports only)
- *
- * - No `extend` in S: returns B unchanged.
- * - Has `extend` in S: intersects B with the parent's export type PE.
- */
-type MergedExports<S, B> =
-    'extend' extends keyof S
-        ? { [K in keyof B]: B[K] } &
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (S['extend'] extends ModuleDef<any, infer PE> ? PE : unknown)
-        : { [K in keyof B]: B[K] };
 
 // ---- Internal types ---------------------------------------------------------
 
@@ -222,7 +203,7 @@ function collectSpecChain(
         body: m._body as (deps: unknown) => Record<string | symbol, unknown>
     };
 
-    if ('extend' in spec)
+    if (spec.extend !== undefined)
         return [...collectSpecChain(spec.extend as ModuleDef, visited), link];
 
     return [link];
@@ -301,6 +282,29 @@ export function validateMealyMachine(machine: unknown): asserts machine is Mealy
  *   ({ player }) => ({ play: (src) => player.decode(src) })
  * );
  */
+// Overload 1: spec has a required `extend` property → parent exports are merged in.
+export function module<
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    Deps extends Record<string, any>,
+    BodyReturn extends Record<string, LapisValue>,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    Parent extends ModuleDef<any, any>
+>(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    spec: ModuleSpec<Deps, any> & { extend: Parent },
+    body: (deps: Deps) => BodyReturn
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+): ModuleDef<Deps, (Parent extends ModuleDef<any, infer PE> ? PE : unknown) & { [K in keyof BodyReturn]: BodyReturn[K] }>;
+// Overload 2: spec without `extend` (or widened spec) → body exports only.
+export function module<
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    Deps extends Record<string, any> = Record<string, any>,
+    BodyReturn extends Record<string, LapisValue> = Record<string, LapisValue>
+>(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    spec: ModuleSpec<Deps, any>,
+    body: (deps: Deps) => BodyReturn
+): ModuleDef<Deps, { [K in keyof BodyReturn]: BodyReturn[K] }>;
 export function module<
     // `any` (not `unknown`) is intentional: `Record<string, unknown>` would make every
     // dep access inside the body require a type assertion or guard. Using `any` lets
@@ -308,16 +312,14 @@ export function module<
     // any record shape — the runtime validation is structural, not nominal.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     Deps extends Record<string, any> = Record<string, any>,
-    BodyReturn extends Record<string, LapisValue> = Record<string, LapisValue>,
-    // S carries the spec literal so TypeScript can read S['extend'] for MergedExports.
-    // `any` on the Exports param avoids a circular constraint with MergedExports<S, BodyReturn>.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    S extends ModuleSpec<Deps, any> = ModuleSpec<Deps, any>
+    BodyReturn extends Record<string, LapisValue> = Record<string, LapisValue>
 >(
-    spec: S,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    spec: ModuleSpec<Deps, any>,
     body: (deps: Deps) => BodyReturn
-): ModuleDef<Deps, MergedExports<S, BodyReturn>> {
-    const createModuleInstance = (deps: Deps): Readonly<MergedExports<S, BodyReturn>> => {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+): ModuleDef<any, any> {
+    const createModuleInstance = (deps: Deps): Readonly<Record<string | symbol, unknown>> => {
         // Use the local spec name (if provided) for error context.
         // This identifies the module definition being instantiated rather than
         // the ancestor whose composed contract happened to fail.
@@ -333,7 +335,7 @@ export function module<
             spec: spec as unknown as InternalModuleSpec,
             body: body as unknown as (deps: unknown) => Record<string | symbol, unknown>
         };
-        const chain: ChainLink[] = 'extend' in spec
+        const chain: ChainLink[] = spec.extend !== undefined
             ? [...collectSpecChain(spec.extend as unknown as ModuleDef, visited), selfLink]
             : [selfLink];
 
@@ -378,10 +380,10 @@ export function module<
         }
 
         // Step 7: Check ensures (postcondition — always after exports are built).
-        if (effectiveSpec.ensures && !tryEval(effectiveSpec.ensures, exports as unknown as Readonly<MergedExports<S, BodyReturn>>))
+        if (effectiveSpec.ensures && !tryEval(effectiveSpec.ensures, exports))
             throw new EnsuresError('module:instantiate', errorContext, effectiveSpec.ensures);
 
-        return Object.freeze(exports) as unknown as Readonly<MergedExports<S, BodyReturn>>;
+        return Object.freeze(exports);
     };
 
     // Attach spec and body for extend chain resolution in child modules.
@@ -390,7 +392,8 @@ export function module<
         _body: { value: body, writable: false, configurable: false, enumerable: false }
     });
 
-    return createModuleInstance as unknown as ModuleDef<Deps, MergedExports<S, BodyReturn>>;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return createModuleInstance as unknown as ModuleDef<any, any>;
 }
 
 /**
