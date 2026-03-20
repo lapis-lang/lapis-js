@@ -30,7 +30,7 @@ import type {
 } from './operations.mjs';
 
 import type { origin, destination } from './Relation.mjs';
-import type { output, done, accept } from './Observer.mjs';
+import type { output, done, accept } from './Query.mjs';
 
 // Re-export so consumers can import all types from a single place
 export type { TypeSpec, FamilyRef, FamilyRefCallable, SelfRef, SelfRefCallable, TypeParamRef, SortRef, origin, destination, output, done, accept };
@@ -648,13 +648,13 @@ export type BehaviorADT<D = Record<string, unknown>> =
         readonly [accept]?: unknown;
     } : object);
 
-// ---- Observer type (lightweight dual of BehaviorADT) ------------------------
+// ---- Query type (lightweight dual of BehaviorADT) ------------------------
 
 /**
- * Lightweight static type for values returned by `observer()`.
+ * Lightweight static type for values returned by `query()`.
  *
- * Unlike `BehaviorADT`, observers do not support type-parameterisation
- * (`Observer({ T: Number })`), so `ObserverADT` omits the parametric callable
+ * Unlike `BehaviorADT`, queries do not support type-parameterisation
+ * (`Query({ T: Number })`), so `QueryADT` omits the parametric callable
  * signature, `SubstDecl`, and the `[key: string]: unknown` index signature.
  *
  * The unfold constructor instance type is left as `unknown` instead of the
@@ -663,18 +663,18 @@ export type BehaviorADT<D = Record<string, unknown>> =
  * and `explore()`.  Instances created by unfold ctors are almost never used
  * directly — `explore()` is the primary API.
  */
-export type ObserverADT<D = Record<string, unknown>> =
+export type QueryADT<D = Record<string, unknown>> =
     BehaviorUnfoldCtors<D, BehaviorObservers<D>> &
     BehaviorMergeCtors<D> & {
         readonly prototype: BehaviorObservers<D>;
     } & (D extends { readonly [output]?: unknown } ? {
-        /** Observer output cospan projection (present when D declares [output]) */
+        /** Query output cospan projection (present when D declares [output]) */
         readonly [output]?: unknown;
     } : object) & (D extends { readonly [done]?: unknown } ? {
-        /** Observer done cospan projection (present when D declares [done]) */
+        /** Query done cospan projection (present when D declares [done]) */
         readonly [done]?: unknown;
     } : object) & (D extends { readonly [accept]?: unknown } ? {
-        /** Observer accept cospan projection (present when D declares [accept]) */
+        /** Query accept cospan projection (present when D declares [accept]) */
         readonly [accept]?: unknown;
     } : object);
 

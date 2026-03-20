@@ -15,7 +15,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-    relation, observer, data, invariant,
+    relation, query, data, invariant,
     origin, destination,
     DemandsError
 } from '../index.mjs';
@@ -26,9 +26,9 @@ import {
 
 describe('Contracts x LP: Demands on Unfold (Early Pruning)', () => {
     it('demands reject invalid seeds (mode declaration)', () => {
-        // A search observer that requires the seed to be a valid starting state.
+        // A query that requires the seed to be a valid starting state.
         // In LP terms: the demand is a mode declaration — the query must be ground.
-        const Counter = observer(({ Self }) => ({
+        const Counter = query(({ Self }) => ({
             value: Number,
             isDone: Boolean,
             isAccepted: Boolean,
@@ -63,11 +63,11 @@ describe('Contracts x LP: Demands on Unfold (Early Pruning)', () => {
     });
 
     it('demands on unfold prune invalid states during exploration', () => {
-        // Observer where the unfold has demands that prune certain states.
+        // Query where the unfold has demands that prune certain states.
         // This models constraint propagation: a demand at each step that
         // rejects partial solutions violating constraints.
 
-        const Searcher = observer(({ Self }) => ({
+        const Searcher = query(({ Self }) => ({
             value: Number,
             isDone: Boolean,
             isValid: Boolean,
@@ -148,14 +148,14 @@ describe('Contracts x LP: Ensures on Closure Results (Integrity Constraints)', (
 
 describe('Contracts x LP: Rescue as Backtracking', () => {
     it('rescue on unfold provides fallback when ensures fails (backtrack)', () => {
-        // An observer where the unfold has ensures + rescue.
+        // A query where the unfold has ensures + rescue.
         // When ensures fails (invalid state), rescue provides a fallback
         // (backtrack to a safe state). This models Prolog backtracking:
         // constraint violation → try next alternative.
 
         let rescueCount = 0;
 
-        const Stream = observer(({ Self }) => ({
+        const Stream = query(({ Self }) => ({
             value: Number,
             isDone: Boolean,
             isAccepted: Boolean,
@@ -194,7 +194,7 @@ describe('Contracts x LP: Rescue as Backtracking', () => {
     it('rescue with retry models Prolog retry semantics', () => {
         let retryCount = 0;
 
-        const Solver = observer(({ Self }) => ({
+        const Solver = query(({ Self }) => ({
             value: Number,
             isDone: Boolean,
             isValid: Boolean,
@@ -232,7 +232,7 @@ describe('Contracts x LP: Rescue as Backtracking', () => {
 
         let stepCount = 0;
 
-        const Risky = observer(({ Self }) => ({
+        const Risky = query(({ Self }) => ({
             value: Number,
             isDone: Boolean,
             isAccepted: Boolean,
@@ -269,7 +269,7 @@ describe('Contracts x LP: Rescue as Backtracking', () => {
 describe('Contracts x LP: Tabling (Cycle Detection in Explore)', () => {
     it('auto-derived tabling detects cycles and terminates exploration', () => {
         // Cyclic state space: 0 → 1 → 2 → 0 → 1 → ...
-        const Cyclic = observer(({ Self }) => ({
+        const Cyclic = query(({ Self }) => ({
             value: Number,
             isDone: Boolean,
             isAccepted: Boolean,
@@ -294,7 +294,7 @@ describe('Contracts x LP: Tabling (Cycle Detection in Explore)', () => {
 
     it('tabling prevents infinite loops on self-referential states', () => {
         // State that always transitions to itself
-        const Loop = observer(({ Self }) => ({
+        const Loop = query(({ Self }) => ({
             value: Number,
             isDone: Boolean,
             isAccepted: Boolean,

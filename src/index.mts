@@ -14,7 +14,7 @@ export { DemandsError, EnsuresError, InvariantError, AssertionError, assert, imp
 export type { ContractSpec } from './contracts.mjs';
 
 // Type exports
-export type { DataADT, DataADTWithParams, BehaviorADT, BehaviorADTWithParams, ObserverADT, DataDeclParams, BehaviorDeclParams, Letter, SortLetter, CollectParams } from './types.mjs';
+export type { DataADT, DataADTWithParams, BehaviorADT, BehaviorADTWithParams, QueryADT, DataDeclParams, BehaviorDeclParams, Letter, SortLetter, CollectParams } from './types.mjs';
 export type { TypeSpec, FamilyRef, SelfRef, TypeParamRef, SortRef } from './types.mjs';
 
 // Module system exports
@@ -27,5 +27,5 @@ export { structuralEquals } from './utils.mjs';
 // Relation / Allegory exports
 export { relation, origin, destination } from './Relation.mjs';
 
-// Observer / Coalgebraic dual of Relation
-export { observer, output, done, accept } from './Observer.mjs';
+// Query / Coalgebraic dual of Relation
+export { query, output, done, accept } from './Query.mjs';

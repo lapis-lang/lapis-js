@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { data, observer } from '@lapis-lang/lapis-js';
+import { data, query } from '@lapis-lang/lapis-js';
 
 // SearchState ::= Active(target, adj, workList)
 //               | Found(target, adj, foundPath, workList)
@@ -79,9 +79,9 @@ const Query: any = data(() => ({
     })
 }));
 
-// PathFinder — observer (cospan: Query →input— PathFinder ←output— Path[])
+// PathFinder — query (cospan: Query →input— PathFinder ←output— Path[])
 
-const PathFinder = observer(({ Self }) => ({
+const PathFinder = query(({ Self }) => ({
     path: Array,
     found: Boolean,
     exhausted: Boolean,
@@ -101,7 +101,7 @@ const PathFinder = observer(({ Self }) => ({
 // =============================================================================
 
 console.log('╔════════════════════════════════════════════════╗');
-console.log('║  Graph Path Finder — observer() (ν-side LP)    ║');
+console.log('║  Graph Path Finder — query() (ν-side LP)    ║');
 console.log('╚════════════════════════════════════════════════╝\n');
 
 const dag: Record<string, string[]> = {
@@ -186,5 +186,5 @@ paths_XX.forEach((p: string[]) => console.log(`    ${p.join(' → ')}`));
 console.log('\n━━━ Structure ━━━');
 console.log('  data()     Query        adj|start|target → toState  — μ (cospan domain)');
 console.log('             SearchState  Active|Found|Exhausted      — μ (DFS worklist)');
-console.log('  observer() PathFinder   path|found|exhausted|next   — ν (cospan)');
+console.log('  query() PathFinder   path|found|exhausted|next   — ν (cospan)');
 console.log('  explore()  = coinductive observation (dual of closure)');

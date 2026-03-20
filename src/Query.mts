@@ -1,9 +1,9 @@
 /**
- * Observer — Coalgebraic dual of Relation: cospan structure on behaviors.
+ * Query — Coalgebraic dual of Relation: cospan structure on behaviors.
  *
- * An observer P : A ⇝ B is a cospan:   A →input— P ←output— B
+ * A query P : A ⇝ B is a cospan:   A →input— P ←output— B
  *
- * `observer()` is derived from `behavior()`. It builds a final coalgebra (ν-type)
+ * `query()` is derived from `behavior()`. It builds a final coalgebra (ν-type)
  * enriched with cospan structure: named field references for
  * output extraction, termination detection, and acceptance filtering,
  * plus coalgebraic operations that only make sense on types with that structure:
@@ -13,7 +13,7 @@
  *
  * This is the categorical dual of `relation()`:
  *
- *   relation (μ)                     observer (ν)
+ *   relation (μ)                     query (ν)
  *   ─────────────                    ─────────────
  *   span: A ←origin— R —dest→ B     cospan: A →input— P ←output— B
  *   origin/destination (fold ops)    output/done/accept (field refs)
@@ -30,20 +30,20 @@
 
 import { behavior } from './Behavior.mjs';
 import { isOperationDef, isSelfRef, op, spec as specSym, LapisTypeSymbol, SelfRefSymbol } from './operations.mjs';
-import type { BehaviorDeclParams, ObserverADT, SpecValue } from './types.mjs';
+import type { BehaviorDeclParams, QueryADT, SpecValue } from './types.mjs';
 import type { fold, unfold, map, merge } from './ops.mjs';
 
 // ---- Symbols ----------------------------------------------------------------
 
-/** Symbol key for declaring the output cospan projection in an observer. */
+/** Symbol key for declaring the output cospan projection in a query. */
 export const output: unique symbol = Symbol('output');
 export type output = typeof output;
 
-/** Symbol key for declaring the done cospan projection in an observer. */
+/** Symbol key for declaring the done cospan projection in a query. */
 export const done: unique symbol = Symbol('done');
 export type done = typeof done;
 
-/** Symbol key for declaring the accept cospan projection in an observer. */
+/** Symbol key for declaring the accept cospan projection in a query. */
 export const accept: unique symbol = Symbol('accept');
 export type accept = typeof accept;
 
@@ -52,10 +52,10 @@ export type accept = typeof accept;
 // ---- Ops context and return structure -------------------------------------
 
 /**
- * Context provided to the observer().ops() callback.
+ * Context provided to the query().ops() callback.
  * Includes all behavior ops plus the cospan projection symbols.
  */
-type ObserverOpsContext = {
+type QueryOpsContext = {
     fold: typeof fold;
     unfold: typeof unfold;
     map: typeof map;
@@ -75,9 +75,9 @@ type ObserverOpsContext = {
 type OutputType<S> = SpecValue<S, never>;
 
 /**
- * The base observer shape: behavior with explore() attached.
+ * The base query shape: behavior with explore() attached.
  */
-type ObserverShape<D> = ObserverADT<D> & {
+type QueryShape<D> = QueryADT<D> & {
     explore(seed: unknown, options?: ExploreOptions): unknown[];
 };
 
@@ -98,18 +98,18 @@ interface ExploreOptions {
     unfold?: string;
 }
 
-// ---- observer() -------------------------------------------------------------
+// ---- query() ----------------------------------------------------------------
 
 /**
- * Define an observer — a behavior type with cospan structure (input/output + explore).
+ * Define a query — a behavior type with cospan structure (input/output + explore).
  *
  * Required cospan projections in the declaration:
  *
- * - `[output]` — field name string referencing an observer field
- * - `[done]`   — field name string referencing a Boolean observer field
- * - `[accept]` — field name string referencing a Boolean observer field
+ * - `[output]` — field name string referencing a behavior field
+ * - `[done]`   — field name string referencing a Boolean behavior field
+ * - `[accept]` — field name string referencing a Boolean behavior field
  *
- * Each cospan key names an observer field; the framework auto-generates the
+ * Each cospan key names a behavior field; the framework auto-generates the
  * corresponding fold projection:
  *   `[output]: 'path'`  becomes  `output: fold({ out: Array })({ _: ({ path }) => path })`
  *
@@ -127,7 +127,7 @@ interface ExploreOptions {
  *
  * @example
  * ```typescript
- * const SolverStream = observer(({ Self }) => ({
+ * const SolverStream = query(({ Self }) => ({
  *     board: Array,
  *     isSolved: Boolean,
  *     isExhausted: Boolean,
@@ -158,23 +158,23 @@ interface ExploreOptions {
  * ```
  */
 /**
- * Combined return type for `observer().ops()`.
+ * Combined return type for `query().ops()`.
  * Using a single type alias instead of a raw intersection `A & B` helps
  * TypeScript cache the structural resolution rather than re-expanding
  * the intersection at every call-site (explore, length, forEach, etc.).
  */
-type ObserverWithExplore<D, O, Out> =
-    ObserverADT<D & O> & {
+type QueryWithExplore<D, O, Out> =
+    QueryADT<D & O> & {
         explore(seed: unknown, options?: ExploreOptions): Out;
     };
 
-export function observer<D extends Record<string, unknown>>(
+export function query<D extends Record<string, unknown>>(
     declFn: (params: BehaviorDeclParams) => D
-): ObserverShape<D> & {
+): QueryShape<D> & {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ops<const O extends Record<string | symbol, any>>(
-        opsFn: (ctx: ObserverOpsContext) => O
-    ): ObserverWithExplore<D, O,
+        opsFn: (ctx: QueryOpsContext) => O
+    ): QueryWithExplore<D, O,
         O extends { readonly [output]: infer K extends keyof D & string }
             ? OutputType<D[K]>[]
             : unknown[]
@@ -185,7 +185,7 @@ export function observer<D extends Record<string, unknown>>(
     let selfFieldName: string | null = null;
     let capturedRawSpec: Record<string, unknown> | null = null;
 
-    // Wrap the user's declaration: only observer fields in Phase 1.
+    // Wrap the user's declaration: only behavior fields in Phase 1.
     // Cospan projections ([output]/[done]/[accept]) and operations move to .ops().
     const ADT = behavior((params: BehaviorDeclParams) => {
         const rawSpec = declFn(params);
@@ -198,18 +198,18 @@ export function observer<D extends Record<string, unknown>>(
         for (const [key, value] of Object.entries(rawSpec)) {
             if (RESERVED.has(key)) {
                 throw new Error(
-                    `observer(): '${key}' is a reserved auto-generated operation and cannot be redefined`
+                    `query(): '${key}' is a reserved auto-generated operation and cannot be redefined`
                 );
             }
 
-            // Detect Self continuation (stays in Phase 1 — it's an observer field)
+            // Detect Self continuation (stays in Phase 1 — it's a behavior field)
             if (isSelfRef(value)) {
                 selfFieldName = key;
                 transformed[key] = value;
                 continue;
             }
 
-            // Standard observer field (non-op)
+            // Standard behavior field (non-op)
             if (!isOperationDef(key, value))
                 transformed[key] = value;
 
@@ -238,7 +238,7 @@ export function observer<D extends Record<string, unknown>>(
     ] as const;
 
     if (baseOps) {
-        (ADT as Record<string, unknown>).ops = function observerOps(
+        (ADT as Record<string, unknown>).ops = function queryOps(
             opsFn: (ctx: Record<string, unknown>) => Record<string | symbol, unknown>
         ) {
             return baseOps.call(ADT, (baseCtx: Record<string, unknown>) => {
@@ -251,7 +251,7 @@ export function observer<D extends Record<string, unknown>>(
                 for (const key of Object.keys(userOps)) {
                     if (RESERVED.has(key)) {
                         throw new Error(
-                            `observer(): '${key}' is a reserved auto-generated operation and cannot be redefined`
+                            `query(): '${key}' is a reserved auto-generated operation and cannot be redefined`
                         );
                     }
                 }
@@ -271,7 +271,7 @@ export function observer<D extends Record<string, unknown>>(
                     const def = userOps[sym];
                     if (typeof def !== 'string') {
                         throw new Error(
-                            `observer().ops() requires [${name}] to be a string field reference, ` +
+                            `query().ops() requires [${name}] to be a string field reference, ` +
                             `e.g. [${name}]: '${name === 'output' ? 'myField' : 'myBoolField'}'`
                         );
                     }
@@ -279,7 +279,7 @@ export function observer<D extends Record<string, unknown>>(
                     const fieldSpec = rawSpec[fieldName];
                     if (fieldSpec === undefined) {
                         throw new Error(
-                            `observer(): [${name}]: "${fieldName}" references unknown field '${fieldName}'`
+                            `query(): [${name}]: "${fieldName}" references unknown field '${fieldName}'`
                         );
                     }
                     const outType = isSelfRef(fieldSpec) ? Object : fieldSpec;
@@ -296,7 +296,7 @@ export function observer<D extends Record<string, unknown>>(
         };
     }
 
-    // ---- Attach observer-specific methods ----
+    // ---- Attach query-specific methods ----
 
     Object.defineProperty(ADT, 'explore', {
         value: function explore(
@@ -376,11 +376,11 @@ function computeExplore(
     // ---- Determine the unfold to use ----
     const unfoldName = options?.unfold ?? unfoldNames[0];
     if (!unfoldName)
-        throw new Error('observer().explore() requires at least one unfold operation in the spec');
+        throw new Error('query().explore() requires at least one unfold operation in the spec');
 
     const unfoldOp = ADT[unfoldName];
     if (typeof unfoldOp !== 'function')
-        throw new Error(`observer().explore(): unfold '${unfoldName}' is not available on the behavior`);
+        throw new Error(`query().explore(): unfold '${unfoldName}' is not available on the behavior`);
 
     // ---- Unfold seed into initial instance ----
     let current: Record<string, unknown>;

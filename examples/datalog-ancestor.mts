@@ -20,7 +20,7 @@
  *   - reachingTo()    — relational backward projection R°(T)
  *
  * This is the μ-side of the LP duality.  For the ν-side (Prolog-like
- * top-down search), see sudoku-bmf.mts and the observer() construct.
+ * top-down search), see sudoku-bmf.mts and the query() construct.
  */
 import { relation, origin, destination } from '@lapis-lang/lapis-js';
 
