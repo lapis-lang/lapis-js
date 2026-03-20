@@ -76,6 +76,16 @@ there is an emphasis on the Bird-Meertens Formalism (BMF) (Squiggol) of making p
   - [Complete Example: Graph Path Finder](#complete-example-graph-path-finder)
   - [Relation vs Query: When to Use Which](#relation-vs-query-when-to-use-which)
   - [Logic Programming Interpretation (Query)](#logic-programming-interpretation-query)
+- [Protocols](#protocols)
+  - [Declaring a Protocol](#declaring-a-protocol)
+  - [Protocol Inheritance](#protocol-inheritance)
+  - [Declaring Conformance with `[satisfies]`](#declaring-conformance-with-satisfies)
+  - [Checking Conformance with `instanceof`](#checking-conformance-with-instanceof)
+  - [Conditional Conformance](#conditional-conformance)
+  - [Higher-Kinded Protocol Parameters](#higher-kinded-protocol-parameters)
+  - [Algebraic Laws via Contracts](#algebraic-laws-via-contracts)
+  - [Protocol-Level `[invariant]`](#protocol-level-invariant)
+  - [Protocols on Behavior Types](#protocols-on-behavior-types)
 - [Design by Contract](#design-by-contract)
   - [Assertions](#assertions)
   - [Implies](#implies)
@@ -2870,6 +2880,262 @@ Where `relation()` stores proof witnesses (data: what was proved), `query()` dri
 - **Query**: behavior side. Search processes are stepped and observed. `explore()` computes a greatest fixpoint (lazily find proofs on demand). *(CT: final coalgebra, ν-side.)*
 
 Together they form a complete LP system: relations for exhaustive bottom-up derivation, queries for lazy top-down search.
+
+## Protocols
+
+Protocols are **named collections of operation specs** — the algebraic equivalent of type classes or interfaces, but built entirely on the `fold`/`unfold`/`map`/`merge` vocabulary already used in `data()` and `behavior()` declarations.
+
+| Protocol Concept | What it really is |
+|---|---|
+| `Monoid.Identity` | An unfold (producer): ε : 1 → M |
+| `Monoid.combine` | A fold (consumer): ⊕ : M × M → M |
+| `Ordered.compare` | A fold (consumer): cmp : M × M → ℤ |
+| `Functor.fmap` | A map (type transform): F T → F U |
+
+Protocols declare *what* operations must exist and *what shape* they must have. Implementations stay in `.ops()` where they belong.
+
+### Declaring a Protocol
+
+Use `protocol()` with the same destructured-parameter style as `data()` and `behavior()`. The callback receives `Family`, optional single-letter type params, and spec-only helpers (`fold`, `unfold`, `map`, `merge`) that return spec objects directly — no second handlers phase:
+
+```ts
+import { protocol, extend } from '@lapis-lang/lapis-js';
+
+const Semigroup = protocol(({ Family, fold }) => ({
+    combine: fold({ in: Family, out: Family })
+}));
+
+const Monoid = protocol(({ Family, fold, unfold }) => ({
+    [extend]: Semigroup,     // inherits 'combine' requirement
+    Identity: unfold({ out: Family })
+}));
+
+const Ordered = protocol(({ Family, fold }) => ({
+    compare: fold({ in: Family, out: Number })
+}));
+```
+
+Naming conventions are enforced at declaration time:
+
+| Operation kind | Convention | Example |
+|---|---|---|
+| `unfold` (producer) | **PascalCase** | `Identity` |
+| `fold` (consumer) | **camelCase** | `combine` |
+| `map` (transform) | **camelCase** | `fmap` |
+
+### Protocol Inheritance
+
+Protocols support `[extend]` for hierarchies. A child protocol inherits all required operations from its parent:
+
+```ts
+const Semigroup = protocol(({ Family, fold }) => ({
+    combine: fold({ in: Family, out: Family })
+}));
+
+const Monoid = protocol(({ Family, fold, unfold }) => ({
+    [extend]: Semigroup,
+    Identity: unfold({ out: Family })
+}));
+
+// Monoid.requiredOps has both 'combine' (inherited) and 'Identity' (own)
+console.log([...Monoid.requiredOps.keys()]); // ['combine', 'Identity']
+```
+
+Conformance is transitive: satisfying `Monoid` automatically implies satisfying `Semigroup`.
+
+### Declaring Conformance with `[satisfies]`
+
+ADTs declare conformance in **phase 1** (the structural declaration), using the `[satisfies]` symbol. This is the same phase as `[extend]` — it declares what the type *is*, not what it *does*:
+
+```ts
+import { data, satisfies, extend } from '@lapis-lang/lapis-js';
+
+const List = data(({ Family, T }) => ({
+    [satisfies]: [Monoid, Ordered({ T: Ordered })],
+    Nil: {},
+    Cons: { head: T, tail: Family(T) }
+})).ops(({ fold, unfold, Family, T }) => ({
+    // Fulfills Monoid
+    Identity: unfold({ out: Family })({ Nil: () => ({}), Cons: () => null }),
+    combine: fold({ in: Family, out: Family })({
+        Nil({}, other) { return other; },
+        Cons({ head, tail }, other) {
+            return Family.Cons({ head, tail: tail(other) });
+        }
+    }),
+    // Fulfills Ordered — only registered when T also satisfies Ordered;
+    // calling compare on a non-conforming parameterization throws a TypeError
+    compare: fold({ in: Family, out: Number })({
+        Nil({}, other) { return other instanceof List.Nil ? 0 : -1; },
+        Cons({ head, tail }, other) {
+            if (other instanceof List.Nil) return 1;
+            const hCmp = head.compare(other.head);
+            return hCmp !== 0 ? hCmp : tail(other.tail);
+        }
+    })
+}));
+```
+
+Conformance is validated when `.ops()` is called. A `TypeError` is thrown if a required operation is missing.
+
+`[satisfies]` accepts a single protocol or an array:
+
+```ts
+[satisfies]: Monoid                          // single
+[satisfies]: [Monoid, Ordered({ T: Ordered })]  // array, mixed
+```
+
+### Checking Conformance with `instanceof`
+
+Protocols override `Symbol.hasInstance` so that standard `instanceof` works:
+
+```ts
+const list = List.Cons({ head: 1, tail: List.Nil });
+
+console.log(list instanceof Monoid);    // true
+console.log(list instanceof Semigroup); // true — transitively
+console.log(list instanceof List);      // true — still works (prototype chain)
+```
+
+### Conditional Conformance
+
+`List(T)` is `Ordered` only when `T` is also `Ordered`. Express this by calling the protocol with a constraints object:
+
+```ts
+[satisfies]: [Ordered({ T: Ordered })]
+```
+
+This reuses the same `X({ param: value })` calling convention as type instantiation. When `List({ T: Number })` is constructed, the system checks whether `Number` satisfies `Ordered`. If it does, `instanceof Ordered` returns `true` for instances of `List(Number)`. If not, it returns `false`.
+
+```ts
+const Num = data(() => ({
+    [satisfies]: [Ordered],
+    Num: { value: Number }
+})).ops(/* ... */);
+
+// Point has no canonical total order — 2D coordinates are not comparable
+const Point = data(() => ({
+    Point: { x: Number, y: Number }
+})).ops(/* ... */);
+
+const ListOfNum   = List({ T: Num });
+const ListOfPoint = List({ T: Point });   // Point does not satisfy Ordered
+
+ListOfNum.Cons({ head: Num.Num({ value: 1 }), tail: ListOfNum.Nil })
+    instanceof Ordered;  // true — T=Num satisfies Ordered
+
+ListOfPoint.Cons({ head: Point.Point({ x: 1, y: 2 }), tail: ListOfPoint.Nil })
+    instanceof Ordered;  // false — T=Point does not satisfy Ordered
+```
+
+When the constraint is **not** met, any operation contributed by the unsatisfied protocol is replaced with a throwing stub. Calling it produces a clear `TypeError` at the call site:
+
+```ts
+const listOfPoint = ListOfPoint.Cons({ head: Point.Point({ x: 1, y: 2 }), tail: ListOfPoint.Nil });
+listOfPoint.compare(listOfPoint);
+// TypeError: 'compare' is not available: this type was not instantiated with
+// compatible type arguments ('T' is 'Point' — does not satisfy the required
+// constraint). Provide a type argument that satisfies the required protocol.
+```
+
+This means a conditional protocol's operations are structurally present as stubs on every parameterization, but only become live (and `instanceof` returns `true`) when all constraints are satisfied. The stub ensures the failure is caught at the call site with a precise, actionable message rather than silently succeeding for empty variants or surfacing a cryptic deep error.
+
+Unconstrained conformance uses the protocol directly: `[satisfies]: [Monoid]`. Constrained conformance calls the protocol with constraints: `[satisfies]: [Ordered({ T: Ordered })]`.
+
+### Higher-Kinded Protocol Parameters
+
+Protocols can declare type parameters (`T`, `U`, ...) alongside `Family` using the same single-uppercase-letter convention:
+
+```ts
+// Functor: requires a map operation that transforms type parameter T
+const Functor = protocol(({ Family, T, map }) => ({
+    fmap: map({ out: Family })
+}));
+
+// Bifunctor: requires maps over both T and U
+const Bifunctor = protocol(({ Family, T, U, map }) => ({
+    bimap: map({ out: Family })
+}));
+```
+
+When a parameterized ADT satisfies a protocol with type parameters, the protocol's type params bind to the ADT's type params by name.
+
+### Algebraic Laws via Contracts
+
+Protocol specs support `demands`, `ensures`, and `rescue` — the same contract system used in `.ops()`. This turns protocols from structural assertions into **algebraic specifications with laws**:
+
+```ts
+const Semigroup = protocol(({ Family, fold }) => ({
+    combine: fold({
+        in: Family,
+        out: Family,
+        // Associativity: result must be the same type as self
+        ensures: (self, _old, result) => result instanceof self.constructor
+    })
+}));
+
+const Ordered = protocol(({ Family, fold }) => ({
+    compare: fold({
+        in: Family,
+        out: Number,
+        // compare must return -1, 0, or 1
+        ensures: (_self, _old, result) =>
+            result === -1 || result === 0 || result === 1
+    })
+}));
+```
+
+When an ADT satisfies a protocol, the protocol's contracts are **composed** with the conforming operation's own contracts:
+
+| Contract | Composition | Semantics |
+|---|---|---|
+| `demands` | OR (weaken) | Protocol demands OR operation demands must pass |
+| `ensures` | AND (strengthen) | Both protocol ensures AND operation ensures must pass |
+| `rescue` | Operation takes precedence | Operation rescue overrides protocol rescue if both present |
+
+This follows the Liskov Substitution Principle: protocol contracts apply everywhere, but implementations may relax preconditions and strengthen postconditions.
+
+### Protocol-Level `[invariant]`
+
+For cross-operation laws (e.g. Monoid identity: `combine(x, Identity) ≡ x`) that cannot be expressed as per-operation `ensures`, use a protocol-level `[invariant]` predicate:
+
+```ts
+const Monoid = protocol(({ Family, fold, unfold }) => ({
+    [extend]: Semigroup,
+    Identity: unfold({ out: Family }),
+    [invariant]: (type) => {
+        // Structural check: Identity must exist and be the right shape
+        return typeof type.Identity !== 'undefined';
+    }
+}));
+```
+
+The `[invariant]` key on a protocol mirrors `[invariant]` on a variant spec — a predicate that must hold for the type as a whole. Access it via `protocol.invariantFn`.
+
+### Protocols on Behavior Types
+
+Behavior types (`behavior()`) support `[satisfies]` identically to data types. Declare conformance in phase 1 and implement in `.ops()`:
+
+```ts
+const Steppable = protocol(({ Family, fold }) => ({
+    step: fold({ out: Number })
+}));
+
+const Counter = behavior(({ Self }) => ({
+    [satisfies]: [Steppable],
+    value: Number
+})).ops(({ fold, unfold, Self }) => ({
+    Counting: unfold({ in: Number, out: Self })({
+        value: (n) => n
+    }),
+    step: fold({ out: Number })({
+        _: (ctx) => ctx.value
+    })
+}));
+
+const c = Counter.Counting(3);
+console.log(c instanceof Steppable); // true
+```
 
 ## Design by Contract
 

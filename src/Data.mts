@@ -19,6 +19,8 @@ import {
     assertCamelCase,
     assertPascalCase,
     LapisTypeSymbol,
+    invariant,
+    satisfies,
     type TypeSpec
 } from './operations.mjs';
 
@@ -58,13 +60,21 @@ import type { DataADTWithParams, DataInstance, DataDeclParams, VariantKeys, Spec
 import type { FoldDef, InstanceOf, ContractCallbacks } from './ops.mjs';
 import { fold as foldOp, unfold as unfoldOp, map as mapOp, merge as mergeOp } from './ops.mjs';
 
-// Re-export symbols
-export { extend };
+import {
+    type ProtocolEntry,
+    registerConformance,
+    applyUnconditionalProtocols,
+    parseProtocolEntries,
+    conformanceRegistry
+} from './Protocol.mjs';
+
+// Re-export symbols.
+// `invariant` is defined in `operations.mts` but re-exported here so that
+// internal consumers (e.g. `Relation.mts`) and the public API via `index.mts`
+// can continue to import it from `Data.mjs` without a breaking change.
+export { extend, invariant };
 export const parent: unique symbol = Symbol('parent');
 export type parent = typeof parent;
-
-export const invariant: unique symbol = Symbol('invariant');
-export type invariant = typeof invariant;
 
 export const IsSingleton: unique symbol = Symbol('IsSingleton');
 export type IsSingleton = typeof IsSingleton;
@@ -197,6 +207,7 @@ type ParsedDecl = {
     operations: SpecRecord;
     parentADT: ADTLike | null;
     Family: FamilyMarker | null;
+    protocols: ProtocolEntry[];
 };
 
 type FamilyMarker = {
@@ -417,6 +428,14 @@ function attachOpsMethod<D extends Record<string, unknown>>(
             decl.typeParams
         );
 
+        // Validate protocol conformance and register unconditional conformances
+        applyUnconditionalProtocols(
+            rawADT.prototype,
+            new Set(rawADT._getTransformerNames()),
+            decl.protocols,
+            'ADT'
+        );
+
         return ADT as DataADTWithParams<D & O>;
     };
 }
@@ -496,6 +515,8 @@ function parseDeclaration(
     if (extend in declObj)
         parentADT = declObj[extend as unknown as string] as ADTLike;
 
+    const rawDeclObj = declObj as Record<string | symbol, unknown>;
+    const protocols = parseProtocolEntries(rawDeclObj[satisfies]);
 
     for (const [key, value] of Object.entries(declObj)) {
         if (isOperationDef(key, value))
@@ -555,7 +576,7 @@ function parseDeclaration(
         }
     }
 
-    return { typeParams, sortParams, sortVariants, variants: variantsObj, operations: operationsObj, parentADT, Family };
+    return { typeParams, sortParams, sortVariants, variants: variantsObj, operations: operationsObj, parentADT, Family, protocols };
 }
 
 // ---- Variant constructor factories ------------------------------------------
@@ -2831,6 +2852,99 @@ function createParameterized(
 
     // Register raw → proxied mapping for fold-context resolution.
     rawToProxiedMap.set(ParameterizedADT as unknown as object, ProxiedParameterized as unknown as object);
+
+    // Register conditional protocol conformances based on satisfied type arg constraints.
+    // Ops from unconditional protocols are always available; collect them first so that
+    // any op shared with a failed conditional protocol is not unnecessarily stubbed out.
+    const satisfiedOpNames = new Set<string>();
+    for (const entry of decl.protocols) {
+        if (!entry.conditional) {
+            for (const opName of entry.protocol.requiredOps.keys())
+                satisfiedOpNames.add(opName);
+        }
+    }
+
+    type FailedEntry = { ownOps: string[]; failedParams: Array<{ param: string; argName: string }> };
+    const failedEntries: FailedEntry[] = [];
+
+    for (const entry of decl.protocols) {
+        if (!entry.conditional) continue;
+        let allSatisfied = true;
+        const failedParams: Array<{ param: string; argName: string }> = [];
+        for (const [paramName, requiredProto] of Object.entries(entry.constraints)) {
+            const typeArgValue = typeArgs[paramName];
+            if (!typeArgValue) {
+                allSatisfied = false;
+                failedParams.push({ param: paramName, argName: 'undefined' });
+                continue;
+            }
+            // Walk the prototype chain of the type arg to find conformance
+            const typeArgProto =
+                typeof typeArgValue === 'function'
+                    ? (typeArgValue as { prototype?: object }).prototype ?? null
+                    : typeof typeArgValue === 'object' && typeArgValue !== null
+                        ? typeArgValue as object
+                        : null;
+            if (!typeArgProto) {
+                allSatisfied = false;
+                failedParams.push({ param: paramName, argName: String(typeArgValue) });
+                continue;
+            }
+            let found = false;
+            let proto: object | null = typeArgProto;
+            while (proto !== null) {
+                if (conformanceRegistry.get(proto)?.has(requiredProto)) { found = true; break; }
+                proto = Object.getPrototypeOf(proto) as object | null;
+            }
+            if (!found) {
+                allSatisfied = false;
+                const argName =
+                    typeof typeArgValue === 'function' &&
+                    typeof (typeArgValue as { name?: unknown }).name === 'string'
+                        ? (typeArgValue as { name: string }).name
+                        : String(typeArgValue);
+                failedParams.push({ param: paramName, argName });
+            }
+        }
+        if (allSatisfied) {
+            registerConformance((ParameterizedADT as unknown as { prototype: object }).prototype, entry.protocol);
+            for (const opName of entry.protocol.requiredOps.keys())
+                satisfiedOpNames.add(opName);
+        } else
+            failedEntries.push({ ownOps: [...entry.protocol.requiredOps.keys()], failedParams });
+
+    }
+
+    // For each op from an unsatisfied conditional protocol that is not covered by any
+    // satisfied protocol, install an error-throwing stub on ParameterizedADT.prototype.
+    // This ensures callers get a clear TypeError at the call site rather than a cryptic
+    // failure deep inside the handler.
+    const paramProto = (ParameterizedADT as unknown as { prototype: object }).prototype;
+    for (const { ownOps, failedParams } of failedEntries) {
+        const failDesc = failedParams.length > 0
+            ? failedParams.map(({ param, argName }) => `'${param}' is '${argName}'`).join(', ')
+            : 'type argument constraints were not satisfied';
+        for (const opName of ownOps) {
+            if (satisfiedOpNames.has(opName)) continue;
+            const msg = `'${opName}' is not available: this type was not instantiated with ` +
+                `compatible type arguments (${failDesc} — does not satisfy the required constraint). ` +
+                `Provide a type argument that satisfies the required protocol.`;
+            const throwFn = (): never => { throw new TypeError(msg); };
+            // Detect getter vs method from the descriptor on the base prototype chain
+            let desc: PropertyDescriptor | undefined;
+            let searchProto: object | null = Base.prototype as object;
+            while (searchProto !== null) {
+                const d = Object.getOwnPropertyDescriptor(searchProto, opName);
+                if (d) { desc = d; break; }
+                searchProto = Object.getPrototypeOf(searchProto) as object | null;
+            }
+            if (desc && 'get' in desc)
+                Object.defineProperty(paramProto, opName, { get: throwFn, configurable: true, enumerable: false });
+            else
+                Object.defineProperty(paramProto, opName, { value: throwFn, writable: false, configurable: true, enumerable: false });
+
+        }
+    }
 
     return Object.assign(ProxiedParameterized, paramVariants) as unknown as ADTLike;
 }
