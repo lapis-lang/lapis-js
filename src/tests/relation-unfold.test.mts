@@ -1,13 +1,13 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { relation, fold, origin, destination } from '../index.mjs';
+import { relation, origin, destination } from '../index.mjs';
 
 // ---- Shared Ancestor relation for most tests ----
 
 const Ancestor = relation(({ Family }) => ({
     Direct: { from: String, to: String },
-    Transitive: { hop: Family, rest: Family },
-
+    Transitive: { hop: Family, rest: Family }
+})).ops(({ fold, unfold, map, merge, origin, destination, Family }) => ({
     [origin]: fold({ out: String })({
         Direct: ({ from }) => from,
         Transitive: ({ hop }) => hop
@@ -16,7 +16,6 @@ const Ancestor = relation(({ Family }) => ({
         Direct: ({ to }) => to,
         Transitive: ({ rest }) => rest
     }),
-
     depth: fold({ out: Number })({
         Direct: () => 1,
         Transitive: ({ hop, rest }) => hop + rest
@@ -31,7 +30,7 @@ const baseFacts = [
 ];
 
 
-const allFacts: any[] = Ancestor.closure(baseFacts);
+const allFacts = Ancestor.closure(baseFacts);
 
 // =============================================================================
 // reachableFrom (formerly image)
@@ -164,7 +163,7 @@ describe('Relation — direct construction of leaf instances', () => {
     test('direct construction round-trips with origin/destination', () => {
         const pairs: [string, string][] = [['a', 'b'], ['c', 'd'], ['e', 'f']];
         const facts = pairs.map(([from, to]) => Ancestor.Direct({ from, to }));
-        const recovered = facts.map((f: any) => [f.origin, f.destination]);
+        const recovered = facts.map(f => [f[origin], f[destination]]);
         assert.deepStrictEqual(recovered, pairs);
     });
 
@@ -175,7 +174,7 @@ describe('Relation — direct construction of leaf instances', () => {
         ];
 
         const closed = Ancestor.closure(facts);
-        const pairs = closed.map((f: any) => `${f.origin}->${f.destination}`);
+        const pairs = closed.map(f => `${f[origin]}->${f[destination]}`);
 
         assert.ok(pairs.includes('alice->bob'));
         assert.ok(pairs.includes('bob->carol'));
@@ -208,8 +207,8 @@ describe('Relation — multiple leaf variant construction', () => {
     const Graph = relation(({ Family }) => ({
         Edge: { src: String, dst: String },
         BiEdge: { a: String, b: String },
-        Path: { first: Family, second: Family },
-
+        Path: { first: Family, second: Family }
+    })).ops(({ fold, unfold, map, merge, origin, destination, Family }) => ({
         [origin]: fold({ out: String })({
             Edge: ({ src }) => src,
             BiEdge: ({ a }) => a,
@@ -238,8 +237,8 @@ describe('Relation — multiple leaf variant construction', () => {
 
     test('direct construction preserves endpoint semantics', () => {
         const fact = Graph.BiEdge('x', 'y');
-        assert.strictEqual(fact.origin, 'x');
-        assert.strictEqual(fact.destination, 'y');
+        assert.strictEqual(fact[origin], 'x');
+        assert.strictEqual(fact[destination], 'y');
     });
 });
 
@@ -322,9 +321,10 @@ describe('Relation — runtime type validation', () => {
     test('relation() rejects redefinition of reserved operation names', () => {
         for (const name of ['closure', 'reachableFrom', 'reachingTo']) {
             assert.throws(
-                () => relation(({ Family }: any) => ({
+                () => relation(({ Family }) => ({
                     Direct: { from: String, to: String },
-                    Transitive: { hop: Family, rest: Family },
+                    Transitive: { hop: Family, rest: Family }
+                })).ops(({ fold, unfold, map, merge, origin, destination, Family }) => ({
                     [origin]: fold({ out: String })({
                         Direct: ({ from }: any) => from,
                         Transitive: ({ hop }: any) => hop

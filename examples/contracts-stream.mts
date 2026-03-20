@@ -6,34 +6,29 @@
  * - demands + ensures on fold (operation contracts)
  * - rescue on fold (recovery from observation failures)
  */
-import { behavior, fold, unfold, DemandsError } from '@lapis-lang/lapis-js';
+import { behavior } from '@lapis-lang/lapis-js';
 
 // Stream behavior with contracts on operations
 const Stream = behavior(({ Self, T }) => ({
     head: T,
-    tail: Self(T),
-
-    // From: unfold with demands — seed must be a non-negative number
+    tail: Self(T)
+})).ops(({ fold, unfold, Self, T }) => ({
     From: unfold({
         in: Number,
         out: Self,
         demands: (_self: unknown, seed: number) => typeof seed === 'number' && seed >= 0
     })({
-        head: (n: number) => n,
-        tail: (n: number) => n + 1
+        head: (n) => n,
+        tail: (n) => n + 1
     }),
-
-    // Countdown: unfold with demands — must start from positive number
     Countdown: unfold({
         in: Number,
         out: Self,
         demands: (_self: unknown, n: number) => n > 0
     })({
-        head: (n: number) => n,
-        tail: (n: number) => Math.max(0, n - 1)
+        head: (n) => n,
+        tail: (n) => Math.max(0, n - 1)
     }),
-
-    // take: fold with demands + ensures + rescue
     take: fold({
         in: Number,
         out: Array,
@@ -45,18 +40,16 @@ const Stream = behavior(({ Self, T }) => ({
             return [];
         }
     })({
-        _: ({ head, tail }: { head: unknown; tail: (n: number) => unknown[] }, n: number) =>
+        _: ({ head, tail }, n) =>
             n > 0 ? [head, ...tail(n - 1)] : []
     }),
-
-    // sum: fold first N elements with contracts
     sum: fold({
         in: Number,
         out: Number,
         demands: (_self: unknown, n: number) => n >= 0,
         ensures: (_self: unknown, _old: unknown, result: number) => typeof result === 'number'
     })({
-        _: ({ head, tail }: { head: number; tail: (n: number) => number }, n: number) =>
+        _: ({ head, tail }, n) =>
             n > 0 ? head + tail(n - 1) : 0
     })
 }));

@@ -8,7 +8,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { data, fold } from '../index.mjs';
+import { data } from '../index.mjs';
 
 describe('Contracts: Fault-Tolerant Fold', () => {
     describe('Rescue at each node in recursive fold', () => {
@@ -17,7 +17,8 @@ describe('Contracts: Fault-Tolerant Fold', () => {
 
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family },
+                Cons: { head: Number, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 safeSum: fold({
                     out: Number,
                     rescue: (_self, error, _args) => {
@@ -61,7 +62,8 @@ describe('Contracts: Fault-Tolerant Fold', () => {
             const Expr = data(({ Family }) => ({
                 Lit: { value: Number },
                 Add: { left: Family, right: Family },
-                Div: { left: Family, right: Family },
+                Div: { left: Family, right: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 eval: fold({
                     out: Number,
                     rescue: (_self, _error, _args) => {
@@ -98,7 +100,8 @@ describe('Contracts: Fault-Tolerant Fold', () => {
             const Expr = data(({ Family }) => ({
                 Lit: { value: Number },
                 Add: { left: Family, right: Family },
-                Div: { left: Family, right: Family },
+                Div: { left: Family, right: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 eval: fold({
                     out: Number,
                     rescue: (_self, error) => {
@@ -134,7 +137,8 @@ describe('Contracts: Fault-Tolerant Fold', () => {
         it('should produce partial result when some nodes fail', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family },
+                Cons: { head: Number, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 safeToArray: fold({
                     out: Array,
                     rescue: () => [] // on failure, return empty array as fallback
@@ -171,7 +175,8 @@ describe('Contracts: Fault-Tolerant Fold', () => {
             let attempts = 0;
 
             const MyData = data(() => ({
-                Val: { x: Number },
+                Val: { x: Number }
+            })).ops(({ fold, unfold, map, merge }) => ({
                 compute: fold({
                     in: Number,
                     out: Number,

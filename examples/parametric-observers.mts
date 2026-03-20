@@ -5,7 +5,7 @@
  * These are powerful for creating flexible, reusable behavior interfaces.
  */
 
-import { behavior, unfold } from '../src/index.mjs';
+import { behavior } from '../src/index.mjs';
 
 // =============================================================================
 // Example 1: Stream with Random Access (nth)
@@ -14,9 +14,10 @@ import { behavior, unfold } from '../src/index.mjs';
 const Stream = behavior(({ Self, T }) => ({
         head: T,
         tail: Self(T),
-        nth: { in: Number, out: T },           // Random access
-        take: { in: Number, out: Array },       // Take first n elements
-        drop: { in: Number, out: Self(T) },      // Skip first n elements
+        nth: { in: Number, out: T },
+        take: { in: Number, out: Array },
+        drop: { in: Number, out: Self(T) }
+    })).ops(({ unfold, Self, T }) => ({
         From: unfold({ in: Number, out: Self })({
             head: (n) => n,
             tail: (n) => n + 1,
@@ -53,25 +54,31 @@ console.log('nums.drop(10).take(3):', dropped.take(3));     // [10, 11, 12]
 const Grid = behavior(({ Self }) => ({
     at: { in: { x: Number, y: Number }, out: Number },
     row: { in: Number, out: Array },
-    col: { in: Number, out: Array },
-    Create: unfold({ in: Function, out: Self })({
-        at: (fn) => ({ x, y }) => fn(x, y),
-        row: (fn) => (y) => Array.from({ length: 10 }, (_, x) => fn(x, y)),
-        col: (fn) => (x) => Array.from({ length: 10 }, (_, y) => fn(x, y))
+    col: { in: Number, out: Array }
+})).ops(({ unfold, Self }) => ({
+    MultTable: unfold({ out: Self })({
+        at:  () => ({ x, y }: { x: number; y: number }) => x * y,
+        row: () => (y: number) => Array.from({ length: 10 }, (_, x) => x * y),
+        col: () => (x: number) => Array.from({ length: 10 }, (_, y) => x * y)
+    }),
+    AddTable: unfold({ out: Self })({
+        at:  () => ({ x, y }: { x: number; y: number }) => x + y,
+        row: () => (y: number) => Array.from({ length: 10 }, (_, x) => x + y),
+        col: () => (x: number) => Array.from({ length: 10 }, (_, y) => x + y)
     })
 }));
 
 console.log('\n=== Infinite Grid ===');
 
 // Multiplication table
-const multTable = Grid.Create((x, y) => x * y);
+const multTable = Grid.MultTable;
 console.log('multTable.at({x:3, y:4}):', multTable.at({ x: 3, y: 4 })); // 12
 console.log('multTable.at({x:7, y:8}):', multTable.at({ x: 7, y: 8 })); // 56
 console.log('multTable.row(5):', multTable.row(5));  // Row of 5s table
 console.log('multTable.col(3):', multTable.col(3));  // Column of 3s table
 
 // Addition table
-const addTable = Grid.Create((x, y) => x + y);
+const addTable = Grid.AddTable;
 console.log('\naddTable.at({x:10, y:20}):', addTable.at({ x: 10, y: 20 })); // 30
 
 // =============================================================================
@@ -82,7 +89,8 @@ const Sequence = behavior(({ Self }) => ({
     current: Number,
     next: Self,
     window: { in: Number, out: Array },
-    skip: { in: Number, out: Self },
+    skip: { in: Number, out: Self }
+})).ops(({ unfold, Self }) => ({
     From: unfold({ in: Number, out: Self })({
         current: (n) => n,
         next: (n) => n + 1,
@@ -108,9 +116,10 @@ const Dictionary = behavior(({ Self }) => ({
     get: { in: String, out: String },
     has: { in: String, out: Boolean },
     keys: Array,
-    size: Number,
+    size: Number
+})).ops(({ unfold, Self }) => ({
     Create: unfold({ in: Object, out: Self })({
-        get: (obj) => (key) => obj[key] || 'undefined',
+        get: (obj) => (key) => (obj as any)[key] || 'undefined',
         has: (obj) => (key) => key in obj,
         keys: (obj) => Object.keys(obj),
         size: (obj) => Object.keys(obj).length
@@ -139,7 +148,8 @@ console.log('dict.size:', dict.size);                      // 3
 const TimeSeries = behavior(({ Self }) => ({
     valueAt: { in: Number, out: Number },
     range: { in: { from: Number, to: Number, step: Number }, out: Array },
-    derivative: Self,
+    derivative: Self
+})).ops(({ unfold, Self }) => ({
     Linear: unfold({ in: { slope: Number, intercept: Number }, out: Self })({
         valueAt: ({ slope, intercept }) => (t) => slope * t + intercept,
         range: ({ slope, intercept }) => ({ from, to, step }) =>
@@ -177,14 +187,15 @@ console.log('quadratic.range({from:0, to:3, step:1}):',
 const Graph = behavior(({ Self }) => ({
     neighbors: { in: Number, out: Array },
     hasEdge: { in: { from: Number, to: Number }, out: Boolean },
-    degree: { in: Number, out: Number },
+    degree: { in: Number, out: Number }
+})).ops(({ unfold, Self }) => ({
     FromAdjacencyList: unfold({ in: Object, out: Self })({
-        neighbors: (adj) => (node) => adj[node] || [],
-        hasEdge: (adj) => ({ from, to }) => {
+        neighbors: (adj: any) => (node) => adj[node] || [],
+        hasEdge: (adj: any) => ({ from, to }) => {
             const nodeNeighbors = adj[from] || [];
             return nodeNeighbors.includes(to);
         },
-        degree: (adj) => (node) => (adj[node] || []).length
+        degree: (adj: any) => (node) => (adj[node] || []).length
     })
 }));
 
@@ -214,7 +225,8 @@ let nthCallCount = 0;
 const MemoStream = behavior(({ Self }) => ({
         head: Number,
         tail: Self,
-        nth: { in: Number, out: Number },
+        nth: { in: Number, out: Number }
+    })).ops(({ unfold, Self }) => ({
         From: unfold({ in: Number, out: Self })({
             head: (n) => n,
             tail: (n) => n + 1,

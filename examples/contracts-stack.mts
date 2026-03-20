@@ -5,7 +5,7 @@
  * - rescue (structured recovery with retry)
  * - continuous invariants
  */
-import { data, fold, unfold, invariant } from '@lapis-lang/lapis-js';
+import { data, invariant } from '@lapis-lang/lapis-js';
 
 const Stack = data(({ Family, T }) => ({
     Empty: {},
@@ -13,15 +13,12 @@ const Stack = data(({ Family, T }) => ({
         [invariant]: (self: { size: number }) => self.size >= 0,
         value: T,
         rest: Family(T)
-    },
-
-    // Basic size fold — no contracts needed
+    }
+})).ops(({ fold, unfold, Family, T }) => ({
     size: fold({ out: Number })({
         Empty() { return 0; },
-        Push({ rest }: { rest: number }) { return 1 + rest; }
+        Push({ rest }) { return 1 + rest; }
     }),
-
-    // pop: demands non-empty, ensures result size is one less
     pop: fold({
         out: Array,
         demands: (self: { size: number }) => self.size > 0,
@@ -31,16 +28,12 @@ const Stack = data(({ Family, T }) => ({
         Empty() { throw new TypeError('Cannot pop empty stack'); },
         Push() { return [this.value, this.rest]; }
     }),
-
-    // peek: demands non-empty
     peek: fold({
         demands: (self: { size: number }) => self.size > 0
     })({
         Empty() { return null; },
-        Push({ value }: { value: unknown }) { return value; }
+        Push({ value }) { return value; }
     }),
-
-    // append: demands value is defined, ensures size increases by 1
     append: fold({
         in: T,
         out: Family,
@@ -56,31 +49,27 @@ const Stack = data(({ Family, T }) => ({
         // Fold handlers use Family(T) to construct instances of the current
         // parameterized ADT without hardcoding type arguments.
         // @ts-expect-error -- Family(T) resolves at runtime via Proxy; TS cannot model variant properties on FamilyRefCallable
-        Empty({}, val: unknown) { return Family(T).Push({ value: val, rest: Family(T).Empty }); },
+        Empty({}, val) { return Family(T).Push({ value: val, rest: Family(T).Empty }); },
         // @ts-expect-error -- Family(T) resolves at runtime via Proxy; TS cannot model variant properties on FamilyRefCallable
         Push({ rest }: { rest: (val: unknown) => unknown }, val: unknown) {
             // @ts-expect-error -- Family(T) resolves at runtime via Proxy
             return Family(T).Push({ value: this.value, rest: rest(val) });
         }
     }),
-
-    // toArray: straightforward fold with ensures on return type
     toArray: fold({
         out: Array,
         ensures: (_self: unknown, _old: unknown, result: unknown[]) => Array.isArray(result)
     })({
         Empty() { return []; },
-        Push({ value, rest }: { value: unknown; rest: unknown[] }) { return [value, ...rest]; }
+        Push({ value, rest }) { return [value, ...rest]; }
     }),
-
-    // FromArray: unfold with demands that input is a valid array
     FromArray: unfold({
         in: Array,
         out: Family(T),
         demands: (_self: unknown, arr: unknown) => Array.isArray(arr)
     })({
-        Empty: (arr: unknown[]) => (arr.length === 0 ? {} : null),
-        Push: (arr: unknown[]) => (arr.length > 0 ? { value: arr[0], rest: arr.slice(1) } : null)
+        Empty: (arr) => (arr.length === 0 ? {} : null),
+        Push: (arr) => (arr.length > 0 ? { value: arr[0], rest: arr.slice(1) } : null)
     })
 }));
 

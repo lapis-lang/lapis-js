@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { data , fold } from '../index.mjs';
+import { data } from '../index.mjs';
 
 describe('Variance Investigation', () => {
     describe('Return Type Covariance (should be safe)', () => {
@@ -14,14 +14,15 @@ describe('Variance Investigation', () => {
 
             const AnimalList = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Animal, tail: Family },
+                Cons: { head: Animal, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 first: fold({ out: Animal })({
                     Nil() { return new Animal(); },
                     Cons({ head }) {
                         // Can we return a more specific type?
                         if (head instanceof Dog) 
                             return new Dog(); // Subtype of Animal
-                                        
+                                                    
                         return head;
                     }
                 })
@@ -45,7 +46,8 @@ describe('Variance Investigation', () => {
 
             const Pet = data(() => ({
                 Cat: {},
-                Dog: {},
+                Dog: {}
+            })).ops(({ fold, unfold, map, merge }) => ({
                 create: fold({ out: Animal })({
                     Cat() { return new Animal(); },
                     Dog() { return new Dog(); }
@@ -83,7 +85,8 @@ describe('Variance Investigation', () => {
 
             const ShapeData = data(() => ({
                 CircleVariant: {},
-                RectVariant: {},
+                RectVariant: {}
+            })).ops(({ fold, unfold, map, merge }) => ({
                 makeShape: fold({ out: Shape })({
                     CircleVariant() { return new Circle(5); },
                     RectVariant() { return new Rectangle(3, 4); }
@@ -117,7 +120,8 @@ describe('Variance Investigation', () => {
 
             const Option = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Dog, tail: Family },
+                Cons: { head: Dog, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 describe: fold({ out: String })({
                     Nil() { return 'empty'; },
                     Cons({ head }) {
@@ -142,7 +146,8 @@ describe('Variance Investigation', () => {
         test('spec.out: Number infers number (primitive), not Number (wrapper)', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family },
+                Cons: { head: Number, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 sum: fold({ out: Number })({
                     Nil() { return 0; },
                     Cons({ head, tail }) { return head + tail; }
@@ -165,7 +170,8 @@ describe('Variance Investigation', () => {
         test('handlers returning primitives work with primitive constructors', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: String, tail: Family },
+                Cons: { head: String, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 concat: fold({ out: String })({
                     Nil() { return ''; },
                     Cons({ head, tail }) { return head + tail; }
@@ -186,7 +192,8 @@ describe('Variance Investigation', () => {
         test('Boolean constructor maps to boolean primitive', () => {
             const Data = data(() => ({
                 True: {},
-                False: {},
+                False: {}
+            })).ops(({ fold, unfold, map, merge }) => ({
                 toBool: fold({ out: Boolean })({
                     True() { return true; },
                     False() { return false; }
@@ -212,7 +219,8 @@ describe('Variance Investigation', () => {
 
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Dog, tail: Family },
+                Cons: { head: Dog, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 getFirst: fold({ out: Dog })({
                     Nil() {
                         // What if we return Animal instead of Dog?
@@ -251,7 +259,8 @@ describe('Variance Investigation', () => {
 
             const AnimalData = data(() => ({
                 DogVariant: {},
-                CatVariant: {},
+                CatVariant: {}
+            })).ops(({ fold, unfold, map, merge }) => ({
                 getAnimal: fold({ out: Animal })({
                     DogVariant() { return new Dog(); },
                     CatVariant() { return new Cat(); }
@@ -279,7 +288,8 @@ describe('Variance Investigation', () => {
                 NumVariant: { val: Number },
                 StrVariant: { val: String },
                 BoolVariant: { val: Boolean },
-                BigIntVariant: { val: BigInt },
+                BigIntVariant: { val: BigInt }
+            })).ops(({ fold, unfold, map, merge }) => ({
                 getType: fold({ out: String })({
                     NumVariant() { return 'number'; },
                     StrVariant() { return 'string'; },
@@ -308,7 +318,8 @@ describe('Variance Investigation', () => {
             }
 
             const Data = data(() => ({
-                Variant: { val: CustomClass },
+                Variant: { val: CustomClass }
+            })).ops(({ fold, unfold, map, merge }) => ({
                 getValue: fold({ out: Number })({
                     Variant({ val }) { return val.value; }
                 })
@@ -326,7 +337,8 @@ describe('Variance Investigation', () => {
             const Data = data(() => ({
                 DateVariant: { val: Date },
                 RegExpVariant: { val: RegExp },
-                ArrayVariant: { val: Array },
+                ArrayVariant: { val: Array }
+            })).ops(({ fold, unfold, map, merge }) => ({
                 getTypeName: fold({ out: String })({
                     DateVariant() { return 'Date'; },
                     RegExpVariant() { return 'RegExp'; },
@@ -350,7 +362,8 @@ describe('Variance Investigation', () => {
         test('assigning to wider type variable', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family },
+                Cons: { head: Number, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 sum: fold({ out: Number })({
                     Nil() { return 0; },
                     Cons({ head, tail }) { return head + tail; }
@@ -373,7 +386,8 @@ describe('Variance Investigation', () => {
         test('spec.out with union types', () => {
             const Computation = data(() => ({
                 Success: { value: Number },
-                Failure: { error: String },
+                Failure: { error: String }
+            })).ops(({ fold, unfold, map, merge }) => ({
                 toResult: fold({ out: Object })({
                     Success({ value }) {
                         return { success: true, value };
@@ -431,7 +445,8 @@ describe('Variance Investigation', () => {
         test('spec.out with null/undefined', () => {
             const Maybe = data(() => ({
                 Just: { value: Number },
-                Nothing: {},
+                Nothing: {}
+            })).ops(({ fold, unfold, map, merge }) => ({
                 toNullable: fold({})({
                     Just({ value }) { return value; },
                     Nothing() { return null; }
@@ -452,7 +467,8 @@ describe('Variance Investigation', () => {
             // Just verify the ADT can be created (behavior may vary)
             try {
                 const Lazy = data(() => ({
-                    Thunk: { fn: Function },
+                    Thunk: { fn: Function }
+                })).ops(({ fold, unfold, map, merge }) => ({
                     toFunction: fold({ out: Function })({
                         Thunk({ fn }) { return fn; }
                     })
@@ -469,7 +485,8 @@ describe('Variance Investigation', () => {
 
         test('multiple operations with different return types', () => {
             const Point = data(() => ({
-                Point2D: { x: Number, y: Number },
+                Point2D: { x: Number, y: Number }
+            })).ops(({ fold, unfold, map, merge }) => ({
                 asString: fold({ out: String })({
                     Point2D({ x, y }) { return `(${x}, ${y})`; }
                 }),

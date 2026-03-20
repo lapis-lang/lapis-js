@@ -26,21 +26,40 @@
  */
 
 import {
-    data, observer, fold, unfold,
-    output, done, accept
+    data, observer, relation, origin, destination
 } from '@lapis-lang/lapis-js';
 
-// ---- Weighted Graph ADT (μ) -------------------------------------------------
+// ---- Weighted Edge Relation (μ) ---------------------------------------------
+//
+//   edge(Start, Next, W)  ←→  WEdge.Direct(Start, Next, W)
+//
+// Ground facts live in the initial algebra; the relation provides
+// origin/destination/weight projections and transitive-closure machinery.
 
-interface Edge { to: string; weight: number }
+const WEdge: any = relation(({ Family }) => ({
+    Direct: { from: String, to: String, weight: Number },
+    Path:   { first: Family, second: Family }
+})).ops(({ fold, origin, destination }) => ({
+    [origin]: fold({ out: String })({
+        Direct({ from }) { return from; },
+        Path({ first }) { return first; }
+    }),
+    [destination]: fold({ out: String })({
+        Direct({ to }) { return to; },
+        Path({ second }) { return second; }
+    }),
+    cost: fold({ out: Number })({
+        Direct({ weight }) { return weight; },
+        Path({ first, second }) { return first + second; }
+    })
+}));
 
-const graph: Record<string, Edge[]> = {
-    A: [{ to: 'B', weight: 1 }, { to: 'C', weight: 4 }],
-    B: [{ to: 'C', weight: 2 }, { to: 'D', weight: 6 }],
-    C: [{ to: 'D', weight: 3 }],
-    D: [{ to: 'E', weight: 1 }],
-    E: []
-};
+const graph = [
+    WEdge.Direct('A', 'B', 1), WEdge.Direct('A', 'C', 4),
+    WEdge.Direct('B', 'C', 2), WEdge.Direct('B', 'D', 6),
+    WEdge.Direct('C', 'D', 3),
+    WEdge.Direct('D', 'E', 1)
+];
 
 // ---- Search State ADT (μ) ---------------------------------------------------
 
@@ -52,44 +71,37 @@ interface SearchItem {
 }
 
 const SearchState: any = data(() => ({
-    Active: { target: String, adj: Object, maxCost: Number, workList: Array },
+    Active: { target: String, edges: Array, maxCost: Number, workList: Array },
     Found: {
-        target: String, adj: Object, maxCost: Number,
+        target: String, edges: Array, maxCost: Number,
         foundPath: Array, foundCost: Number, workList: Array
     },
-    Exhausted: {},
-
+    Exhausted: {}
+})).ops(({ fold }) => ({
     path: fold({ out: Array })({
         Active() { return []; },
-        Found({ foundPath }: { foundPath: string[] }) { return foundPath; },
+        Found({ foundPath }) { return foundPath as string[]; },
         Exhausted() { return []; }
     }),
-
     cost: fold({ out: Number })({
         Active() { return Infinity; },
         Found({ foundCost }: { foundCost: number }) { return foundCost; },
         Exhausted() { return Infinity; }
     }),
-
     isFound: fold({ out: Boolean })({
         Active() { return false; },
         Found() { return true; },
         Exhausted() { return false; }
     }),
-
     isExhausted: fold({ out: Boolean })({
         Active() { return false; },
         Found() { return false; },
         Exhausted() { return true; }
     }),
-
-    // step: advance the work list to the next search state.
-    // Active and Found share the same transition logic (both carry a workList),
-    // so a _ wildcard handler covers both; Exhausted is the absorbing state.
     step: fold({ out: Object })({
         Exhausted() { return SearchState.Exhausted; },
-        _({ target, adj, maxCost, workList }: {
-            target: string; adj: Record<string, Edge[]>;
+        _({ target, edges, maxCost, workList }: {
+            target: string; edges: any[];
             maxCost: number; workList: SearchItem[]
         }) {
             const wl = [...workList];
@@ -97,24 +109,24 @@ const SearchState: any = data(() => ({
                 const item = wl.pop()!;
                 if (item.node === target) {
                     return SearchState.Found({
-                        target, adj, maxCost,
+                        target, edges, maxCost,
                         foundPath: item.path,
                         foundCost: item.cost,
                         workList: wl
                     });
                 }
-                // Expand neighbors — demands-like pruning:
-                // only pursue edges where the total cost stays within bound
-                // and the next node hasn't been visited (no cycles)
-                for (const edge of (adj[item.node] ?? [])) {
-                    const newCost = item.cost + edge.weight;
-                    if (newCost > maxCost) continue;           // Cost bound (pruning)
-                    if (item.visited.has(edge.to)) continue;   // Cycle prevention
+                // Query relation via origin/destination folds —
+                // demands-like pruning: cost bound + cycle prevention
+                const neighbors = edges.filter((e: any) => e[origin] === item.node);
+                for (const edge of neighbors) {
+                    const newCost = item.cost + edge.cost;
+                    if (newCost > maxCost) continue;                 // Cost bound
+                    if (item.visited.has(edge[destination])) continue; // Cycle prevention
                     const newVisited = new Set(item.visited);
-                    newVisited.add(edge.to);
+                    newVisited.add(edge[destination]);
                     wl.push({
-                        node: edge.to,
-                        path: [...item.path, edge.to],
+                        node: edge[destination],
+                        path: [...item.path, edge[destination]],
                         cost: newCost,
                         visited: newVisited
                     });
@@ -128,30 +140,30 @@ const SearchState: any = data(() => ({
 // ---- Query ADT (μ) ----------------------------------------------------------
 
 const Query: any = data(() => ({
-    Query: { adj: Object, start: String, target: String, maxCost: Number },
-
+    Query: { edges: Array, start: String, target: String, maxCost: Number }
+})).ops(({ fold }) => ({
     toState: fold({ out: Object })({
-        Query({ adj, start, target, maxCost }: {
-            adj: Record<string, Edge[]>; start: string; target: string; maxCost: number
-        }) {
+        Query({ edges, start, target, maxCost }) {
+            const edgeList = edges as any[];
             if (start === target) {
                 return SearchState.Found({
-                    target, adj, maxCost,
+                    target, edges, maxCost,
                     foundPath: [start], foundCost: 0, workList: []
                 });
             }
             const visited = new Set([start]);
-            const workList: SearchItem[] = (adj[start] ?? [])
-                .filter(e => e.weight <= maxCost)
-                .map(e => ({
-                    node: e.to,
-                    path: [start, e.to],
-                    cost: e.weight,
-                    visited: new Set([...visited, e.to])
+            const startEdges = edgeList.filter((e: any) => e[origin] === start);
+            const workList: SearchItem[] = startEdges
+                .filter((e: any) => e.cost <= maxCost)
+                .map((e: any) => ({
+                    node: e[destination],
+                    path: [start, e[destination]],
+                    cost: e.cost,
+                    visited: new Set([...visited, e[destination]])
                 }));
             return workList.length === 0
                 ? SearchState.Exhausted
-                : SearchState.Active({ target, adj, maxCost, workList });
+                : SearchState.Active({ target, edges, maxCost, workList });
         }
     })
 }));
@@ -164,22 +176,21 @@ const Query: any = data(() => ({
 //   - demands on unfold: state must be a SearchState instance
 //   - rescue on unfold:  if unfold fails, return Exhausted-like state
 
-const PathFinder: any = observer(({ Self }: { Self: any }) => ({
+const PathFinder: any = observer(({ Self }) => ({
     path: Array,
     cost: Number,
     found: Boolean,
     exhausted: Boolean,
-    next: Self,
-
+    next: Self
+})).ops(({ unfold, output, done, accept, Self }) => ({
     [output]: 'path',
     [done]: 'exhausted',
     [accept]: 'found',
-
     Search: unfold({
         in: Object,
         out: Self,
         // Mode declaration: reject null/undefined seeds
-        demands: (_self, s) => s != null && typeof s === 'object',
+        demands: (_self: any, s: null) => s != null && typeof s === 'object',
         // Rescue: if something goes wrong during unfold, treat as exhausted
         rescue: () => {
             return PathFinder.Search(SearchState.Exhausted);
@@ -259,17 +270,16 @@ console.log(`  Found ${noPath.length} path(s) — correctly empty`);
 
 console.log('\n━━━ Cyclic Graph with Tabling ━━━');
 
-const cyclic: Record<string, Edge[]> = {
-    X: [{ to: 'Y', weight: 1 }],
-    Y: [{ to: 'Z', weight: 1 }],
-    Z: [{ to: 'X', weight: 1 }, { to: 'W', weight: 1 }],
-    W: []
-};
+const cyclicEdges = [
+    WEdge.Direct('X', 'Y', 1),
+    WEdge.Direct('Y', 'Z', 1),
+    WEdge.Direct('Z', 'X', 1), WEdge.Direct('Z', 'W', 1)
+];
 
 console.log('Edges: X →(1)→ Y →(1)→ Z →(1)→ X (cycle), Z →(1)→ W');
 
 const cyclicPaths = PathFinder.explore(
-    Query.Query(cyclic, 'X', 'W', 10).toState,
+    Query.Query(cyclicEdges, 'X', 'W', 10).toState,
     { maxResults: 10 }
 );
 
@@ -290,7 +300,8 @@ console.log(`  ${selfPath[0]?.join(' → ') ?? '(none)'}`);
 // ---- Structure summary ----
 
 console.log('\n━━━ Structure ━━━');
-console.log('  data()     Query        adj|start|target|maxCost → toState');
+console.log('  relation() WEdge        from|to|weight + Path composition');
+console.log('  data()     Query        edges|start|target|maxCost → toState');
 console.log('             SearchState  Active|Found|Exhausted + cost pruning');
 console.log('  observer() PathFinder   path|cost|found|exhausted|next');
 console.log('  Contracts: demands (mode decl), rescue (backtrack fallback)');

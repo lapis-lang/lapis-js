@@ -5,15 +5,14 @@
  * When a node handler throws, rescue provides a fallback value,
  * allowing the fold to continue instead of failing entirely.
  */
-import { data, fold } from '@lapis-lang/lapis-js';
+import { data } from '@lapis-lang/lapis-js';
 
 // A simple expression tree that may contain bad nodes
 const Expr = data(({ Family }) => ({
     Lit: { value: Number },
     Add: { left: Family, right: Family },
-    Div: { left: Family, right: Family },
-
-    // eval: fold with rescue for division-by-zero
+    Div: { left: Family, right: Family }
+})).ops(({ fold }) => ({
     eval: fold({
         out: Number,
         rescue: (_self: unknown, error: Error, _args: unknown[]) => {
@@ -21,15 +20,13 @@ const Expr = data(({ Family }) => ({
             return NaN;
         }
     })({
-        Lit({ value }: { value: number }) { return value; },
-        Add({ left, right }: { left: number; right: number }) { return left + right; },
-        Div({ left, right }: { left: number; right: number }) {
+        Lit({ value }) { return value; },
+        Add({ left, right }) { return left + right; },
+        Div({ left, right }) {
             if (right === 0) throw new Error('Division by zero');
             return left / right;
         }
     }),
-
-    // safeEval: fold with rescue that returns a default value of 0
     safeEval: fold({
         out: Number,
         demands: (self: { depth: number }) => self.depth < 100,
@@ -39,26 +36,22 @@ const Expr = data(({ Family }) => ({
             return 0;
         }
     })({
-        Lit({ value }: { value: number }) { return value; },
-        Add({ left, right }: { left: number; right: number }) { return left + right; },
-        Div({ left, right }: { left: number; right: number }) {
+        Lit({ value }) { return value; },
+        Add({ left, right }) { return left + right; },
+        Div({ left, right }) {
             if (right === 0) throw new Error('Division by zero');
             return left / right;
         }
     }),
-
-    // show: pretty-print expression
     show: fold({ out: String })({
-        Lit({ value }: { value: number }) { return String(value); },
-        Add({ left, right }: { left: string; right: string }) { return `(${left} + ${right})`; },
-        Div({ left, right }: { left: string; right: string }) { return `(${left} / ${right})`; }
+        Lit({ value }) { return String(value); },
+        Add({ left, right }) { return `(${left} + ${right})`; },
+        Div({ left, right }) { return `(${left} / ${right})`; }
     }),
-
-    // depth: structural depth of the tree
     depth: fold({ out: Number })({
         Lit() { return 1; },
-        Add({ left, right }: { left: number; right: number }) { return 1 + Math.max(left, right); },
-        Div({ left, right }: { left: number; right: number }) { return 1 + Math.max(left, right); }
+        Add({ left, right }) { return 1 + Math.max(left, right); },
+        Div({ left, right }) { return 1 + Math.max(left, right); }
     })
 }));
 

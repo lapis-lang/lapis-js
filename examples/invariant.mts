@@ -3,10 +3,10 @@ import { data, invariant, extend } from '../src/index.mjs';
 // Example 1: Character range with ordering constraint
 console.log('=== Character Range Example ===');
 
-const isChar = (s) => typeof s === 'string' && s.length === 1,
+const isChar = (s: string) => typeof s === 'string' && s.length === 1,
     CharRange = data(() => ({
         Range: {
-            [invariant]: ({ start, end }) => start <= end,
+            [invariant]: ({ start, end }: { start: string; end: string }) => start <= end,
             start: isChar,
             end: isChar
         }
@@ -26,7 +26,7 @@ console.log('\n=== Rectangle Example ===');
 
 const Rectangle = data(() => ({
         Rect: {
-            [invariant]: ({ width, height, area }) => width * height === area,
+            [invariant]: ({ width, height, area }: { width: number; height: number; area: number }) => width * height === area,
             width: Number,
             height: Number,
             area: Number
@@ -45,7 +45,7 @@ try {
 // Example 3: Triangle with triangle inequality
 console.log('\n=== Triangle Example ===');
 
-const triangleInequality = ({ a, b, c }) =>
+const triangleInequality = ({ a, b, c }: { a: number; b: number; c: number }) =>
         a + b > c && b + c > a && c + a > b,
 
     Triangle = data(() => ({
@@ -71,7 +71,7 @@ console.log('\n=== Date Range Example ===');
 
 const DateRange = data(() => ({
         Range: {
-            [invariant]: ({ startDate, endDate }) => startDate <= endDate,
+            [invariant]: ({ startDate, endDate }: { startDate: Date; endDate: Date }) => startDate <= endDate,
             startDate: Date,
             endDate: Date
         }
@@ -105,7 +105,7 @@ const RegularLanguage = data(() => ({
         [extend]: RegularLanguage,
         Any: {},
         Range: {
-            [invariant]: ({ start, end }) => start <= end,
+            [invariant]: ({ start, end }: { start: string; end: string }) => start <= end,
             start: isChar,
             end: isChar
         }

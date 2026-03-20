@@ -1,10 +1,11 @@
-import { data, extend, fold } from '@lapis-lang/lapis-js';
+import { data, extend } from '@lapis-lang/lapis-js';
 
 // Simple enumeration ADT with multiple fold operations
 const Color = data(() => ({
         Red: {},
         Green: {},
-        Blue: {},
+        Blue: {}
+    })).ops(({ fold}) => ({
         toHex: fold({ out: String })({
             Red() { return '#FF0000'; },
             Green() { return '#00FF00'; },
@@ -27,7 +28,8 @@ const Color = data(() => ({
         [extend]: Color,
         Yellow: {},
         Orange: {},
-        Purple: {},
+        Purple: {}
+    })).ops(({ fold }) => ({
         toHex: fold({})({
             Yellow() { return '#FFFF00'; },
             Orange() { return '#FFA500'; },

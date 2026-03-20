@@ -1,12 +1,12 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { relation, data, fold, origin, destination } from '../index.mjs';
+import { relation, data } from '../index.mjs';
 
 describe('Closure — Cyclic Parent Relationships', () => {
     const Ancestor = relation(({ Family }) => ({
         Direct: { from: String, to: String },
-        Transitive: { hop: Family, rest: Family },
-
+        Transitive: { hop: Family, rest: Family }
+    })).ops(({ fold, unfold, map, merge, origin, destination, Family }) => ({
         [origin]: fold({ out: String })({
             Direct: ({ from }) => from,
             Transitive: ({ hop }) => hop
@@ -63,7 +63,7 @@ describe('Closure — Cyclic Parent Relationships', () => {
         }));
 
         // data() no longer has closure
-        assert.strictEqual(typeof SelfRef.closure, 'undefined',
+        assert.strictEqual(typeof (SelfRef as any).closure, 'undefined',
             'closure should not exist on plain data types');
     });
 });

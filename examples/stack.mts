@@ -1,9 +1,10 @@
-import { data, fold, unfold } from '@lapis-lang/lapis-js';
+import { data } from '@lapis-lang/lapis-js';
 
 // Parameterized Stack ADT with all operations defined inline
 const Stack = data(({ Family, T }) => ({
         Empty: {},
-        Push: { value: T, rest: Family(T) },
+        Push: { value: T, rest: Family(T) }
+    })).ops(({ fold, unfold, map, merge, Family, T }) => ({
         size: fold({ out: Number })({
             Empty() { return 0; },
             Push({ rest }) { return 1 + rest; }
@@ -57,7 +58,7 @@ console.log(`stack3 = ${stack3.show}`);
 console.log('\nStack operations:');
 console.log(`stack3.size = ${stack3.size}`);
 console.log(`stack3.peek = ${stack3.peek}`);
-const [poppedValue, restStack] = stack3.pop || [];
+const [poppedValue, restStack] = (stack3.pop as any[]) || [];
 console.log(`stack3.pop = [${poppedValue}, ${restStack ? restStack.show : 'undefined'}]`);
 console.log(`stack3.toArray = [${stack3.toArray}]`);
 
@@ -67,7 +68,7 @@ let current = stack3,
 while (current && current.size > 0) {
     const popResult = current.pop;
     if (popResult) {
-        const [val, rest] = popResult;
+        const [val, rest] = popResult as any[];
         console.log(`Step ${step}: popped value = ${val}, remaining = ${rest ? rest.show : 'Empty'}`);
         current = rest;
     }

@@ -204,6 +204,25 @@ export function executeRescue(
 }
 
 /**
+ * Invoke the rescue handler if one is active and the error is not a DemandsError.
+ * Returns `{ result: unknown }` on successful rescue, `null` otherwise.
+ * Post-rescue operations (invariant checks, cache updates) remain the caller's responsibility.
+ */
+export function tryRescue(
+    contracts: ContractSpec | null | undefined,
+    error: unknown,
+    self: unknown,
+    args: unknown[],
+    retryFn: (...newArgs: unknown[]) => unknown,
+    opName: string,
+    context: string
+): { result: unknown } | null {
+    if (contracts?.rescue && !(error instanceof DemandsError))
+        return executeRescue(contracts.rescue, self, error, args, retryFn, opName, context);
+    return null;
+}
+
+/**
  * Extract contract properties from a spec object.
  * Returns only the contract-related properties, leaving the rest for type checking.
  * Returns `null` when no contracts are present (simplifies truthiness checks at call sites).

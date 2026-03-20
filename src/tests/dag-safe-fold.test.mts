@@ -1,13 +1,14 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { data, fold } from '../index.mjs';
+import { data } from '../index.mjs';
 
 describe('DAG-safe fold (shared substructure)', () => {
     describe('Binary tree with shared subtrees', () => {
         test('should produce correct result when two fields reference the same node', () => {
             const Tree = data(({ Family }) => ({
                 Leaf: { value: Number },
-                Node: { left: Family, right: Family },
+                Node: { left: Family, right: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 sum: fold({ out: Number })({
                     Leaf({ value }) { return value; },
                     Node({ left, right }) { return left + right; }
@@ -31,7 +32,8 @@ describe('DAG-safe fold (shared substructure)', () => {
 
             const Tree = data(({ Family }) => ({
                 Leaf: { value: Number },
-                Node: { left: Family, right: Family },
+                Node: { left: Family, right: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 sum: fold({ out: Number })({
                     Leaf({ value }) {
                         callCount++;
@@ -57,7 +59,8 @@ describe('DAG-safe fold (shared substructure)', () => {
 
             const Tree = data(({ Family }) => ({
                 Leaf: { value: Number },
-                Node: { left: Family, right: Family },
+                Node: { left: Family, right: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 sum: fold({ out: Number })({
                     Leaf({ value }) {
                         leafCalls++;
@@ -104,7 +107,8 @@ describe('DAG-safe fold (shared substructure)', () => {
         test('should produce correct results for multiple fold operations on same DAG', () => {
             const Tree = data(({ Family }) => ({
                 Leaf: { value: Number },
-                Node: { left: Family, right: Family },
+                Node: { left: Family, right: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 sum: fold({ out: Number })({
                     Leaf({ value }) { return value; },
                     Node({ left, right }) { return left + right; }
@@ -127,7 +131,8 @@ describe('DAG-safe fold (shared substructure)', () => {
 
             const Tree = data(({ Family }) => ({
                 Leaf: { value: Number },
-                Node: { left: Family, right: Family },
+                Node: { left: Family, right: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 sum: fold({ out: Number })({
                     Leaf({ value }) {
                         callCount++;
@@ -156,7 +161,8 @@ describe('DAG-safe fold (shared substructure)', () => {
         test('should handle shared tail in list-like structure', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family },
+                Cons: { head: Number, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 length: fold({ out: Number })({
                     Nil() { return 0; },
                     Cons({ tail }) { return 1 + tail; }
@@ -179,7 +185,8 @@ describe('DAG-safe fold (shared substructure)', () => {
         test('should not degrade performance for pure trees', () => {
             const Tree = data(({ Family }) => ({
                 Leaf: { value: Number },
-                Node: { left: Family, right: Family },
+                Node: { left: Family, right: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 sum: fold({ out: Number })({
                     Leaf({ value }) { return value; },
                     Node({ left, right }) { return left + right; }
@@ -208,7 +215,8 @@ describe('DAG-safe fold (shared substructure)', () => {
 
             const Tree = data(({ Family }) => ({
                 Leaf: { value: Number },
-                Node: { left: Family, right: Family },
+                Node: { left: Family, right: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 scale: fold({ in: Number, out: Number })({
                     Leaf({ value }, factor) {
                         callCount++;
@@ -241,7 +249,8 @@ describe('DAG-safe fold (shared substructure)', () => {
             // ADT_A's fold handler evaluates ADT_B's fold during execution.
             const TreeB = data(({ Family }) => ({
                 Leaf: { value: Number },
-                Node: { left: Family, right: Family },
+                Node: { left: Family, right: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 sum: fold({ out: Number })({
                     Leaf({ value }) { return value; },
                     Node({ left, right }) { return left + right; }
@@ -255,7 +264,8 @@ describe('DAG-safe fold (shared substructure)', () => {
 
             const TreeA = data(({ Family }) => ({
                 Leaf: { value: Number },
-                Node: { left: Family, right: Family },
+                Node: { left: Family, right: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 sum: fold({ out: Number })({
                     Leaf({ value }) {
                         // Trigger TreeB's 'sum' fold from within TreeA's 'sum' handler
@@ -293,7 +303,8 @@ describe('DAG-safe fold (shared substructure)', () => {
 
             const Tree = data(({ Family }) => ({
                 Leaf: { value: Number },
-                Node: { left: Family, right: Family },
+                Node: { left: Family, right: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 sum: fold({ out: Number })({
                     Leaf({ value }) {
                         sumCalls++;

@@ -1,4 +1,4 @@
-import { data, map } from '@lapis-lang/lapis-js'
+import { data } from '@lapis-lang/lapis-js'
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -7,7 +7,8 @@ describe('Map Operations', () => {
         test('List.increment transforms numbers', () => {
             const List = data(({ Family, T }) => ({
                 Nil: {},
-                Cons: { head: T, tail: Family(T) },
+                Cons: { head: T, tail: Family(T) }
+            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
                 increment: map({ out: Family })({
                     T: (x) => x + 1
                 })
@@ -31,7 +32,8 @@ describe('Map Operations', () => {
         test('List.stringify changes type', () => {
             const List = data(({ Family, T }) => ({
                 Nil: {},
-                Cons: { head: T, tail: Family(T) },
+                Cons: { head: T, tail: Family(T) }
+            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
                 stringify: map({ out: Family })({
                     T: (x) => String(x)
                 })
@@ -56,7 +58,8 @@ describe('Map Operations', () => {
         test('Maybe.double transforms Just value', () => {
             const Maybe = data(({ Family, T }) => ({
                 Nothing: {},
-                Just: { value: T },
+                Just: { value: T }
+            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
                 double: map({ out: Family })({
                     T: (x) => x * 2
                 })
@@ -78,7 +81,8 @@ describe('Map Operations', () => {
         test('Tree.increment recursively transforms', () => {
             const Tree = data(({ Family, T }) => ({
                 Leaf: { value: T },
-                Node: { left: Family(T), right: Family(T), value: T },
+                Node: { left: Family(T), right: Family(T), value: T }
+            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
                 increment: map({ out: Family })({
                     T: (x) => x + 1
                 })
@@ -100,7 +104,8 @@ describe('Map Operations', () => {
         test('Nested tree structure preserves shape', () => {
             const Tree = data(({ Family, T }) => ({
                 Leaf: { value: T },
-                Node: { left: Family(T), right: Family(T), value: T },
+                Node: { left: Family(T), right: Family(T), value: T }
+            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
                 square: map({ out: Family })({
                     T: (x) => x * x
                 })
@@ -135,7 +140,8 @@ describe('Map Operations', () => {
     describe('Multiple Type Parameters', () => {
         test('Pair transforms both type parameters independently', () => {
             const Pair = data(({ Family, T, U }) => ({
-                MakePair: { first: T, second: U },
+                MakePair: { first: T, second: U }
+            })).ops(({ fold, unfold, map, merge, Family, T, U }) => ({
                 transform: map({ out: Family })({
                     T: (x) => x * 2,
                     U: (s) => s.toUpperCase()
@@ -152,7 +158,8 @@ describe('Map Operations', () => {
         test('Either transforms Left and Right with same type', () => {
             const Either = data(({ Family, T }) => ({
                 Left: { value: T },
-                Right: { value: T },
+                Right: { value: T }
+            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
                 negate: map({ out: Family })({
                     T: (x) => -x
                 })
@@ -171,7 +178,8 @@ describe('Map Operations', () => {
         test('Heterogeneous Either with different transforms', () => {
             const Either = data(({ Family, T, U }) => ({
                 Left: { value: T },
-                Right: { value: U },
+                Right: { value: U }
+            })).ops(({ fold, unfold, map, merge, Family, T, U }) => ({
                 convert: map({ out: Family })({
                     T: (x) => String(x),
                     U: (s) => s.length
@@ -196,7 +204,8 @@ describe('Map Operations', () => {
         test('supports callback form for transforms', () => {
             const List = data(({ Family, T }) => ({
                 Nil: {},
-                Cons: { head: T, tail: Family(T) },
+                Cons: { head: T, tail: Family(T) }
+            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
                 double: map({ out: Family })({
                     T: (x) => x * 2
                 })
@@ -219,7 +228,8 @@ describe('Map Operations', () => {
             assert.throws(
                 () => data(({ Family, T }) => ({
                     Nil: {},
-                    Cons: { head: T, tail: Family(T) },
+                    Cons: { head: T, tail: Family(T) }
+                })).ops(({ fold, unfold, map, merge, Family, T }) => ({
                     Increment: map({ out: Family })({
                         T: (x) => x + 1
                     })
@@ -231,7 +241,8 @@ describe('Map Operations', () => {
         test('detects name collision with variant fields', () => {
             assert.throws(
                 () => data(({ Family, T }) => ({
-                    Point2D: { x: T, y: T },
+                    Point2D: { x: T, y: T }
+                })).ops(({ fold, unfold, map, merge, Family, T }) => ({
                     x: map({ out: Family })({
                         T: (v) => v * 2
                     })
@@ -242,7 +253,8 @@ describe('Map Operations', () => {
 
         test('handles missing transform gracefully', () => {
             const Pair = data(({ Family, T, U }) => ({
-                MakePair: { first: T, second: U },
+                MakePair: { first: T, second: U }
+            })).ops(({ fold, unfold, map, merge, Family, T, U }) => ({
                 transformFirst: map({ out: Family })({
                     T: (x) => x * 2
                 })
@@ -260,7 +272,8 @@ describe('Map Operations', () => {
             const Color = data(({ Family }) => ({
                 Red: {},
                 Green: {},
-                Blue: {},
+                Blue: {}
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 identity: map({ out: Family })({})
             }));
 
@@ -272,7 +285,8 @@ describe('Map Operations', () => {
         test('supports arguments passed to transform functions', () => {
             const List = data(({ Family, T }) => ({
                 Nil: {},
-                Cons: { head: T, tail: Family(T) },
+                Cons: { head: T, tail: Family(T) }
+            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
                 scale: map({ out: Family })({
                     // @ts-expect-error -- intentional type violation for test
                     T: (x, factor) => x * factor
@@ -294,7 +308,8 @@ describe('Map Operations', () => {
         test('supports multiple arguments in transform functions', () => {
             const List = data(({ Family, T }) => ({
                 Nil: {},
-                Cons: { head: T, tail: Family(T) },
+                Cons: { head: T, tail: Family(T) }
+            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
                 combine: map({ out: Family })({
                     // @ts-expect-error -- intentional type violation for test
                     T: (x, a, b) => x + a + b
@@ -318,7 +333,8 @@ describe('Map Operations', () => {
         test('preserves instanceof relationships', () => {
             const List = data(({ Family, T }) => ({
                 Nil: {},
-                Cons: { head: T, tail: Family(T) },
+                Cons: { head: T, tail: Family(T) }
+            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
                 increment: map({ out: Family })({
                     T: (x) => x + 1
                 })
@@ -335,7 +351,8 @@ describe('Map Operations', () => {
         test('creates new instances (immutability)', () => {
             const Maybe = data(({ Family, T }) => ({
                 Nothing: {},
-                Just: { value: T },
+                Just: { value: T }
+            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
                 increment: map({ out: Family })({
                     T: (x) => x + 1
                 })
@@ -351,7 +368,8 @@ describe('Map Operations', () => {
 
         test('preserves non-type-parameter fields', () => {
             const Tagged = data(({ Family, T }) => ({
-                Value: { tag: String, value: T },
+                Value: { tag: String, value: T }
+            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
                 double: map({ out: Family })({
                     T: (x) => x * 2
                 })
@@ -369,7 +387,8 @@ describe('Map Operations', () => {
         test('supports multiple map operations', () => {
             const List = data(({ Family, T }) => ({
                 Nil: {},
-                Cons: { head: T, tail: Family(T) },
+                Cons: { head: T, tail: Family(T) }
+            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
                 increment: map({ out: Family })({
                     T: (x) => x + 1
                 }),
@@ -397,7 +416,8 @@ describe('Map Operations', () => {
         test('empty spec {} works without validation', () => {
             const List = data(({ Family, T }) => ({
                 Nil: {},
-                Cons: { head: T, tail: Family },
+                Cons: { head: T, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
                 double: map({})({
                     T: (x) => x * 2
                 })

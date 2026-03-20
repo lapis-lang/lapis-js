@@ -1,27 +1,22 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { data, merge, fold, unfold, map } from '../index.mjs';
+import { data } from '../index.mjs';
 
 describe('Metamorphism (fold + unfold)', () => {
     describe('Basic fold → unfold merge', () => {
         test('fold + unfold produces correct result (base conversion)', () => {
             const DigitList = data(({ Family }) => ({
                 Nil: {},
-                Cons: { digit: Number, rest: Family },
-
-                // Fold: evaluate digits as base-10 number (least-significant first)
+                Cons: { digit: Number, rest: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 toDecimal: fold({ out: Number })({
                     Nil() { return 0; },
                     Cons({ digit, rest }) { return digit + rest * 10; }
                 }),
-
-                // Unfold: produce digits in base-2 (least-significant first)
                 FromDecimal: unfold({ in: Number, out: Family })({
                     Nil: (n) => (n <= 0 ? {} : null),
                     Cons: (n) => (n > 0 ? { digit: n % 2, rest: Math.floor(n / 2) } : null)
                 }),
-
-                // Metamorphism: base-10 digits → integer → base-2 digits
                 toBinary: merge('toDecimal', 'FromDecimal')
             }));
 
@@ -38,9 +33,8 @@ describe('Metamorphism (fold + unfold)', () => {
         test('fold + unfold produces correct result (sorting)', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family },
-
-                // Fold: collect into sorted array
+                Cons: { head: Number, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 toSorted: fold({ out: Array })({
                     Nil() { return []; },
                     Cons({ head, tail }) {
@@ -49,14 +43,10 @@ describe('Metamorphism (fold + unfold)', () => {
                         return arr;
                     }
                 }),
-
-                // Unfold: produce a list from an array
                 FromArray: unfold({ in: Array, out: Family })({
                     Nil: (arr) => (arr.length === 0 ? {} : null),
                     Cons: (arr) => (arr.length > 0 ? { head: arr[0], tail: arr.slice(1) } : null)
                 }),
-
-                // Metamorphism: unsorted list → sorted array → sorted list
                 sorted: merge('toSorted', 'FromArray')
             }));
 
@@ -72,19 +62,16 @@ describe('Metamorphism (fold + unfold)', () => {
         test('metamorphism matches manual fold then unfold', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family },
-
+                Cons: { head: Number, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 toArray: fold({ out: Array })({
                     Nil() { return []; },
                     Cons({ head, tail }) { return [head, ...tail]; }
                 }),
-
                 FromArray: unfold({ in: Array, out: Family })({
                     Nil: (arr) => (arr.length === 0 ? {} : null),
                     Cons: (arr) => (arr.length > 0 ? { head: arr[0], tail: arr.slice(1) } : null)
                 }),
-
-                // round-trip: list → array → list
                 roundTrip: merge('toArray', 'FromArray')
             }));
 
@@ -106,18 +93,16 @@ describe('Metamorphism (fold + unfold)', () => {
         test('fold + unfold on empty structure', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family },
-
+                Cons: { head: Number, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 sum: fold({ out: Number })({
                     Nil() { return 0; },
                     Cons({ head, tail }) { return head + tail; }
                 }),
-
                 FromNumber: unfold({ in: Number, out: Family })({
                     Nil: (n) => (n <= 0 ? {} : null),
                     Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
                 }),
-
                 expandSum: merge('sum', 'FromNumber')
             }));
 
@@ -133,21 +118,17 @@ describe('Metamorphism (fold + unfold)', () => {
         test('map + fold + unfold applies map before folding', () => {
             const List = data(({ Family, T }) => ({
                 Nil: {},
-                Cons: { head: T, tail: Family },
-
+                Cons: { head: T, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
                 double: map({ out: Family })({ T: (x) => x * 2 }),
-
                 sum: fold({ out: Number })({
                     Nil() { return 0; },
                     Cons({ head, tail }) { return head + tail; }
                 }),
-
                 FromNumber: unfold({ in: Number, out: Family })({
                     Nil: (n) => (n <= 0 ? {} : null),
                     Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
                 }),
-
-                // Prepromorphism + metamorphism: double → sum → unfold
                 doubledSumExpanded: merge('double', 'sum', 'FromNumber')
             }));
 
@@ -165,21 +146,17 @@ describe('Metamorphism (fold + unfold)', () => {
         test('fold + unfold + map applies map after unfolding', () => {
             const List = data(({ Family, T }) => ({
                 Nil: {},
-                Cons: { head: T, tail: Family },
-
+                Cons: { head: T, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
                 sum: fold({ out: Number })({
                     Nil() { return 0; },
                     Cons({ head, tail }) { return head + tail; }
                 }),
-
                 FromNumber: unfold({ in: Number, out: Family })({
                     Nil: (n) => (n <= 0 ? {} : null),
                     Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
                 }),
-
                 double: map({ out: Family })({ T: (x) => x * 2 }),
-
-                // fold → unfold → map: sum → expand → double
                 expandAndDouble: merge('sum', 'FromNumber', 'double')
             }));
 
@@ -198,18 +175,16 @@ describe('Metamorphism (fold + unfold)', () => {
         test('metamorphism must be camelCase (instance method)', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family },
-
+                Cons: { head: Number, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 toArray: fold({ out: Array })({
                     Nil() { return []; },
                     Cons({ head, tail }) { return [head, ...tail]; }
                 }),
-
                 FromArray: unfold({ in: Array, out: Family })({
                     Nil: (arr) => (arr.length === 0 ? {} : null),
                     Cons: (arr) => (arr.length > 0 ? { head: arr[0], tail: arr.slice(1) } : null)
                 }),
-
                 roundTrip: merge('toArray', 'FromArray')
             }));
 
@@ -225,18 +200,16 @@ describe('Metamorphism (fold + unfold)', () => {
             assert.throws(
                 () => data(({ Family }) => ({
                     Nil: {},
-                    Cons: { head: Number, tail: Family },
-
+                    Cons: { head: Number, tail: Family }
+                })).ops(({ fold, unfold, map, merge, Family }) => ({
                     toArray: fold({ out: Array })({
                         Nil() { return []; },
                         Cons({ head, tail }) { return [head, ...tail]; }
                     }),
-
                     FromArray: unfold({ in: Array, out: Family })({
                         Nil: (arr) => (arr.length === 0 ? {} : null),
                         Cons: (arr) => (arr.length > 0 ? { head: arr[0], tail: arr.slice(1) } : null)
                     }),
-
                     RoundTrip: merge('toArray', 'FromArray')
                 })),
                 /must be camelCase/
@@ -247,7 +220,8 @@ describe('Metamorphism (fold + unfold)', () => {
             assert.throws(
                 () => data(({ Family }) => ({
                     Nil: {},
-                    Cons: { head: Number, tail: Family },
+                    Cons: { head: Number, tail: Family }
+                })).ops(({ fold, unfold, map, merge, Family }) => ({
                     Range: unfold({ in: Number, out: Family })({
                         Nil: (n) => (n <= 0 ? {} : null),
                         Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
@@ -268,7 +242,8 @@ describe('Metamorphism (fold + unfold)', () => {
             assert.throws(
                 () => data(({ Family }) => ({
                     Nil: {},
-                    Cons: { head: Number, tail: Family },
+                    Cons: { head: Number, tail: Family }
+                })).ops(({ fold, unfold, map, merge, Family }) => ({
                     sum: fold({ out: Number })({
                         Nil() { return 0; },
                         Cons({ head, tail }) { return head + tail; }
@@ -291,7 +266,8 @@ describe('Metamorphism (fold + unfold)', () => {
             assert.throws(
                 () => data(({ Family }) => ({
                     Nil: {},
-                    Cons: { head: Number, tail: Family },
+                    Cons: { head: Number, tail: Family }
+                })).ops(({ fold, unfold, map, merge, Family }) => ({
                     sum: fold({ out: Number })({
                         Nil() { return 0; },
                         Cons({ head, tail }) { return head + tail; }
@@ -315,18 +291,16 @@ describe('Metamorphism (fold + unfold)', () => {
         test('metamorphism works with parameterized types', () => {
             const List = data(({ Family, T }) => ({
                 Nil: {},
-                Cons: { head: T, tail: Family },
-
+                Cons: { head: T, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
                 toArray: fold({ out: Array })({
                     Nil() { return []; },
                     Cons({ head, tail }) { return [head, ...tail]; }
                 }),
-
                 FromArray: unfold({ in: Array, out: Family })({
                     Nil: (arr) => (arr.length === 0 ? {} : null),
                     Cons: (arr) => (arr.length > 0 ? { head: arr[0], tail: arr.slice(1) } : null)
                 }),
-
                 roundTrip: merge('toArray', 'FromArray')
             }));
 
@@ -342,18 +316,16 @@ describe('Metamorphism (fold + unfold)', () => {
         test('metamorphism unfold produces instances of the parameterized ADT, not the base', () => {
             const List = data(({ Family, T }) => ({
                 Nil: {},
-                Cons: { head: T, tail: Family },
-
+                Cons: { head: T, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
                 toArray: fold({ out: Array })({
                     Nil() { return []; },
                     Cons({ head, tail }) { return [head, ...tail]; }
                 }),
-
                 FromArray: unfold({ in: Array, out: Family })({
                     Nil: (arr) => (arr.length === 0 ? {} : null),
                     Cons: (arr) => (arr.length > 0 ? { head: arr[0], tail: arr.slice(1) } : null)
                 }),
-
                 roundTrip: merge('toArray', 'FromArray')
             }));
 
@@ -377,7 +349,8 @@ describe('Metamorphism (fold + unfold)', () => {
         test('unfold + fold hylomorphism is unaffected', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family },
+                Cons: { head: Number, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 Range: unfold({ in: Number, out: Family })({
                     Nil: (n) => (n <= 0 ? {} : null),
                     Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
@@ -399,15 +372,12 @@ describe('Metamorphism (fold + unfold)', () => {
         test('fold tree to array, unfold to new tree', () => {
             const BST = data(({ Family }) => ({
                 Leaf: {},
-                Node: { left: Family, value: Number, right: Family },
-
-                // Fold: in-order traversal to sorted array
+                Node: { left: Family, value: Number, right: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 toSortedArray: fold({ out: Array })({
                     Leaf() { return []; },
                     Node({ left, value, right }) { return [...left, value, ...right]; }
                 }),
-
-                // Unfold: build balanced BST from sorted array
                 FromSortedArray: unfold({ in: Array, out: Family })({
                     Leaf: (arr) => (arr.length === 0 ? {} : null),
                     Node: (arr) => {
@@ -420,8 +390,6 @@ describe('Metamorphism (fold + unfold)', () => {
                         };
                     }
                 }),
-
-                // Metamorphism: flatten then rebuild balanced
                 rebalanced: merge('toSortedArray', 'FromSortedArray')
             }));
 

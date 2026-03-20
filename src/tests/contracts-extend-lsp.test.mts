@@ -9,7 +9,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { data, extend, fold, invariant, DemandsError, EnsuresError } from '../index.mjs';
+import { data, extend, invariant, DemandsError, EnsuresError } from '../index.mjs';
 
 describe('Contracts: Extend + LSP', () => {
     describe('Demands range weakening (OR semantics)', () => {
@@ -20,7 +20,8 @@ describe('Contracts: Extend + LSP', () => {
 
         it('should accept values in parent range', () => {
             const Base = data(() => ({
-                Val: { x: Number },
+                Val: { x: Number }
+            })).ops(({ fold, unfold, map, merge }) => ({
                 check: fold({
                     in: Number,
                     out: Number,
@@ -38,7 +39,8 @@ describe('Contracts: Extend + LSP', () => {
 
         it('weaker child demands should accept wider range via OR', () => {
             const Base = data(() => ({
-                Val: { x: Number },
+                Val: { x: Number }
+            })).ops(({ fold, unfold, map, merge }) => ({
                 check: fold({
                     in: Number,
                     out: Number,
@@ -49,7 +51,8 @@ describe('Contracts: Extend + LSP', () => {
             }));
 
             const Weaker = data(() => ({
-                [extend]: Base,
+                [extend]: Base
+            })).ops(({ fold, unfold, map, merge }) => ({
                 check: fold({
                     in: Number,
                     demands: (_self, value) => 1 <= value && value <= 50
@@ -71,7 +74,8 @@ describe('Contracts: Extend + LSP', () => {
 
         it('stronger child demands should still accept parent range via OR', () => {
             const Base = data(() => ({
-                Val: { x: Number },
+                Val: { x: Number }
+            })).ops(({ fold, unfold, map, merge }) => ({
                 check: fold({
                     in: Number,
                     out: Number,
@@ -82,7 +86,8 @@ describe('Contracts: Extend + LSP', () => {
             }));
 
             const Stronger = data(() => ({
-                [extend]: Base,
+                [extend]: Base
+            })).ops(({ fold, unfold, map, merge }) => ({
                 check: fold({
                     in: Number,
                     demands: (_self, value) => 15 <= value && value <= 20
@@ -110,7 +115,8 @@ describe('Contracts: Extend + LSP', () => {
 
         it('should enforce parent ensures range', () => {
             const Base = data(() => ({
-                Val: { x: Number },
+                Val: { x: Number }
+            })).ops(({ fold, unfold, map, merge }) => ({
                 check: fold({
                     in: Number,
                     out: Number,
@@ -129,7 +135,8 @@ describe('Contracts: Extend + LSP', () => {
 
         it('weaker child ensures should not weaken parent (AND)', () => {
             const Base = data(() => ({
-                Val: { x: Number },
+                Val: { x: Number }
+            })).ops(({ fold, unfold, map, merge }) => ({
                 check: fold({
                     in: Number,
                     out: Number,
@@ -140,7 +147,8 @@ describe('Contracts: Extend + LSP', () => {
             }));
 
             const Weaker = data(() => ({
-                [extend]: Base,
+                [extend]: Base
+            })).ops(({ fold, unfold, map, merge }) => ({
                 check: fold({
                     in: Number,
                     ensures: (_self, _old, result) => 1 <= result && result <= 50
@@ -160,7 +168,8 @@ describe('Contracts: Extend + LSP', () => {
 
         it('stronger child ensures should narrow the valid range (AND)', () => {
             const Base = data(() => ({
-                Val: { x: Number },
+                Val: { x: Number }
+            })).ops(({ fold, unfold, map, merge }) => ({
                 check: fold({
                     in: Number,
                     out: Number,
@@ -171,7 +180,8 @@ describe('Contracts: Extend + LSP', () => {
             }));
 
             const Stronger = data(() => ({
-                [extend]: Base,
+                [extend]: Base
+            })).ops(({ fold, unfold, map, merge }) => ({
                 check: fold({
                     in: Number,
                     ensures: (_self, _old, result) => 15 <= result && result <= 20
@@ -197,7 +207,8 @@ describe('Contracts: Extend + LSP', () => {
         // Overridden features are still subject to the parent's contracts
         it('should enforce parent demands on overridden child operation', () => {
             const Base = data(() => ({
-                Val: { x: Number },
+                Val: { x: Number }
+            })).ops(({ fold, unfold, map, merge }) => ({
                 check: fold({
                     in: Number,
                     out: Number,
@@ -208,8 +219,8 @@ describe('Contracts: Extend + LSP', () => {
             }));
 
             const Sub = data(() => ({
-                [extend]: Base,
-                // Override handler but no new demands — inherits parent demands
+                [extend]: Base
+            })).ops(({ fold, unfold, map, merge }) => ({
                 check: fold({
                     in: Number
                 })({
@@ -235,7 +246,8 @@ describe('Contracts: Extend + LSP', () => {
             const results: string[] = [];
 
             const Base = data(() => ({
-                Val: { x: Number },
+                Val: { x: Number }
+            })).ops(({ fold, unfold, map, merge }) => ({
                 op: fold({
                     in: Number,
                     out: Number,
@@ -284,21 +296,18 @@ describe('Contracts: Extend + LSP', () => {
         it('should enforce demands on pop (non-empty) and ensures on append (size+1)', () => {
             const Stack = data(({ Family }) => ({
                 Empty: {},
-                Push: { value: Number, rest: Family },
+                Push: { value: Number, rest: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 size: fold({ out: Number })({
                     Empty() { return 0; },
                     Push({ rest }) { return 1 + rest; }
                 }),
-                // pop uses demands to prevent calling on Empty
-                // Since fold traverses recursively, demands is checked per-node.
-                // We only set demands on a parameterized fold to test top-level demand.
                 pop: fold({
                     out: Array
                 })({
                     Empty() { return [null, null]; },
                     Push() { return [this.value, this.rest]; }
                 }),
-                // safePop: parameterized to demonstrate demands at call-site
                 safePop: fold({
                     in: Boolean,
                     out: Array,
@@ -322,7 +331,7 @@ describe('Contracts: Extend + LSP', () => {
             }));
 
             // Build stack via append: results in [1, 2, 3] (head-to-tail order)
-            let s = Stack.Empty;
+            let s: any = Stack.Empty;
             s = s.append(1);
             assert.equal(s.size, 1);
             s = s.append(2);
@@ -331,7 +340,7 @@ describe('Contracts: Extend + LSP', () => {
             assert.equal(s.size, 3);
 
             // Pop returns head element (1) and remaining [2, 3]
-            const [val, rest] = s.pop;
+            const [val, rest]: any = s.pop;
             assert.equal(val, 1);
             assert.equal(rest.size, 2);
 
@@ -342,7 +351,7 @@ describe('Contracts: Extend + LSP', () => {
             );
 
             // safePop on non-empty: works (returns head)
-            const [val2, rest2] = s.safePop(true);
+            const [val2, rest2]: any = s.safePop(true);
             assert.equal(val2, 1);
             assert.equal(rest2.size, 2);
         });

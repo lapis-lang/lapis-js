@@ -1,13 +1,13 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { data , fold } from '../index.mjs';
+import { data } from '../index.mjs';
 
 describe('Fold Operation - `this` Context and Open Recursion', () => {
     test('destructured parameters receive folded values', () => {
         const List = data(({ Family }) => ({
             Nil: {},
-            Cons: { head: Number, tail: Family },
-
+            Cons: { head: Number, tail: Family }
+        })).ops(({ fold, unfold, map, merge, Family }) => ({
             sum: fold({ out: Number })({
                 Nil({ }) { return 0; },
                 Cons({ head, tail }) {
@@ -25,14 +25,12 @@ describe('Fold Operation - `this` Context and Open Recursion', () => {
     test('`this` provides access to raw instance for open recursion', () => {
         const Stack = data(({ Family, T }) => ({
             Empty: {},
-            Push: { value: T, rest: Family(T) },
-
+            Push: { value: T, rest: Family(T) }
+        })).ops(({ fold, unfold, map, merge, Family, T }) => ({
             peek: fold({})({
                 Empty({ }) { return null; },
                 Push({ value }) { return value; }
             }),
-
-            // pop needs raw fields, not folded - use `this`
             pop: fold({})({
                 Empty({ }) { return null; },
                 Push({ }) {
@@ -47,7 +45,7 @@ describe('Fold Operation - `this` Context and Open Recursion', () => {
         const NumStack = Stack({ T: Number });
         const stack = NumStack.Push({ value: 3, rest: NumStack.Push({ value: 2, rest: NumStack.Empty }) });
 
-        const [value, rest] = stack.pop;
+        const [value, rest] = stack.pop as any[];
         assert.strictEqual(value, 3);
         assert.strictEqual(rest.constructor.name, 'Push');
         assert.strictEqual(rest.peek, 2);
@@ -56,14 +54,12 @@ describe('Fold Operation - `this` Context and Open Recursion', () => {
     test('`this` allows composition with other operations', () => {
         const List = data(({ Family }) => ({
             Nil: {},
-            Cons: { head: Number, tail: Family },
-
+            Cons: { head: Number, tail: Family }
+        })).ops(({ fold, unfold, map, merge, Family }) => ({
             length: fold({ out: Number })({
                 Nil({ }) { return 0; },
                 Cons({ tail }) { return 1 + tail; }
             }),
-
-            // Use `this` to access other operations
             describe: fold({ out: String })({
                 Nil({ }) { return 'empty list'; },
                 Cons({ head }) {
@@ -80,8 +76,8 @@ describe('Fold Operation - `this` Context and Open Recursion', () => {
     test('parameterized fold: destructured params include input parameter', () => {
         const List = data(({ Family }) => ({
             Nil: {},
-            Cons: { head: Number, tail: Family },
-
+            Cons: { head: Number, tail: Family }
+        })).ops(({ fold, unfold, map, merge, Family }) => ({
             contains: fold({ in: Number, out: Boolean })({
                 Nil({ }) { return false; },
                 Cons({ head, tail }, searchValue) {
@@ -101,14 +97,12 @@ describe('Fold Operation - `this` Context and Open Recursion', () => {
     test('`this` in parameterized fold provides instance access', () => {
         const Tree = data(({ Family }) => ({
             Leaf: { value: Number },
-            Node: { value: Number, left: Family, right: Family },
-
+            Node: { value: Number, left: Family, right: Family }
+        })).ops(({ fold, unfold, map, merge, Family }) => ({
             size: fold({ out: Number })({
                 Leaf({ }) { return 1; },
                 Node({ left, right }) { return 1 + left + right; }
             }),
-
-            // Find path to value using open recursion
             findPath: fold({ in: Number })({
                 Leaf({ value }, target) {
                     return value === target ? [value] : null;
@@ -116,11 +110,13 @@ describe('Fold Operation - `this` Context and Open Recursion', () => {
                 Node({ value }, target) {
                     if (value === target) return [value];
 
-                    // Use `this` to access raw subtrees for recursion
-                    const leftPath = this.left.findPath(target);
+                    // Use `this` to access raw subtrees for recursion.
+                    // Cast to `any`: child fields are typed as _DataInstanceSelf2<D> which lacks
+                    // operations (bare D has none) — a known bounded-Self approximation depth limit.
+                    const leftPath = (this.left as any).findPath(target);
                     if (leftPath) return [value, ...leftPath];
 
-                    const rightPath = this.right.findPath(target);
+                    const rightPath = (this.right as any).findPath(target);
                     if (rightPath) return [value, ...rightPath];
 
                     return null;
@@ -147,8 +143,8 @@ describe('Fold Operation - `this` Context and Open Recursion', () => {
         const Color = data(() => ({
             Red: {},
             Green: {},
-            Blue: {},
-
+            Blue: {}
+        })).ops(({ fold, unfold, map, merge }) => ({
             name: fold({ out: String })({
                 Red() { return 'red'; },
                 _() {
@@ -166,8 +162,8 @@ describe('Fold Operation - `this` Context and Open Recursion', () => {
     test('empty handler signature means no destructuring', () => {
         const Result = data(({ T }) => ({
             Ok: { value: T },
-            Err: { error: String },
-
+            Err: { error: String }
+        })).ops(({ fold, unfold, map, merge, T }) => ({
             isOk: fold({ out: Boolean })({
                 Ok({ }) {
                     // No destructuring - use `this` to access fields
@@ -193,8 +189,8 @@ describe('Fold Operation - `this` Context and Open Recursion', () => {
     test('`this.sameOp` on same node throws circular fold error (parameterless)', () => {
         const List = data(({ Family }) => ({
             Nil: {},
-            Cons: { head: Number, tail: Family },
-
+            Cons: { head: Number, tail: Family }
+        })).ops(({ fold, unfold, map, merge, Family }) => ({
             bad: fold({ out: Number })({
                 Nil() { return 0; },
                 Cons() {
@@ -217,8 +213,8 @@ describe('Fold Operation - `this` Context and Open Recursion', () => {
     test('`this.sameOp(arg)` on same node throws circular fold error (parameterized)', () => {
         const List = data(({ Family }) => ({
             Nil: {},
-            Cons: { head: Number, tail: Family },
-
+            Cons: { head: Number, tail: Family }
+        })).ops(({ fold, unfold, map, merge, Family }) => ({
             bad: fold({ in: Number, out: Number })({
                 Nil({}, _n) { return 0; },
                 Cons({}, n) {
@@ -241,15 +237,14 @@ describe('Fold Operation - `this` Context and Open Recursion', () => {
     test('mutual recursion between operations on same node throws', () => {
         const List = data(({ Family }) => ({
             Nil: {},
-            Cons: { head: Number, tail: Family },
-
+            Cons: { head: Number, tail: Family }
+        })).ops(({ fold, unfold, map, merge, Family }) => ({
             opA: fold({ out: Number })({
                 Nil() { return 0; },
                 Cons() {
                     return this.opB;  // calls opB on same node
                 }
             }),
-
             opB: fold({ out: Number })({
                 Nil() { return 0; },
                 Cons() {
@@ -271,13 +266,12 @@ describe('Fold Operation - `this` Context and Open Recursion', () => {
     test('`this.differentOp` on same node still works (no false positive)', () => {
         const List = data(({ Family }) => ({
             Nil: {},
-            Cons: { head: Number, tail: Family },
-
+            Cons: { head: Number, tail: Family }
+        })).ops(({ fold, unfold, map, merge, Family }) => ({
             length: fold({ out: Number })({
                 Nil() { return 0; },
                 Cons({ tail }) { return 1 + tail; }
             }),
-
             headTimesLength: fold({ out: Number })({
                 Nil() { return 0; },
                 Cons({ head }) {
@@ -294,13 +288,15 @@ describe('Fold Operation - `this` Context and Open Recursion', () => {
     test('`this.subField.sameOp` on child node still works (no false positive)', () => {
         const List = data(({ Family }) => ({
             Nil: {},
-            Cons: { head: Number, tail: Family },
-
+            Cons: { head: Number, tail: Family }
+        })).ops(({ fold, unfold, map, merge, Family }) => ({
             toArray: fold({ out: Array })({
                 Nil() { return []; },
                 Cons({ head }) {
-                    // Open recursion on child node — allowed
-                    return [head, ...this.tail.toArray];
+                    // Open recursion on child node — allowed.
+                    // Cast to `any`: `this.tail` is _DataInstanceSelf2<D> which lacks operations
+                    // (bounded-Self depth limit); the operation exists at runtime.
+                    return [head, ...(this.tail as any).toArray];
                 }
             })
         }));
@@ -312,8 +308,8 @@ describe('Fold Operation - `this` Context and Open Recursion', () => {
     test('re-entrancy guard cleans up after error, fold works on next call', () => {
         const Color = data(() => ({
             Red: {},
-            Green: {},
-
+            Green: {}
+        })).ops(({ fold, unfold, map, merge }) => ({
             safe: fold({ out: String })({
                 Red() { return 'red'; },
                 Green() { return 'green'; }
@@ -330,8 +326,8 @@ describe('Fold Operation - `this` Context and Open Recursion', () => {
     test('true data cycle (bypassing freeze) reports cycle-specific error', () => {
         const List = data(({ Family }) => ({
             Nil: {},
-            Cons: { head: Number, tail: Family },
-
+            Cons: { head: Number, tail: Family }
+        })).ops(({ fold, unfold, map, merge, Family }) => ({
             sum: fold({ out: Number })({
                 Nil() { return 0; },
                 Cons({ head, tail }) { return head + tail; }

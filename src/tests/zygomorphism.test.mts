@@ -15,7 +15,7 @@
 
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { data, fold, unfold, map, merge, behavior, aux, extend, history } from '../index.mjs';
+import { data, behavior, aux, extend, history } from '../index.mjs';
 
 // ---------------------------------------------------------------------------
 // Shared base ADTs
@@ -23,7 +23,8 @@ import { data, fold, unfold, map, merge, behavior, aux, extend, history } from '
 
 const BaseTree = data(({ Family }) => ({
     Leaf: { value: Number },
-    Node: { left: Family, right: Family },
+    Node: { left: Family, right: Family }
+})).ops(({ fold, unfold, map, merge, Family }) => ({
     depth: fold({ out: Number })({
         Leaf() { return 0; },
         Node({ left, right }) { return 1 + Math.max(left, right); }
@@ -36,7 +37,8 @@ const BaseTree = data(({ Family }) => ({
 
 const BaseList = data(({ Family }) => ({
     Nil: {},
-    Cons: { head: Number, tail: Family },
+    Cons: { head: Number, tail: Family }
+})).ops(({ fold, unfold, map, merge, Family }) => ({
     FromArray: unfold({ in: Array })({
         Nil: (arr) => (arr.length === 0 ? {} : null),
         Cons: (arr) => (arr.length > 0 ? { head: arr[0], tail: arr.slice(1) } : null)
@@ -53,7 +55,8 @@ const BaseList = data(({ Family }) => ({
 
 const BaseNat = data(({ Family }) => ({
     Zero: {},
-    Succ: { pred: Family },
+    Succ: { pred: Family }
+})).ops(({ fold, unfold, map, merge, Family }) => ({
     FromValue: unfold({ in: Number })({
         Zero: (n: number) => (n <= 0 ? {} : null),
         Succ: (n: number) => (n > 0 ? { pred: n - 1 } : null)
@@ -72,7 +75,8 @@ describe('Zygomorphism (Data) — string form', () => {
     describe('Classic balanced tree check', () => {
         test('balanced tree returns true', () => {
             const Tree = data(() => ({
-                [extend]: BaseTree,
+                [extend]: BaseTree
+            })).ops(({ fold, unfold, map, merge }) => ({
                 isBalanced: fold({ aux: 'depth', out: Boolean })({
                     Leaf() { return true; },
                     Node({ left, right, [aux]: a }) {
@@ -93,7 +97,8 @@ describe('Zygomorphism (Data) — string form', () => {
 
         test('unbalanced tree returns false', () => {
             const Tree = data(() => ({
-                [extend]: BaseTree,
+                [extend]: BaseTree
+            })).ops(({ fold, unfold, map, merge }) => ({
                 isBalanced: fold({ aux: 'depth', out: Boolean })({
                     Leaf() { return true; },
                     Node({ left, right, [aux]: a }) {
@@ -126,7 +131,8 @@ describe('Zygomorphism (Data) — string form', () => {
     describe('List zygomorphism', () => {
         test('each element >= suffix sum', () => {
             const List = data(() => ({
-                [extend]: BaseList,
+                [extend]: BaseList
+            })).ops(({ fold, unfold, map, merge }) => ({
                 allGeqSuffixSum: fold({ aux: 'sum', out: Boolean })({
                     Nil() { return true; },
                     Cons({ head, tail, [aux]: a }) {
@@ -151,7 +157,8 @@ describe('Zygomorphism (Data) — string form', () => {
 
         test('single-element and empty lists', () => {
             const List = data(() => ({
-                [extend]: BaseList,
+                [extend]: BaseList
+            })).ops(({ fold, unfold, map, merge }) => ({
                 allGeqSuffixSum: fold({ aux: 'sum', out: Boolean })({
                     Nil() { return true; },
                     Cons({ head, tail, [aux]: a }) {
@@ -168,7 +175,8 @@ describe('Zygomorphism (Data) — string form', () => {
     describe('Nat zygomorphism', () => {
         test('isEven using toValue as aux', () => {
             const Nat = data(() => ({
-                [extend]: BaseNat,
+                [extend]: BaseNat
+            })).ops(({ fold, unfold, map, merge }) => ({
                 isEven: fold({ aux: 'toValue', out: Boolean })({
                     Zero() { return true; },
                     Succ({ pred, [aux]: a }) {
@@ -192,7 +200,8 @@ describe('Zygomorphism (Data) — string form', () => {
             let leafAux: unknown = 'not-set';
 
             const Tree = data(() => ({
-                [extend]: BaseTree,
+                [extend]: BaseTree
+            })).ops(({ fold, unfold, map, merge }) => ({
                 checkAux: fold({ aux: 'depth', out: Number })({
                     Leaf({ [aux]: a }) {
                         leafAux = a;
@@ -215,7 +224,8 @@ describe('Zygomorphism (Data) — string form', () => {
             let receivedAux = false;
 
             const Tree = data(() => ({
-                [extend]: BaseTree,
+                [extend]: BaseTree
+            })).ops(({ fold, unfold, map, merge }) => ({
                 check: fold({ aux: 'depth', out: Number })({
                     _({ [aux]: a }) {
                         if (a !== undefined) receivedAux = true;
@@ -236,7 +246,8 @@ describe('Zygomorphism (Data) — string form', () => {
     describe('DAG safety with zygo', () => {
         test('shared substructure produces correct results', () => {
             const Tree = data(() => ({
-                [extend]: BaseTree,
+                [extend]: BaseTree
+            })).ops(({ fold, unfold, map, merge }) => ({
                 isBalanced: fold({ aux: 'depth', out: Boolean })({
                     Leaf() { return true; },
                     Node({ left, right, [aux]: a }) {
@@ -255,7 +266,8 @@ describe('Zygomorphism (Data) — string form', () => {
     describe('Extended ADT inherits zygo fold', () => {
         test('child ADT inherits fold with aux from parent', () => {
             const TreeWithZygo = data(() => ({
-                [extend]: BaseTree,
+                [extend]: BaseTree
+            })).ops(({ fold, unfold, map, merge }) => ({
                 isBalanced: fold({ aux: 'depth', out: Boolean })({
                     Leaf() { return true; },
                     Node({ left, right, [aux]: a }) {
@@ -265,7 +277,8 @@ describe('Zygomorphism (Data) — string form', () => {
             }));
 
             const ExtTree = data(() => ({
-                [extend]: TreeWithZygo,
+                [extend]: TreeWithZygo
+            })).ops(({ fold, unfold, map, merge }) => ({
                 toList: fold({ out: Array })({
                     Leaf({ value }) { return [value]; },
                     Node({ left, right }) { return [...left, ...right]; }
@@ -286,7 +299,8 @@ describe('Zygomorphism (Data) — string form', () => {
     describe('Merge pipeline with zygo fold', () => {
         test('unfold → zygo fold via merge', () => {
             const Nat = data(() => ({
-                [extend]: BaseNat,
+                [extend]: BaseNat
+            })).ops(({ fold, unfold, map, merge }) => ({
                 isEven: fold({ aux: 'toValue', out: Boolean })({
                     Zero() { return true; },
                     Succ({ pred, [aux]: a }) {
@@ -307,7 +321,8 @@ describe('Zygomorphism (Data) — string form', () => {
     describe('fold without aux still works', () => {
         test('regular fold ignores aux symbol', () => {
             const Tree = data(() => ({
-                [extend]: BaseTree,
+                [extend]: BaseTree
+            })).ops(({ fold, unfold, map, merge }) => ({
                 sum: fold({ out: Number })({
                     Leaf({ value }) { return value; },
                     Node({ left, right }) { return left + right; }
@@ -326,7 +341,8 @@ describe('Zygomorphism (Data) — string form', () => {
         test('data throws when aux names a fold that does not exist', () => {
             assert.throws(() => {
                 data(() => ({
-                    [extend]: BaseTree,
+                    [extend]: BaseTree
+                })).ops(({ fold, unfold, map, merge }) => ({
                     bad: fold({ aux: 'nonExistent', out: Number })({
                         Leaf() { return 0; },
                         Node({ left, right }) { return left + right; }
@@ -338,7 +354,8 @@ describe('Zygomorphism (Data) — string form', () => {
         test('data throws for array form with missing fold', () => {
             assert.throws(() => {
                 data(() => ({
-                    [extend]: BaseTree,
+                    [extend]: BaseTree
+                })).ops(({ fold, unfold, map, merge }) => ({
                     bad: fold({ aux: ['depth', 'noSuchFold'], out: Number })({
                         Leaf() { return 0; },
                         Node({ left, right }) { return left + right; }
@@ -351,7 +368,8 @@ describe('Zygomorphism (Data) — string form', () => {
             assert.throws(() => {
                 behavior(({ Self }) => ({
                     head: Number,
-                    tail: Self,
+                    tail: Self
+                })).ops(({ fold, unfold, map, merge, Self }) => ({
                     From: unfold({ in: Number, out: Self })({
                         head: (n: number) => n,
                         tail: (n: number) => n + 1
@@ -366,7 +384,8 @@ describe('Zygomorphism (Data) — string form', () => {
         test('throws on empty aux array', () => {
             assert.throws(() => {
                 data(() => ({
-                    [extend]: BaseTree,
+                    [extend]: BaseTree
+                })).ops(({ fold, unfold, map, merge }) => ({
                     bad: fold({ aux: [], out: Number })({
                         Leaf() { return 0; },
                         Node({ left, right }) { return left + right; }
@@ -378,7 +397,8 @@ describe('Zygomorphism (Data) — string form', () => {
         test('throws when aux array contains non-strings', () => {
             assert.throws(() => {
                 data(() => ({
-                    [extend]: BaseTree,
+                    [extend]: BaseTree
+                })).ops(({ fold, unfold, map, merge }) => ({
                     bad: fold({ aux: [123, {}] as unknown as string[], out: Number })({
                         Leaf() { return 0; },
                         Node({ left, right }) { return left + right; }
@@ -390,7 +410,8 @@ describe('Zygomorphism (Data) — string form', () => {
         test('throws when aux is an unsupported type', () => {
             assert.throws(() => {
                 data(() => ({
-                    [extend]: BaseTree,
+                    [extend]: BaseTree
+                })).ops(({ fold, unfold, map, merge }) => ({
                     bad: fold({ aux: 42 as unknown as string, out: Number })({
                         Leaf() { return 0; },
                         Node({ left, right }) { return left + right; }
@@ -403,7 +424,8 @@ describe('Zygomorphism (Data) — string form', () => {
             assert.throws(() => {
                 data(({ Family }) => ({
                     Nil: {},
-                    Cons: { head: Number, tail: Family },
+                    Cons: { head: Number, tail: Family }
+                })).ops(({ fold, unfold, map, merge, Family }) => ({
                     FromArray: unfold({ in: Array })({
                         Nil: (arr: unknown[]) => (arr.length === 0 ? {} : null),
                         Cons: (arr: unknown[]) => (arr.length > 0 ? { head: arr[0], tail: arr.slice(1) } : null)
@@ -420,7 +442,8 @@ describe('Zygomorphism (Data) — string form', () => {
             assert.throws(() => {
                 data(({ Family, T }) => ({
                     Leaf: { value: T },
-                    Node: { left: Family(T), right: Family(T) },
+                    Node: { left: Family(T), right: Family(T) }
+                })).ops(({ fold, unfold, map, merge, Family, T }) => ({
                     fmap: map({ out: Family })({
                         T: (x: unknown) => x
                     }),
@@ -438,7 +461,8 @@ describe('Zygomorphism (Data) — string form', () => {
             // depth is a getter (no input).  sumWith is a method (has input).
             // The aux entry a.left / a.right should be plain numbers, not functions.
             const Tree = data(() => ({
-                [extend]: BaseTree,
+                [extend]: BaseTree
+            })).ops(({ fold, unfold, map, merge }) => ({
                 sumWith: fold({ aux: 'depth', in: Number, out: Number })({
                     Leaf({ value }, bonus: number) { return value + bonus; },
                     Node({ left, right, [aux]: a }, bonus: number) {
@@ -465,7 +489,8 @@ describe('Zygomorphism (Data) — string form', () => {
             // Primary fold is parameterized (has `in`).
             // Both aux entries should be plain values.
             const Tree = data(() => ({
-                [extend]: BaseTree,
+                [extend]: BaseTree
+            })).ops(({ fold, unfold, map, merge }) => ({
                 info: fold({ aux: ['depth', 'size'], in: Number, out: Object })({
                     Leaf({ value }, bonus: number) {
                         return { total: value + bonus };
@@ -509,9 +534,8 @@ describe('Zygomorphism (Data) — string form', () => {
     describe('Zygo + histo together', () => {
         test('fold with both history and aux', () => {
             const Nat = data(() => ({
-                [extend]: BaseNat,
-                // Uses both history (look back two levels) and
-                // aux (toValue at each node)
+                [extend]: BaseNat
+            })).ops(({ fold, unfold, map, merge }) => ({
                 histoAux: fold({ history: true, aux: 'toValue', out: Number })({
                     Zero() { return 0; },
                     Succ({ pred, [history]: h, [aux]: a }) {
@@ -543,7 +567,8 @@ describe('Zygomorphism (Data) — string form', () => {
         test('both depth and isBalanced defined together', () => {
             const Tree = data(({ Family }) => ({
                 Leaf: { value: Number },
-                Node: { left: Family, right: Family },
+                Node: { left: Family, right: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 depth: fold({ out: Number })({
                     Leaf() { return 0; },
                     Node({ left, right }) { return 1 + Math.max(left, right); }
@@ -570,7 +595,8 @@ describe('Zygomorphism (Data) — string form', () => {
             // resolve this dependency and register depth first.
             const Tree = data(({ Family }) => ({
                 Leaf: { value: Number },
-                Node: { left: Family, right: Family },
+                Node: { left: Family, right: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 isBalanced: fold({ aux: 'depth', out: Boolean })({
                     Leaf() { return true; },
                     Node({ left, right, [aux]: a }) {
@@ -604,7 +630,8 @@ describe('Zygomorphism (Data) — array form', () => {
     describe('Multiple auxiliary folds', () => {
         test('aux: [depth, size] gives nested shape', () => {
             const Tree = data(() => ({
-                [extend]: BaseTree,
+                [extend]: BaseTree
+            })).ops(({ fold, unfold, map, merge }) => ({
                 check: fold({ aux: ['depth', 'size'], out: String })({
                     Leaf() { return 'leaf'; },
                     Node({ [aux]: a }) {
@@ -636,7 +663,8 @@ describe('Zygomorphism (Data) — array form', () => {
             let leafAux: unknown = 'not-set';
 
             const Tree = data(() => ({
-                [extend]: BaseTree,
+                [extend]: BaseTree
+            })).ops(({ fold, unfold, map, merge }) => ({
                 checkArray: fold({ aux: ['depth', 'size'], out: Number })({
                     Leaf({ [aux]: a }) {
                         leafAux = a;
@@ -658,7 +686,8 @@ describe('Zygomorphism (Data) — array form', () => {
     describe('Array form with single element behaves like nested, not flat', () => {
         test('aux: [\"depth\"] uses nested shape a.depth.left', () => {
             const Tree = data(() => ({
-                [extend]: BaseTree,
+                [extend]: BaseTree
+            })).ops(({ fold, unfold, map, merge }) => ({
                 depthCheck: fold({ aux: ['depth'], out: Number })({
                     Leaf() { return 0; },
                     Node({ [aux]: a }) {
@@ -683,15 +712,16 @@ describe('Zygomorphism (Data) — array form', () => {
     describe('Array form with balanced tree check', () => {
         test('balanced check using both depth and size', () => {
             const Tree = data(() => ({
-                [extend]: BaseTree,
+                [extend]: BaseTree
+            })).ops(({ fold, unfold, map, merge }) => ({
                 info: fold({ aux: ['depth', 'size'], out: Object })({
                     Leaf() { return { balanced: true, depthDiff: 0, totalSize: 1 }; },
                     Node({ left, right, [aux]: a }) {
                         const depthDiff = Math.abs(a.depth.left - a.depth.right);
                         return {
                             balanced: (left as { balanced: boolean }).balanced &&
-                                (right as { balanced: boolean }).balanced &&
-                                depthDiff <= 1,
+                                            (right as { balanced: boolean }).balanced &&
+                                            depthDiff <= 1,
                             depthDiff,
                             totalSize: a.size.left + a.size.right + 1
                         };
@@ -723,7 +753,8 @@ describe('Zygomorphism (Behavior)', () => {
         test('behavior fold with parameterized aux', () => {
             const Stream = behavior(({ Self }) => ({
                 head: Number,
-                tail: Self,
+                tail: Self
+            })).ops(({ fold, unfold, map, merge, Self }) => ({
                 From: unfold({ in: Number, out: Self })({
                     head: (n: number) => n,
                     tail: (n: number) => n + 1
@@ -731,9 +762,6 @@ describe('Zygomorphism (Behavior)', () => {
                 sum: fold({ in: Number, out: Number })({
                     _: ({ head, tail }, n: number) => n > 0 ? head + tail(n - 1) : 0
                 }),
-                // Annotate each element with the partial sum of remaining.
-                // String-form aux shape: { tail: (n) => number }
-                // (one key per recursive field, each a thunk because sum is parameterized)
                 annotate: fold({ aux: 'sum', in: Number, out: Array })({
                     _: ({ head, tail, [aux]: a }, n: number) => {
                         if (n <= 0) return [];
@@ -763,7 +791,8 @@ describe('Zygomorphism (Behavior)', () => {
         test('behavior fold without aux still works', () => {
             const Stream = behavior(({ Self }) => ({
                 head: Number,
-                tail: Self,
+                tail: Self
+            })).ops(({ fold, unfold, map, merge, Self }) => ({
                 From: unfold({ in: Number, out: Self })({
                     head: (n: number) => n,
                     tail: (n: number) => n + 1
@@ -782,7 +811,8 @@ describe('Zygomorphism (Behavior)', () => {
         test('aux: [sum, double] on behavior stream', () => {
             const Stream = behavior(({ Self }) => ({
                 head: Number,
-                tail: Self,
+                tail: Self
+            })).ops(({ fold, unfold, map, merge, Self }) => ({
                 From: unfold({ in: Number, out: Self })({
                     head: (n: number) => n,
                     tail: (n: number) => n + 1
@@ -793,8 +823,6 @@ describe('Zygomorphism (Behavior)', () => {
                 double: fold({ in: Number, out: Number })({
                     _: ({ head, tail }, n: number) => n > 0 ? head * 2 + tail(n - 1) : 0
                 }),
-                // Array-form aux shape: { sum: { tail: (n) => number }, double: { tail: (n) => number } }
-                // (one key per aux fold, each containing one key per recursive field)
                 info: fold({ aux: ['sum', 'double'], in: Number, out: Object })({
                     _: ({ head, tail, [aux]: a }, n: number) => {
                         if (n <= 0) return { items: [] };

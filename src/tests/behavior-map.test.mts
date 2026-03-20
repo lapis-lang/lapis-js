@@ -12,13 +12,14 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { behavior, map, unfold, fold } from '../index.mjs';
+import { behavior } from '../index.mjs';
 
 // Shared Stream fixture
 function makeStream() {
     return behavior(({ Self, T }) => ({
         head: T,
-        tail: Self(T),
+        tail: Self(T)
+    })).ops(({ fold, unfold, map, merge, Self, T }) => ({
         From: unfold({ in: Number, out: Self })({
             head: (n) => n,
             tail: (n) => n + 1
@@ -96,7 +97,8 @@ describe('Behavior Map - Chain Composition', () => {
         // sum(5) of doubled stream = 0+2+4+6+8 = 20
         const Stream2 = behavior(({ Self, T }) => ({
             head: T,
-            tail: Self(T),
+            tail: Self(T)
+        })).ops(({ fold, unfold, map, merge, Self, T }) => ({
             From: unfold({ in: Number, out: Self })({
                 head: (n) => n,
                 tail: (n) => n + 1
@@ -142,7 +144,8 @@ describe('Behavior Map - Lazy (transformed only on access)', () => {
 
         const Stream = behavior(({ Self }) => ({
             head: Number,
-            tail: Self,
+            tail: Self
+        })).ops(({ fold, unfold, map, merge, Self }) => ({
             From: unfold({ in: Number, out: Self })({
                 head: (n) => { accessCount++; return n; },
                 tail: (n) => n + 1
@@ -170,10 +173,11 @@ describe('Behavior Map - Validation', () => {
         assert.throws(() => {
             behavior(({ Self, T }) => ({
                 head: T,
-                tail: Self(T),
+                tail: Self(T)
+            })).ops(({ fold, unfold, map, merge, Self, T }) => ({
                 Doubled: map({})({
                     T: (x) => x * 2
-                })  // PascalCase
+                })
             }));
         }, /camelCase/);
     });
@@ -182,9 +186,10 @@ describe('Behavior Map - Validation', () => {
         assert.throws(() => {
             behavior(({ Self, T }) => ({
                 head: T,
-                tail: Self(T),
-                // @ts-expect-error -- intentional type violation for test
-                doubled: map({})({ T: 42 })  // not a function
+                tail: Self(T)
+            })).ops(({ fold, unfold, map, merge, Self, T }) => ({
+                // @ts-expect-error -- intentional non-function for negative test
+                doubled: map({})({ T: 42 })
             }));
         }, /function/);
     });

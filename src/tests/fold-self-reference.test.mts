@@ -10,7 +10,7 @@
 
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { data, fold, unfold, behavior } from '../index.mjs';
+import { data, behavior } from '../index.mjs';
 
 // =============================================================================
 // Data fold — parameterized ADT
@@ -20,24 +20,20 @@ describe('Family(T) in data fold handlers', () => {
     test('parameterized fold handlers can construct instances via Family(T)', () => {
         const Stack = data(({ Family, T }) => ({
             Empty: {},
-            Push: { value: T, rest: Family(T) },
-
+            Push: { value: T, rest: Family(T) }
+        })).ops(({ fold, unfold, map, merge, Family, T }) => ({
             size: fold({ out: Number })({
                 Empty() { return 0; },
                 Push({ rest }: { rest: number }) { return 1 + rest; }
             }),
-
             append: fold({ in: T, out: Family })({
-                // @ts-expect-error -- Family(T) resolves at runtime; TS cannot model variant properties on FamilyRefCallable
                 Empty({}, val: unknown) {
                     return (Family(T) as any).Push({ value: val, rest: (Family(T) as any).Empty });
                 },
-                // @ts-expect-error -- Family(T) resolves at runtime; TS cannot model variant properties on FamilyRefCallable
                 Push({ rest }: { rest: (v: unknown) => unknown }, val: unknown) {
                     return (Family(T) as any).Push({ value: this.value, rest: rest(val) });
                 }
             }),
-
             toArray: fold({ out: Array })({
                 Empty() { return []; },
                 Push({ value, rest }: { value: unknown; rest: unknown[] }) {
@@ -58,19 +54,16 @@ describe('Family(T) in data fold handlers', () => {
     test('Family(T) works across different parameterizations', () => {
         const Stack = data(({ Family, T }) => ({
             Empty: {},
-            Push: { value: T, rest: Family(T) },
-
+            Push: { value: T, rest: Family(T) }
+        })).ops(({ fold, unfold, map, merge, Family, T }) => ({
             append: fold({ in: T, out: Family })({
-                // @ts-expect-error -- Family(T) resolves at runtime; TS cannot model variant properties on FamilyRefCallable
                 Empty({}, val: unknown) {
                     return (Family(T) as any).Push({ value: val, rest: (Family(T) as any).Empty });
                 },
-                // @ts-expect-error -- Family(T) resolves at runtime; TS cannot model variant properties on FamilyRefCallable
                 Push({ rest }: { rest: (v: unknown) => unknown }, val: unknown) {
                     return (Family(T) as any).Push({ value: this.value, rest: rest(val) });
                 }
             }),
-
             toArray: fold({ out: Array })({
                 Empty() { return []; },
                 Push({ value, rest }: { value: unknown; rest: unknown[] }) {
@@ -92,27 +85,24 @@ describe('Family(T) in data fold handlers', () => {
         assert.deepStrictEqual(ss2.toArray, ['a', 'b']);
     });
 
-    test('non-parameterized ADT fold handlers use ADT variable directly', () => {
-        // For non-parameterized ADTs, handlers reference the ADT variable
-        // from outer scope — no Family(T) needed.
+    test('non-parameterized ADT fold handlers use Family variable in operation bodies', () => {
+        // For non-parameterized ADTs, handlers reference the Family variable
+        // from the ops context to construct instances — same as parameterized ADTs.
         const List = data(({ Family }) => ({
             Nil: {},
-            Cons: { head: Number, tail: Family },
-
+            Cons: { head: Number, tail: Family }
+        })).ops(({ fold, unfold, map, merge, Family }) => ({
             append: fold({ in: Number, out: Family })({
-                // @ts-expect-error -- InstanceOf<FamilyRef> = never; runtime resolves correctly
                 Nil({}, val: number) {
-                    return List.Cons({ head: val, tail: List.Nil });
+                    return Family.Cons({ head: val, tail: Family.Nil });
                 },
-                // @ts-expect-error -- InstanceOf<FamilyRef> = never; runtime resolves correctly
                 Cons({ tail }: { tail: (v: number) => unknown }, val: number) {
-                    return List.Cons({ head: this.head, tail: tail(val) });
+                    return Family.Cons({ head: this.head, tail: tail(val) });
                 }
             }),
-
             toArray: fold({ out: Array })({
                 Nil() { return []; },
-                Cons({ head, tail }: { head: number; tail: number[] }) {
+                Cons({ head, tail }) {
                     return [head, ...tail];
                 }
             })
@@ -126,8 +116,8 @@ describe('Family(T) in data fold handlers', () => {
     test('Family(T) in getter fold (no input params)', () => {
         const Stack = data(({ Family, T }) => ({
             Empty: {},
-            Push: { value: T, rest: Family(T) },
-
+            Push: { value: T, rest: Family(T) }
+        })).ops(({ fold, unfold, map, merge, Family, T }) => ({
             reversed: fold({ out: Family })({
                 // @ts-expect-error -- Family(T) resolves at runtime; TS cannot model variant properties on FamilyRefCallable
                 Empty() { return Family(T).Empty; },
@@ -151,8 +141,8 @@ describe('Family(T) in data fold handlers', () => {
         // (Family(T) during declaration uses the marker as-is for field specs)
         const Stack = data(({ Family, T }) => ({
             Empty: {},
-            Push: { value: T, rest: Family(T) },
-
+            Push: { value: T, rest: Family(T) }
+        })).ops(({ fold, unfold, map, merge, Family, T }) => ({
             size: fold({ out: Number })({
                 Empty() { return 0; },
                 Push({ rest }: { rest: number }) { return 1 + rest; }
@@ -168,14 +158,12 @@ describe('Family(T) in data fold handlers', () => {
     test('instances from Family(T) are instanceof the base ADT', () => {
         const Stack = data(({ Family, T }) => ({
             Empty: {},
-            Push: { value: T, rest: Family(T) },
-
+            Push: { value: T, rest: Family(T) }
+        })).ops(({ fold, unfold, map, merge, Family, T }) => ({
             append: fold({ in: T, out: Family })({
-                // @ts-expect-error -- Family(T) resolves at runtime; TS cannot model variant properties on FamilyRefCallable
                 Empty({}, val: unknown) {
                     return (Family(T) as any).Push({ value: val, rest: (Family(T) as any).Empty });
                 },
-                // @ts-expect-error -- Family(T) resolves at runtime; TS cannot model variant properties on FamilyRefCallable
                 Push({ rest }: { rest: (v: unknown) => unknown }, val: unknown) {
                     return (Family(T) as any).Push({ value: this.value, rest: rest(val) });
                 }
@@ -199,7 +187,8 @@ describe('Behavior fold (no Family(T) needed)', () => {
     test('behavior fold works normally (folds reduce, do not construct)', () => {
         const Stream = behavior(({ Self, T }) => ({
             head: T,
-            tail: Self(T),
+            tail: Self(T)
+        })).ops(({ fold, unfold, map, merge, Self, T }) => ({
             From: unfold({ in: Number, out: Self })({
                 head: (n: number) => n,
                 tail: (n: number) => n + 1

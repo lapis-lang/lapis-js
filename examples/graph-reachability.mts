@@ -12,7 +12,7 @@
  *     - reachingTo()    — backward reachability: R°(T) = {a | ∃b∈T. a→b}
  *
  *   Auto-generated:
- *     - Join invariant on Path: first.destination === second.origin
+ *     - Join invariant on Path: first[destination] === second[origin]
  *     - Semi-naive fixpoint iteration in closure()
  *     - Key-based dedup handles cycles
  *
@@ -20,27 +20,25 @@
  *   Datalog:  bottom-up, enumerate ALL reachable pairs
  *   Prolog:   top-down, lazily explore (see sudoku-bmf.mts for the ν-side)
  */
-import { relation, fold, origin, destination } from '@lapis-lang/lapis-js';
+import { relation, origin, destination } from '@lapis-lang/lapis-js';
 
 // ---- Relation Definition ----
 
-
-const Edge = relation(({ Family }: { Family: any }) => ({
+const Edge = relation(({ Family }) => ({
     Direct: { from: String, to: String },
-    Path:   { first: Family, second: Family },
-
+    Path:   { first: Family, second: Family }
+})).ops(({ fold, origin, destination }) => ({
     [origin]: fold({ out: String })({
-        Direct({ from }: { from: string }) { return from; },
-        Path({ first }: { first: string }) { return first; }
+        Direct({ from }) { return from; },
+        Path({ first }) { return first; }
     }),
     [destination]: fold({ out: String })({
-        Direct({ to }: { to: string }) { return to; },
-        Path({ second }: { second: string }) { return second; }
+        Direct({ to }) { return to; },
+        Path({ second }) { return second; }
     }),
-
     length: fold({ out: Number })({
         Direct() { return 1; },
-        Path({ first, second }: { first: number; second: number }) {
+        Path({ first, second }) {
             return first + second;
         }
     })
@@ -60,7 +58,7 @@ const dagEdges = [
 
 console.log('DAG edges:');
 
-dagEdges.forEach((e: any) => console.log(`  ${e.origin} → ${e.destination}`));
+dagEdges.forEach(e => console.log(`  ${e[origin]} → ${e[destination]}`));
 
 // closure: compute transitive closure (Datalog fixpoint)
 
@@ -69,7 +67,7 @@ const dagAll = Edge.closure(dagEdges);
 console.log(`\nTransitive closure (${dagAll.length} pairs):`);
 
 dagAll.forEach((e: any) =>
-    console.log(`  ${e.origin} → ${e.destination}  (length ${e.length})`)
+    console.log(`  ${e[origin]} → ${e[destination]}  (length ${e.length})`)
 );
 
 // reachableFrom: forward reachability — who can A reach?
@@ -94,7 +92,7 @@ const cyclicEdges = [Edge.Direct('X', 'Y'), Edge.Direct('Y', 'Z'), Edge.Direct('
 
 console.log('Edges:');
 
-cyclicEdges.forEach((e: any) => console.log(`  ${e.origin} → ${e.destination}`));
+cyclicEdges.forEach(e => console.log(`  ${e[origin]} → ${e[destination]}`));
 
 // Key-based dedup prevents infinite expansion on cycles
 
@@ -103,7 +101,7 @@ const cyclicAll = Edge.closure(cyclicEdges);
 console.log(`\nClosure (${cyclicAll.length} pairs — cycles handled):`);
 
 cyclicAll.forEach((e: any) =>
-    console.log(`  ${e.origin} → ${e.destination}  (length ${e.length})`)
+    console.log(`  ${e[origin]} → ${e[destination]}  (length ${e.length})`)
 );
 
 // Every node reaches every other node (full connectivity)
@@ -122,4 +120,4 @@ console.log('  origin / destination   — fold:   instance → endpoints');
 console.log('  closure(facts)         — fixpoint: base → transitive closure');
 console.log('  reachableFrom(facts, S)    — R(S):  forward reachability');
 console.log('  reachingTo(facts, T)       — R°(T): backward reachability');
-console.log('  join invariant         — auto: first.dest === second.origin');
+console.log('  join invariant         — auto: first[destination] === second[origin]');

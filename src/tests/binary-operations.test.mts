@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { data, fold } from '../index.mjs';
+import { data } from '../index.mjs';
 
 // Define ADTs once and share across all tests
 const Pair = data(({ T, U }) => ({
@@ -9,9 +9,8 @@ const Pair = data(({ T, U }) => ({
 
 const List = data(({ Family, T }) => ({
     Nil: {},
-    Cons: { head: T, tail: Family(T) },
-    // zip changes the element type (T → Pair), so it returns an array
-    // rather than a Family(T) list (which would enforce head: T).
+    Cons: { head: T, tail: Family(T) }
+})).ops(({ fold, unfold, map, merge, Family, T }) => ({
     zip: fold({})({
         Nil() { return []; },
         // @ts-expect-error -- binary fold handler receives 2nd arg at runtime; TS fold signature only models single-arg

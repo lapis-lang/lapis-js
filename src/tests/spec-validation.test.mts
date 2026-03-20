@@ -1,13 +1,14 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { data , unfold, fold } from '../index.mjs';
+import { data } from '../index.mjs';
 
 describe('Spec Validation - Runtime Type Checking', () => {
     describe('spec.out - Fold Return Type Validation', () => {
         test('should validate Number return type at runtime', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family },
+                Cons: { head: Number, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 length: fold({ out: Number })({
                     Nil() { return 0; },
                     Cons({ tail }) { return 1 + tail; }
@@ -24,7 +25,8 @@ describe('Spec Validation - Runtime Type Checking', () => {
         test('should throw TypeError when Number handler returns wrong type', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family },
+                Cons: { head: Number, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 badLength: fold({ out: Number })({
                     // @ts-expect-error -- intentional type violation for test
                     Nil() { return 'zero'; },
@@ -43,7 +45,8 @@ describe('Spec Validation - Runtime Type Checking', () => {
         test('should validate Boolean return type at runtime', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family },
+                Cons: { head: Number, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 isEmpty: fold({ out: Boolean })({
                     Nil() { return true; },
                     Cons() { return false; }
@@ -58,7 +61,8 @@ describe('Spec Validation - Runtime Type Checking', () => {
         test('should throw TypeError when Boolean handler returns wrong type', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family },
+                Cons: { head: Number, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 badIsEmpty: fold({ out: Boolean })({
                     // @ts-expect-error -- intentional type violation for test
                     Nil() { return 1; },
@@ -76,7 +80,8 @@ describe('Spec Validation - Runtime Type Checking', () => {
         test('should validate String return type at runtime', () => {
             const Tree = data(({ Family }) => ({
                 Leaf: { value: Number },
-                Node: { left: Family, right: Family },
+                Node: { left: Family, right: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 describe: fold({ out: String })({
                     Leaf({ value }) { return 'Leaf(' + value + ')'; },
                     Node() { return 'Node'; }
@@ -91,8 +96,10 @@ describe('Spec Validation - Runtime Type Checking', () => {
         test('should throw TypeError when String handler returns wrong type', () => {
             const Tree = data(({ Family }) => ({
                 Leaf: { value: Number },
-                Node: { left: Family, right: Family },
+                Node: { left: Family, right: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 badDescribe: fold({ out: String })({
+                    // @ts-expect-error -- intentional wrong return type for negative test
                     Leaf({ value }) { return value; },
                     Node() { return 'Node'; }
                 })
@@ -113,10 +120,11 @@ describe('Spec Validation - Runtime Type Checking', () => {
 
             const Peano = data(({ Family }) => ({
                 Zero: {},
-                Succ: { pred: Family },
+                Succ: { pred: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 toResult: fold({ out: Result })({
                     Zero() { return new Result(0); },
-                    Succ({ pred }) { return new Result(pred.value + 1); }
+                    Succ({ pred }: any) { return new Result(pred.value + 1); }
                 })
             }));
 
@@ -134,10 +142,11 @@ describe('Spec Validation - Runtime Type Checking', () => {
 
             const Peano = data(({ Family }) => ({
                 Zero: {},
-                Succ: { pred: Family },
+                Succ: { pred: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 badToResult: fold({ out: Result })({
                     Zero() { return 0; },
-                    Succ({ pred }) { return new Result(pred + 1); }
+                    Succ({ pred }: any) { return new Result(pred + 1); }
                 })
             }));
 
@@ -154,7 +163,8 @@ describe('Spec Validation - Runtime Type Checking', () => {
             const Color = data(() => ({
                 Red: {},
                 Green: {},
-                Blue: {},
+                Blue: {}
+            })).ops(({ fold, unfold, map, merge }) => ({
                 isPrimary: fold({ out: Boolean })({
                     Red() { return true; },
                     Green() { return true; },
@@ -171,7 +181,8 @@ describe('Spec Validation - Runtime Type Checking', () => {
             const Color = data(() => ({
                 Red: {},
                 Green: {},
-                Blue: {},
+                Blue: {}
+            })).ops(({ fold, unfold, map, merge }) => ({
                 badIsPrimary: fold({ out: Boolean })({
                     // @ts-expect-error -- intentional type violation for test
                     Red() { return 'yes'; },
@@ -191,7 +202,8 @@ describe('Spec Validation - Runtime Type Checking', () => {
             const Color = data(() => ({
                 Red: {},
                 Green: {},
-                Blue: {},
+                Blue: {}
+            })).ops(({ fold, unfold, map, merge }) => ({
                 toHex: fold({ out: String })({
                     Red() { return '#FF0000'; },
                     Green() { return '#00FF00'; },
@@ -206,7 +218,8 @@ describe('Spec Validation - Runtime Type Checking', () => {
 
         test('should validate Number return type', () => {
             const Point = data(() => ({
-                Point2D: { x: Number, y: Number },
+                Point2D: { x: Number, y: Number }
+            })).ops(({ fold, unfold, map, merge }) => ({
                 magnitude: fold({ out: Number })({
                     Point2D({ x, y }) { return Math.sqrt(x * x + y * y); }
                 })
@@ -222,7 +235,8 @@ describe('Spec Validation - Runtime Type Checking', () => {
         test('should validate each operation independently', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family },
+                Cons: { head: Number, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 isEmpty: fold({ out: Boolean })({
                     Nil() { return true; },
                     Cons() { return false; }
@@ -255,7 +269,8 @@ describe('Spec Validation - Runtime Type Checking', () => {
         test('should throw errors for wrong return types in any operation', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family },
+                Cons: { head: Number, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 goodOp: fold({ out: Boolean })({
                     Nil() { return true; },
                     Cons() { return false; }
@@ -282,7 +297,8 @@ describe('Spec Validation - Runtime Type Checking', () => {
     describe('Primitive Constructor Mapping', () => {
         test('Number spec validates primitive number', () => {
             const ADT = data(() => ({
-                Value: {},
+                Value: {}
+            })).ops(({ fold, unfold, map, merge }) => ({
                 getValue: fold({ out: Number })({
                     Value() { return 42; }
                 })
@@ -295,7 +311,8 @@ describe('Spec Validation - Runtime Type Checking', () => {
 
         test('String spec validates primitive string', () => {
             const ADT = data(() => ({
-                Value: {},
+                Value: {}
+            })).ops(({ fold, unfold, map, merge }) => ({
                 getValue: fold({ out: String })({
                     Value() { return 'hello'; }
                 })
@@ -308,7 +325,8 @@ describe('Spec Validation - Runtime Type Checking', () => {
 
         test('Boolean spec validates primitive boolean', () => {
             const ADT = data(() => ({
-                Value: {},
+                Value: {}
+            })).ops(({ fold, unfold, map, merge }) => ({
                 getValue: fold({ out: Boolean })({
                     Value() { return true; }
                 })
@@ -324,7 +342,8 @@ describe('Spec Validation - Runtime Type Checking', () => {
         test('should validate Number input type at runtime', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family },
+                Cons: { head: Number, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 Countdown: unfold({ in: Number, out: Family })({
                     Nil: (n) => (n <= 0 ? {} : null),
                     Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
@@ -339,7 +358,8 @@ describe('Spec Validation - Runtime Type Checking', () => {
         test('should throw TypeError when input type is wrong', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family },
+                Cons: { head: Number, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 Countdown: unfold({ in: Number, out: Family })({
                     Nil: (n) => (n <= 0 ? {} : null),
                     Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
@@ -356,7 +376,8 @@ describe('Spec Validation - Runtime Type Checking', () => {
         test('should validate String input type at runtime', () => {
             const Result = data(({ Family }) => ({
                 Success: { value: String },
-                Error: { message: String },
+                Error: { message: String }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 Parse: unfold({ in: String, out: Family })({
                     Success: (s) => (s.length > 0 ? { value: s } : null),
                     Error: (s) => (s.length === 0 ? { message: 'empty string' } : null)
@@ -374,7 +395,8 @@ describe('Spec Validation - Runtime Type Checking', () => {
             }
 
             const Result = data(({ Family }) => ({
-                Value: { num: Number },
+                Value: { num: Number }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 FromSeed: unfold({ in: Seed, out: Family })({
                     // @ts-expect-error -- intentional type violation for test
                     Value: (seed) => ({ num: seed.value })
@@ -396,15 +418,14 @@ describe('Spec Validation - Runtime Type Checking', () => {
         test('should validate Family return type (returns valid ADT instance)', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family },
+                Cons: { head: Number, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 append: fold({ in: Number, out: Family })({
-                    // @ts-expect-error -- InstanceOf<FamilyRef> = never; runtime resolves correctly
                     Nil({}, val: number) {
-                        return List.Cons({ head: val, tail: List.Nil });
+                        return Family.Cons({ head: val, tail: Family.Nil });
                     },
-                    // @ts-expect-error -- InstanceOf<FamilyRef> = never; runtime resolves correctly
-                    Cons({ tail }: { tail: (v: number) => unknown }, val: number) {
-                        return List.Cons({ head: this.head, tail: tail(val) });
+                    Cons({ tail }, val: number) {
+                        return Family.Cons({ head: this.head, tail: tail(val) });
                     }
                 })
             }));
@@ -420,17 +441,17 @@ describe('Spec Validation - Runtime Type Checking', () => {
         test('should throw TypeError when Family handler returns non-ADT value', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family },
+                Cons: { head: Number, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 badClone: fold({ out: Family })({
                     // @ts-expect-error -- intentional type violation for test
                     Nil() { return { head: 0 }; },
-                    // @ts-expect-error -- InstanceOf<FamilyRef> = never; runtime resolves correctly
-                    Cons() { return List.Nil; }
+                    Cons() { return Family.Nil as any; }
                 })
             }));
 
             assert.throws(
-                () => List.Nil.badClone(),
+                () => List.Nil.badClone,
                 /Operation 'badClone' expected to return instance of ADT family.*got Object/
             );
         });
@@ -438,17 +459,17 @@ describe('Spec Validation - Runtime Type Checking', () => {
         test('should throw TypeError when Family handler returns primitive', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family },
+                Cons: { head: Number, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 badOp: fold({ out: Family })({
                     // @ts-expect-error -- intentional type violation for test
                     Nil() { return 42; },
-                    // @ts-expect-error -- InstanceOf<FamilyRef> = never; runtime resolves correctly
-                    Cons() { return List.Nil; }
+                    Cons() { return Family.Nil as any; }
                 })
             }));
 
             assert.throws(
-                () => List.Nil.badOp(),
+                () => List.Nil.badOp,
                 /Operation 'badOp' expected to return instance of ADT family/
             );
         });
@@ -460,17 +481,17 @@ describe('Spec Validation - Runtime Type Checking', () => {
 
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family },
+                Cons: { head: Number, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 badOp: fold({ out: Family })({
                     // @ts-expect-error -- intentional type violation for test
                     Nil() { return Other.Thing({ x: 1 }); },
-                    // @ts-expect-error -- InstanceOf<FamilyRef> = never; runtime resolves correctly
-                    Cons() { return List.Nil; }
+                    Cons() { return Family.Nil as any; }
                 })
             }));
 
             assert.throws(
-                () => List.Nil.badOp(),
+                () => List.Nil.badOp,
                 /Operation 'badOp' expected to return instance of ADT family.*got Thing/
             );
         });
@@ -485,12 +506,11 @@ describe('Spec Validation - Runtime Type Checking', () => {
             // confirm normal usage works without false positives.
             const Tree = data(({ Family }) => ({
                 Leaf: { value: Number },
-                Node: { left: Family, right: Family },
+                Node: { left: Family, right: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 leftmost: fold({ out: Family })({
-                    // @ts-expect-error -- InstanceOf<FamilyRef> = never; runtime resolves correctly
                     Leaf() { return this; },
-                    // @ts-expect-error -- InstanceOf<FamilyRef> = never; runtime resolves correctly
-                    Node({ left }: { left: unknown }) { return left; }
+                    Node({ left }) { return left; }
                 })
             }));
 
@@ -506,15 +526,14 @@ describe('Spec Validation - Runtime Type Checking', () => {
         test('should validate parameterized Family return type', () => {
             const Stack = data(({ Family, T }) => ({
                 Empty: {},
-                Push: { value: T, rest: Family(T) },
+                Push: { value: T, rest: Family(T) }
+            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
                 append: fold({ in: T, out: Family })({
-                    // @ts-expect-error -- Family(T) resolves at runtime; TS cannot model variant properties on FamilyRefCallable
                     Empty({}, val: unknown) {
-                        return (Family(T) as any).Push({ value: val, rest: (Family(T) as any).Empty });
+                        return (Family(T as Record<string, unknown>) as any).Push({ value: val, rest: (Family(T as Record<string, unknown>) as any).Empty });
                     },
-                    // @ts-expect-error -- Family(T) resolves at runtime; TS cannot model variant properties on FamilyRefCallable
-                    Push({ rest }: { rest: (v: unknown) => unknown }, val: unknown) {
-                        return (Family(T) as any).Push({ value: this.value, rest: rest(val) });
+                    Push({ rest }, val: unknown) {
+                        return (Family(T as Record<string, unknown>) as any).Push({ value: this.value, rest: rest(val) });
                     }
                 })
             }));
@@ -532,7 +551,8 @@ describe('Spec Validation - Runtime Type Checking', () => {
         test('fold without spec.out allows any return type', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family },
+                Cons: { head: Number, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 anything: fold({})({
                     Nil() { return 'string'; },
                     Cons() { return 42; }
@@ -546,7 +566,8 @@ describe('Spec Validation - Runtime Type Checking', () => {
 
         test('unfold without spec.in allows any input type', () => {
             const Result = data(({ Family }) => ({
-                Value: { data: Number },
+                Value: { data: Number }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 FromAnything: unfold({ out: Family })({
                     // @ts-expect-error -- intentional type violation for test
                     Value: (x) => ({ data: typeof x === 'number' ? x : 0 })

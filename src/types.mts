@@ -18,56 +18,103 @@ import type {
     spec,
     operations,
     extend,
+    DeclBrand,
     FamilyRef,
     FamilyRefCallable,
     SelfRef,
     SelfRefCallable,
     TypeParamRef,
     SortRef,
-    TypeSpec
+    TypeSpec,
+    isSort
 } from './operations.mjs';
 
+import type { origin, destination } from './Relation.mjs';
+import type { output, done, accept } from './Observer.mjs';
+
 // Re-export so consumers can import all types from a single place
-export type { TypeSpec, FamilyRef, FamilyRefCallable, SelfRef, SelfRefCallable, TypeParamRef, SortRef };
+export type { TypeSpec, FamilyRef, FamilyRefCallable, SelfRef, SelfRefCallable, TypeParamRef, SortRef, origin, destination, output, done, accept };
 
 
 
 // ---- SpecValue: TypeSpec → runtime value type ---------------------------------
 
 /**
+ * Lookup table for known built-in constructors → runtime instance types.
+ * Using an interface map + indexed access is O(1) for the type checker —
+ * a single index lookup instead of a chain of `extends` checks.
+ *
+ * Includes `Array` and `Object` because they are common in data/behavior
+ * field specs and unfold `in` specs. Resolving them via the map avoids
+ * the expensive fallback conditional chain.
+ */
+interface BuiltinSpecMap {
+    number: number;
+    string: string;
+    boolean: boolean;
+    symbol: symbol;
+    bigint: bigint;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    array: any[];
+    // eslint-disable-next-line @typescript-eslint/no-wrapper-object-types
+    object: Object;
+}
+
+/**
+ * Maps a known built-in constructor to a key in `BuiltinSpecMap`.
+ * Returns `never` for non-builtin constructors (handled by fallback).
+ */
+type BuiltinTag<S> =
+    S extends NumberConstructor ? 'number' :
+        S extends StringConstructor ? 'string' :
+            S extends BooleanConstructor ? 'boolean' :
+                S extends SymbolConstructor ? 'symbol' :
+                    S extends BigIntConstructor ? 'bigint' :
+                        S extends ArrayConstructor ? 'array' :
+                            S extends ObjectConstructor ? 'object' :
+                                never;
+
+/**
  * Maps a TypeSpec value (e.g. `NumberConstructor`, `StringConstructor`, an ADT class,
  * or a `FamilyRef`) to the corresponding runtime value type.
  *
  * `Self` is threaded through for recursive `FamilyRef` / `SelfRef` fields.
+ *
+ * Uses a two-tier strategy to minimize type instantiation depth:
+ *   1. Known primitive constructors resolve via `PrimitiveSpecMap` (indexed access, depth 1).
+ *   2. Ref types, custom constructors, and prototype-based ADTs use a shallow fallback (depth ≤ 3).
  */
 export type SpecValue<S, Self = unknown> =
-    S extends NumberConstructor ? number :
-        S extends StringConstructor ? string :
-            S extends BooleanConstructor ? boolean :
-                S extends SymbolConstructor ? symbol :
-                    S extends BigIntConstructor ? bigint :
-                        S extends FamilyRef ? Self :
-                            S extends SelfRef ? Self :
-                                S extends SortRef ? Self :
-                                    S extends TypeParamRef ? unknown :
-                                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                        S extends abstract new (...args: any[]) => infer I ? I :
-                                        // DataADT<D> / BehaviorADT<D> carry their instance type
-                                        // on `readonly prototype`. This resolves fields whose
-                                        // type parameter was bound to a concrete ADT (issue #126).
-                                        // Checked before the generic function guard because ADT
-                                        // values are callable (parameterization overload) and would
-                                        // otherwise match `(...args) => any` and resolve to `unknown`.
-                                            S extends { readonly prototype: infer I } ? I :
-                                            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                                                S extends (...args: any[]) => any ? unknown :
-                                                    unknown;
+    BuiltinTag<S> extends never
+        ? (S extends FamilyRef | SelfRef | SortRef ? Self
+            : S extends TypeParamRef ? unknown
+                // DataADT<D> / BehaviorADT<D> carry their instance type
+                // on `readonly prototype`. Checked before the constructor
+                // guard because ADT values are callable and would otherwise
+                // match `(...args) => any` (issue #126).
+                : S extends { readonly prototype: infer I } ? I
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    : S extends abstract new (...args: any[]) => infer I ? I
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        : S extends (...args: any[]) => any ? unknown
+                            : unknown)
+        : BuiltinSpecMap[BuiltinTag<S>];
 
 // ---- Field values -----------------------------------------------------------
 
-/** Resolve all field specs to their runtime value types, excluding symbol keys (e.g. [invariant]). */
+/**
+ * Resolve all field specs to their runtime value types, excluding symbol keys (e.g. [invariant]).
+ *
+ * Built-in constructors are resolved via `BuiltinSpecMap` directly (bypassing
+ * `SpecValue`) so that the result is Self-independent and TypeScript can reuse
+ * it across the `_DataInstanceSelf` layers without creating separate per-layer
+ * `SpecValue<…, Layer>` instantiations.
+ */
 export type FieldValues<Spec extends Record<string, unknown>, Self = unknown> = {
-    readonly [K in keyof Spec & string]: SpecValue<Spec[K], Self>
+    readonly [K in keyof Spec & string]:
+    BuiltinTag<Spec[K]> extends never
+        ? SpecValue<Spec[K], Self>
+        : BuiltinSpecMap[BuiltinTag<Spec[K]>]
 };
 
 // ---- Variant instance --------------------------------------------------------
@@ -112,7 +159,6 @@ export type VariantCtor<
     ? VariantInstance<Name> & Ops
     : {
         (fields: FieldValues<Spec, Self>): VariantInstance<Name, FieldValues<Spec, Self>> & Ops;
-        // Positional construction: MyVariant(field1, field2, ...) — order follows declaration order
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (...args: any[]): VariantInstance<Name, FieldValues<Spec, Self>> & Ops;
         new(fields: FieldValues<Spec, Self>): VariantInstance<Name, FieldValues<Spec, Self>> & Ops;
@@ -137,6 +183,13 @@ export type VariantKeys<D> = FilterDeclKeys<D, false>;
 
 /** All string keys in D that ARE operation definitions. */
 export type OperationKeys<D> = FilterDeclKeys<D, true>;
+
+/** Symbol keys in D that are operation definitions (e.g. [origin], [destination]). */
+type SymbolOperationKeys<D> = {
+    [K in keyof D]: K extends symbol
+        ? IsOpEntry<D[K]> extends true ? K : never
+        : never
+}[keyof D];
 
 // ---- ADT variant union type -------------------------------------------------
 
@@ -166,13 +219,25 @@ export type VariantCtors<
         : VariantInstance<K & string> & Ops
 };
 
+// ---- Common fallback --------------------------------------------------------
+
+/** Fallback callable shape used when merge/unfold types cannot be resolved. */
+type FallbackFn = (...args: unknown[]) => unknown;
+
 // ---- Operation result types -------------------------------------------------
 
-/** Extract the output type from an operation spec, if declared. */
+/**
+ * Extract the output type from an operation spec, if declared.
+ *
+ * Built-in constructors are resolved via `BuiltinSpecMap` directly so that
+ * the result is Self-independent across `_DataInstanceSelf` layers.
+ */
 type OpOutType<V, Self = unknown> =
     (typeof spec) extends keyof V
         ? V[typeof spec] extends { out: infer Out }
-            ? SpecValue<Out, Self>
+            ? BuiltinTag<Out> extends never
+                ? SpecValue<Out, Self>
+                : BuiltinSpecMap[BuiltinTag<Out>]
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             : any   // no 'out' spec → treated as any (untyped)
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -195,9 +260,12 @@ type OpShape<V, Self = unknown> =
 /**
  * Map of operation name → method/getter type for ADT instances.
  * `Instance` is the concrete ADT instance type threaded through for `Family`/`Self` outputs.
+ * Includes both string-keyed and symbol-keyed operations (e.g. [origin], [destination]).
  */
 export type OperationMethods<D, Instance = unknown> = {
     readonly [K in OperationKeys<D>]: OpShape<D[K], Instance>
+} & {
+    readonly [K in SymbolOperationKeys<D>]: OpShape<D[K], Instance>
 };
 
 // ---- Unfold static constructors on the ADT ----------------------------------
@@ -230,13 +298,51 @@ type UnfoldCtors<D, Instance = unknown> = UnfoldCtorsFor<UnfoldOpKeys<D> & keyof
 type MergeOpKeys<D> = OpKindKeys<OperationKeys<D>, D, 'merge'>;
 
 /**
- * Shared merge constructor shape: composed input/output types cannot be inferred
- * from string names alone, so the shape is a generic any-arg callable.
+ * Shared merge constructor shape: derives the composed input/output types
+ * from all operations in the merge pipeline.
+ *
+ * Input types are collected from every operation in the pipeline that has an
+ * `in` spec, and spread as positional parameters. The output type comes from
+ * the last operation's `out` spec. When operations cannot be resolved (e.g.
+ * parent-inherited operations not visible in D), falls back to
+ * `(...args: unknown[]) => unknown`.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type MergeCtorsFor<Keys extends string> = { readonly [K in Keys]: (...args: any[]) => any };
+type Last<T extends readonly string[]> = T extends readonly [...string[], infer L extends string] ? L : string;
 
-type MergeCtors<D> = MergeCtorsFor<MergeOpKeys<D> & string>;
+/** Safe index: D[K] when K extends keyof D, else never. */
+type SafeIndex<D, K> = K extends keyof D ? D[K] : never;
+
+/** Collect OpInType from each operation in Names that has an `in` spec. */
+type CollectInputs<D, Names extends readonly string[]> =
+    Names extends readonly [infer H extends string, ...infer Rest extends string[]]
+        ? OpInType<SafeIndex<D, H>> extends undefined | never
+            ? CollectInputs<D, Rest>
+            : [NonNullable<OpInType<SafeIndex<D, H>>>, ...CollectInputs<D, Rest>]
+        : [];
+
+/**
+ * Shared merge constructor shape, parameterised over `Self` so that both
+ * `DataADT` (Self = `_DataInstanceSelf<D>`) and `BehaviorADT`
+ * (Self = `BehaviorObservers<D>`) can reuse the same logic.
+ */
+type MergeCtorShapeFor<D, Names extends readonly string[], Self> =
+    Last<Names> extends keyof D
+        ? CollectInputs<D, Names> extends readonly []
+            ? OpOutType<SafeIndex<D, Last<Names>>, Self>
+            : (...inputs: CollectInputs<D, Names>) => OpOutType<SafeIndex<D, Last<Names>>, Self>
+        : FallbackFn;
+
+/** Shared merge-ctors mapped type, parameterised over key union and Self. */
+type MergeCtorsFor<Keys extends keyof D, D, Self> = {
+    readonly [K in Keys]:
+    (typeof operations) extends keyof D[K]
+        ? D[K][typeof operations] extends infer Names extends readonly string[]
+            ? MergeCtorShapeFor<D, Names, Self>
+            : FallbackFn
+        : FallbackFn
+};
+
+type MergeCtors<D> = MergeCtorsFor<MergeOpKeys<D> & keyof D, D, _DataInstanceSelf<D>>;
 
 // ---- Full ADT type ----------------------------------------------------------
 
@@ -252,7 +358,7 @@ type MergeCtors<D> = MergeCtorsFor<MergeOpKeys<D> & string>;
  */
 type ParentDecl<D> =
     (typeof extend) extends keyof D
-        ? D[typeof extend] extends DataADT<infer P> ? P : never
+        ? D[typeof extend] extends { readonly [DeclBrand]: infer P } ? P : never
         : never;
 
 /** Walk the [extend] chain to collect all ancestor variant instances. */
@@ -273,26 +379,100 @@ type ParentOperationMethods<D, Instance = unknown> =
 type CombinedOperationMethods<D, Instance = unknown> =
     OperationMethods<D, Instance> & ParentOperationMethods<D, Instance>;
 
+// ---- Flattened variant field access (all fields without narrowing) ---------
+
+/** Collect field names from all own variants. */
+type VariantFieldNames<D> = {
+    [K in VariantKeys<D>]: D[K] extends VariantSpec ? keyof D[K] & string : never
+}[VariantKeys<D>];
+
 /**
- * The full instance type for an ADT: union of variant shapes plus all operation methods.
+ * Resolve the runtime type of field name F across own variants.
+ *
+ * Built-in constructors are resolved via `BuiltinSpecMap` directly so that
+ * the result is Self-independent across `_DataInstanceSelf` layers.
+ */
+type FieldTypeForName<D, F extends string, Self = unknown> = {
+    [K in VariantKeys<D>]: D[K] extends VariantSpec
+        ? F extends keyof D[K]
+            ? BuiltinTag<D[K][F]> extends never
+                ? SpecValue<D[K][F], Self>
+                : BuiltinSpecMap[BuiltinTag<D[K][F]>]
+            : never
+        : never
+}[VariantKeys<D>];
+
+/** Own variant field access: all field names mapped to their resolved types. */
+type OwnVariantFieldAccess<D, Self = unknown> = {
+    readonly [F in VariantFieldNames<D>]: FieldTypeForName<D, F, Self>
+};
+
+/** Walk the [extend] chain to collect parent variant field access. */
+type ParentVariantFieldAccess<D, Self = unknown> =
+    ParentDecl<D> extends never ? Record<never, never>
+        : OwnVariantFieldAccess<ParentDecl<D>, Self> & ParentVariantFieldAccess<ParentDecl<D>, Self>;
+
+/**
+ * Flattened variant field access: all field names from all variants (own +
+ * inherited) mapped to their resolved types.  Intersected into the instance
+ * type so that field access on the ADT union resolves to the correct type
+ * instead of degrading to `unknown` through the string index signature.
+ */
+type CombinedVariantFieldAccess<D, Self = unknown> =
+    OwnVariantFieldAccess<D, Self> & ParentVariantFieldAccess<D, Self>;
+
+// ---- Full ADT instance type -------------------------------------------------
+
+/**
+ * The full instance type for an ADT: union of variant shapes plus all operation
+ * methods, plus flattened variant field access.
  *
  * When `[extend]` is used, parent variant shapes and parent operation methods
  * are folded in so that `DataInstance<ChildDecl>` includes everything the child
  * inherits — preventing it from collapsing to `never` when the child declares
  * no own variants.
  *
- * The string index signature (`[k: string]: any`) allows accessing variant fields
- * (e.g. `cons.head`) without narrowing — necessary because `DataInstance<D>` is a
- * union over all variants and TypeScript can't know which variant is active at a
- * given use-site.
+ * `CombinedVariantFieldAccess` provides explicit typed properties for every
+ * field across all variants.  Without it, accessing a field that exists in only
+ * some variants (e.g. `cons.tail` on a `Nil | Cons` union) would degrade to
+ * `unknown` through the string index signature.
+ *
+ * The string index signature (`[k: string]: unknown`) remains as a fallback
+ * for dynamic/untyped field access.
+ *
+ * Family-returning operations (e.g. `map({ out: Family })`) resolve Self via
+ * a four-level bounded approximation to avoid infinite type expansion.  The
+ * bottom level uses `unknown` for recursive positions; the result is that
+ * chaining recursive fields is properly typed for 4 levels, after which it
+ * gracefully degrades to `unknown`.
  */
+/** Single layer of the bounded Self approximation. */
+type _DataInstanceLayer<D, Self = unknown> =
+    CombinedADTInstances<D, Self> & CombinedOperationMethods<D, Self> & CombinedVariantFieldAccess<D, Self>;
+
+type _DataInstanceSelf0<D> = _DataInstanceLayer<D>;
+type _DataInstanceSelf1<D> = _DataInstanceLayer<D, _DataInstanceSelf0<D>>;
+type _DataInstanceSelf2<D> = _DataInstanceLayer<D, _DataInstanceSelf1<D>>;
+
+/**
+ * Bounded Self approximation for DataInstance.
+ *
+ * Uses 4 Self-recursion levels: recursive field access (e.g. list.tail.tail.tail.head)
+ * is typed precisely for 4 levels, then degrades to `unknown`.
+ */
+type _DataInstanceSelf<D> = _DataInstanceLayer<D, _DataInstanceSelf2<D>>;
+
 export type DataInstance<D> =
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    CombinedADTInstances<D, CombinedADTInstances<D> & CombinedOperationMethods<D, any>>
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    & CombinedOperationMethods<D, any>
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    & { readonly [k: string]: any };
+    _DataInstanceLayer<D, _DataInstanceSelf<D>>
+    & { readonly [k: string]: unknown }
+    & (D extends { readonly [origin]?: unknown } ? {
+        /** Relation origin endpoint (present when D declares [origin] fold) */
+        readonly [origin]: unknown;
+    } : object)
+    & (D extends { readonly [destination]?: unknown } ? {
+        /** Relation destination endpoint (present when D declares [destination] fold) */
+        readonly [destination]: unknown;
+    } : object);
 
 // ---- Extended variant propagation via [extend] ----------------------------
 
@@ -322,10 +502,11 @@ type ExtendedParentCtors<D> = ExtendedParentCtorsImpl<D, D>;
  * - Has static variant constructors/singletons as own properties
  * - Its instances have the declared operation methods/getters
  *
- * Note: the string index `[key: string]: any` is intentional — it lets callers
- * narrow on variant fields (e.g. `list.head`) without exhaustive narrowing.
+ * Note: the string index `[key: string]: any` is removed from this type.
+ * Variant constructors, unfold factories, merge factories, and internal methods
+ * are all explicitly typed. If dynamic access is needed, cast to a broader type.
  * `BehaviorADT` uses `unknown` because behavior instances are accessed only
- * through typed observer getters and do not need the same escape hatch.
+ * through typed observer getters and do not need an escape hatch.
  */
 export type DataADT<D = Record<string, unknown>> =
     VariantCtors<D, DataInstance<D>, CombinedOperationMethods<D, DataInstance<D>>> &
@@ -340,8 +521,8 @@ export type DataADT<D = Record<string, unknown>> =
         /** @internal */ _getTransformer(name: string): unknown;
         /** @internal */ _getTransformerNames(): string[];
         /** @internal */ _rawADT?: unknown;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        [key: string]: any;
+        /** Multi-sorted algebra: check if instance belongs to a sort (runtime only, present when sorts declared) */
+        readonly [isSort]?: (instance: unknown, sortName: string) => boolean;
     };
 
 // ---- Behavior types ---------------------------------------------------------
@@ -355,7 +536,7 @@ export type ObserverSpec = TypeSpec | SelfRef | { in?: TypeSpec | Record<string,
  */
 type ExtendedParentObservers<D> =
     (typeof extend) extends keyof D
-        ? D[typeof extend] extends BehaviorADT<infer P> ? BehaviorObservers<P> : unknown
+        ? D[typeof extend] extends { readonly [DeclBrand]: infer P } ? BehaviorObservers<P> : unknown
         : unknown;
 
 /**
@@ -367,12 +548,16 @@ type ExtendedParentObservers<D> =
  * - Parent observers from `[extend]` are merged in via intersection.
  * - Symbol keys (e.g. `[extend]`, `[op]`) are excluded from the mapped type.
  */
+/** Instance-level keys: all string keys except unfold operations (those are static constructors only). */
+type BehaviorInstanceKeys<D> = {
+    [K in keyof D & string]: D[K] extends { readonly [op]: 'unfold' } ? never : K
+}[keyof D & string];
+
 export type BehaviorObservers<D> = ExtendedParentObservers<D> & {
-    readonly [K in keyof D & string]:
+    readonly [K in BehaviorInstanceKeys<D>]:
     D[K] extends { readonly [op]: 'fold' | 'map' }
         ? OpShape<D[K], BehaviorObservers<D>>
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        : D[K] extends { readonly [op]: 'merge' } ? (...args: any[]) => any
+        : D[K] extends { readonly [op]: 'merge' } ? FallbackFn
             : D[K] extends ObserverSpec
                 ? ObserverValue<D[K], BehaviorObservers<D>>
                 : never
@@ -385,22 +570,33 @@ export type BehaviorObservers<D> = ExtendedParentObservers<D> & {
  *
  * Uses function/constructor presence to distinguish TypeSpec constructors from
  * plain structured input objects (the same logic as `SpecToValue` in ops.mts).
+ *
+ * Built-in constructors are resolved via `BuiltinSpecMap` directly (bypassing
+ * `SpecValue`) so that Self-parameterized instantiations are avoided.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type ObserverInputValue<In, Self = unknown> = In extends ((...args: any[]) => unknown) | (abstract new (...args: any[]) => unknown)
-    ? SpecValue<In, Self>
+    ? BuiltinTag<In> extends never
+        ? SpecValue<In, Self>
+        : BuiltinSpecMap[BuiltinTag<In>]
     : In extends Record<string, unknown>
-        ? { [K in keyof In]: SpecValue<In[K], Self> }
-        : SpecValue<In, Self>;
+        ? { [K in keyof In]:
+            BuiltinTag<In[K]> extends never
+                ? SpecValue<In[K], Self>
+                : BuiltinSpecMap[BuiltinTag<In[K]>] }
+        : BuiltinTag<In> extends never
+            ? SpecValue<In, Self>
+            : BuiltinSpecMap[BuiltinTag<In>];
 
 type ObserverValue<S, Self = unknown> =
     S extends SelfRef ? Self :
         S extends { in: infer In; out: infer Out }
-            ? (input: ObserverInputValue<In, Self>) => SpecValue<Out, Self>
+            ? (input: ObserverInputValue<In, Self>) =>
+            (BuiltinTag<Out> extends never ? SpecValue<Out, Self> : BuiltinSpecMap[BuiltinTag<Out>])
             : S extends { out: infer Out }
-                ? SpecValue<Out, Self>
+                ? BuiltinTag<Out> extends never ? SpecValue<Out, Self> : BuiltinSpecMap[BuiltinTag<Out>]
                 : S extends TypeSpec
-                    ? SpecValue<S>
+                    ? BuiltinTag<S> extends never ? SpecValue<S> : BuiltinSpecMap[BuiltinTag<S>]
                     : unknown;
 
 // ---- Behavior unfold static constructors ------------------------------------
@@ -418,7 +614,7 @@ type BehaviorUnfoldCtors<D, Instance = unknown> = UnfoldCtorsFor<BehaviorUnfoldO
 
 type BehaviorMergeOpKeys<D> = OpKindKeys<keyof D & string, D, 'merge'>;
 
-type BehaviorMergeCtors<D>  = MergeCtorsFor<BehaviorMergeOpKeys<D> & string>;
+type BehaviorMergeCtors<D> = MergeCtorsFor<BehaviorMergeOpKeys<D> & keyof D, D, BehaviorObservers<D>>;
 
 // ---- Full behavior type -----------------------------------------------------
 
@@ -439,10 +635,48 @@ export type BehaviorADT<D = Record<string, unknown>> =
     BehaviorUnfoldCtors<D, BehaviorObservers<D>> &
     BehaviorMergeCtors<D> & {
         readonly prototype: BehaviorObservers<D>;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        /** @internal */ _call?: (...typeArgs: any[]) => BehaviorADT<D>;
+        /** @internal */ _call?: (...typeArgs: unknown[]) => BehaviorADT<D>;
         [key: string]: unknown;
-    };
+    } & (D extends { readonly [output]?: unknown } ? {
+        /** Observer output cospan projection (present when D declares [output]) */
+        readonly [output]?: unknown;
+    } : object) & (D extends { readonly [done]?: unknown } ? {
+        /** Observer done cospan projection (present when D declares [done]) */
+        readonly [done]?: unknown;
+    } : object) & (D extends { readonly [accept]?: unknown } ? {
+        /** Observer accept cospan projection (present when D declares [accept]) */
+        readonly [accept]?: unknown;
+    } : object);
+
+// ---- Observer type (lightweight dual of BehaviorADT) ------------------------
+
+/**
+ * Lightweight static type for values returned by `observer()`.
+ *
+ * Unlike `BehaviorADT`, observers do not support type-parameterisation
+ * (`Observer({ T: Number })`), so `ObserverADT` omits the parametric callable
+ * signature, `SubstDecl`, and the `[key: string]: unknown` index signature.
+ *
+ * The unfold constructor instance type is left as `unknown` instead of the
+ * full `BehaviorObservers<D>`.  This avoids expanding the expensive observer
+ * mapped type at each call-site while still providing typed unfold factories
+ * and `explore()`.  Instances created by unfold ctors are almost never used
+ * directly — `explore()` is the primary API.
+ */
+export type ObserverADT<D = Record<string, unknown>> =
+    BehaviorUnfoldCtors<D, BehaviorObservers<D>> &
+    BehaviorMergeCtors<D> & {
+        readonly prototype: BehaviorObservers<D>;
+    } & (D extends { readonly [output]?: unknown } ? {
+        /** Observer output cospan projection (present when D declares [output]) */
+        readonly [output]?: unknown;
+    } : object) & (D extends { readonly [done]?: unknown } ? {
+        /** Observer done cospan projection (present when D declares [done]) */
+        readonly [done]?: unknown;
+    } : object) & (D extends { readonly [accept]?: unknown } ? {
+        /** Observer accept cospan projection (present when D declares [accept]) */
+        readonly [accept]?: unknown;
+    } : object);
 
 // ---- Single-character type parameter universe --------------------------------
 
@@ -548,11 +782,18 @@ type SubstTypeParam<S, TArgs extends Record<string, unknown>> =
 /**
  * Walk a declaration `D` (variant/operation entries), substituting
  * `TypeParamRef` values at up to 3 levels of nesting.
+ *
+ * The `TypeParamRef` check must come before `Record<string, unknown>` because
+ * `TypeParamRef` (a branded symbol-keyed object) vacuously satisfies the Record
+ * constraint, causing behavior observer specs like `head: T` to be mapped
+ * over symbol keys instead of being substituted directly.
  */
 type SubstDecl<D, TArgs extends Record<string, unknown>> = {
-    [K in keyof D]: D[K] extends Record<string, unknown>
-        ? { [F in keyof D[K]]: SubstTypeParam<D[K][F], TArgs> }
-        : D[K]
+    [K in keyof D]: D[K] extends TypeParamRef<infer Name>
+        ? Name extends keyof TArgs ? TArgs[Name] : D[K]
+        : D[K] extends Record<string, unknown>
+            ? { [F in keyof D[K]]: SubstTypeParam<D[K][F], TArgs> }
+            : D[K]
 };
 
 /**
@@ -567,6 +808,7 @@ type SubstDecl<D, TArgs extends Record<string, unknown>> = {
  */
 export type DataADTWithParams<D> =
     DataADT<D> & {
+        readonly [DeclBrand]: D;
         <TArgs extends Record<string, unknown>>(args: TArgs): DataADT<SubstDecl<D, TArgs>>;
     };
 
@@ -576,8 +818,9 @@ export type DataADTWithParams<D> =
  */
 export type BehaviorADTWithParams<D> =
     BehaviorADT<D> & {
+        readonly [DeclBrand]: D;
         <TArgs extends Record<string, unknown>>(args: TArgs): BehaviorADT<SubstDecl<D, TArgs>>;
     };
 
 // Re-export symbols used as declaration keys
-export type { op, spec, operations, extend };
+export type { op, spec, operations, extend, DeclBrand };

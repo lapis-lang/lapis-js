@@ -1,13 +1,14 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { data , fold } from '../index.mjs';
+import { data } from '../index.mjs';
 
 describe('Stack Safety Investigation', () => {
     describe('Current Implementation - Stack Overflow Risk', () => {
         test('small list should work fine', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family },
+                Cons: { head: Number, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 sum: fold({ out: Number })({
                     Nil() { return 0; },
                     Cons({ head, tail }) { return head + tail; }
@@ -27,7 +28,8 @@ describe('Stack Safety Investigation', () => {
         test('medium list to check stack depth', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family },
+                Cons: { head: Number, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 length: fold({ out: Number })({
                     Nil() { return 0; },
                     Cons({ tail }) { return 1 + tail; }
@@ -47,7 +49,8 @@ describe('Stack Safety Investigation', () => {
         test('large list - likely to cause stack overflow', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family },
+                Cons: { head: Number, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 length: fold({ out: Number })({
                     Nil() { return 0; },
                     Cons({ tail }) { return 1 + tail; }
@@ -78,7 +81,8 @@ describe('Stack Safety Investigation', () => {
         test('very large list - definitely should overflow without optimization', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family },
+                Cons: { head: Number, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 length: fold({ out: Number })({
                     Nil() { return 0; },
                     Cons({ tail }) { return 1 + tail; }
@@ -109,7 +113,8 @@ describe('Stack Safety Investigation', () => {
         test('deep tree should not overflow with stack-safe implementation', () => {
             const Tree = data(({ Family }) => ({
                 Leaf: { value: Number },
-                Node: { left: Family, right: Family, value: Number },
+                Node: { left: Family, right: Family, value: Number }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 sum: fold({ out: Number })({
                     Leaf({ value }) { return value; },
                     Node({ left, right, value }) { return left + right + value; }
@@ -144,7 +149,8 @@ describe('Stack Safety Investigation', () => {
         test('measure recursion depth and performance', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family },
+                Cons: { head: Number, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 sum: fold({ out: Number })({
                     Nil() { return 0; },
                     Cons({ head, tail }) { return head + tail; }

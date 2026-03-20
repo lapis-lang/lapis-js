@@ -1,13 +1,14 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { data, fold, unfold, invariant, DemandsError } from '../index.mjs';
+import { data, invariant, DemandsError } from '../index.mjs';
 
 describe('Contracts: Demands (Preconditions)', () => {
     describe('Fold demands', () => {
         it('should pass when demand is satisfied', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family },
+                Cons: { head: Number, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 sum: fold({
                     out: Number,
                     demands: (self) => self !== null && self !== undefined
@@ -24,7 +25,8 @@ describe('Contracts: Demands (Preconditions)', () => {
         it('should throw DemandsError when demand fails', () => {
             const Stack = data(({ Family }) => ({
                 Empty: {},
-                Push: { value: Number, rest: Family },
+                Push: { value: Number, rest: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 size: fold({ out: Number })({
                     Empty() { return 0; },
                     Push({ rest }) { return 1 + rest; }
@@ -46,7 +48,8 @@ describe('Contracts: Demands (Preconditions)', () => {
 
         it('should include the demand function in error message', () => {
             const MyData = data(() => ({
-                Val: { x: Number },
+                Val: { x: Number }
+            })).ops(({ fold, unfold, map, merge }) => ({
                 check: fold({
                     demands: (self) => self.x > 0,
                     out: Boolean
@@ -64,7 +67,8 @@ describe('Contracts: Demands (Preconditions)', () => {
 
         it('should pass args to demands in parameterized fold', () => {
             const Container = data(() => ({
-                Box: { value: Number },
+                Box: { value: Number }
+            })).ops(({ fold, unfold, map, merge }) => ({
                 add: fold({
                     in: Number,
                     out: Number,
@@ -88,7 +92,8 @@ describe('Contracts: Demands (Preconditions)', () => {
         it('should check demands on unfold seed', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family },
+                Cons: { head: Number, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 Range: unfold({
                     in: Number,
                     out: Family,
@@ -116,7 +121,8 @@ describe('Contracts: Demands (Preconditions)', () => {
             let bodyCalled = false;
 
             const MyData = data(() => ({
-                Val: { x: Number },
+                Val: { x: Number }
+            })).ops(({ fold, unfold, map, merge }) => ({
                 check: fold({
                     demands: () => false,
                     out: Number
@@ -134,7 +140,8 @@ describe('Contracts: Demands (Preconditions)', () => {
             let bodyCalled = false;
 
             const MyData = data(() => ({
-                Val: { x: Number },
+                Val: { x: Number }
+            })).ops(({ fold, unfold, map, merge }) => ({
                 check: fold({
                     demands: () => true,
                     out: Number
@@ -154,7 +161,8 @@ describe('Contracts: Demands (Preconditions)', () => {
             let rescueCalled = false;
 
             const MyData = data(() => ({
-                Val: { x: Number },
+                Val: { x: Number }
+            })).ops(({ fold, unfold, map, merge }) => ({
                 check: fold({
                     demands: (self) => self.x > 0,
                     rescue: () => { rescueCalled = true; return false; },

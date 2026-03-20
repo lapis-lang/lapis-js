@@ -13,7 +13,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { behavior, merge, unfold, map, fold } from '../index.mjs';
+import { behavior } from '../index.mjs';
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -22,7 +22,8 @@ import { behavior, merge, unfold, map, fold } from '../index.mjs';
 function makeStream() {
     return behavior(({ Self, T }) => ({
         head: T,
-        tail: Self(T),
+        tail: Self(T)
+    })).ops(({ fold, unfold, map, merge, Self, T }) => ({
         From: unfold({ in: Number, out: Self })({
             head: (n) => n,
             tail: (n) => n + 1
@@ -39,12 +40,10 @@ function makeStream() {
         negated: map({})({
             T: (x) => -x
         }),
-        // Static merge: unfold + map + fold  → PascalCase
         TakeFrom: merge('From', 'take'),
         TakeDoubled: merge('From', 'doubled', 'take'),
         TakeDoubledNegated: merge('From', 'doubled', 'negated', 'take'),
         SumDoubled: merge('From', 'doubled', 'sum'),
-        // Instance merge: map + fold only → camelCase
         doubledSum: merge('doubled', 'sum'),
         doubledTake: merge('doubled', 'take'),
         doubledNegatedTake: merge('doubled', 'negated', 'take')
@@ -146,7 +145,8 @@ describe('Behavior Merge - Validation', () => {
         assert.throws(() => {
             behavior(({ Self, T }) => ({
                 head: T,
-                tail: Self(T),
+                tail: Self(T)
+            })).ops(({ fold, unfold, map, merge, Self, T }) => ({
                 From: unfold({ in: Number, out: Self })({
                     head: (n) => n,
                     tail: (n) => n + 1
@@ -163,7 +163,8 @@ describe('Behavior Merge - Validation', () => {
         assert.throws(() => {
             behavior(({ Self, T }) => ({
                 head: T,
-                tail: Self(T),
+                tail: Self(T)
+            })).ops(({ fold, unfold, map, merge, Self, T }) => ({
                 From: unfold({ in: Number, out: Self })({
                     head: (n) => n,
                     tail: (n) => n + 1
@@ -183,7 +184,8 @@ describe('Behavior Merge - Validation', () => {
         assert.throws(() => {
             behavior(({ Self, T }) => ({
                 head: T,
-                tail: Self(T),
+                tail: Self(T)
+            })).ops(({ fold, unfold, map, merge, Self, T }) => ({
                 From: unfold({ in: Number, out: Self })({
                     head: (n) => n,
                     tail: (n) => n + 1
@@ -255,7 +257,8 @@ describe('Behavior Merge - Deforestation', () => {
 function makeMetaStream() {
     return behavior(({ Self, T }) => ({
         head: T,
-        tail: Self(T),
+        tail: Self(T)
+    })).ops(({ fold, unfold, map, merge, Self, T }) => ({
         From: unfold({ in: Number, out: Self })({
             head: (n) => n,
             tail: (n) => n + 1
@@ -263,7 +266,6 @@ function makeMetaStream() {
         take: fold({ in: Number, out: Array })({
             _: ({ head, tail }, n) => n > 0 ? [head, ...tail(n - 1)] : []
         }),
-        // Getter fold: extract the first element (no extra parameters)
         first: fold({ out: Number })({
             _: ({ head }) => head
         }),
@@ -273,13 +275,9 @@ function makeMetaStream() {
         negated: map({})({
             T: (x) => -x
         }),
-        // Metamorphism: fold first element, unfold into new stream
         restart: merge('first', 'From'),
-        // Metamorphism with pre-fold map
         doubledRestart: merge('doubled', 'first', 'From'),
-        // Metamorphism with post-unfold map
         restartDoubled: merge('first', 'From', 'doubled'),
-        // Metamorphism with both pre-fold and post-unfold maps
         doubledRestartNegated: merge('doubled', 'first', 'From', 'negated')
     }));
 }
@@ -373,7 +371,8 @@ describe('Behavior Merge - Metamorphism validation', () => {
         assert.throws(() => {
             behavior(({ Self, T }) => ({
                 head: T,
-                tail: Self(T),
+                tail: Self(T)
+            })).ops(({ fold, unfold, map, merge, Self, T }) => ({
                 From: unfold({ in: Number, out: Self })({
                     head: (n) => n,
                     tail: (n) => n + 1

@@ -1,12 +1,12 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { relation, fold, origin, destination } from '../index.mjs';
+import { relation, origin, destination } from '../index.mjs';
 
 describe('Closure — Fixpoint Properties', () => {
     const Ancestor = relation(({ Family }) => ({
         Direct: { from: String, to: String },
-        Transitive: { hop: Family, rest: Family },
-
+        Transitive: { hop: Family, rest: Family }
+    })).ops(({ fold, unfold, map, merge, origin, destination, Family }) => ({
         [origin]: fold({ out: String })({
             Direct: ({ from }) => from,
             Transitive: ({ hop }) => hop
@@ -71,7 +71,7 @@ describe('Closure — Fixpoint Properties', () => {
         ];
 
         const closed = Ancestor.closure(facts, {
-            key: (inst) => `custom:${inst.origin}->${inst.destination}`
+            key: (inst) => `custom:${inst[origin]}->${inst[destination]}`
         });
 
         assert.ok(closed.length >= 3);

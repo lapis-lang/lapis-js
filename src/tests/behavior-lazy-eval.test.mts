@@ -1,19 +1,20 @@
 /**
  * Behavior Lazy Evaluation Tests
- * 
+ *
  * Tests for Proxy-based lazy evaluation of behavior instances.
  * Lazy evaluation with memoization.
  */
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { behavior, unfold } from '../index.mjs';
+import { behavior } from '../index.mjs';
 
 describe('Behavior - Proxy-Based Lazy Evaluation', () => {
     it('should create behavior instances with unfold', () => {
         const Stream = behavior(({ Self, T }) => ({
             head: T,
-            tail: Self(T),
+            tail: Self(T)
+        })).ops(({ fold, unfold, map, merge, Self, T }) => ({
             From: unfold({ in: Number, out: Self })({
                 head: (n) => n,
                 tail: (n) => n + 1
@@ -29,7 +30,8 @@ describe('Behavior - Proxy-Based Lazy Evaluation', () => {
 
         const Stream = behavior(({ Self }) => ({
             head: Number,
-            tail: Self,
+            tail: Self
+        })).ops(({ fold, unfold, map, merge, Self }) => ({
             From: unfold({ in: Number, out: Self })({
                 head: (n) => {
                     headCallCount++;
@@ -60,7 +62,8 @@ describe('Behavior - Proxy-Based Lazy Evaluation', () => {
 
         const Stream = behavior(({ Self }) => ({
             head: Number,
-            tail: Self,
+            tail: Self
+        })).ops(({ fold, unfold, map, merge, Self }) => ({
             From: unfold({ in: Number, out: Self })({
                 head: (n) => n,
                 tail: (n) => {
@@ -89,7 +92,8 @@ describe('Behavior - Proxy-Based Lazy Evaluation', () => {
     it('should support chained continuations', () => {
         const Stream = behavior(({ Self }) => ({
             head: Number,
-            tail: Self,
+            tail: Self
+        })).ops(({ fold, unfold, map, merge, Self }) => ({
             From: unfold({ in: Number, out: Self })({
                 head: (n) => n,
                 tail: (n) => n + 1
@@ -111,9 +115,11 @@ describe('Behavior - Proxy-Based Lazy Evaluation', () => {
 
         const Console = behavior(({ Self }) => ({
             log: { in: String, out: undefined },
-            read: { out: String },
+            read: { out: String }
+        })).ops(({ fold, unfold, map, merge, Self }) => ({
             Create: unfold({ in: { sink: Array, source: Array }, out: Self })({
                 log: ({ sink }) => (msg: string) => { sink.push(msg); },
+                // @ts-expect-error -- parametric observer factory; runtime resolves correctly
                 read: ({ source }) => () => source.shift() ?? ''
             })
         }));
@@ -146,7 +152,8 @@ describe('Behavior - Proxy-Based Lazy Evaluation', () => {
     it('should prevent setting properties on behavior instances', () => {
         const Stream = behavior(({ Self }) => ({
             head: Number,
-            tail: Self,
+            tail: Self
+        })).ops(({ fold, unfold, map, merge, Self }) => ({
             From: unfold({ in: Number, out: Self })({
                 head: (n) => n,
                 tail: (n) => n + 1
@@ -170,7 +177,8 @@ describe('Behavior - Proxy-Based Lazy Evaluation', () => {
             () => {
                 behavior(({ Self }) => ({
                     head: Number,
-                    tail: Self,
+                    tail: Self
+                })).ops(({ fold, unfold, map, merge, Self }) => ({
                     from: unfold({ in: Number, out: Self })({
                         head: (n) => n,
                         tail: (n) => n + 1
@@ -187,7 +195,9 @@ describe('Behavior - Proxy-Based Lazy Evaluation', () => {
             () => {
                 behavior(({ Self }) => ({
                     head: Number,
-                    tail: Self,
+                    tail: Self
+                })).ops(({ fold, unfold, map, merge, Self }) => ({
+                    // @ts-expect-error — deliberately passing incomplete handlers to test runtime validation
                     From: unfold({ in: Number, out: Self })({
                         head: (n) => n
                     })
@@ -203,7 +213,8 @@ describe('Behavior - Proxy-Based Lazy Evaluation', () => {
             () => {
                 behavior(({ Self }) => ({
                     head: Number,
-                    tail: Self,
+                    tail: Self
+                })).ops(({ fold, unfold, map, merge, Self }) => ({
                     From: unfold({ in: Number, out: Self })({
                         head: (n) => n,
                         // @ts-expect-error -- intentional type violation for test
@@ -221,10 +232,12 @@ describe('Behavior - Proxy-Based Lazy Evaluation', () => {
             () => {
                 behavior(({ Self }) => ({
                     head: Number,
-                    tail: Self,
+                    tail: Self
+                })).ops(({ fold, unfold, map, merge, Self }) => ({
                     From: unfold({ in: Number, out: Self })({
                         head: (n) => n,
                         tail: (n) => n + 1,
+                        // @ts-expect-error -- intentional extra handler for test
                         taill: (n) => n + 1
                     })
                 }));
@@ -237,7 +250,8 @@ describe('Behavior - Proxy-Based Lazy Evaluation', () => {
     it('should support multiple type parameters', () => {
         const Pair = behavior(({ Self, T, U }) => ({
             first: T,
-            second: U,
+            second: U
+        })).ops(({ fold, unfold, map, merge, Self, T, U }) => ({
             Create: unfold({ in: { x: Number, y: String }, out: Self })({
                 first: ({ x, y }) => x,
                 second: ({ x, y }) => y
@@ -252,7 +266,8 @@ describe('Behavior - Proxy-Based Lazy Evaluation', () => {
     it('should handle complex seed transformations', () => {
         const Stream = behavior(({ Self }) => ({
             head: Number,
-            tail: Self,
+            tail: Self
+        })).ops(({ fold, unfold, map, merge, Self }) => ({
             Range: unfold({ in: { start: Number, end: Number }, out: Self })({
                 head: ({ start }) => start,
                 tail: ({ start, end }) => ({ start: start + 1, end })
@@ -269,7 +284,8 @@ describe('Behavior - Proxy-Based Lazy Evaluation', () => {
         let computeCount = 0;
 
         const Lazy = behavior(({ Self }) => ({
-            expensive: Number,
+            expensive: Number
+        })).ops(({ fold, unfold, map, merge, Self }) => ({
             Create: unfold({ in: Number, out: Self })({
                 expensive: (n) => {
                     computeCount++;
@@ -293,7 +309,8 @@ describe('Behavior - Proxy-Based Lazy Evaluation', () => {
         const Tree = behavior(({ Self }) => ({
             value: Number,
             left: Self,
-            right: Self,
+            right: Self
+        })).ops(({ fold, unfold, map, merge, Self }) => ({
             Create: unfold({ in: Number, out: Self })({
                 value: (n) => n,
                 left: (n) => n * 2,
@@ -317,7 +334,8 @@ describe('Behavior - Proxy-Based Lazy Evaluation', () => {
     it('should support property existence checks with in operator', () => {
         const Stream = behavior(({ Self }) => ({
             head: Number,
-            tail: Self,
+            tail: Self
+        })).ops(({ fold, unfold, map, merge, Self }) => ({
             From: unfold({ in: Number, out: Self })({
                 head: (n) => n,
                 tail: (n) => n + 1

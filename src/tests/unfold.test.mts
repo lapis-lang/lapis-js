@@ -1,4 +1,4 @@
-import { data , unfold } from '../index.mjs';
+import { data } from '../index.mjs';
 import { describe, it } from 'node:test';
 import * as assert from 'node:assert/strict';
 
@@ -7,7 +7,8 @@ describe('Unfold Operations', () => {
         it('should create a countdown list from a number', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family },
+                Cons: { head: Number, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 Counter: unfold({ in: Number, out: Family })({
                     Nil: n => (n <= 0 ? {} : null),
                     Cons: n => (n > 0 ? { head: n, tail: n - 1 } : null)
@@ -30,7 +31,8 @@ describe('Unfold Operations', () => {
         it('should create an empty list when seed is 0', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family },
+                Cons: { head: Number, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 Counter: unfold({ in: Number, out: Family })({
                     Nil: n => (n <= 0 ? {} : null),
                     Cons: n => (n > 0 ? { head: n, tail: n - 1 } : null)
@@ -47,7 +49,8 @@ describe('Unfold Operations', () => {
         it('should support defining multiple unfold constructors', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family },
+                Cons: { head: Number, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 Counter: unfold({ in: Number, out: Family })({
                     Nil: n => (n <= 0 ? {} : null),
                     Cons: n => (n > 0 ? { head: n, tail: n - 1 } : null)
@@ -76,7 +79,8 @@ describe('Unfold Operations', () => {
                 () => {
                     data(({ Family }) => ({
                         Nil: {},
-                        Cons: { head: Number, tail: Family },
+                        Cons: { head: Number, tail: Family }
+                    })).ops(({ fold, unfold, map, merge, Family }) => ({
                         counter: unfold({ in: Number, out: Family })({
                             Nil: n => (n <= 0 ? {} : null),
                             Cons: n => (n > 0 ? { head: n, tail: n - 1 } : null)
@@ -94,7 +98,8 @@ describe('Unfold Operations', () => {
             const Num = data(({ Family }) => ({
                 Zero: {},
                 Positive: { value: Number },
-                Negative: { value: Number },
+                Negative: { value: Number }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 FromInt: unfold({ in: Number, out: Family })({
                     Zero: n => (n === 0 ? {} : null),
                     Positive: n => (n > 0 ? { value: n } : null),

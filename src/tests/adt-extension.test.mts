@@ -55,10 +55,10 @@ describe('ADT Extension', () => {
         assert.ok(!(p2Base instanceof Point3DExtended));
 
         // Extended variant should NOT exist on base ADT
-        assert.strictEqual((Point).Point3D, undefined);
+        assert.strictEqual((Point as any).Point3D, undefined);
     });
 
-    test('extension with callback style for recursive ADTs', () => {
+    test('recursive extension - structure verification', () => {
         const IntAlgebra = data(({ Family }) => ({
             Lit: { value: Number },
             Add: { left: Family, right: Family }
@@ -70,41 +70,56 @@ describe('ADT Extension', () => {
             Iff: { cond: Family, thenBranch: Family, elseBranch: Family }
         }));
 
-        // Create instances using extended ADT constructors
         const lit1 = IntBoolAlgebra.Lit({ value: 42 });
         const lit2 = IntBoolAlgebra.Lit({ value: 10 });
-
-        // Create instances of extended variants
         const boolLit = IntBoolAlgebra.BoolLit({ value: true });
-
-        // Create recursive structure with base variants
         const add = IntBoolAlgebra.Add({ left: lit1, right: lit2 });
-
-        // Create recursive structure with extended variants
         const iff = IntBoolAlgebra.Iff({
             cond: boolLit,
             thenBranch: add,
             elseBranch: lit1
         });
 
-        // Instances created via extended ADT are instanceof extended ADT
-        assert.ok(lit1 instanceof IntAlgebra);
-        assert.ok(lit1 instanceof IntBoolAlgebra);
-        assert.ok(add instanceof IntAlgebra);
-        assert.ok(add instanceof IntBoolAlgebra);
-
-        // Extended variant instances are instanceof both (proper subtyping)
-        assert.ok(boolLit instanceof IntBoolAlgebra);
-        assert.ok(boolLit instanceof IntAlgebra);
-        assert.ok(iff instanceof IntBoolAlgebra);
-        assert.ok(iff instanceof IntAlgebra);
-
-        // Verify structure
+        // Verify structure (before any instanceof narrowing)
         assert.strictEqual(add.left, lit1);
         assert.strictEqual(add.right, lit2);
         assert.strictEqual(iff.cond, boolLit);
         assert.strictEqual(iff.thenBranch, add);
         assert.strictEqual(iff.elseBranch, lit1);
+    });
+
+    test('recursive extension - instanceof hierarchy', () => {
+        const IntAlgebra = data(({ Family }) => ({
+            Lit: { value: Number },
+            Add: { left: Family, right: Family }
+        }));
+
+        const IntBoolAlgebra = data(({ Family }) => ({
+            [extend]: IntAlgebra,
+            BoolLit: { value: Boolean },
+            Iff: { cond: Family, thenBranch: Family, elseBranch: Family }
+        }));
+
+        const lit1 = IntBoolAlgebra.Lit({ value: 42 });
+        const lit2 = IntBoolAlgebra.Lit({ value: 10 });
+        const boolLit = IntBoolAlgebra.BoolLit({ value: true });
+        const add = IntBoolAlgebra.Add({ left: lit1, right: lit2 });
+        const iff = IntBoolAlgebra.Iff({
+            cond: boolLit,
+            thenBranch: add,
+            elseBranch: lit1
+        });
+
+        // Use strictEqual to avoid assert.ok's assertion narrowing
+        // (assert.ok(x instanceof Y) narrows x, cascading to never)
+        assert.strictEqual(lit1 instanceof IntAlgebra, true);
+        assert.strictEqual(lit1 instanceof IntBoolAlgebra, true);
+        assert.strictEqual(add instanceof IntAlgebra, true);
+        assert.strictEqual(add instanceof IntBoolAlgebra, true);
+        assert.strictEqual(boolLit instanceof IntBoolAlgebra, true);
+        assert.strictEqual(boolLit instanceof IntAlgebra, true);
+        assert.strictEqual(iff instanceof IntBoolAlgebra, true);
+        assert.strictEqual(iff instanceof IntAlgebra, true);
     });
 
     test('Family references in extended ADT resolve to extended type', () => {
@@ -175,7 +190,7 @@ describe('ADT Extension', () => {
         assert.ok(A.A1 instanceof A);
         assert.ok(!(A.A1 instanceof B));
         assert.ok(!(A.A1 instanceof C));
-        
+
         assert.ok(B.B1 instanceof B);
         assert.ok(B.B1 instanceof A);
         assert.ok(!(B.B1 instanceof C));
@@ -234,7 +249,7 @@ describe('ADT Extension', () => {
     });
 
     test('extension with predicates', () => {
-        const isPositive = (x) =>
+        const isPositive = (x: unknown) =>
             typeof x === 'number' && x > 0;
 
         const Base = data(() => ({ Value: { amount: Number } }));
@@ -301,21 +316,19 @@ describe('ADT Extension', () => {
         assert.ok(nothing instanceof Result);
         assert.ok(just instanceof Maybe);
         assert.ok(just instanceof Result);
-        
+
         // Original variants retain their original type
         assert.ok(Maybe.Nothing instanceof Maybe);
         assert.ok(!(Maybe.Nothing instanceof Result));
     });
 
-    test('comprehensive example: expression language extension', () => {
-        // Base expression language with integers
+    test('expression language extension - structure verification', () => {
         const IntExpr = data(({ Family }) => ({
             IntLit: { value: Number },
             Add: { left: Family, right: Family },
             Mul: { left: Family, right: Family }
         }));
 
-        // Extend with boolean expressions
         const IntBoolExpr = data(({ Family }) => ({
             [extend]: IntExpr,
             BoolLit: { value: Boolean },
@@ -323,7 +336,6 @@ describe('ADT Extension', () => {
             And: { left: Family, right: Family }
         }));
 
-        // Extend further with variables
         const FullExpr = data(({ Family }) => ({
             [extend]: IntBoolExpr,
             Var: { name: String },
@@ -337,39 +349,63 @@ describe('ADT Extension', () => {
         const lessThan = FullExpr.LessThan({ left: x, right: ten });
         const letExpr = FullExpr.Let({ name: 'x', value: five, body: lessThan });
 
-        // FullExpr's own variants are instanceof FullExpr, IntBoolExpr, and IntExpr
-        assert.ok(letExpr instanceof FullExpr);
-        assert.ok(letExpr instanceof IntBoolExpr);
-        assert.ok(letExpr instanceof IntExpr);
-
-        assert.ok(x instanceof FullExpr);
-        assert.ok(x instanceof IntBoolExpr);
-        assert.ok(x instanceof IntExpr);
-
-        // Variants created via FullExpr are instanceof FullExpr (proper subtyping)
-        assert.ok(lessThan instanceof IntBoolExpr);
-        assert.ok(lessThan instanceof IntExpr);
-        assert.ok(lessThan instanceof FullExpr);
-
-        // Variants created via FullExpr are instanceof all ancestors
-        assert.ok(five instanceof IntExpr);
-        assert.ok(five instanceof IntBoolExpr);
-        assert.ok(five instanceof FullExpr);
-        
-        // Original variants retain their original types
-        assert.ok(IntExpr.IntLit({ value: 1 }) instanceof IntExpr);
-        assert.ok(!(IntExpr.IntLit({ value: 1 }) instanceof IntBoolExpr));
-        assert.ok(!(IntExpr.IntLit({ value: 1 }) instanceof FullExpr));
-
-        // New constructors are created for each extension level
-        // This allows proper instanceof checking and fold overrides
-        assert.notStrictEqual(FullExpr.IntLit, IntExpr.IntLit);
-
-        // Verify structure
+        // Verify structure (before any instanceof narrowing)
         assert.strictEqual(letExpr.name, 'x');
         assert.strictEqual(letExpr.value, five);
         assert.strictEqual(letExpr.body, lessThan);
         assert.strictEqual(lessThan.left, x);
         assert.strictEqual(lessThan.right, ten);
+
+        // New constructors are created for each extension level
+        assert.notStrictEqual(FullExpr.IntLit, IntExpr.IntLit);
+    });
+
+    test('expression language extension - instanceof hierarchy', () => {
+        const IntExpr = data(({ Family }) => ({
+            IntLit: { value: Number },
+            Add: { left: Family, right: Family },
+            Mul: { left: Family, right: Family }
+        }));
+
+        const IntBoolExpr = data(({ Family }) => ({
+            [extend]: IntExpr,
+            BoolLit: { value: Boolean },
+            LessThan: { left: Family, right: Family },
+            And: { left: Family, right: Family }
+        }));
+
+        const FullExpr = data(({ Family }) => ({
+            [extend]: IntBoolExpr,
+            Var: { name: String },
+            Let: { name: String, value: Family, body: Family }
+        }));
+
+        const five = FullExpr.IntLit({ value: 5 });
+        const ten = FullExpr.IntLit({ value: 10 });
+        const x = FullExpr.Var({ name: 'x' });
+        const lessThan = FullExpr.LessThan({ left: x, right: ten });
+        const letExpr = FullExpr.Let({ name: 'x', value: five, body: lessThan });
+
+        // Use strictEqual to avoid assert.ok's assertion narrowing
+        assert.strictEqual(letExpr instanceof FullExpr, true);
+        assert.strictEqual(letExpr instanceof IntBoolExpr, true);
+        assert.strictEqual(letExpr instanceof IntExpr, true);
+
+        assert.strictEqual(x instanceof FullExpr, true);
+        assert.strictEqual(x instanceof IntBoolExpr, true);
+        assert.strictEqual(x instanceof IntExpr, true);
+
+        assert.strictEqual(lessThan instanceof IntBoolExpr, true);
+        assert.strictEqual(lessThan instanceof IntExpr, true);
+        assert.strictEqual(lessThan instanceof FullExpr, true);
+
+        assert.strictEqual(five instanceof IntExpr, true);
+        assert.strictEqual(five instanceof IntBoolExpr, true);
+        assert.strictEqual(five instanceof FullExpr, true);
+
+        // Original variants retain their original types
+        assert.strictEqual(IntExpr.IntLit({ value: 1 }) instanceof IntExpr, true);
+        assert.strictEqual(IntExpr.IntLit({ value: 1 }) instanceof IntBoolExpr, false);
+        assert.strictEqual(IntExpr.IntLit({ value: 1 }) instanceof FullExpr, false);
     });
 });

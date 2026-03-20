@@ -1,8 +1,6 @@
 #!/usr/bin/env node
 
-import {
-    data, behavior, fold, unfold
-} from '@lapis-lang/lapis-js';
+import { data, behavior } from '@lapis-lang/lapis-js';
 import { List } from '../src/lib/list.mjs';
 import { Matrix } from '../src/lib/matrix.mjs';
 
@@ -11,20 +9,18 @@ import { Matrix } from '../src/lib/matrix.mjs';
 const Cell = data(() => ({
     Given:  { digit: Number },
     Blank:  {},
-    Filled: { digit: Number },
-
+    Filled: { digit: Number }
+})).ops(({ fold }) => ({
     toDigit: fold({ out: Number })({
         Given({ digit })  { return digit; },
         Blank()           { return 0;     },
         Filled({ digit }) { return digit; }
     }),
-
     isDetermined: fold({ out: Boolean })({
         Given()  { return true; },
         Blank()  { return false; },
         Filled() { return true; }
     }),
-
     show: fold({ out: String })({
         Given({ digit })  { return String(digit); },
         Blank()           { return '.'; },
@@ -39,9 +35,8 @@ type CellInstance = { toDigit: number; isDetermined: boolean; show: string };
 const Region = data(() => ({
     Row: { cells: List },
     Col: { cells: List },
-    Box: { cells: List },
-
-    /** Region → Set<number> of non-zero digits. */
+    Box: { cells: List }
+})).ops(({ fold }) => ({
     digits: fold({ out: Set })({
         _({ cells }: { cells: { toArray: CellInstance[] } }) {
             const s = new Set<number>();
@@ -56,41 +51,40 @@ const Region = data(() => ({
 
 // Board ::= Board(cells, size)
 
-const Board: any = data(({ Family }: { Family: any }) => ({
-    Board: { cells: Array, size: Number },
-
-    /** 2D digit grid → Board. 0 = Blank, nonzero = Given. */
+const Board: any = data(({ Family }) => ({
+    Board: { cells: Array, size: Number }
+})).ops(({ fold, unfold, Family }) => ({
     FromGrid: unfold({ in: Array, out: Family })({
         Board: (grid: unknown[]) => ({
-            cells: (grid as number[][]).map((row: number[]) =>
-                row.map((d: number) => d === 0 ? Cell.Blank : Cell.Given(d))
+            cells: (grid as number[][]).map(row =>
+                row.map(d => d === 0 ? Cell.Blank : Cell.Given(d))
             ),
             size: 9
         })
     }),
-
     toGrid: fold({ out: Array })({
-        Board({ cells }: { cells: CellInstance[][] }) {
-            return cells.map((row: CellInstance[]) =>
-                row.map((cell: CellInstance) => cell.toDigit)
+        Board({ cells }) {
+            const grid = cells as unknown as CellInstance[][];
+            return grid.map(row =>
+                row.map(cell => cell.toDigit)
             );
         }
     }),
-
     isValid: fold({ out: Boolean })({
-        Board({ cells }: { cells: CellInstance[][] }) {
-            const m = Matrix.FromArray(cells);
+        Board({ cells }) {
+            const grid = cells as unknown as CellInstance[][];
+            const m = Matrix.FromArray(grid);
             const allGroups = [...m.rows.toArray, ...m.cols.toArray, ...m.boxs(3).toArray];
             return allGroups.every(g =>
                 (Region.Row(List.FromArray(g)).digits as Set<number>).size === 9
             );
         }
     }),
-
     show: fold({ out: String })({
-        Board({ cells }: { cells: CellInstance[][] }) {
-            return cells.map((row: CellInstance[], r: number) => {
-                const line = row.map((cell: CellInstance, c: number) => {
+        Board({ cells }) {
+            const grid = cells as unknown as CellInstance[][];
+            return grid.map((row, r) => {
+                const line = row.map((cell, c) => {
                     const s = cell.show;
                     return (c % 3 === 2 && c !== 8) ? s + ' |' : s;
                 }).join(' ');
@@ -109,7 +103,9 @@ const Board: any = data(({ Family }: { Family: any }) => ({
 //   pruneBy f = f ∘ map reduce ∘ f
 //   prune     = pruneBy boxs ∘ pruneBy cols ∘ pruneBy rows
 
-const ChoiceBoard: any = data(({ Family }: { Family: any }) => {
+const ChoiceBoard: any = data(() => ({
+    ChoiceBoard: { cells: Array }
+})).ops(({ fold, unfold, Family }) => {
     /** Remove determined digits from non-singleton cells in a group. */
     const reduce = (group: number[][]) => {
         const singles = group.filter(xs => xs.length === 1).map(xs => xs[0]);
@@ -133,13 +129,11 @@ const ChoiceBoard: any = data(({ Family }: { Family: any }) => {
     };
 
     return {
-        ChoiceBoard: { cells: Array },
-
         /** Digit grid → ChoiceBoard. 0 → [1..9], nonzero → [d]. */
         FromGrid: unfold({ in: Array, out: Family })({
             ChoiceBoard: (grid: unknown[]) => ({
-                cells: (grid as number[][]).map((row: number[]) =>
-                    row.map((d: number) =>
+                cells: (grid as number[][]).map(row =>
+                    row.map(d =>
                         d === 0 ? [1, 2, 3, 4, 5, 6, 7, 8, 9] : [d]
                     )
                 )
@@ -148,10 +142,11 @@ const ChoiceBoard: any = data(({ Family }: { Family: any }) => {
 
         /** Whole-board constraint propagation: pruneBy boxs ∘ pruneBy cols ∘ pruneBy rows. */
         prune: fold({ out: Object })({
-            ChoiceBoard({ cells }: { cells: number[][][] }) {
+            ChoiceBoard({ cells }) {
+                const grid = cells as unknown as number[][][];
                 const pruned = [byRows, byCols, byBoxs].reduce(
                     (m: any, inv: any) => pruneBy(inv)(m),
-                    Matrix.FromArray(cells)
+                    Matrix.FromArray(grid)
                 );
                 return ChoiceBoard.ChoiceBoard({ cells: pruned.toArray });
             }
@@ -159,8 +154,9 @@ const ChoiceBoard: any = data(({ Family }: { Family: any }) => {
 
         /** All cells determined? */
         isComplete: fold({ out: Boolean })({
-            ChoiceBoard({ cells }: { cells: number[][][] }) {
-                return cells.every((row: number[][]) =>
+            ChoiceBoard({ cells }) {
+                const grid = cells as unknown as number[][][];
+                return grid.every(row =>
                     row.every(xs => xs.length === 1)
                 );
             }
@@ -168,11 +164,12 @@ const ChoiceBoard: any = data(({ Family }: { Family: any }) => {
 
         /** Void (empty cell) or unsafe (duplicate singletons)? */
         isBlocked: fold({ out: Boolean })({
-            ChoiceBoard({ cells }: { cells: number[][][] }) {
+            ChoiceBoard({ cells }) {
+                const grid = cells as unknown as number[][][];
                 // Void: some cell has no choices
-                if (cells.some((row: number[][]) => row.some(xs => xs.length === 0)))
+                if (grid.some(row => row.some(xs => xs.length === 0)))
                     return true;
-                const m = Matrix.FromArray(cells);
+                const m = Matrix.FromArray(grid);
                 const allGroups = [...m.rows.toArray, ...m.cols.toArray, ...m.boxs(3).toArray];
                 return allGroups.some(hasDupSingles);
             }
@@ -180,21 +177,22 @@ const ChoiceBoard: any = data(({ Family }: { Family: any }) => {
 
         /** Split on cell with fewest choices > 1 (MRV). Returns ChoiceBoard[]. */
         expand: fold({ out: Array })({
-            ChoiceBoard({ cells }: { cells: number[][][] }) {
+            ChoiceBoard({ cells }) {
+                const grid = cells as unknown as number[][][];
                 let minLen = 10, minR = -1, minC = -1;
                 for (let r = 0; r < 9; r++) {
                     for (let c = 0; c < 9; c++) {
-                        if (cells[r][c].length > 1 && cells[r][c].length < minLen) {
-                            minLen = cells[r][c].length;
+                        if (grid[r][c].length > 1 && grid[r][c].length < minLen) {
+                            minLen = grid[r][c].length;
                             minR = r; minC = c;
                         }
                     }
                 }
                 if (minR === -1) return [];
-                return cells[minR][minC].map((d: number) =>
+                return grid[minR][minC].map(d =>
                     ChoiceBoard.ChoiceBoard({
-                        cells: cells.map((row: number[][], ri: number) =>
-                            row.map((xs: number[], ci: number) =>
+                        cells: grid.map((row, ri) =>
+                            row.map((xs, ci) =>
                                 ri === minR && ci === minC ? [d] : xs
                             )
                         )
@@ -205,10 +203,11 @@ const ChoiceBoard: any = data(({ Family }: { Family: any }) => {
 
         /** Convert solved ChoiceBoard → Board. */
         toBoard: fold({ out: Object })({
-            ChoiceBoard({ cells }: { cells: number[][][] }) {
+            ChoiceBoard({ cells }) {
+                const grid = cells as unknown as number[][][];
                 return Board.Board(
-                    cells.map((row: number[][]) =>
-                        row.map((xs: number[]) =>
+                    grid.map(row =>
+                        row.map(xs =>
                             xs.length === 1 ? Cell.Filled(xs[0]) : Cell.Blank
                         )
                     ),
@@ -224,52 +223,55 @@ const ChoiceBoard: any = data(({ Family }: { Family: any }) => {
 const SearchState: any = data(() => ({
     Start:     { worklist: Array },
     Found:     { board: Object, worklist: Array },
-    Exhausted: {},
-
-    /** The board (or {} if not yet found). */
+    Exhausted: {}
+})).ops(({ fold }) => ({
     currentBoard: fold({ out: Object })({
-        Start()                         { return {}; },
-        Found({ board }: { board: any}) { return board; },
-        Exhausted()                     { return {}; }
+        Start()         { return {}; },
+        Found({ board }) { return board; },
+        Exhausted()      { return {}; }
     }),
-
     isSolved: fold({ out: Boolean })({
         Start()     { return false; },
         Found()     { return true; },
         Exhausted() { return false; }
     }),
-
     isExhausted: fold({ out: Boolean })({
         Start()     { return false; },
         Found()     { return false; },
         Exhausted() { return true; }
     }),
-
-    /** The remaining worklist of ChoiceBoards. */
     remaining: fold({ out: Array })({
-        Start({ worklist }: { worklist: any[] })  { return worklist; },
-        Found({ worklist }: { worklist: any[] })  { return worklist; },
-        Exhausted()                               { return []; }
+        Start({ worklist })  { return worklist; },
+        Found({ worklist })  { return worklist; },
+        Exhausted()          { return []; }
     })
 }));
 
 // SolverStream — behavior (final coalgebra) for DFS search.
 // solve = fold first ∘ unfold Search  (hylomorphism)
 
-const SolverStream: any = behavior(({ Self }: { Self: any }) => ({
+type SearchStateInstance = {
+    currentBoard: object;
+    isSolved: boolean;
+    isExhausted: boolean;
+    remaining: any[];
+    [k: string]: unknown;
+};
+
+const SolverStream: any = behavior(({ Self }) => ({
     board: Object,
     isSolved: Boolean,
     isExhausted: Boolean,
-    next: Self,
-
-    /** Coalgebra map: resolve worklist via DFS (pop → blocked/complete/expand+prune). */
+    next: Self
+})).ops(({ fold, unfold, Self }) => ({
     Search: unfold({ in: SearchState, out: Self })({
-        board:       (s: typeof SearchState) => s.currentBoard,
-        isSolved:    (s: typeof SearchState) => s.isSolved,
-        isExhausted: (s: typeof SearchState) => s.isExhausted,
-        next:        (s: typeof SearchState) => {
+        board:       (s) => (s as SearchStateInstance).currentBoard,
+        isSolved:    (s) => (s as SearchStateInstance).isSolved,
+        isExhausted: (s) => (s as SearchStateInstance).isExhausted,
+        next:        (s) => {
             // ── resolve: advance worklist to next Found or Exhausted ──
-            let wl: any[] = s.remaining;
+            const state = s as SearchStateInstance;
+            let wl: any[] = state.remaining;
             while (wl.length > 0) {
                 const cb = wl[0], rest = wl.slice(1);
                 if (cb.isBlocked) { wl = rest; continue; }
@@ -282,8 +284,6 @@ const SolverStream: any = behavior(({ Self }: { Self: any }) => ({
             return SearchState.Exhausted;
         }
     }),
-
-    /** First solution. */
     first: fold({ out: Array })({
         _: ({ isSolved, isExhausted, board, next }: {
             isSolved: boolean; isExhausted: boolean;
@@ -294,8 +294,6 @@ const SolverStream: any = behavior(({ Self }: { Self: any }) => ({
             return next();
         }
     }),
-
-    /** First N solutions. */
     take: fold({ in: Number, out: Array })({
         _: ({ isSolved, isExhausted, board, next }: {
             isSolved: boolean; isExhausted: boolean;

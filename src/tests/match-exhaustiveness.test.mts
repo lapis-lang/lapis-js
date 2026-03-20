@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { data, extend , fold } from '../index.mjs';
+import { data, extend } from '../index.mjs';
 
 describe('Match Exhaustiveness Checking', () => {
     describe('Compile-time exhaustiveness', () => {
@@ -8,7 +8,8 @@ describe('Match Exhaustiveness Checking', () => {
             const Color = data(() => ({
                 Red: {},
                 Green: {},
-                Blue: {},
+                Blue: {}
+            })).ops(({ fold, unfold, map, merge }) => ({
                 toHex: fold({ out: String })({
                     Red() { return '#FF0000'; },
                     Green() { return '#00FF00'; },
@@ -24,7 +25,8 @@ describe('Match Exhaustiveness Checking', () => {
             const Color = data(() => ({
                 Red: {},
                 Green: {},
-                Blue: {},
+                Blue: {}
+            })).ops(({ fold, unfold, map, merge }) => ({
                 toHex: fold({ out: String })({
                     Red() { return '#FF0000'; },
                     _() { return '#UNKNOWN'; }
@@ -39,7 +41,8 @@ describe('Match Exhaustiveness Checking', () => {
             const C = data(() => ({
                 Red: {},
                 Green: {},
-                Blue: {},
+                Blue: {}
+            })).ops(({ fold, unfold, map, merge }) => ({
                 toHex: fold({ out: String })({
                     Red() { return '#FF0000'; },
                     Green() { return '#00FF00'; },
@@ -57,7 +60,8 @@ describe('Match Exhaustiveness Checking', () => {
         test('should work with structured variants', () => {
             const Shape = data(() => ({
                 Circle: { radius: Number },
-                Square: { side: Number },
+                Square: { side: Number }
+            })).ops(({ fold, unfold, map, merge }) => ({
                 area: fold({ out: Number })({
                     Circle({ radius }) { return Math.PI * radius * radius; },
                     Square({ side }) { return side * side; }
@@ -72,7 +76,8 @@ describe('Match Exhaustiveness Checking', () => {
             const Color = data(() => ({
                 Red: {},
                 Green: {},
-                Blue: {},
+                Blue: {}
+            })).ops(({ fold, unfold, map, merge }) => ({
                 toHex: fold({ out: String })({
                     Red() { return '#FF0000'; },
                     Green() { return '#00FF00'; },
@@ -91,7 +96,8 @@ describe('Match Exhaustiveness Checking', () => {
         test('should work with recursive ADTs', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family },
+                Cons: { head: Number, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 isEmpty: fold({ out: Boolean })({
                     Nil() { return true; },
                     Cons() { return false; }
@@ -112,7 +118,8 @@ describe('Match Exhaustiveness Checking', () => {
             const Color = data(() => ({
                 Red: {},
                 Green: {},
-                Blue: {},
+                Blue: {}
+            })).ops(({ fold, unfold, map, merge }) => ({
                 toHex: fold({ out: String })({
                     Red() { return '#FF0000'; },
                     Green() { return '#00FF00'; },
@@ -130,7 +137,8 @@ describe('Match Exhaustiveness Checking', () => {
             const Color = data(() => ({
                 Red: {},
                 Green: {},
-                Blue: {},
+                Blue: {}
+            })).ops(({ fold, unfold, map, merge }) => ({
                 toHex: fold({ out: String })({
                     Red() { return '#FF0000'; }
                 })
@@ -147,7 +155,8 @@ describe('Match Exhaustiveness Checking', () => {
             const Color = data(() => ({
                 Red: {},
                 Green: {},
-                Blue: {},
+                Blue: {}
+            })).ops(({ fold, unfold, map, merge }) => ({
                 toHex: fold({ out: String })({
                     Red() { return '#FF0000'; },
                     _() { return '#UNKNOWN'; }
@@ -163,7 +172,8 @@ describe('Match Exhaustiveness Checking', () => {
             const Color = data(() => ({
                 Red: {},
                 Green: {},
-                Blue: {},
+                Blue: {}
+            })).ops(({ fold, unfold, map, merge }) => ({
                 getName: fold({ out: String })({
                     _() { return this.constructor.name; }
                 })
@@ -181,7 +191,8 @@ describe('Match Exhaustiveness Checking', () => {
             const ExtendedColor = data(() => ({
                 [extend]: BaseColor,
                 Yellow: {},
-                Orange: {},
+                Orange: {}
+            })).ops(({ fold, unfold, map, merge }) => ({
                 toHex: fold({ out: String })({
                     Red() { return '#FF0000'; },
                     Green() { return '#00FF00'; },
@@ -202,7 +213,8 @@ describe('Match Exhaustiveness Checking', () => {
             const Color = data(() => ({
                 [extend]: BaseColor,
                 Yellow: {},
-                Orange: {},
+                Orange: {}
+            })).ops(({ fold, unfold, map, merge }) => ({
                 toHex: fold({ out: String })({
                     Red() { return '#FF0000'; },
                     Green() { return '#00FF00'; },
@@ -224,7 +236,8 @@ describe('Match Exhaustiveness Checking', () => {
                 BadRequest: {},
                 Unauthorized: {},
                 NotFound: {},
-                InternalServerError: {},
+                InternalServerError: {}
+            })).ops(({ fold, unfold, map, merge }) => ({
                 toCode: fold({ out: Number })({
                     OK() { return 200; },
                     Created() { return 201; },
