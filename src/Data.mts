@@ -2981,8 +2981,8 @@ function createParameterized(
                                     checkEnsures(c.ensures, opName, 'conditional protocol', this, this, result, []);
                                 return result;
                             },
-                            configurable: true,
-                            enumerable: false
+                            configurable: desc.configurable ?? true,
+                            enumerable: desc.enumerable ?? true
                         });
                     } else {
                         const origMethod = desc.value as (...a: unknown[]) => unknown;
@@ -2995,9 +2995,9 @@ function createParameterized(
                                     checkEnsures(c.ensures, opName, 'conditional protocol', this, this, result, args);
                                 return result;
                             },
-                            writable: false,
-                            configurable: true,
-                            enumerable: false
+                            writable: desc.writable ?? true,
+                            configurable: desc.configurable ?? true,
+                            enumerable: desc.enumerable ?? true
                         });
                     }
                 } else if (opSpec.kind === 'unfold') {
@@ -3048,9 +3048,9 @@ function createParameterized(
                 searchProto = Object.getPrototypeOf(searchProto) as object | null;
             }
             if (desc && 'get' in desc)
-                Object.defineProperty(paramProto, opName, { get: throwFn, configurable: true, enumerable: false });
+                Object.defineProperty(paramProto, opName, { get: throwFn, configurable: desc.configurable ?? true, enumerable: desc.enumerable ?? true });
             else
-                Object.defineProperty(paramProto, opName, { value: throwFn, writable: false, configurable: true, enumerable: false });
+                Object.defineProperty(paramProto, opName, { value: throwFn, writable: desc?.writable ?? true, configurable: desc?.configurable ?? true, enumerable: desc?.enumerable ?? true });
 
         }
     }
