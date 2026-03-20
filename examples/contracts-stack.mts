@@ -50,7 +50,6 @@ const Stack = data(({ Family, T }) => ({
         // parameterized ADT without hardcoding type arguments.
         // @ts-expect-error -- Family(T) resolves at runtime via Proxy; TS cannot model variant properties on FamilyRefCallable
         Empty({}, val) { return Family(T).Push({ value: val, rest: Family(T).Empty }); },
-        // @ts-expect-error -- Family(T) resolves at runtime via Proxy; TS cannot model variant properties on FamilyRefCallable
         Push({ rest }: { rest: (val: unknown) => unknown }, val: unknown) {
             // @ts-expect-error -- Family(T) resolves at runtime via Proxy
             return Family(T).Push({ value: this.value, rest: rest(val) });

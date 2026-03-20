@@ -442,5 +442,41 @@ export function assertPascalCase(name: string, kind: string): void {
 
 // ---- Op-def destructuring helper --------------------------------------------
 
+// ---- Protocol symbols -------------------------------------------------------
+
+/**
+ * Marks types (data/behavior) as satisfying named protocols.
+ * Used in phase 1: `[satisfies]: [Monoid, Ordered({ T: Ordered })]`
+ *
+ * Note: This symbol is declared here in `operations.mts` rather than in
+ * `Protocol.mts` because it is consumed by both `data()` and `behavior()`
+ * during phase-1 declaration parsing — before any protocol-specific logic
+ * runs. Co-locating it with the other shared operation symbols avoids a
+ * circular import between `Data.mts`/`Behavior.mts` and `Protocol.mts`.
+ * It is re-exported from `index.mts` as part of the public protocol API.
+ */
+export const satisfies: unique symbol = Symbol('satisfies');
+export type satisfies = typeof satisfies;
+
+/** Brands protocol objects created by protocol() */
+export const ProtocolSymbol: unique symbol = Symbol('Protocol');
+export type ProtocolSymbol = typeof ProtocolSymbol;
+
+// ---- Invariant symbol (used by both Data and Protocol) ----------------------
+
+/**
+ * Declares an invariant predicate on a variant spec or protocol declaration.
+ * For data variants: checked on every construction.
+ * For protocols: checked at conformance validation time.
+ *
+ * Note: This symbol is declared here in `operations.mts` rather than in
+ * `Data.mts` because it is also consumed by `Protocol.mts` for protocol-level
+ * invariants. It is re-exported from `Data.mts` for backward compatibility
+ * (internal code such as `Relation.mts` imports it from there), and from
+ * `index.mts` as part of the public API.
+ */
+export const invariant: unique symbol = Symbol('invariant');
+export type invariant = typeof invariant;
+
 // Re-export CallableClass for downstream consumers
 export type { CallableClass };
