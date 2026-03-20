@@ -18,7 +18,8 @@ import {
     isSortRefSpec,
     assertCamelCase,
     assertPascalCase,
-    LapisTypeSymbol
+    LapisTypeSymbol,
+    type TypeSpec
 } from './operations.mjs';
 
 import {
@@ -26,8 +27,7 @@ import {
     checkDemands,
     checkEnsures,
     checkInvariant,
-    executeRescue,
-    DemandsError,
+    tryRescue,
     EnsuresError,
     type ContractSpec
 } from './contracts.mjs';
@@ -49,10 +49,14 @@ import {
     hasInputSpec,
     omitSymbol,
     builtInTypeChecks,
-    composeFunctions
+    composeFunctions,
+    installGetter,
+    installOperation
 } from './utils.mjs';
 
-import type { DataADTWithParams, DataDeclParams } from './types.mjs';
+import type { DataADTWithParams, DataInstance, DataDeclParams, VariantKeys, SpecValue, FamilyRef, SelfRef, SortRef, TypeParamRef, DeclBrand } from './types.mjs';
+import type { FoldDef, InstanceOf, ContractCallbacks } from './ops.mjs';
+import { fold as foldOp, unfold as unfoldOp, map as mapOp, merge as mergeOp } from './ops.mjs';
 
 // Re-export symbols
 export { extend };
@@ -209,22 +213,242 @@ type TransformerMethods = {
     _getTransformerNames(): string[];
 };
 
+// ---- D-aware fold types for .ops() context ----------------------------------
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type FoldCtxSymbolKeys = { readonly [history]: any; readonly [aux]: any };
+
+/**
+ * D-aware fold output type: resolves `out` spec against the concrete family
+ * instance type `DataInstance<D>` so that `out: Family` gives `DataInstance<D>`
+ * instead of `never` for fold handler return types.
+ */
+type DataFoldOutType<D, S> =
+    S extends { out: infer Out } ? SpecValue<Out, DataInstance<D>> : unknown;
+
+/**
+ * D-aware version of FoldFieldType: substitutes `DataFoldOutType<D, S>` so
+ * Family/Self fields in fold contexts resolve to `DataInstance<D>` rather than
+ * `never`.
+ */
+type DataFoldFieldType<D, FieldSpec, S> =
+    FieldSpec extends FamilyRef | SelfRef | SortRef
+        ? (FoldInType<S> extends never
+            ? DataFoldOutType<D, S>
+            : (n: FoldInType<S>) => DataFoldOutType<D, S>)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        : FieldSpec extends TypeParamRef ? any
+            : SpecValue<FieldSpec, DataFoldOutType<D, S>>;
+
+/**
+ * D-aware fold handler context: like FoldCtx but resolves Family/Self fields
+ * to `DataInstance<D>` rather than `never`.
+ */
+type DataFoldCtx<D, VariantSpec, S> =
+    VariantSpec extends Record<string, unknown>
+        ? { readonly [F in keyof VariantSpec & string]: DataFoldFieldType<D, VariantSpec[F], S> }
+            & FoldCtxSymbolKeys
+        : Record<string, never>;
+
+
+/**
+ * Resolve the input type from a fold spec S.
+ */
+type FoldInType<S> =
+    S extends { in: infer In } ? InstanceOf<In> : never;
+
+/**
+ * Per-variant handler function for a D-aware data fold.
+ * - `ctx` is the variant's fields with Family→OutType substitution.
+ * - For parametric folds (has `in`), receives an additional input argument.
+ * - `this` is bound to the variant instance.
+ *
+ * `this` is typed as `DataInstance<D> & { [k: string | symbol]: any }`:
+ *  - Named variant fields (from CombinedVariantFieldAccess) are properly typed.
+ *  - Symbol-keyed access (e.g. `this[parent]`) and dynamic operation access resolve to `any`.
+ *  - The intersection is assignable to `DataInstance<D>`, so `return this` compiles for `out: Family` folds.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type DataFoldHandlerThis<D> = DataInstance<D> & { [k: string | symbol]: any };
+
+type DataFoldHandlerForVariant<D, VariantSpec, S> =
+    FoldInType<S> extends never
+        ? (this: DataFoldHandlerThis<D>, ctx: DataFoldCtx<D, VariantSpec, S>) => DataFoldOutType<D, S>
+        : (this: DataFoldHandlerThis<D>, ctx: DataFoldCtx<D, VariantSpec, S>, n: FoldInType<S>) => DataFoldOutType<D, S>;
+
+/**
+ * Extract the parent declaration P from D's [extend] property.
+ */
+type ParentDataDecl<D> =
+    (typeof extend) extends keyof D
+        ? D[typeof extend] extends { readonly [DeclBrand]: infer P } ? P : never
+        : never;
+
+/**
+ * All variant-only string keys from D and its parent [extend] chain.
+ */
+type AllVariantKeys<D> =
+    | VariantKeys<D>
+    | (ParentDataDecl<D> extends never ? never : AllVariantKeys<ParentDataDecl<D>>);
+
+/**
+ * Resolve the variant spec for key K by walking D and its parent chain.
+ */
+type VariantSpecForKey<D, K> =
+    K extends keyof D ? D[K]
+        : ParentDataDecl<D> extends never ? Record<string, never>
+            : VariantSpecForKey<ParentDataDecl<D>, K>;
+
+/**
+ * Maps variant keys in D (including inherited) to their typed fold handler functions.
+ * Also allows a `_` wildcard key.
+ */
+type DataFoldHandlers<D, S> = {
+    [K in AllVariantKeys<D>]?: DataFoldHandlerForVariant<D, VariantSpecForKey<D, K>, S>
+} & {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    _?: (this: DataFoldHandlerThis<D>, ...args: any[]) => DataFoldOutType<D, S>
+};
+
+/**
+ * D-aware fold: threads the data declaration D into handler types so variant
+ * field types are inferred from the declaration specs.
+ */
+export type DataFoldFn<D> = <S extends Record<string | symbol, unknown>>(s: S & ContractCallbacks) =>
+(handlers: DataFoldHandlers<D, S>) => FoldDef<S, DataFoldHandlers<D, S>>;
+
+// ---- Ops context type -------------------------------------------------------
+
+type DataOpsContext<D> = {
+    fold: DataFoldFn<D>;
+    unfold: typeof unfoldOp;
+    map: typeof mapOp;
+    merge: typeof mergeOp;
+    Family: FamilyMarker & DataADTWithParams<D>;
+    [key: string]: unknown;
+};
+
+// ---- Intermediate structure returned by data() ------------------------------
+
+export type DataStructure<D> = DataADTWithParams<D> & {
+    ops<O extends Record<string, unknown>>(
+        opsFn: (ctx: DataOpsContext<D>) => O
+    ): DataADTWithParams<D & O>;
+};
+
 // ---- Main entry point -------------------------------------------------------
 
 /**
- * Main entry point: data(() => { variants and operations })
+ * Main entry point: data(() => { variants })
+ *    .ops(({ fold, unfold, map, merge, Family, T }) => ({ operations }))
  *
  * When the declaration uses type parameters (single uppercase letters A–Z),
  * the returned ADT is callable with a type-arg record for compile-time
  * substitution: `List({ T: Number })` yields fields typed as `number`.
+ *
+ * The legacy single-phase form (variants + operations in one declaration) is
+ * also supported for internal use.
  */
 export function data<D extends Record<string, unknown>>(
     declFn: (params: DataDeclParams) => D
-): DataADTWithParams<D> {
-    const decl = parseDeclaration(declFn as unknown as (params: object) => Record<string, unknown>),
-        ADT = createADT(decl);
+): DataStructure<D> {
+    const decl = parseDeclaration(declFn as unknown as (params: object) => Record<string, unknown>);
+
+    // If the declaration already contains operations (legacy / internal form),
+    // create the ADT immediately.
+    const hasOps = Object.keys(decl.operations).length > 0;
+    if (hasOps) {
+        const ADT = createADT(decl);
+        (ADT as unknown as Record<symbol, boolean>)[LapisTypeSymbol] = true;
+        attachOpsMethod<D>(ADT as unknown as Record<string, unknown>, decl);
+        return ADT as unknown as DataStructure<D>;
+    }
+
+    // Pure structure declaration: create a partial ADT (variants only),
+    // and attach .ops() for phase 2.
+    const ADT = createADT(decl);
     (ADT as unknown as Record<symbol, boolean>)[LapisTypeSymbol] = true;
-    return ADT as unknown as DataADTWithParams<D>;
+    attachOpsMethod<D>(ADT as unknown as Record<string, unknown>, decl);
+    return ADT as unknown as DataStructure<D>;
+}
+
+/**
+ * Attach the `.ops()` method onto an ADT-like object.
+ * The method accepts a callback that receives a context with fold/unfold/map/merge
+ * and all type params, then registers the returned operations on the ADT.
+ *
+ * @template D - The declaration type (variant specs map)
+ */
+function attachOpsMethod<D extends Record<string, unknown>>(
+    ADT: Record<string, unknown>,
+    decl: ParsedDecl
+): void {
+    (ADT as DataStructure<D>).ops = function ops<O extends Record<string, unknown>>(
+        opsFn: (ctx: DataOpsContext<D>) => O
+    ): DataADTWithParams<D & O> {
+        // Build the context: type params + Family + operations
+        const ctx = {
+            fold: foldOp as DataFoldFn<D>,
+            unfold: unfoldOp,
+            map: mapOp,
+            merge: mergeOp,
+            Family: decl.Family ?? createFamilyMarker()
+        } as DataOpsContext<D>;
+
+        // Forward all type param markers (T, A, B, …)
+        for (const [name, param] of Object.entries(decl.typeParams))
+            (ctx as Record<string, unknown>)[name] = param;
+
+        // Forward all sort param markers ($A, $B, …)
+        for (const [name, param] of Object.entries(decl.sortParams))
+            (ctx as Record<string, unknown>)[name] = param;
+
+        const opsObj = opsFn(ctx);
+
+        // Parse and install the operations on the (already-created) ADT.
+        const opsDecl = parseDeclarationOps(opsObj);
+        // Use the raw (un-proxied) ADT so parentADTMap / adtTransformers are keyed consistently.
+        const rawADT = ((ADT as unknown as { _rawADT?: ADTLike })._rawADT ?? ADT) as unknown as ADTLike;
+        createOperations(
+            rawADT,
+            // Recover ownVariants from the ADT (they are enumerable properties that are variant-like)
+            getOwnVariantsFromADT(rawADT),
+            opsDecl,
+            decl.typeParams
+        );
+
+        return ADT as DataADTWithParams<D & O>;
+    };
+}
+
+/**
+ * Extract the variant entries from an already-created ADT proxy.
+ */
+function getOwnVariantsFromADT(ADT: ADTLike): Record<string, unknown> {
+    const variants: Record<string, unknown> = {};
+    for (const key of Object.keys(ADT as object)) {
+        const val = (ADT as Record<string, unknown>)[key];
+        if (val && typeof val === 'object' && (val as Record<symbol, unknown>)[IsVariantSymbol])
+            variants[key] = val;
+        else if (typeof val === 'function' && (val as unknown as Record<symbol, unknown>)[IsVariantSymbol])
+            variants[key] = val;
+    }
+    return variants;
+}
+
+/**
+ * Parse only the operations portion of a declaration object (all keys
+ * are expected to be operation defs — no variant or meta keys).
+ */
+function parseDeclarationOps(
+    opsObj: Record<string, unknown>
+): SpecRecord {
+    const result: SpecRecord = {};
+    for (const [key, value] of Object.entries(opsObj)) {
+        if (isOperationDef(key, value))
+            result[key] = value;
+    }
+    return result;
 }
 
 // ---- Declaration parsing ----------------------------------------------------
@@ -594,7 +818,23 @@ function createFamilyMarker(): FamilyMarker {
     };
     (marker as unknown as Record<symbol, unknown>)[FamilyRefSymbol] = true;
     (marker as unknown as { _adt: null })._adt = null;
-    return marker as unknown as FamilyMarker;
+
+    // Wrap marker in a Proxy to delegate variant constructor access to _adt
+    return new Proxy(marker as unknown as FamilyMarker, {
+        get(target, prop, receiver) {
+            // Return properties from the marker itself (like _adt, FamilyRefSymbol)
+            if (prop === '_adt' || prop === FamilyRefSymbol || typeof prop === 'symbol')
+                return Reflect.get(target, prop, receiver);
+
+            // Delegate variant constructor access to _adt if it exists
+            const adt = target._adt;
+            if (adt && (typeof adt === 'object' || typeof adt === 'function') && prop in adt)
+                return Reflect.get(adt, prop, adt);
+
+            // Otherwise return from the marker itself
+            return Reflect.get(target, prop, receiver);
+        }
+    });
 }
 
 function createTypeParam(name: string): object {
@@ -1643,9 +1883,9 @@ function createFoldOperation(
             try {
                 // Resolve per-sort carrier: if the out spec is per-sort,
                 // pick the carrier matching this variant's sort.
-                const effectiveOut = perSortOut !== null
+                const effectiveOut: TypeSpec = (perSortOut !== null
                     ? perSortOut[(self as Record<symbol, unknown>)[SortNameSymbol] as string]
-                    : opSpecObj['out'];
+                    : opSpecObj['out']) as TypeSpec;
 
                 // ---- Contract enforcement (Design by Contract) ----
                 // Demands/ensures/invariants only enforce at the top-level call
@@ -1683,7 +1923,7 @@ function createFoldOperation(
                     const executeBody = (...bodyArgs: unknown[]): unknown => {
                         const bodyResult = (handler as HandlerFn).call(context, foldedFields, ...bodyArgs);
                         if (hasOutput)
-                            validateReturnType(bodyResult, effectiveOut as Parameters<typeof validateReturnType>[1], opName);
+                            validateReturnType(bodyResult, effectiveOut, opName);
 
                         // 4. Ensures check (postcondition)
                         if (foldContracts?.ensures)
@@ -1696,24 +1936,13 @@ function createFoldOperation(
                         result = executeBody(...args);
                     } catch (error) {
                     // 5. Rescue handler for body/ensures errors
-                        if (foldContracts?.rescue && !(error instanceof DemandsError)) {
-                            const { result: rescueResult } = executeRescue(
-                                foldContracts.rescue,
-                                self,
-                                error,
-                                args,
-                                executeBody,
-                                opName,
-                                variantCtx
-                            );
-
+                        const rescued = tryRescue(foldContracts, error, self, args, executeBody, opName, variantCtx);
+                        if (rescued !== null) {
                             // 6. Invariant post-check on result (if it's a variant with an invariant)
-                            checkResultInvariant(rescueResult, opName);
-
-                            if (canCache) dagCache!.set(self, rescueResult);
-                            return rescueResult;
+                            checkResultInvariant(rescued.result, opName);
+                            if (canCache) dagCache!.set(self, rescued.result);
+                            return rescued.result;
                         }
-
                         throw error;
                     }
 
@@ -1726,38 +1955,27 @@ function createFoldOperation(
                     try {
                         result = (handler as HandlerFn).call(context, foldedFields, ...args);
                         if (hasOutput)
-                            validateReturnType(result, effectiveOut as Parameters<typeof validateReturnType>[1], opName);
+                            validateReturnType(result, effectiveOut, opName);
                     } catch (error) {
-                        if (!(error instanceof DemandsError)) {
-                            const innerBody = (...newArgs: unknown[]): unknown => {
-                                const r = (handler as HandlerFn).call(context, foldedFields, ...newArgs);
-                                if (hasOutput)
-                                    validateReturnType(r, effectiveOut as Parameters<typeof validateReturnType>[1], opName);
-                                return r;
-                            };
-
-                            const { result: rescueResult } = executeRescue(
-                                foldContracts!.rescue!,
-                                self,
-                                error,
-                                args,
-                                innerBody,
-                                opName,
-                                variantName || 'unknown'
-                            );
-
-                            if (canCache) dagCache!.set(self, rescueResult);
-                            return rescueResult;
-                        } else
-                            throw error;
-
+                        const innerBody = (...newArgs: unknown[]): unknown => {
+                            const r = (handler as HandlerFn).call(context, foldedFields, ...newArgs);
+                            if (hasOutput)
+                                validateReturnType(r, effectiveOut, opName);
+                            return r;
+                        };
+                        const rescued = tryRescue(foldContracts, error, self, args, innerBody, opName, variantName || 'unknown');
+                        if (rescued !== null) {
+                            if (canCache) dagCache!.set(self, rescued.result);
+                            return rescued.result;
+                        }
+                        throw error;
                     }
                 } else {
                 // Fast path: no active contracts — call handler directly,
                 // skipping closure allocation for executeBody and rescue machinery.
                     result = (handler as HandlerFn).call(context, foldedFields, ...args);
                     if (hasOutput)
-                        validateReturnType(result, effectiveOut as Parameters<typeof validateReturnType>[1], opName);
+                        validateReturnType(result, effectiveOut, opName);
                 }
 
                 if (canCache) dagCache!.set(self, result);
@@ -1783,15 +2001,7 @@ function createFoldOperation(
         }
     };
 
-    if (hasInput || hasExtraParams)
-        (ADT.prototype as Record<string, unknown>)[opName] = foldImpl;
-    else {
-        Object.defineProperty(ADT.prototype, opName, {
-            get: foldImpl,
-            enumerable: true,
-            configurable: true
-        });
-    }
+    installOperation(ADT.prototype, opName, foldImpl, !hasInput && !hasExtraParams);
 }
 
 // ---- Unfold helpers ---------------------------------------------------------
@@ -1939,22 +2149,11 @@ function installUnfoldImpl(
                 if (unfoldContracts!.ensures)
                     checkEnsures(unfoldContracts!.ensures, opName, 'unfold', null, seed, finalResult, [seed]);
             } catch (error) {
-                // Rescue handler
-                if (unfoldContracts!.rescue && !(error instanceof DemandsError)) {
-                    const { result: rescueResult } = executeRescue(
-                        unfoldContracts!.rescue,
-                        null,
-                        error,
-                        [seed],
-                        (...newArgs: unknown[]) =>
-                            ((ADT as Record<string, unknown>)[opName] as (s: unknown) => unknown)(newArgs[0]),
-                        opName,
-                        'unfold'
-                    );
-
-                    return rescueResult;
-                }
-
+                const rescued = tryRescue(unfoldContracts, error, null, [seed],
+                    (...newArgs: unknown[]) =>
+                        ((ADT as Record<string, unknown>)[opName] as (s: unknown) => unknown)(newArgs[0]),
+                    opName, 'unfold');
+                if (rescued !== null) return rescued.result;
                 throw error;
             } finally {
                 unfoldContractDepth--;
@@ -1967,21 +2166,11 @@ function installUnfoldImpl(
                 const innerResult = executeUnfold(seed);
                 return innerResult;
             } catch (error) {
-                if (!(error instanceof DemandsError)) {
-                    const { result: rescueResult } = executeRescue(
-                        unfoldContracts!.rescue!,
-                        null,
-                        error,
-                        [seed],
-                        (...newArgs: unknown[]) =>
-                            ((ADT as Record<string, unknown>)[opName] as (s: unknown) => unknown)(newArgs[0]),
-                        opName,
-                        'unfold'
-                    );
-
-                    return rescueResult;
-                }
-
+                const rescued = tryRescue(unfoldContracts, error, null, [seed],
+                    (...newArgs: unknown[]) =>
+                        ((ADT as Record<string, unknown>)[opName] as (s: unknown) => unknown)(newArgs[0]),
+                    opName, 'unfold');
+                if (rescued !== null) return rescued.result;
                 throw error;
             } finally {
                 unfoldContractDepth--;
@@ -2202,15 +2391,7 @@ function createMapOperation(
         hasExtraParams
     );
 
-    if (hasExtraParams)
-        (ADT.prototype as Record<string, unknown>)[opName] = mapImpl;
-    else {
-        Object.defineProperty(ADT.prototype, opName, {
-            get: mapImpl,
-            enumerable: true,
-            configurable: true
-        });
-    }
+    installOperation(ADT.prototype, opName, mapImpl, !hasExtraParams);
 }
 
 // ---- Map-map fusion ---------------------------------------------------------
@@ -2397,11 +2578,7 @@ function createMergeOperation(
     // After fusion the pipeline may have fewer than 2 operations.
     // If it collapsed to nothing, the merge is the identity.
     if (opList.length === 0) {
-        Object.defineProperty(ADT.prototype, opName, {
-            get() { return this; },
-            enumerable: true,
-            configurable: true
-        });
+        installGetter(ADT.prototype, opName, function(this: unknown) { return this; });
         // Still register a no-op transformer for introspection
         ADT._registerTransformer(opName, createTransformer({
             name: opName,
@@ -2414,11 +2591,7 @@ function createMergeOperation(
     if (opList.length === 1) {
         // Pipeline collapsed to a single operation — alias it
         const sole = opList[0];
-        Object.defineProperty(ADT.prototype, opName, {
-            get() { return (this as Record<string, unknown>)[sole]; },
-            enumerable: true,
-            configurable: true
-        });
+        installGetter(ADT.prototype, opName, function(this: unknown) { return (this as Record<string, unknown>)[sole]; });
         const t = ADT._getTransformer(sole);
         if (t)
             ADT._registerTransformer(opName, t, false, variants);
@@ -2563,11 +2736,7 @@ function createMergeOperation(
             return result;
         };
 
-        Object.defineProperty(ADT.prototype, opName, {
-            get: mergeImpl,
-            enumerable: true,
-            configurable: true
-        });
+        installGetter(ADT.prototype, opName, mergeImpl);
     } else if (isHylomorphism) {
         // Hylomorphism pipeline: unfold → [maps*] → [fold]
         const plan = buildPlan(opList, 1);
@@ -2601,11 +2770,7 @@ function createMergeOperation(
             return result;
         };
 
-        Object.defineProperty(ADT.prototype, opName, {
-            get: mergeImpl,
-            enumerable: true,
-            configurable: true
-        });
+        installGetter(ADT.prototype, opName, mergeImpl);
     }
 }
 

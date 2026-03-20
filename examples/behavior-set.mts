@@ -12,7 +12,7 @@
  *        ←  CharSet      (+ cardinality)
  */
 
-import { behavior, extend , unfold } from '../src/index.mjs';
+import { behavior, extend } from '../src/index.mjs';
 import { isPrime, NthPrimeFinder } from '../src/lib/primes.mjs';
 
 // =============================================================================
@@ -30,7 +30,8 @@ const Set = behavior(() => ({
     // =============================================================================
 
     NumericSet = behavior(({ Self }) => ({
-        [extend]: Set,
+        [extend]: Set
+    })).ops(({ unfold, Self }) => ({
         Empty: unfold({})({
             isEmpty: () => true,
             member: () => () => false
@@ -80,7 +81,8 @@ console.log('empty.member(0):', empty.member(0));     // false
 
 const PrimeSet = behavior(() => ({
     [extend]: Set,
-    nthPrime: { in: Number, out: Number },
+    nthPrime: { in: Number, out: Number }
+})).ops(({ unfold }) => ({
     Create: unfold({})({
         isEmpty: () => false,
         member: () => (n) => isPrime(n),
@@ -111,7 +113,8 @@ for (let i = 0; i < 10; i++)
 const RangeSet = behavior(({ Self }) => ({
     [extend]: Set,
     min: Number,
-    max: Number,
+    max: Number
+})).ops(({ fold, unfold, map, merge, Self }) => ({
     Create: unfold({ in: { min: Number, max: Number }, out: Self })({
         member: ({ min, max }) => (n) => n >= min && n <= max,
         min: ({ min }) => min,
@@ -147,7 +150,8 @@ console.log('all.isEmpty:', all.isEmpty);                   // false
 
 const CharSet = behavior(() => ({
     [extend]: Set,
-    cardinality: String,
+    cardinality: String
+})).ops(({ fold, unfold, map, merge }) => ({
     Squares: unfold({})({
         isEmpty: () => false,
         member: () => (n) => {
@@ -165,7 +169,7 @@ const CharSet = behavior(() => ({
         isEmpty: () => false,
         member: () => (n) => {
             if (n < 0) return false;
-            const isPerfectSquare = (x) => {
+            const isPerfectSquare = (x: number) => {
                 const sqrt = Math.sqrt(x);
                 return sqrt === Math.floor(sqrt);
             };

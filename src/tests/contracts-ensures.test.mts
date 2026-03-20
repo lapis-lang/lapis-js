@@ -1,12 +1,13 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { data, fold, unfold, EnsuresError } from '../index.mjs';
+import { data, EnsuresError } from '../index.mjs';
 
 describe('Contracts: Ensures (Postconditions)', () => {
     describe('Fold ensures', () => {
         it('should pass when ensures is satisfied', () => {
             const Counter = data(() => ({
-                Val: { x: Number },
+                Val: { x: Number }
+            })).ops(({ fold, unfold, map, merge }) => ({
                 value: fold({
                     out: Number,
                     ensures: (_self, _old, result) => typeof result === 'number'
@@ -21,7 +22,8 @@ describe('Contracts: Ensures (Postconditions)', () => {
 
         it('should throw EnsuresError when ensures fails', () => {
             const MyData = data(() => ({
-                Val: { x: Number },
+                Val: { x: Number }
+            })).ops(({ fold, unfold, map, merge }) => ({
                 doubled: fold({
                     out: Number,
                     ensures: (_self, _old, result) => result > 100
@@ -39,7 +41,8 @@ describe('Contracts: Ensures (Postconditions)', () => {
 
         it('should include the ensures function in error message', () => {
             const MyData = data(() => ({
-                Val: { x: Number },
+                Val: { x: Number }
+            })).ops(({ fold, unfold, map, merge }) => ({
                 value: fold({
                     out: Number,
                     ensures: (_self, _old, result) => result > 100
@@ -60,7 +63,8 @@ describe('Contracts: Ensures (Postconditions)', () => {
             let capturedSelf, capturedOld;
 
             const MyData = data(() => ({
-                Val: { x: Number },
+                Val: { x: Number }
+            })).ops(({ fold, unfold, map, merge }) => ({
                 value: fold({
                     out: Number,
                     ensures: (self, old, _result) => {
@@ -82,7 +86,8 @@ describe('Contracts: Ensures (Postconditions)', () => {
             let capturedArgs;
 
             const Container = data(() => ({
-                Box: { value: Number },
+                Box: { value: Number }
+            })).ops(({ fold, unfold, map, merge }) => ({
                 add: fold({
                     in: Number,
                     out: Number,
@@ -105,7 +110,8 @@ describe('Contracts: Ensures (Postconditions)', () => {
         it('should check ensures on unfold result', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family },
+                Cons: { head: Number, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 Range: unfold({
                     in: Number,
                     out: Family,
@@ -125,7 +131,8 @@ describe('Contracts: Ensures (Postconditions)', () => {
     describe('Implementer blame', () => {
         it('should throw EnsuresError for bad implementation', () => {
             const MyData = data(() => ({
-                Val: { x: Number },
+                Val: { x: Number }
+            })).ops(({ fold, unfold, map, merge }) => ({
                 broken: fold({
                     out: Number,
                     ensures: (_self, _old, result) => result !== -1
@@ -146,7 +153,8 @@ describe('Contracts: Ensures (Postconditions)', () => {
         it('should verify size via old-state reference', () => {
             const Stack = data(({ Family }) => ({
                 Empty: {},
-                Push: { value: Number, rest: Family },
+                Push: { value: Number, rest: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 size: fold({ out: Number })({
                     Empty() { return 0; },
                     Push({ rest }) { return 1 + rest; }
@@ -173,7 +181,8 @@ describe('Contracts: Ensures (Postconditions)', () => {
         it('should throw EnsuresError when size invariant is violated', () => {
             const Stack = data(({ Family }) => ({
                 Empty: {},
-                Push: { value: Number, rest: Family },
+                Push: { value: Number, rest: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 size: fold({ out: Number })({
                     Empty() { return 0; },
                     Push({ rest }) { return 1 + rest; }
@@ -200,7 +209,8 @@ describe('Contracts: Ensures (Postconditions)', () => {
             let bodyExecuted = false;
 
             const MyData = data(() => ({
-                Val: { x: Number },
+                Val: { x: Number }
+            })).ops(({ fold, unfold, map, merge }) => ({
                 check: fold({
                     out: Number,
                     ensures: () => false

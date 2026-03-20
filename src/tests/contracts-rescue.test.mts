@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { data, fold, invariant, DemandsError, InvariantError } from '../index.mjs';
+import { data, invariant, DemandsError, InvariantError } from '../index.mjs';
 
 describe('Contracts: Rescue + Retry', () => {
     describe('Basic rescue', () => {
@@ -8,7 +8,8 @@ describe('Contracts: Rescue + Retry', () => {
             let rescueCalled = false;
 
             const MyData = data(() => ({
-                Val: { x: Number },
+                Val: { x: Number }
+            })).ops(({ fold, unfold, map, merge }) => ({
                 risky: fold({
                     out: Number,
                     rescue: (_self, _error, _args) => {
@@ -30,7 +31,8 @@ describe('Contracts: Rescue + Retry', () => {
             let capturedError, capturedArgs;
 
             const MyData = data(() => ({
-                Val: { x: Number },
+                Val: { x: Number }
+            })).ops(({ fold, unfold, map, merge }) => ({
                 risky: fold({
                     in: Number,
                     out: Number,
@@ -56,7 +58,8 @@ describe('Contracts: Rescue + Retry', () => {
             let attempts = 0;
 
             const MyData = data(() => ({
-                Val: { x: Number },
+                Val: { x: Number }
+            })).ops(({ fold, unfold, map, merge }) => ({
                 compute: fold({
                     in: Number,
                     out: Number,
@@ -84,7 +87,8 @@ describe('Contracts: Rescue + Retry', () => {
             let rescueCalled = false;
 
             const MyData = data(() => ({
-                Val: { x: Number },
+                Val: { x: Number }
+            })).ops(({ fold, unfold, map, merge }) => ({
                 check: fold({
                     demands: (self) => self.x > 0,
                     rescue: () => { rescueCalled = true; return false; },
@@ -108,7 +112,8 @@ describe('Contracts: Rescue + Retry', () => {
             let rescueCalled = false;
 
             const MyData = data(() => ({
-                Val: { x: Number },
+                Val: { x: Number }
+            })).ops(({ fold, unfold, map, merge }) => ({
                 value: fold({
                     out: Number,
                     ensures: (_self, _old, result) => result > 100,
@@ -131,7 +136,8 @@ describe('Contracts: Rescue + Retry', () => {
     describe('Max retry guard', () => {
         it('should throw when retry count exceeds maximum', () => {
             const MyData = data(() => ({
-                Val: { x: Number },
+                Val: { x: Number }
+            })).ops(({ fold, unfold, map, merge }) => ({
                 infinite: fold({
                     in: Number,
                     out: Number,
@@ -156,7 +162,8 @@ describe('Contracts: Rescue + Retry', () => {
             let rescueCalled = false;
 
             const MyData = data(() => ({
-                Val: { x: Number },
+                Val: { x: Number }
+            })).ops(({ fold, unfold, map, merge }) => ({
                 value: fold({
                     out: Number,
                     rescue: () => { rescueCalled = true; return -1; }
@@ -174,7 +181,8 @@ describe('Contracts: Rescue + Retry', () => {
     describe('Rescue rethrow propagation', () => {
         it('should propagate rescue error to caller', () => {
             const MyData = data(() => ({
-                Val: { x: Number },
+                Val: { x: Number }
+            })).ops(({ fold, unfold, map, merge }) => ({
                 risky: fold({
                     out: Number,
                     rescue: () => { throw new Error('Rescue throw'); }
@@ -192,7 +200,8 @@ describe('Contracts: Rescue + Retry', () => {
 
         it('should propagate rescue error not the original error', () => {
             const MyData = data(() => ({
-                Val: { x: Number },
+                Val: { x: Number }
+            })).ops(({ fold, unfold, map, merge }) => ({
                 risky: fold({
                     out: Number,
                     rescue: () => { throw new TypeError('Different type'); }
@@ -217,7 +226,8 @@ describe('Contracts: Rescue + Retry', () => {
                 Box: {
                     [invariant]: ({ x }) => x > 0,
                     x: Number
-                },
+                }
+            })).ops(({ fold, unfold, map, merge }) => ({
                 value: fold({
                     out: Number,
                     rescue: (_self, _error) => 42
@@ -236,7 +246,8 @@ describe('Contracts: Rescue + Retry', () => {
             let rescueCalled = false;
 
             const MyData = data(() => ({
-                Val: { x: Number },
+                Val: { x: Number }
+            })).ops(({ fold, unfold, map, merge }) => ({
                 check: fold({
                     demands: () => false,
                     ensures: () => true,
@@ -256,7 +267,8 @@ describe('Contracts: Rescue + Retry', () => {
             let capturedErrorName;
 
             const MyData = data(() => ({
-                Val: { x: Number },
+                Val: { x: Number }
+            })).ops(({ fold, unfold, map, merge }) => ({
                 check: fold({
                     out: Number,
                     ensures: (_self, _old, result) => result > 100,

@@ -12,25 +12,22 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { data, map, fold, merge } from '../index.mjs';
+import { data } from '../index.mjs';
 
 // Helper: a simple parameterized list used by most tests
 function makeList() {
     return data(({ Family, T }) => ({
         Nil: {},
-        Cons: { head: T, tail: Family(T) },
-
+        Cons: { head: T, tail: Family(T) }
+    })).ops(({ fold, unfold, map, merge, Family, T }) => ({
         double:    map({ out: Family })({ T: (x: number) => x * 2 }),
         halve:     map({ out: Family, inverse: 'double' })({ T: (x: number) => x / 2 }),
-
         increment: map({ out: Family })({ T: (x: number) => x + 1 }),
         decrement: map({ out: Family, inverse: 'increment' })({ T: (x: number) => x - 1 }),
-
         sum: fold({ out: Number })({
             Nil() { return 0; },
             Cons({ head, tail }) { return head + tail; }
         }),
-
         toArray: fold({ out: Array })({
             Nil() { return []; },
             Cons({ head, tail }) { return [head, ...tail]; }
@@ -83,7 +80,8 @@ describe('Invertible Maps', () => {
             assert.throws(
                 () => data(({ Family, T }) => ({
                     Nil: {},
-                    Cons: { head: T, tail: Family(T) },
+                    Cons: { head: T, tail: Family(T) }
+                })).ops(({ fold, unfold, map, merge, Family, T }) => ({
                     double:    map({ out: Family })({ T: (x: number) => x * 2 }),
                     halve:     map({ out: Family, inverse: 'double' })({ T: (x: number) => x / 2 }),
                     divByTwo:  map({ out: Family, inverse: 'double' })({ T: (x: number) => x / 2 })
@@ -96,7 +94,8 @@ describe('Invertible Maps', () => {
             assert.throws(
                 () => data(({ Family, T }) => ({
                     Nil: {},
-                    Cons: { head: T, tail: Family(T) },
+                    Cons: { head: T, tail: Family(T) }
+                })).ops(({ fold, unfold, map, merge, Family, T }) => ({
                     halve: map({ out: Family, inverse: 'nonexistent' })({ T: (x: number) => x / 2 })
                 })),
                 /operation 'nonexistent' not found/
@@ -120,10 +119,9 @@ describe('Invertible Maps', () => {
         it('throws EnsuresError when inverse is inconsistent', () => {
             const List = data(({ Family, T }) => ({
                 Nil: {},
-                Cons: { head: T, tail: Family(T) },
-
+                Cons: { head: T, tail: Family(T) }
+            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
                 encode: map({ out: Family })({ T: (x: number) => Math.round(x * 100) / 100 }),
-                // Intentionally wrong inverse — adds 1 instead of reversing
                 decode: map({ out: Family, inverse: 'encode' })({ T: (x: number) => x + 1 })
             }));
 
@@ -140,10 +138,9 @@ describe('Invertible Maps', () => {
         it('throws EnsuresError on the inverse direction too', () => {
             const List = data(({ Family, T }) => ({
                 Nil: {},
-                Cons: { head: T, tail: Family(T) },
-
+                Cons: { head: T, tail: Family(T) }
+            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
                 forward: map({ out: Family })({ T: (x: number) => x * 3 }),
-                // Wrong: divides by 2 instead of 3
                 backward: map({ out: Family, inverse: 'forward' })({ T: (x: number) => x / 2 })
             }));
 
@@ -160,8 +157,8 @@ describe('Invertible Maps', () => {
         it('verifies round-trip recursively through nested structures', () => {
             const List = data(({ Family, T }) => ({
                 Nil: {},
-                Cons: { head: T, tail: Family(T) },
-
+                Cons: { head: T, tail: Family(T) }
+            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
                 triple: map({ out: Family })({ T: (x: number) => x * 3 }),
                 third:  map({ out: Family, inverse: 'triple' })({ T: (x: number) => x / 3 })
             }));
@@ -181,13 +178,11 @@ describe('Invertible Maps', () => {
         it('eliminates consecutive inverse pair in merge', () => {
             const List = data(({ Family, T }) => ({
                 Nil: {},
-                Cons: { head: T, tail: Family(T) },
-
+                Cons: { head: T, tail: Family(T) }
+            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
                 double:    map({ out: Family })({ T: (x: number) => x * 2 }),
                 halve:     map({ out: Family, inverse: 'double' })({ T: (x: number) => x / 2 }),
                 increment: map({ out: Family })({ T: (x: number) => x + 1 }),
-
-                // double then halve = identity, so pipeline = just increment
                 pipeline: merge('double', 'halve', 'increment')
             }));
 
@@ -204,13 +199,11 @@ describe('Invertible Maps', () => {
         it('eliminates trailing inverse pair', () => {
             const List = data(({ Family, T }) => ({
                 Nil: {},
-                Cons: { head: T, tail: Family(T) },
-
+                Cons: { head: T, tail: Family(T) }
+            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
                 double:    map({ out: Family })({ T: (x: number) => x * 2 }),
                 halve:     map({ out: Family, inverse: 'double' })({ T: (x: number) => x / 2 }),
                 increment: map({ out: Family })({ T: (x: number) => x + 1 }),
-
-                // increment then double then halve — halve cancels double
                 pipeline: merge('increment', 'double', 'halve')
             }));
 
@@ -226,14 +219,11 @@ describe('Invertible Maps', () => {
         it('collapses entire pipeline to identity when all pairs cancel', () => {
             const List = data(({ Family, T }) => ({
                 Nil: {},
-                Cons: { head: T, tail: Family(T) },
-
+                Cons: { head: T, tail: Family(T) }
+            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
                 double:  map({ out: Family })({ T: (x: number) => x * 2 }),
                 halve:   map({ out: Family, inverse: 'double' })({ T: (x: number) => x / 2 }),
-
-                // double then halve = identity
                 roundTrip: merge('double', 'halve'),
-
                 toArray: fold({ out: Array })({
                     Nil() { return []; },
                     Cons({ head, tail }) { return [head, ...tail]; }
@@ -253,18 +243,13 @@ describe('Invertible Maps', () => {
         it('eliminates nested inverse pairs after first pass', () => {
             const List = data(({ Family, T }) => ({
                 Nil: {},
-                Cons: { head: T, tail: Family(T) },
-
+                Cons: { head: T, tail: Family(T) }
+            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
                 double:    map({ out: Family })({ T: (x: number) => x * 2 }),
                 halve:     map({ out: Family, inverse: 'double' })({ T: (x: number) => x / 2 }),
                 increment: map({ out: Family })({ T: (x: number) => x + 1 }),
                 decrement: map({ out: Family, inverse: 'increment' })({ T: (x: number) => x - 1 }),
-
-                // double, increment, decrement, halve
-                // First pass eliminates increment/decrement → [double, halve]
-                // Second pass eliminates double/halve → []  (identity)
                 pipeline: merge('double', 'increment', 'decrement', 'halve'),
-
                 toArray: fold({ out: Array })({
                     Nil() { return []; },
                     Cons({ head, tail }) { return [head, ...tail]; }
@@ -282,19 +267,16 @@ describe('Invertible Maps', () => {
         it('preserves non-inverse operations in pipeline', () => {
             const List = data(({ Family, T }) => ({
                 Nil: {},
-                Cons: { head: T, tail: Family(T) },
-
+                Cons: { head: T, tail: Family(T) }
+            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
                 double:    map({ out: Family })({ T: (x: number) => x * 2 }),
                 halve:     map({ out: Family, inverse: 'double' })({ T: (x: number) => x / 2 }),
                 increment: map({ out: Family })({ T: (x: number) => x + 1 }),
                 square:    map({ out: Family })({ T: (x: number) => x * x }),
-
                 sum: fold({ out: Number })({
                     Nil() { return 0; },
                     Cons({ head, tail }) { return head + tail; }
                 }),
-
-                // double, halve cancel → [increment, square, sum]
                 pipeline: merge('double', 'halve', 'increment', 'square', 'sum')
             }));
 
@@ -311,8 +293,8 @@ describe('Invertible Maps', () => {
         it('inverse works on non-parameterized data types', () => {
             const NumList = data(() => ({
                 Nil: {},
-                Cons: { head: Number, tail: Number },
-
+                Cons: { head: Number, tail: Number }
+            })).ops(({ fold, unfold, map, merge }) => ({
                 double: map({ out: Number })({
                     head: (x: number) => x * 2,
                     tail: (x: number) => x * 2
@@ -321,7 +303,6 @@ describe('Invertible Maps', () => {
                     head: (x: number) => x / 2,
                     tail: (x: number) => x / 2
                 }),
-
                 roundTrip: merge('double', 'halve')
             }));
 

@@ -29,8 +29,9 @@
  */
 
 import { behavior } from './Behavior.mjs';
-import { isOperationDef, isSelfRef, op, spec as specSym, LapisTypeSymbol } from './operations.mjs';
-import type { BehaviorDeclParams } from './types.mjs';
+import { isOperationDef, isSelfRef, op, spec as specSym, LapisTypeSymbol, SelfRefSymbol } from './operations.mjs';
+import type { BehaviorDeclParams, ObserverADT, SpecValue } from './types.mjs';
+import type { fold, unfold, map, merge } from './ops.mjs';
 
 // ---- Symbols ----------------------------------------------------------------
 
@@ -47,6 +48,38 @@ export const accept: unique symbol = Symbol('accept');
 export type accept = typeof accept;
 
 // ---- Types ------------------------------------------------------------------
+
+// ---- Ops context and return structure -------------------------------------
+
+/**
+ * Context provided to the observer().ops() callback.
+ * Includes all behavior ops plus the cospan projection symbols.
+ */
+type ObserverOpsContext = {
+    fold: typeof fold;
+    unfold: typeof unfold;
+    map: typeof map;
+    merge: typeof merge;
+    Self: { readonly [SelfRefSymbol]: true; (typeParam?: unknown): unknown };
+    output: typeof output;
+    done: typeof done;
+    accept: typeof accept;
+};
+
+/**
+ * Maps a spec constructor to the corresponding instance type.
+ * Used to compute the element type of `explore()` results.
+ * Delegates to the centralized `SpecValue` mapping (Self = never since
+ * explore output is never self-referential).
+ */
+type OutputType<S> = SpecValue<S, never>;
+
+/**
+ * The base observer shape: behavior with explore() attached.
+ */
+type ObserverShape<D> = ObserverADT<D> & {
+    explore(seed: unknown, options?: ExploreOptions): unknown[];
+};
 
 interface ExploreOptions {
     /** Maximum number of steps before giving up.  Default: 10 000. */
@@ -124,66 +157,43 @@ interface ExploreOptions {
  * const first   = SolverStream.explore(seed, { maxResults: 1 });
  * ```
  */
+/**
+ * Combined return type for `observer().ops()`.
+ * Using a single type alias instead of a raw intersection `A & B` helps
+ * TypeScript cache the structural resolution rather than re-expanding
+ * the intersection at every call-site (explore, length, forEach, etc.).
+ */
+type ObserverWithExplore<D, O, Out> =
+    ObserverADT<D & O> & {
+        explore(seed: unknown, options?: ExploreOptions): Out;
+    };
+
 export function observer<D extends Record<string, unknown>>(
     declFn: (params: BehaviorDeclParams) => D
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-): any {
-    // Stored cospan metadata, populated during behavior() creation.
+): ObserverShape<D> & {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ops<const O extends Record<string | symbol, any>>(
+        opsFn: (ctx: ObserverOpsContext) => O
+    ): ObserverWithExplore<D, O,
+        O extends { readonly [output]: infer K extends keyof D & string }
+            ? OutputType<D[K]>[]
+            : unknown[]
+    >;
+} {
+    // Stored cospan metadata, populated when .ops() is called.
     let unfoldNames: string[] = [];
     let selfFieldName: string | null = null;
+    let capturedRawSpec: Record<string, unknown> | null = null;
 
-    // Wrap the user's declaration: validate cospan fold defs, hand everything to behavior().
+    // Wrap the user's declaration: only observer fields in Phase 1.
+    // Cospan projections ([output]/[done]/[accept]) and operations move to .ops().
     const ADT = behavior((params: BehaviorDeclParams) => {
         const rawSpec = declFn(params);
+        capturedRawSpec = rawSpec; // captured for .ops() interceptor
+        selfFieldName = null;
 
-        // ---- Resolve cospan field references ----
-        // Each cospan key is a symbol that maps to a string naming an observer field.
-        // The framework auto-generates the corresponding fold projection.
-        const COSPAN_KEYS = [
-            { sym: output, name: 'output' },
-            { sym: done,   name: 'done' },
-            { sym: accept, name: 'accept' }
-        ] as const;
-        const resolvedCospan: Record<string, unknown> = {};
-
-        for (const { sym, name } of COSPAN_KEYS) {
-            const def = (rawSpec as Record<symbol, unknown>)[sym];
-
-            if (typeof def !== 'string') {
-                throw new Error(
-                    `observer() requires [${name}] to be a string field reference, ` +
-                    `e.g. [${name}]: '${name === 'output' ? 'myField' : 'myBoolField'}'`
-                );
-            }
-
-            const fieldName = def;
-            const fieldSpec = rawSpec[fieldName];
-            if (fieldSpec === undefined) {
-                throw new Error(
-                    `observer(): [${name}]: "${fieldName}" references unknown field '${fieldName}'`
-                );
-            }
-
-            // Derive the out type from the referenced field's type spec.
-            // For a Self ref, out is the behavior itself (not meaningful for done/accept).
-            // For a plain type spec (e.g. Array, Boolean), use it directly.
-            const outType = isSelfRef(fieldSpec) ? Object : fieldSpec;
-
-            // Build the fold def: { [op]: 'fold', [specSym]: { out }, _: handler }
-            resolvedCospan[name] = {
-                [op]: 'fold' as const,
-                [specSym]: { out: outType },
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                _: (obs: Record<string, any>) => obs[fieldName]
-            };
-        }
-
-        // ---- Classify and pass through ----
         const RESERVED = new Set(['explore']);
         const transformed: Record<string | symbol, unknown> = {};
-
-        unfoldNames = [];
-        selfFieldName = null;
 
         for (const [key, value] of Object.entries(rawSpec)) {
             if (RESERVED.has(key)) {
@@ -192,43 +202,99 @@ export function observer<D extends Record<string, unknown>>(
                 );
             }
 
-            // Detect Self continuation
+            // Detect Self continuation (stays in Phase 1 — it's an observer field)
             if (isSelfRef(value)) {
                 selfFieldName = key;
                 transformed[key] = value;
                 continue;
             }
 
-            // Track unfold operations
-            if (isOperationDef(key, value)) {
+            // Standard observer field (non-op)
+            if (!isOperationDef(key, value))
                 transformed[key] = value;
 
-                // Detect unfold ops (they have a generator-like structure)
-                if (isUnfoldDef(value))
-                    unfoldNames.push(key);
-
-                continue;
-            }
-
-            // Standard observer field
-            transformed[key] = value;
+            // Operations are skipped here — they belong in .ops()
         }
 
         // Pass through symbol-keyed entries (e.g. [extend]),
-        // but skip the cospan symbols — they've been resolved into fold defs.
+        // but skip the cospan symbols — they move to .ops().
         const COSPAN_SYMS = new Set<symbol>([output, done, accept]);
         for (const sym of Object.getOwnPropertySymbols(rawSpec)) {
             if (!COSPAN_SYMS.has(sym))
                 transformed[sym] = (rawSpec as Record<symbol, unknown>)[sym];
         }
 
-        // Install resolved cospan fold defs (keyed by string for behavior())
-        for (const { name } of COSPAN_KEYS)
-            transformed[name] = resolvedCospan[name];
-
-
         return transformed as Record<string, unknown>;
     });
+
+    // ---- Intercept .ops() to inject output/done/accept context ----
+    const baseOps = (ADT as Record<string, unknown>).ops as
+        ((fn: (ctx: Record<string, unknown>) => Record<string | symbol, unknown>) => typeof ADT) | undefined;
+
+    const COSPAN_KEYS = [
+        { sym: output, name: 'output' },
+        { sym: done,   name: 'done' },
+        { sym: accept, name: 'accept' }
+    ] as const;
+
+    if (baseOps) {
+        (ADT as Record<string, unknown>).ops = function observerOps(
+            opsFn: (ctx: Record<string, unknown>) => Record<string | symbol, unknown>
+        ) {
+            return baseOps.call(ADT, (baseCtx: Record<string, unknown>) => {
+                // Augment context with cospan symbols
+                const augCtx = { ...baseCtx, output, done, accept };
+                const userOps = opsFn(augCtx) as Record<string | symbol, unknown>;
+
+                // Reject reserved operation names in .ops()
+                const RESERVED = new Set(['explore']);
+                for (const key of Object.keys(userOps)) {
+                    if (RESERVED.has(key)) {
+                        throw new Error(
+                            `observer(): '${key}' is a reserved auto-generated operation and cannot be redefined`
+                        );
+                    }
+                }
+
+                // Build result: copy all string-keyed entries from user ops
+                const result: Record<string, unknown> = {};
+                unfoldNames = [];
+                for (const [key, value] of Object.entries(userOps)) {
+                    result[key] = value;
+                    if (isUnfoldDef(value))
+                        unfoldNames.push(key);
+                }
+
+                // Resolve cospan field references and auto-generate fold defs
+                const rawSpec = capturedRawSpec ?? {};
+                for (const { sym, name } of COSPAN_KEYS) {
+                    const def = userOps[sym];
+                    if (typeof def !== 'string') {
+                        throw new Error(
+                            `observer().ops() requires [${name}] to be a string field reference, ` +
+                            `e.g. [${name}]: '${name === 'output' ? 'myField' : 'myBoolField'}'`
+                        );
+                    }
+                    const fieldName = def;
+                    const fieldSpec = rawSpec[fieldName];
+                    if (fieldSpec === undefined) {
+                        throw new Error(
+                            `observer(): [${name}]: "${fieldName}" references unknown field '${fieldName}'`
+                        );
+                    }
+                    const outType = isSelfRef(fieldSpec) ? Object : fieldSpec;
+                    result[name] = {
+                        [op]: 'fold' as const,
+                        [specSym]: { out: outType },
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        _: (obs: Record<string, any>) => obs[fieldName]
+                    };
+                }
+
+                return result;
+            });
+        };
+    }
 
     // ---- Attach observer-specific methods ----
 
@@ -247,7 +313,8 @@ export function observer<D extends Record<string, unknown>>(
     });
 
     (ADT as unknown as Record<symbol, boolean>)[LapisTypeSymbol] = true;
-    return ADT;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return ADT as any;
 }
 
 // ---- Unfold detection -------------------------------------------------------

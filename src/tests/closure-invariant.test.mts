@@ -1,13 +1,13 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { relation, data, invariant, fold, origin, destination } from '../index.mjs';
+import { relation, data, invariant } from '../index.mjs';
 
 describe('Closure — Invariant Enforcement', () => {
     test('invariant rejects invalid compositions during closure', () => {
         const Ancestor = relation(({ Family }) => ({
             Direct: { from: String, to: String },
-            Transitive: { hop: Family, rest: Family },
-
+            Transitive: { hop: Family, rest: Family }
+        })).ops(({ fold, unfold, map, merge, origin, destination, Family }) => ({
             [origin]: fold({ out: String })({
                 Direct: ({ from }) => from,
                 Transitive: ({ hop }) => hop
@@ -53,8 +53,8 @@ describe('Closure — Invariant Enforcement', () => {
     test('closure with mixed valid/invalid compositions', () => {
         const Reach = relation(({ Family }) => ({
             Step: { from: String, to: String },
-            Chain: { first: Family, rest: Family },
-
+            Chain: { first: Family, rest: Family }
+        })).ops(({ fold, unfold, map, merge, origin, destination, Family }) => ({
             [origin]: fold({ out: String })({
                 Step: ({ from }) => from,
                 Chain: ({ first }) => first

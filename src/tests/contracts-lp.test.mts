@@ -15,9 +15,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-    relation, observer, data,
-    fold, unfold, invariant,
-    origin, destination, output, done, accept,
+    relation, observer, data, invariant,
+    origin, destination,
     DemandsError
 } from '../index.mjs';
 
@@ -33,12 +32,11 @@ describe('Contracts x LP: Demands on Unfold (Early Pruning)', () => {
             value: Number,
             isDone: Boolean,
             isAccepted: Boolean,
-            next: Self,
-
+            next: Self
+        })).ops(({ fold, unfold, map, merge, output, done, accept, Self }) => ({
             [output]: 'value',
             [done]: 'isDone',
             [accept]: 'isAccepted',
-
             Search: unfold({
                 in: Number,
                 out: Self,
@@ -73,13 +71,11 @@ describe('Contracts x LP: Demands on Unfold (Early Pruning)', () => {
             value: Number,
             isDone: Boolean,
             isValid: Boolean,
-            next: Self,
-
+            next: Self
+        })).ops(({ fold, unfold, map, merge, output, done, accept, Self }) => ({
             [output]: 'value',
             [done]: 'isDone',
             [accept]: 'isValid',
-
-            // Unfold with demands: seed must be within valid range
             Walk: unfold({
                 in: Number,
                 out: Self,
@@ -114,8 +110,8 @@ describe('Contracts x LP: Ensures on Closure Results (Integrity Constraints)', (
         // the depth of any derived fact must be positive.
         const Ancestor = relation(({ Family }) => ({
             Direct: { from: String, to: String },
-            Transitive: { hop: Family, rest: Family },
-
+            Transitive: { hop: Family, rest: Family }
+        })).ops(({ fold, unfold, map, merge, origin, destination, Family }) => ({
             [origin]: fold({ out: String })({
                 Direct: ({ from }) => from,
                 Transitive: ({ hop }) => hop
@@ -163,12 +159,11 @@ describe('Contracts x LP: Rescue as Backtracking', () => {
             value: Number,
             isDone: Boolean,
             isAccepted: Boolean,
-            next: Self,
-
+            next: Self
+        })).ops(({ fold, unfold, map, merge, output, done, accept, Self }) => ({
             [output]: 'value',
             [done]: 'isDone',
             [accept]: 'isAccepted',
-
             Gen: unfold({
                 in: Number,
                 out: Self,
@@ -203,12 +198,11 @@ describe('Contracts x LP: Rescue as Backtracking', () => {
             value: Number,
             isDone: Boolean,
             isValid: Boolean,
-            next: Self,
-
+            next: Self
+        })).ops(({ fold, unfold, map, merge, output, done, accept, Self }) => ({
             [output]: 'value',
             [done]: 'isDone',
             [accept]: 'isValid',
-
             Solve: unfold({
                 in: Number,
                 out: Self,
@@ -242,12 +236,11 @@ describe('Contracts x LP: Rescue as Backtracking', () => {
             value: Number,
             isDone: Boolean,
             isAccepted: Boolean,
-            next: Self,
-
+            next: Self
+        })).ops(({ fold, unfold, map, merge, output, done, accept, Self }) => ({
             [output]: 'value',
             [done]: 'isDone',
             [accept]: 'isAccepted',
-
             Walk: unfold({ in: Number, out: Self })({
                 value: (n) => n,
                 isDone: () => false,
@@ -280,12 +273,11 @@ describe('Contracts x LP: Tabling (Cycle Detection in Explore)', () => {
             value: Number,
             isDone: Boolean,
             isAccepted: Boolean,
-            next: Self,
-
+            next: Self
+        })).ops(({ fold, unfold, map, merge, output, done, accept, Self }) => ({
             [output]: 'value',
             [done]: 'isDone',
             [accept]: 'isAccepted',
-
             Walk: unfold({ in: Number, out: Self })({
                 value: (n) => n,
                 isDone: () => false,          // Never done naturally
@@ -306,12 +298,11 @@ describe('Contracts x LP: Tabling (Cycle Detection in Explore)', () => {
             value: Number,
             isDone: Boolean,
             isAccepted: Boolean,
-            next: Self,
-
+            next: Self
+        })).ops(({ fold, unfold, map, merge, output, done, accept, Self }) => ({
             [output]: 'value',
             [done]: 'isDone',
             [accept]: 'isAccepted',
-
             Walk: unfold({ in: Number, out: Self })({
                 value: (n) => n,
                 isDone: () => false,
@@ -336,8 +327,8 @@ describe('Contracts x LP: Invariant as Consistency During Derivation', () => {
     it('join invariant rejects inconsistent compositions during closure', () => {
         const Edge = relation(({ Family }) => ({
             Direct: { from: String, to: String },
-            Path: { first: Family, second: Family },
-
+            Path: { first: Family, second: Family }
+        })).ops(({ fold, unfold, map, merge, origin, destination, Family }) => ({
             [origin]: fold({ out: String })({
                 Direct: ({ from }) => from,
                 Path: ({ first }) => first
@@ -355,7 +346,7 @@ describe('Contracts x LP: Invariant as Consistency During Derivation', () => {
         ];
 
         const closed = Edge.closure(facts);
-        const pairs = closed.map(f => `${f.origin}->${f.destination}`);
+        const pairs = closed.map(f => `${f[origin]}->${f[destination]}`);
 
         // Only base facts survive — no transitive facts derivable
         assert.strictEqual(closed.length, 2);
@@ -368,12 +359,12 @@ describe('Contracts x LP: Invariant as Consistency During Derivation', () => {
         // Relation where base facts have a user invariant (no self-loops)
         const Edge = relation(({ Family }) => ({
             Direct: {
-                [invariant]: ({ from, to }) => from !== to,
+                [invariant]: ({ from, to }: { from: string; to: string }) => from !== to,
                 from: String,
                 to: String
             },
-            Path: { first: Family, second: Family },
-
+            Path: { first: Family, second: Family }
+        })).ops(({ fold, unfold, map, merge, origin, destination, Family }) => ({
             [origin]: fold({ out: String })({
                 Direct: ({ from }) => from,
                 Path: ({ first }) => first

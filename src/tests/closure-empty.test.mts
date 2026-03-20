@@ -1,12 +1,12 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { relation, data, fold, origin, destination } from '../index.mjs';
+import { relation, data } from '../index.mjs';
 
 describe('Closure — Empty and Single Fact Edge Cases', () => {
     const Ancestor = relation(({ Family }) => ({
         Direct: { from: String, to: String },
-        Transitive: { hop: Family, rest: Family },
-
+        Transitive: { hop: Family, rest: Family }
+    })).ops(({ fold, unfold, map, merge, origin, destination, Family }) => ({
         [origin]: fold({ out: String })({
             Direct: ({ from }) => from,
             Transitive: ({ hop }) => hop
@@ -51,7 +51,7 @@ describe('Closure — Singleton Variants', () => {
         }));
 
         // data() no longer has closure — verify it's absent
-        assert.strictEqual(typeof BoolList.closure, 'undefined',
+        assert.strictEqual(typeof (BoolList as any).closure, 'undefined',
             'closure should not exist on plain data types');
     });
 });

@@ -11,23 +11,24 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { behavior, unfold, DemandsError } from '../index.mjs';
+import { behavior, DemandsError } from '../index.mjs';
 import { IORequest } from '../lib/io/request.mjs';
 import { IOResponse } from '../lib/io/response.mjs';
 
 describe('Contracts on Main behavior', () => {
     describe('demands on unfold constructor', () => {
 
-        const App: any = behavior(({ Self }: { Self: any }) => ({
+        const App: any = behavior(({ Self }) => ({
             request: IORequest,
-            respond: { in: IOResponse, out: Self },
-
+            respond: { in: IOResponse, out: Self }
+        })).ops(({ fold, unfold, map, merge, Self }) => ({
             Start: unfold({
                 in: { args: Array },
                 out: Self,
                 demands: (_self: unknown, seed: { args: unknown[] }) =>
                     Array.isArray(seed.args) && seed.args.length > 0
-            })({
+            })({  
+                // @ts-expect-error — variant instance not structurally assignable to DataInstance<D>
                 request: ({ args }: { args: unknown[] }) =>
                     IORequest.Write({ message: args[0] as string }),
                 respond: () => () => ({ args: ['done'] })
@@ -49,11 +50,12 @@ describe('Contracts on Main behavior', () => {
 
     describe('request observer returns valid IORequest', () => {
 
-        const App: any = behavior(({ Self }: { Self: any }) => ({
+        const App: any = behavior(({ Self }) => ({
             request: IORequest,
-            respond: { in: IOResponse, out: Self },
-
+            respond: { in: IOResponse, out: Self }
+        })).ops(({ fold, unfold, map, merge, Self }) => ({
             Start: unfold({ in: { phase: String }, out: Self })({
+                // @ts-expect-error — variant instance not structurally assignable to DataInstance<D>
                 request: ({ phase }: { phase: string }) =>
                     phase === 'write'
                         ? IORequest.Write({ message: 'test' })
@@ -78,11 +80,12 @@ describe('Contracts on Main behavior', () => {
 
     describe('respond continuation validates through usage', () => {
 
-        const App: any = behavior(({ Self }: { Self: any }) => ({
+        const App: any = behavior(({ Self }) => ({
             request: IORequest,
-            respond: { in: IOResponse, out: Self },
-
+            respond: { in: IOResponse, out: Self }
+        })).ops(({ fold, unfold, map, merge, Self }) => ({
             Start: unfold({ in: { step: Number }, out: Self })({
+                // @ts-expect-error — variant instance not structurally assignable to DataInstance<D>
                 request: ({ step }: { step: number }) =>
                     step === 0
                         ? IORequest.Write({ message: 'step 0' })

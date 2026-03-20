@@ -9,6 +9,31 @@
 // Import IsSingleton from Data.mjs to avoid symbol mismatch
 import { IsSingleton } from './Data.mjs';
 
+// ---- Symbol-access helpers --------------------------------------------------
+// Consolidate the double-cast pattern `(obj as unknown as Record<symbol, T>)[sym]`
+// into type-safe helpers that contain the unsafe cast in one place.
+
+/** Read a symbol-keyed property from an object. */
+export function getSymbolProp<T = unknown>(obj: unknown, sym: symbol): T {
+    if (obj == null || (typeof obj !== 'object' && typeof obj !== 'function')) 
+        throw new TypeError(`Cannot read symbol property from ${obj}`);
+    
+    return (obj as Record<symbol, unknown>)[sym] as T;
+}
+
+/** Write a symbol-keyed property on an object. */
+export function setSymbolProp(obj: unknown, sym: symbol, value: unknown): void {
+    if (obj == null || (typeof obj !== 'object' && typeof obj !== 'function')) 
+        throw new TypeError(`Cannot write symbol property to ${obj}`);
+    
+    (obj as Record<symbol, unknown>)[sym] = value;
+}
+
+/** Check if an object has a specific symbol-keyed property. */
+export function hasSymbolProp(obj: unknown, sym: symbol): boolean {
+    return obj != null && (typeof obj === 'object' || typeof obj === 'function') && sym in obj;
+}
+
 // Symbols for parameterized ADT/Behavior instances
 export const IsParameterizedInstance: unique symbol = Symbol('IsParameterizedInstance');
 export type IsParameterizedInstance = typeof IsParameterizedInstance;
@@ -136,6 +161,41 @@ export function omitSymbol<T extends object>(obj: T, symbol: symbol): Omit<T, sy
 
     }
     return result as Omit<T, symbol>;
+}
+
+// ---- Map helpers ------------------------------------------------------------
+
+/** Ensure a symbol-keyed slot on `target` holds a Map, creating it if absent. */
+export function ensureOwnMap<K, V>(target: Record<symbol, unknown>, symbol: symbol): Map<K, V> {
+    const existing = target[symbol];
+    if (existing !== undefined) {
+        if (!(existing instanceof Map)) {
+            throw new TypeError(
+                `Expected symbol slot to contain a Map, but found ${typeof existing}`
+            );
+        }
+        return existing as Map<K, V>;
+    }
+    const newMap = new Map<K, V>();
+    target[symbol] = newMap;
+    return newMap;
+}
+
+// ---- Operation installation helpers -----------------------------------------
+
+/** Install a getter property on `target` with the standard enumerable, configurable descriptor. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function installGetter(target: object, name: string | symbol, fn: (...args: any[]) => unknown): void {
+    Object.defineProperty(target, name, { get: fn, enumerable: true, configurable: true });
+}
+
+/** Install an operation on `target`: as a getter (no-arg) when `isGetter` is true, else as a method. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function installOperation(target: object, name: string | symbol, fn: (...args: any[]) => unknown, isGetter: boolean): void {
+    if (isGetter)
+        installGetter(target, name, fn);
+    else
+        (target as Record<string | symbol, unknown>)[name] = fn;
 }
 
 // ---- Function helpers --------------------------------------------------------

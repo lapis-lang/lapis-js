@@ -1,13 +1,14 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { behavior, fold, unfold, extend, DemandsError, EnsuresError } from '../index.mjs';
+import { behavior, extend, DemandsError, EnsuresError } from '../index.mjs';
 
 describe('Contracts: Behavior', () => {
     describe('Behavior unfold contracts', () => {
         it('should check demands on behavior unfold seed', () => {
             const Stream = behavior(({ Self }) => ({
                 head: Number,
-                tail: Self,
+                tail: Self
+            })).ops(({ fold, unfold, map, merge, Self }) => ({
                 From: unfold({
                     in: Number,
                     out: Self,
@@ -35,7 +36,8 @@ describe('Contracts: Behavior', () => {
         it('should check demands on behavior fold', () => {
             const Stream = behavior(({ Self }) => ({
                 head: Number,
-                tail: Self,
+                tail: Self
+            })).ops(({ fold, unfold, map, merge, Self }) => ({
                 From: unfold({ in: Number, out: Self })({
                     head: (n) => n,
                     tail: (n) => n + 1
@@ -64,7 +66,8 @@ describe('Contracts: Behavior', () => {
         it('should check ensures on behavior fold result', () => {
             const Stream = behavior(({ Self }) => ({
                 head: Number,
-                tail: Self,
+                tail: Self
+            })).ops(({ fold, unfold, map, merge, Self }) => ({
                 From: unfold({ in: Number, out: Self })({
                     head: (n) => n,
                     tail: (n) => n + 1
@@ -87,7 +90,8 @@ describe('Contracts: Behavior', () => {
 
             const Stream = behavior(({ Self }) => ({
                 head: Number,
-                tail: Self,
+                tail: Self
+            })).ops(({ fold, unfold, map, merge, Self }) => ({
                 From: unfold({ in: Number, out: Self })({
                     head: (n) => n,
                     tail: (n) => n + 1
@@ -120,7 +124,8 @@ describe('Contracts: Behavior', () => {
 
             const Stream = behavior(({ Self }) => ({
                 head: Number,
-                tail: Self,
+                tail: Self
+            })).ops(({ fold, unfold, map, merge, Self }) => ({
                 From: unfold({
                     in: Number,
                     out: Self,
@@ -151,7 +156,8 @@ describe('Contracts: Behavior', () => {
 
             const Stream = behavior(({ Self }) => ({
                 head: Number,
-                tail: Self,
+                tail: Self
+            })).ops(({ fold, unfold, map, merge, Self }) => ({
                 From: unfold({
                     in: Number,
                     out: Self,
@@ -177,7 +183,8 @@ describe('Contracts: Behavior', () => {
 
             const Stream = behavior(({ Self }) => ({
                 head: Number,
-                tail: Self,
+                tail: Self
+            })).ops(({ fold, unfold, map, merge, Self }) => ({
                 From: unfold({
                     in: Number,
                     out: Self,
@@ -202,7 +209,8 @@ describe('Contracts: Behavior', () => {
 
             const Stream = behavior(({ Self }) => ({
                 head: Number,
-                tail: Self,
+                tail: Self
+            })).ops(({ fold, unfold, map, merge, Self }) => ({
                 From: unfold({
                     in: Number,
                     out: Self,
@@ -229,7 +237,8 @@ describe('Contracts: Behavior', () => {
 
             const Stream = behavior(({ Self }) => ({
                 head: Number,
-                tail: Self,
+                tail: Self
+            })).ops(({ fold, unfold, map, merge, Self }) => ({
                 From: unfold({
                     in: Number,
                     out: Self,
@@ -254,7 +263,8 @@ describe('Contracts: Behavior', () => {
         it('should inherit parent demands when child has none', () => {
             const Stream = behavior(({ Self }) => ({
                 head: Number,
-                tail: Self,
+                tail: Self
+            })).ops(({ fold, unfold, map, merge, Self }) => ({
                 From: unfold({ in: Number, out: Self })({
                     head: (n) => n,
                     tail: (n) => n + 1
@@ -272,7 +282,8 @@ describe('Contracts: Behavior', () => {
             const ChildStream = behavior(({ Self }) => ({
                 [extend]: Stream,
                 head: Number,
-                tail: Self,
+                tail: Self
+            })).ops(({ fold, unfold, map, merge, Self }) => ({
                 take: fold({ in: Number, out: Array })({
                     _: ({ head, tail }, n) => n > 0 ? [head, ...tail(n - 1)] : []
                 })
@@ -293,7 +304,8 @@ describe('Contracts: Behavior', () => {
         it('should OR parent and child demands (weakening)', () => {
             const Stream = behavior(({ Self }) => ({
                 head: Number,
-                tail: Self,
+                tail: Self
+            })).ops(({ fold, unfold, map, merge, Self }) => ({
                 From: unfold({ in: Number, out: Self })({
                     head: (n) => n,
                     tail: (n) => n + 1
@@ -311,7 +323,8 @@ describe('Contracts: Behavior', () => {
             const ChildStream = behavior(({ Self }) => ({
                 [extend]: Stream,
                 head: Number,
-                tail: Self,
+                tail: Self
+            })).ops(({ fold, unfold, map, merge, Self }) => ({
                 take: fold({
                     in: Number,
                     out: Array,
@@ -330,7 +343,8 @@ describe('Contracts: Behavior', () => {
         it('should AND parent and child ensures (strengthening)', () => {
             const Stream = behavior(({ Self }) => ({
                 head: Number,
-                tail: Self,
+                tail: Self
+            })).ops(({ fold, unfold, map, merge, Self }) => ({
                 From: unfold({ in: Number, out: Self })({
                     head: (n) => n,
                     tail: (n) => n + 1
@@ -348,7 +362,8 @@ describe('Contracts: Behavior', () => {
             const ChildStream = behavior(({ Self }) => ({
                 [extend]: Stream,
                 head: Number,
-                tail: Self,
+                tail: Self
+            })).ops(({ fold, unfold, map, merge, Self }) => ({
                 take: fold({
                     in: Number,
                     out: Array,
@@ -368,7 +383,8 @@ describe('Contracts: Behavior', () => {
 
             const Stream = behavior(({ Self }) => ({
                 head: Number,
-                tail: Self,
+                tail: Self
+            })).ops(({ fold, unfold, map, merge, Self }) => ({
                 From: unfold({ in: Number, out: Self })({
                     head: (n) => n,
                     tail: (n) => n + 1
@@ -392,7 +408,8 @@ describe('Contracts: Behavior', () => {
             const ChildStream = behavior(({ Self }) => ({
                 [extend]: Stream,
                 head: Number,
-                tail: Self,
+                tail: Self
+            })).ops(({ fold, unfold, map, merge, Self }) => ({
                 risky: fold({ in: Number, out: Array })({
                     _: (_ctx, n) => {
                         if (n < 0) throw new Error('still negative');

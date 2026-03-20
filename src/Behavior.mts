@@ -10,7 +10,9 @@ import {
     callable,
     isObjectLiteral,
     isConstructable,
-    hasInputSpec
+    hasInputSpec,
+    ensureOwnMap,
+    installGetter
 } from './utils.mjs';
 
 import {
@@ -34,12 +36,13 @@ import {
     resolveContracts,
     checkDemands,
     checkEnsures,
-    executeRescue,
-    DemandsError,
+    tryRescue,
     type ContractSpec
 } from './contracts.mjs';
 
-import type { BehaviorADTWithParams, BehaviorDeclParams } from './types.mjs';
+import type { BehaviorADT, BehaviorADTWithParams, BehaviorDeclParams, ObserverInputValue, SpecValue, SelfRef } from './types.mjs';
+import type { UnfoldDef, ContractCallbacks } from './ops.mjs';
+import { fold as foldOp, unfold as unfoldOp, map as mapOp, merge as mergeOp } from './ops.mjs';
 
 // ---- Internal symbols -------------------------------------------------------
 
@@ -127,12 +130,30 @@ const behaviorInstanceState = new WeakMap<object, BehaviorInstanceState>();
 
 // ---- Self reference ---------------------------------------------------------
 
-function createSelf(): { [SelfRefSymbol]: true; (typeParam?: unknown): unknown } {
+function createSelf(behaviorType?: BehaviorTypeLike): { [SelfRefSymbol]: true; (typeParam?: unknown): unknown } {
     const fn = function (_typeParam?: unknown): unknown {
         return fn;
     };
     (fn as unknown as Record<symbol, boolean>)[SelfRefSymbol] = true;
-    return fn as unknown as { [SelfRefSymbol]: true; (typeParam?: unknown): unknown };
+
+    if (!behaviorType) return fn as unknown as { [SelfRefSymbol]: true; (typeParam?: unknown): unknown };
+
+    // Return a Proxy that delegates property access to the BehaviorType.
+    // Handlers capture Self in closures during .ops(), but aren't called until
+    // the behavior instance is observed — by which time constructors are registered.
+    return new Proxy(fn, {
+        get(target, prop, receiver) {
+            if (prop === SelfRefSymbol) return true;
+            if (prop in (behaviorType as Record<string | symbol, unknown>))
+                return (behaviorType as Record<string | symbol, unknown>)[prop];
+            return Reflect.get(target, prop, receiver);
+        },
+        has(target, prop) {
+            if (prop === SelfRefSymbol) return true;
+            if (prop in (behaviorType as Record<string | symbol, unknown>)) return true;
+            return Reflect.has(target, prop);
+        }
+    }) as unknown as { [SelfRefSymbol]: true; (typeParam?: unknown): unknown };
 }
 
 // ---- Observer spec predicates -----------------------------------------------
@@ -151,15 +172,17 @@ function specsCompatible(a: unknown, b: unknown): boolean {
     return a === b;
 }
 
-function ensureOwnMap<K, V>(
-    target: Record<symbol, unknown>,
-    symbol: symbol
-): Map<K, V> {
-    if (!Object.hasOwn(target, symbol)) target[symbol] = new Map<K, V>();
-    return target[symbol] as Map<K, V>;
-}
-
 // ---- Main entry point -------------------------------------------------------
+
+/**
+ * The intermediate structure returned by behavior() before .ops() is called.
+ * Includes the behavior type plus the two-phase .ops() method.
+ */
+export type BehaviorStructure<D> = BehaviorADTWithParams<D> & {
+    ops<O extends Record<string, unknown>>(
+        opsFn: (ctx: BehaviorOpsContext<D>) => O
+    ): BehaviorADTWithParams<D & O>;
+};
 
 /**
  * Defines a new behavior type with the given observers.
@@ -167,7 +190,7 @@ function ensureOwnMap<K, V>(
  */
 export function behavior<D extends Record<string, unknown>>(
     declFn: (params: BehaviorDeclParams) => D
-): BehaviorADTWithParams<D> {
+): BehaviorStructure<D> {
     if (typeof declFn !== 'function') {
         throw new TypeError(
             'behavior() requires a callback function: behavior(({ Self, T }) => ({ observers }))'
@@ -337,6 +360,10 @@ export function behavior<D extends Record<string, unknown>>(
 
     behaviorObservers.set(callableBehavior as unknown as object, observerMap as unknown as Map<string, Observer>);
 
+    // Store parent behavior reference for .ops() contract inheritance
+    if (parentBehaviorType)
+        (callableBehavior as unknown as Record<symbol, unknown>)[Symbol.for('__lapisParentBehavior__')] = parentBehaviorType;
+
     // LSP Enforcement: validate spec invariance for overridden unfolds
     if (parentBehaviorType) {
         const parentUnfoldOpsForCheck =
@@ -475,6 +502,8 @@ export function behavior<D extends Record<string, unknown>>(
         }
     }
 
+    // (paramParent ops are inherited via prototype chain for parameterized specializations)
+
     // Validate that every fold with aux references names a known fold operation.
     // This runs after all folds (own + inherited) are registered.
     const allFoldOps = (callableBehavior as unknown as Record<symbol, unknown>)[FoldOpsSymbol] as
@@ -495,7 +524,203 @@ export function behavior<D extends Record<string, unknown>>(
     }
 
     (callableBehavior as unknown as Record<symbol, boolean>)[LapisTypeSymbol] = true;
-    return callableBehavior as unknown as BehaviorADTWithParams<D>;
+
+    // Attach .ops() method for two-phase declarations
+    const opsTypeParamObjects: Record<string, { [TypeParamSymbol]: string }> = {};
+    for (const paramName of typeParamNames)
+        opsTypeParamObjects[paramName] = { [TypeParamSymbol]: paramName };
+    attachBehaviorOpsMethod<D>(callableBehavior, observerMap, opsTypeParamObjects);
+
+    return callableBehavior as unknown as BehaviorStructure<D>;
+}
+
+// ---- D-aware operation types for .ops() context -----------------------------
+
+/**
+ * Resolve a single observer spec to its unfold handler return type.
+ * Uses `unknown` for continuations (SelfRef) since unfold handlers return
+ * seeds for the next instance, not full behavior instances.
+ */
+type UnfoldObserverValue<Spec> =
+    Spec extends SelfRef ? unknown :
+        Spec extends { in: infer In; out: infer Out }
+            ? (input: ObserverInputValue<In, unknown>) => SpecValue<Out, unknown>
+            : Spec extends { out: infer Out }
+                ? SpecValue<Out, unknown>
+                : SpecValue<Spec, unknown>;
+
+/**
+ * String keys of D that are NOT operation definitions (no [op] symbol key).
+ */
+type NonOpKeys<D> = {
+    [K in keyof D & string]: (typeof op) extends keyof D[K] ? never : K
+}[keyof D & string];
+
+/**
+ * Extract the parent declaration P from D's [extend] property.
+ */
+type ParentBehaviorDecl<D> =
+    (typeof extend) extends keyof D
+        ? D[typeof extend] extends BehaviorADT<infer P> ? P : never
+        : never;
+
+/**
+ * All observer-only string keys from D and its parent [extend] chain.
+ * Filters out operation entries (those carrying [op]) at each level.
+ */
+type AllObserverKeys<D> =
+    | NonOpKeys<D>
+    | (ParentBehaviorDecl<D> extends never ? never : AllObserverKeys<ParentBehaviorDecl<D>>);
+
+/**
+ * Resolve the expected return type of an unfold handler for key K.
+ * Own keys (in D) use UnfoldObserverValue for safe resolution.
+ * Inherited keys walk the [extend] chain to find the original observer spec.
+ */
+type UnfoldHandlerReturn<D, K extends string> =
+    K extends keyof D ? UnfoldObserverValue<D[K]>
+        : ParentBehaviorDecl<D> extends never ? unknown
+            : UnfoldHandlerReturn<ParentBehaviorDecl<D>, K>;
+
+/**
+ * Maps behavior observer keys to unfold handler functions with inferred types.
+ * Each handler's return type is resolved from the observer declaration.
+ * When the unfold spec has `in: In`, handlers receive a seed argument.
+ */
+type BehaviorUnfoldHandlers<D, S> = {
+    [K in AllObserverKeys<D>]: S extends { in: infer In }
+        ? (seed: ObserverInputValue<In, never>) => UnfoldHandlerReturn<D, K & string>
+        : () => UnfoldHandlerReturn<D, K & string>
+};
+
+/**
+ * D-aware unfold: threads the behavior's observer declarations D into handler
+ * types so parameters and return types are inferred from the observer specs.
+ */
+type BehaviorUnfoldFn<D> = <S extends Record<string | symbol, unknown>>(s: S & ContractCallbacks) =>
+(handlers: BehaviorUnfoldHandlers<D, S>) => UnfoldDef<S, BehaviorUnfoldHandlers<D, S>>;
+
+// ---- Ops context type -------------------------------------------------------
+
+type BehaviorOpsContext<D> = {
+    fold: typeof foldOp;
+    unfold: BehaviorUnfoldFn<D>;
+    map: typeof mapOp;
+    merge: typeof mergeOp;
+    Self: { [SelfRefSymbol]: true; (typeParam?: unknown): unknown; [key: string]: (...args: unknown[]) => unknown };
+    [key: string]: unknown;
+};
+
+/**
+ * Attach the `.ops()` method onto a callable behavior object.
+ * 
+ * @template D - The declaration type (observer specs map)
+ */
+function attachBehaviorOpsMethod<D extends Record<string, unknown>>(
+    BehaviorType: BehaviorTypeLike,
+    observerMap: Map<string, ObserverEntry>,
+    typeParamObjects: Record<string, { [TypeParamSymbol]: string }> = {}
+): void {
+    (BehaviorType as BehaviorStructure<D>).ops = function behaviorOps<O extends Record<string, unknown>>(
+        opsFn: (ctx: BehaviorOpsContext<D>) => O
+    ): BehaviorADTWithParams<D & O> {
+        const ctx = {
+            fold: foldOp,
+            unfold: unfoldOp as BehaviorUnfoldFn<D>,
+            map: mapOp,
+            merge: mergeOp,
+            Self: createSelf(BehaviorType)
+        } as BehaviorOpsContext<D>;
+
+        // Forward type param markers passed explicitly from the behavior() closure
+        for (const [key, value] of Object.entries(typeParamObjects))
+            (ctx as Record<string, unknown>)[key] = value;
+
+        const opsObj = opsFn(ctx);
+        const parentBT = (BehaviorType as Record<symbol, unknown>)[
+            Symbol.for('__lapisParentBehavior__')
+        ] as BehaviorTypeLike | undefined ?? null;
+
+        // Register operations from the ops callback
+        for (const [entryName, entrySpec] of Object.entries(opsObj)) {
+            if (!entrySpec || typeof entrySpec !== 'object') continue;
+            const opKind = (entrySpec as Record<symbol, string>)[op as unknown as symbol];
+            if (opKind === 'unfold') {
+                const {
+                    [op as unknown as string]: _op,
+                    [spec as unknown as string]: opSpec,
+                    ...handlers
+                } = entrySpec as Record<string, unknown>;
+                const parentUnfoldOps = (BehaviorType as Record<symbol, unknown>)[UnfoldOpsSymbol] as
+                    Map<string, UnfoldOpEntry> | undefined;
+                const parentEntry = parentUnfoldOps?.get(entryName);
+                if (parentEntry) {
+                    const childOpSpec = opSpec as Record<string, unknown> ?? {},
+                        parentOpSpec = parentEntry.spec,
+                        parentHasIn = 'in' in parentOpSpec,
+                        childHasIn = 'in' in childOpSpec,
+                        childHasOut = 'out' in childOpSpec,
+                        parentHasOut = 'out' in parentOpSpec;
+                    if (!parentHasIn && childHasIn)
+                        throw new Error(`Cannot change unfold '${entryName}' from parameterless to parameterized when overriding`);
+                    if (childHasIn && parentHasIn && !specsCompatible(childOpSpec['in'], parentOpSpec['in']))
+                        throw new Error(`Cannot change unfold '${entryName}' input specification when overriding`);
+                    if (childHasOut && parentHasOut && !specsCompatible(childOpSpec['out'], parentOpSpec['out']))
+                        throw new Error(`Cannot change unfold '${entryName}' output specification when overriding`);
+                }
+                const mergedSpec = parentEntry
+                    ? { ...parentEntry.spec, ...(opSpec as Record<string, unknown> ?? {}) }
+                    : opSpec as Record<string, unknown>;
+                addUnfoldOperation(
+                    BehaviorType, observerMap, entryName,
+                    mergedSpec, handlers as Record<string, AnyFn>
+                );
+            } else if (opKind === 'fold') {
+                const {
+                    [op as unknown as string]: _op,
+                    [spec as unknown as string]: opSpec = {},
+                    _: handler
+                } = entrySpec as Record<string, unknown>;
+                addFoldOperation(
+                    BehaviorType, observerMap, entryName,
+                    opSpec as Record<string, unknown>,
+                    handler as AnyFn,
+                    parentBT
+                );
+            } else if (opKind === 'map') {
+                const { [op as unknown as string]: _op, ...transforms } = entrySpec as Record<string, unknown>;
+                addMapOperation(BehaviorType, observerMap, entryName, transforms as Record<string, AnyFn>);
+            } else if (opKind === 'merge') {
+                const {
+                    [op as unknown as string]: _op,
+                    [operations as unknown as string]: operationsList
+                } = entrySpec as Record<string, unknown>;
+                addMergeOperation(
+                    BehaviorType, observerMap, entryName, operationsList as string[]
+                );
+            }
+        }
+
+        // Validate aux references after all ops from .ops() are registered
+        const allFoldOps = (BehaviorType as unknown as Record<symbol, unknown>)[FoldOpsSymbol] as
+            Map<string, FoldOpEntry> | undefined;
+        if (allFoldOps) {
+            for (const [foldName, entry] of allFoldOps) {
+                if (entry.auxNames) {
+                    for (const auxName of entry.auxNames) {
+                        if (!allFoldOps.has(auxName)) {
+                            throw new Error(
+                                `Fold operation '${foldName}' references auxiliary fold '${auxName}' via 'aux', ` +
+                                `but no fold named '${auxName}' exists on this behavior type`
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        return BehaviorType as BehaviorADTWithParams<D & O>;
+    };
 }
 
 // ---- Unfold operation -------------------------------------------------------
@@ -588,20 +813,8 @@ function addUnfoldOperation(
 
             return result;
         } catch (error) {
-            if (unfoldContracts!.rescue && !(error instanceof DemandsError)) {
-                const { result: rescueResult } = executeRescue(
-                    unfoldContracts!.rescue,
-                    null,
-                    error,
-                    args,
-                    retryBody,
-                    name,
-                    'unfold'
-                );
-
-                return rescueResult;
-            }
-
+            const rescued = tryRescue(unfoldContracts, error, null, args, retryBody, name, 'unfold');
+            if (rescued !== null) return rescued.result;
             throw error;
         }
     };
@@ -619,17 +832,13 @@ function addUnfoldOperation(
             return makeInstance(seed);
         };
     } else {
-        Object.defineProperty(BehaviorType, name, {
-            get() {
-                if (unfoldContracts) {
-                    return checkedUnfold(undefined, [],
-                        () => BehaviorType[name] as unknown);
-                }
+        installGetter(BehaviorType as unknown as object, name, function() {
+            if (unfoldContracts) {
+                return checkedUnfold(undefined, [],
+                    () => BehaviorType[name] as unknown);
+            }
 
-                return makeInstance(undefined);
-            },
-            enumerable: true,
-            configurable: true
+            return makeInstance(undefined);
         });
     }
 
@@ -799,24 +1008,14 @@ function executeFold(
             return result;
         } catch (error) {
             // 3. Rescue
-            if (contracts.rescue && !(error instanceof DemandsError)) {
-                const { result: rescueResult } = executeRescue(
-                    contracts.rescue,
-                    proxyInstance,
-                    error,
-                    params,
-                    (...newArgs: unknown[]) => executeFold(
-                        proxyInstance, observerMap, handler, newArgs,
-                        isHisto, auxNames, auxIsArray, BehaviorType,
-                        contracts, opName
-                    ),
-                    opName,
-                    'behavior'
-                );
-
-                return rescueResult;
-            }
-
+            const rescued = tryRescue(contracts, error, proxyInstance, params,
+                (...newArgs: unknown[]) => executeFold(
+                    proxyInstance, observerMap, handler, newArgs,
+                    isHisto, auxNames, auxIsArray, BehaviorType,
+                    contracts, opName
+                ),
+                opName, 'behavior');
+            if (rescued !== null) return rescued.result;
             throw error;
         }
     }
@@ -1216,12 +1415,8 @@ function addMergeOperation(
                 return maybeFold(buildInstance(seed), observerMap, foldOp ?? null, rest, BehaviorType);
             };
         } else {
-            Object.defineProperty(BehaviorType, name, {
-                get() {
-                    return maybeFold(buildInstance(undefined), observerMap, foldOp ?? null, [], BehaviorType);
-                },
-                enumerable: true,
-                configurable: true
+            installGetter(BehaviorType as unknown as object, name, function() {
+                return maybeFold(buildInstance(undefined), observerMap, foldOp ?? null, [], BehaviorType);
             });
         }
     } else {

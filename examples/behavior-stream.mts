@@ -5,15 +5,16 @@
  * showcasing lazy evaluation, infinite structures, and observer-based programming.
  */
 
-import { behavior , unfold } from '../src/index.mjs';
+import { behavior } from '../src/index.mjs';
 
 // =============================================================================
 // Example 1: Basic Stream with Simple Observers and Continuations
 // =============================================================================
 
 const Stream = behavior(({ Self, T }) => ({
-        head: T,           // Simple observer: returns current value
-        tail: Self(T),     // Continuation: returns next stream
+        head: T,
+        tail: Self(T)
+    })).ops(({ unfold, Self, T }) => ({
         From: unfold({ in: Number, out: Self })({
             head: (n) => n,
             tail: (n) => n + 1
@@ -57,7 +58,8 @@ console.log('range.tail.head:', range.tail.head);  // 6
 const StreamWithNth = behavior(({ Self, T }) => ({
         head: T,
         tail: Self(T),
-        nth: { in: Number, out: T },  // Parametric observer
+        nth: { in: Number, out: T }
+    })).ops(({ unfold, Self }) => ({
         From: unfold({ in: Number, out: Self })({
             head: (n) => n,
             tail: (n) => n + 1,
@@ -80,7 +82,8 @@ console.log('numsWithNth.nth(100):', numsWithNth.nth(100)); // 100
 
 const FibStream = behavior(({ Self }) => ({
     head: Number,
-    tail: Self,
+    tail: Self
+})).ops(({ unfold, Self }) => ({
     Create: unfold({ in: { a: Number, b: Number }, out: Self })({
         head: ({ a }) => a,
         tail: ({ a, b }) => ({ a: b, b: a + b })
@@ -103,7 +106,8 @@ console.log('fib[4]:', fib.tail.tail.tail.tail.head); // 3
 const Tree = behavior(({ Self }) => ({
     value: Number,
     left: Self,
-    right: Self,
+    right: Self
+})).ops(({ unfold, Self }) => ({
     Create: unfold({ in: Number, out: Self })({
         value: (n) => n,
         left: (n) => n * 2,
@@ -130,7 +134,8 @@ console.log('\n=== Lazy Evaluation and Memoization ===');
 
 const LazyStream = behavior(({ Self }) => ({
         head: Number,
-        tail: Self,
+        tail: Self
+    })).ops(({ unfold, Self }) => ({
         Create: unfold({ in: Number, out: Self })({
             head: (n) => {
                 console.log(`  Computing head for seed ${n}`);
@@ -166,10 +171,11 @@ console.log('  tail1 === tail2:', tail1 === tail2);  // true (memoized)
 
 const Console = behavior(() => ({
     log: { in: String, out: undefined },
-    read: { out: String },
+    read: { out: String }
+})).ops(({ unfold }) => ({
     Create: unfold({})({
         log: () => (msg) => { console.log(`  [Console.log] ${msg}`); },
-        read: () => () => 'simulated input'
+        read: () => 'simulated input'
     })
 }));
 
@@ -178,8 +184,7 @@ console.log('\n=== Effect-like Behavior (Console) ===');
 const io = Console.Create;
 io.log('Hello, world!');
 io.log('This demonstrates effect-like behavior');
-// @ts-expect-error -- intentional type violation for test
-const input = io.read();
+const input = io.read;
 console.log(`  [Console.read] Got: "${input}"`);
 
 // =============================================================================
@@ -188,7 +193,8 @@ console.log(`  [Console.read] Got: "${input}"`);
 
 const PowerStream = behavior(({ Self }) => ({
     head: Number,
-    tail: Self,
+    tail: Self
+})).ops(({ unfold, Self }) => ({
     Create: unfold({ in: { base: Number, exp: Number }, out: Self })({
         head: ({ base, exp }) => Math.pow(base, exp),
         tail: ({ base, exp }) => ({ base, exp: exp + 1 })

@@ -1,93 +1,74 @@
 #!/usr/bin/env node
 
-import { data, observer, fold, unfold, output, done, accept } from '@lapis-lang/lapis-js';
+import { data, observer } from '@lapis-lang/lapis-js';
 
 // SearchState ::= Active(target, adj, workList)
 //               | Found(target, adj, foundPath, workList)
 //               | Exhausted
 
-const SearchState: any = data(() => {
-    /** DFS: process workList to next Found or Exhausted. */
-    function resolve(
-        target: string,
-        adj: Record<string, string[]>,
-        workList: { node: string; path: string[] }[]
-    ) {
-        const wl = [...workList];
-        while (wl.length > 0) {
+const SearchState: any = data(() => ({
+    Active:    { target: String, adj: Object, workList: Array },
+    Found:     { target: String, adj: Object, foundPath: Array, workList: Array },
+    Exhausted: {}
+})).ops(({ fold }) => ({
+    path: fold({ out: Array })({
+        Active()             { return []; },
+        Found({ foundPath }) { return foundPath as string[]; },
+        Exhausted()          { return []; }
+    }),
+
+    isFound: fold({ out: Boolean })({
+        Active()    { return false; },
+        Found()     { return true; },
+        Exhausted() { return false; }
+    }),
+
+    isExhausted: fold({ out: Boolean })({
+        Active()    { return false; },
+        Found()     { return false; },
+        Exhausted() { return true; }
+    }),
+
+    /** One DFS step: pop one item, check, expand.  The observer loop drives iteration. */
+    step: fold({ out: Object })({
+        Active({ target, adj, workList }) {
+            const wl = [...(workList as { node: string; path: string[] }[])];
+            if (wl.length === 0) return SearchState.Exhausted;
             const item = wl.pop()!;
-            if (item.node === target) {
-                return SearchState.Found({
-                    target, adj, foundPath: item.path, workList: wl
-                });
-            }
-            const visited = new Set(item.path);
-            for (const n of (adj[item.node] ?? []).filter((x: string) => !visited.has(x)))
-                wl.push({ node: n, path: [...item.path, n] });
+            if (item.node === (target as string))
+                return SearchState.Found({ target, adj, foundPath: item.path, workList: wl });
+            const visited = new Set(item.path as string[]);
+            const adjMap = adj as Record<string, string[]>;
+            for (const n of (adjMap[item.node] ?? []).filter((x: string) => !visited.has(x)))
+                wl.push({ node: n, path: [...(item.path as string[]), n] });
+            return SearchState.Active({ target, adj, workList: wl });
+        },
+        Found({ target, adj, workList }) {
+            const wl = workList as { node: string; path: string[] }[];
+            return wl.length === 0
+                ? SearchState.Exhausted
+                : SearchState.Active({ target, adj, workList: wl });
+        },
+        Exhausted() {
+            return SearchState.Exhausted;
         }
-        return SearchState.Exhausted;
-    }
-
-    return {
-        Active:    { target: String, adj: Object, workList: Array },
-        Found:     { target: String, adj: Object, foundPath: Array, workList: Array },
-        Exhausted: {},
-
-        path: fold({ out: Array })({
-            Active()                                        { return []; },
-            Found({ foundPath }: { foundPath: string[] })   { return foundPath; },
-            Exhausted()                                     { return []; }
-        }),
-
-        isFound: fold({ out: Boolean })({
-            Active()    { return false; },
-            Found()     { return true; },
-            Exhausted() { return false; }
-        }),
-
-        isExhausted: fold({ out: Boolean })({
-            Active()    { return false; },
-            Found()     { return false; },
-            Exhausted() { return true; }
-        }),
-
-        /** Advance to next Found or Exhausted. */
-        step: fold({ out: Object })({
-            Active({ target, adj, workList }: {
-                target: string; adj: Record<string, string[]>;
-                workList: { node: string; path: string[] }[]
-            }) {
-                return resolve(target, adj, workList);
-            },
-            Found({ target, adj, workList }: {
-                target: string; adj: Record<string, string[]>;
-                workList: { node: string; path: string[] }[]
-            }) {
-                return resolve(target, adj, workList);
-            },
-            Exhausted() {
-                return SearchState.Exhausted;
-            }
-        })
-    };
-});
+    })
+}));
 
 // Query ::= Query(adj, start, target)
 
 const Query: any = data(() => ({
-    Query: { adj: Object, start: String, target: String },
-
-    /** Query → initial SearchState. */
+    Query: { adj: Object, start: String, target: String }
+})).ops(({ fold }) => ({
     toState: fold({ out: Object })({
-        Query({ adj, start, target }: {
-            adj: Record<string, string[]>; start: string; target: string
-        }) {
+        Query({ adj, start, target }) {
+            const adjMap = adj as unknown as Record<string, string[]>;
             if (start === target) {
                 return SearchState.Found({
                     target, adj, foundPath: [start], workList: []
                 });
             }
-            const neighbors = adj[start] ?? [];
+            const neighbors = adjMap[start] ?? [];
             const workList = neighbors.map((n: string) => ({
                 node: n, path: [start, n]
             }));
@@ -100,17 +81,16 @@ const Query: any = data(() => ({
 
 // PathFinder — observer (cospan: Query →input— PathFinder ←output— Path[])
 
-const PathFinder: any = observer(({ Self }: { Self: any }) => ({
+const PathFinder = observer(({ Self }) => ({
     path: Array,
     found: Boolean,
     exhausted: Boolean,
-    next: Self,
-
+    next: Self
+})).ops(({ unfold, output, done, accept, Self }) => ({
     [output]: 'path',
     [done]:   'exhausted',
     [accept]: 'found',
-
-    Search: unfold({ in: Object, out: Self })({
+    Search: unfold({ in: { path: Array, isFound: Boolean, isExhausted: Boolean, step: Object }, out: Self })({
         path:      (s: any) => s.path,
         found:     (s: any) => s.isFound,
         exhausted: (s: any) => s.isExhausted,

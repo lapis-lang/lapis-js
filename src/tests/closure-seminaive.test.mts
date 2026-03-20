@@ -13,13 +13,13 @@
 
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { relation, fold, origin, destination } from '../index.mjs';
+import { relation, origin, destination } from '../index.mjs';
 
 describe('Closure — Semi-Naive Evaluation', () => {
     const Ancestor = relation(({ Family }) => ({
         Direct: { from: String, to: String },
-        Transitive: { hop: Family, rest: Family },
-
+        Transitive: { hop: Family, rest: Family }
+    })).ops(({ fold, unfold, map, merge, origin, destination, Family }) => ({
         [origin]: fold({ out: String })({
             Direct: ({ from }) => from,
             Transitive: ({ hop }) => hop
@@ -43,7 +43,7 @@ describe('Closure — Semi-Naive Evaluation', () => {
 
         // With 5 nodes in a total-order chain, there are C(5,2) = 10 pairs:
         // a→b, a→c, a→d, a→e, b→c, b→d, b→e, c→d, c→e, d→e
-        const pairs = new Set(closed.map(f => `${f.origin}->${f.destination}`));
+        const pairs = new Set(closed.map(f => `${f[origin]}->${f[destination]}`));
         assert.strictEqual(pairs.size, 10,
             `Expected 10 unique endpoint pairs, got ${pairs.size}: ${[...pairs].join(', ')}`);
     });
@@ -58,7 +58,7 @@ describe('Closure — Semi-Naive Evaluation', () => {
         ];
 
         const closed = Ancestor.closure(facts);
-        const pairs = new Set(closed.map(f => `${f.origin}->${f.destination}`));
+        const pairs = new Set(closed.map(f => `${f[origin]}->${f[destination]}`));
 
         // Chain a→b→c produces: a→b, b→c, a→c
         assert.ok(pairs.has('a->b'));
@@ -88,8 +88,8 @@ describe('Closure — Semi-Naive Evaluation', () => {
         const first = Ancestor.closure(facts);
         const second = Ancestor.closure(first);
 
-        const firstPairs = new Set(first.map(f => `${f.origin}->${f.destination}`));
-        const secondPairs = new Set(second.map(f => `${f.origin}->${f.destination}`));
+        const firstPairs = new Set(first.map(f => `${f[origin]}->${f[destination]}`));
+        const secondPairs = new Set(second.map(f => `${f[origin]}->${f[destination]}`));
 
         assert.deepStrictEqual(firstPairs, secondPairs,
             'Closure is idempotent — second pass produces no new facts');
@@ -106,7 +106,7 @@ describe('Closure — Semi-Naive Evaluation', () => {
         ];
 
         const closed = Ancestor.closure(facts);
-        const pairs = new Set(closed.map(f => `${f.origin}->${f.destination}`));
+        const pairs = new Set(closed.map(f => `${f[origin]}->${f[destination]}`));
 
         // Only the 4 base facts — no transitive pairs possible (all share origin 'center',
         // but no destination connects back to any origin).
@@ -124,7 +124,7 @@ describe('Closure — Semi-Naive Evaluation', () => {
         ];
 
         const closed = Ancestor.closure(facts);
-        const pairs = new Set(closed.map(f => `${f.origin}->${f.destination}`));
+        const pairs = new Set(closed.map(f => `${f[origin]}->${f[destination]}`));
 
         assert.ok(pairs.has('a->b'));
         assert.ok(pairs.has('a->c'));
@@ -133,7 +133,7 @@ describe('Closure — Semi-Naive Evaluation', () => {
         assert.ok(pairs.has('a->d'), 'Diamond should derive a->d transitively');
 
         // a→d appears only once (endpoint-pair dedup)
-        const adCount = closed.filter(f => f.origin === 'a' && f.destination === 'd').length;
+        const adCount = closed.filter(f => f[origin] === 'a' && f[destination] === 'd').length;
         assert.strictEqual(adCount, 1, 'a->d should be deduplicated to exactly one entry');
     });
 
@@ -144,7 +144,7 @@ describe('Closure — Semi-Naive Evaluation', () => {
             facts.push(Ancestor.Direct(`n${i}`, `n${i + 1}`));
 
         const closed = Ancestor.closure(facts);
-        const pairs = new Set(closed.map(f => `${f.origin}->${f.destination}`));
+        const pairs = new Set(closed.map(f => `${f[origin]}->${f[destination]}`));
 
         // 11 nodes, C(11,2) = 55 possible pairs in a total order
         assert.strictEqual(pairs.size, 55,

@@ -1,11 +1,12 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { data, extend , fold } from '../index.mjs';
+import { data, extend } from '../index.mjs';
 
 describe('LSP Enforcement', () => {
     test('should prevent changing parameterless to parameterized', () => {
         const Point = data(() => ({
-            Point2D: { x: Number, y: Number },
+            Point2D: { x: Number, y: Number }
+        })).ops(({ fold, unfold, map, merge }) => ({
             magnitude: fold({ out: Number })({
                 Point2D({ x, y }) { return Math.sqrt(x * x + y * y); }
             })
@@ -15,7 +16,8 @@ describe('LSP Enforcement', () => {
             () => {
                 data(() => ({
                     [extend]: Point,
-                    Point3D: { x: Number, y: Number, z: Number },
+                    Point3D: { x: Number, y: Number, z: Number }
+                })).ops(({ fold, unfold, map, merge }) => ({
                     magnitude: fold({ in: String, out: Number })({
                         Point3D({ x, y, z }, _unit) { return Math.sqrt(x * x + y * y + z * z); },
                         Point2D({ x, y }, _unit) { return Math.sqrt(x * x + y * y); }
@@ -32,7 +34,8 @@ describe('LSP Enforcement', () => {
     test('should prevent changing parameterized to parameterless', () => {
         const List = data(({ Family }) => ({
             Nil: {},
-            Cons: { head: Number, tail: Family },
+            Cons: { head: Number, tail: Family }
+        })).ops(({ fold, unfold, map, merge, Family }) => ({
             append: fold({ in: Number })({
                 Nil({}, val) { return List.Cons({ head: val, tail: List.Nil }); },
                 Cons({ head, tail }, val) { return List.Cons({ head, tail: tail(val) }); }
@@ -43,11 +46,11 @@ describe('LSP Enforcement', () => {
         assert.throws(
             () => {
                 data(({ Family }) => ({
-                    [extend]: List,
+                    [extend]: List
+                })).ops(({ fold, unfold, map, merge, Family }) => ({
                     append: fold({ out: Family })({
-                        // @ts-expect-error -- intentional type violation for test
+                        // @ts-expect-error -- [extend] target is any; negative test
                         Nil({}) { return List.Nil; },
-                        // @ts-expect-error -- intentional type violation for test
                         Cons({ head, tail }) { return List.Cons({ head, tail }); }
                     })
                 }));
@@ -62,7 +65,8 @@ describe('LSP Enforcement', () => {
     test('should allow extending with same parameterization (parameterless)', () => {
         const Color = data(() => ({
             Red: {},
-            Green: {},
+            Green: {}
+        })).ops(({ fold, unfold, map, merge }) => ({
             toHex: fold({ out: String })({
                 Red() { return '#FF0000'; },
                 Green() { return '#00FF00'; }
@@ -72,7 +76,8 @@ describe('LSP Enforcement', () => {
         // This should work - same parameterization
         const ExtendedColor = data(() => ({
             [extend]: Color,
-            Blue: {},
+            Blue: {}
+        })).ops(({ fold, unfold, map, merge }) => ({
             toHex: fold({})({
                 Blue() { return '#0000FF'; }
             })
@@ -85,7 +90,8 @@ describe('LSP Enforcement', () => {
     test('should allow extending with same parameterization (parameterized)', () => {
         const List = data(({ Family }) => ({
             Nil: {},
-            Cons: { head: Number, tail: Family },
+            Cons: { head: Number, tail: Family }
+        })).ops(({ fold, unfold, map, merge, Family }) => ({
             append: fold({ in: Number })({
                 Nil({}, val) { return List.Cons({ head: val, tail: List.Nil }); },
                 Cons({ head, tail }, val) { return List.Cons({ head, tail: tail(val) }); }
@@ -95,20 +101,21 @@ describe('LSP Enforcement', () => {
         // This should work - same parameterization (all handlers take 2 params)
         const ExtendedList = data(({ Family }) => ({
             [extend]: List,
-            Special: { value: Number },
+            Special: { value: Number }
+        })).ops(({ fold, unfold, map, merge, Family }) => ({
             append: fold({})({
                 // @ts-expect-error -- intentional type violation for test
-                Special({ value }, val) { 
+                Special({ value }, val) {
                     // Just return a simple list with the Special's value and appended val
                     const tailList = List.Cons({ head: val, tail: List.Nil });
-                    return List.Cons({ head: value, tail: tailList }); 
+                    return List.Cons({ head: value, tail: tailList });
                 }
             })
         }));
 
         const special = ExtendedList.Special({ value: 42 });
         const result = special.append(99);
-        
+
         assert.strictEqual(result.constructor.name, 'Cons');
         assert.strictEqual(result.head, 42);
         assert.strictEqual(result.tail.head, 99);
@@ -117,7 +124,8 @@ describe('LSP Enforcement', () => {
     test('should prevent changing input spec when extending', () => {
         const List = data(({ Family }) => ({
             Nil: {},
-            Cons: { head: Number, tail: Family },
+            Cons: { head: Number, tail: Family }
+        })).ops(({ fold, unfold, map, merge, Family }) => ({
             append: fold({ in: Number })({
                 Nil({}, val) { return List.Cons({ head: val, tail: List.Nil }); },
                 Cons({ head, tail }, val) { return List.Cons({ head, tail: tail(val) }); }
@@ -129,10 +137,11 @@ describe('LSP Enforcement', () => {
             () => {
                 data(({ Family }) => ({
                     [extend]: List,
-                    Special: { value: Number },
+                    Special: { value: Number }
+                })).ops(({ fold, unfold, map, merge, Family }) => ({
                     append: fold({ in: String })({
-                        Special({ value }, val) { 
-                            return List.Cons({ head: value, tail: List.Nil }); 
+                        Special({ value }, val) {
+                            return List.Cons({ head: value, tail: List.Nil });
                         }
                     })
                 }));
@@ -148,7 +157,8 @@ describe('LSP Enforcement', () => {
         const Color = data(() => ({
             Red: {},
             Green: {},
-            Blue: {},
+            Blue: {}
+        })).ops(({ fold, unfold, map, merge }) => ({
             toHex: fold({ out: String })({
                 Red() { return '#FF0000'; },
                 Green() { return '#00FF00'; },
@@ -161,7 +171,8 @@ describe('LSP Enforcement', () => {
             () => {
                 data(() => ({
                     [extend]: Color,
-                    Yellow: {},
+                    Yellow: {}
+                })).ops(({ fold, unfold, map, merge }) => ({
                     toHex: fold({ out: Number })({
                         Yellow() { return 0xFFFF00; }
                     })
@@ -177,7 +188,8 @@ describe('LSP Enforcement', () => {
     test('should allow extending without changing specs', () => {
         const List = data(({ Family }) => ({
             Nil: {},
-            Cons: { head: Number, tail: Family },
+            Cons: { head: Number, tail: Family }
+        })).ops(({ fold, unfold, map, merge, Family }) => ({
             sum: fold({ out: Number })({
                 Nil() { return 0; },
                 Cons({ head, tail }) { return head + tail; }
@@ -187,7 +199,8 @@ describe('LSP Enforcement', () => {
         // This should work - same output spec
         const ExtendedList = data(({ Family }) => ({
             [extend]: List,
-            Special: { value: Number },
+            Special: { value: Number }
+        })).ops(({ fold, unfold, map, merge, Family }) => ({
             sum: fold({ out: Number })({
                 Special({ value }) { return value; }
             })

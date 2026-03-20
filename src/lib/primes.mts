@@ -3,30 +3,29 @@
  * Imported by examples and tests.
  */
 
-import { data, fold, unfold } from '../index.mjs';
+import { data } from '../index.mjs';
 
 // Odd trial-divisor list:
 //   OddRange unfold  → generates [start, start+2, …, limit]
 //   hasFactor fold   → true if any element divides n
 //   firstFactor fold → smallest divisor found, or 0 if none
-const Divisors = data(({ Family }) => ({
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const Divisors: any = data(({ Family }) => ({
         Nil: {},
-        Cons: { head: Number, tail: Family },
-
+        Cons: { head: Number, tail: Family }
+    })).ops(({ fold, unfold, Family }) => ({
         hasFactor: fold({ in: Number, out: Boolean })({
             Nil() { return false; },
             Cons({ head, tail }: { head: number; tail: (n: number) => boolean }, n: number) {
                 return n % head === 0 || tail(n);
             }
         }),
-
         firstFactor: fold({ in: Number, out: Number })({
             Nil() { return 0; },
             Cons({ head, tail }: { head: number; tail: (n: number) => number }, n: number) {
                 return n % head === 0 ? head : tail(n);
             }
         }),
-
         OddRange: unfold({ in: { start: Number, limit: Number }, out: Family })({
             Nil: ({ start, limit }: { start: number; limit: number }) =>
                 start > limit ? {} : null,
@@ -53,15 +52,15 @@ const Divisors = data(({ Family }) => ({
 
     // nthPrime search: anamorphism over { candidate, count }
     // Done fires when candidate is prime and the countdown reaches 0
-    NthPrimeFinder = data(({ Family }) => ({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    NthPrimeFinder: any = data(({ Family }) => ({
         Done: { value: Number },
-        Step: { next: Family },
-
+        Step: { next: Family }
+    })).ops(({ fold, unfold, Family }) => ({
         result: fold({ out: Number })({
             Done({ value }: { value: number }) { return value; },
             Step({ next }: { next: number }) { return next; }
         }),
-
         Search: unfold({ in: { candidate: Number, count: Number }, out: Family })({
             Done: ({ candidate, count }: { candidate: number; count: number }) =>
                 isPrime(candidate) && count === 0 ? { value: candidate } : null,

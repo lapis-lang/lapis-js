@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 
-import { data, fold } from '@lapis-lang/lapis-js';
+import { data } from '@lapis-lang/lapis-js';
 
 // Structured data ADT with multiple variants
 const Point = data(() => ({
     Point2D: { x: Number, y: Number },
-    Point3D: { x: Number, y: Number, z: Number },
+    Point3D: { x: Number, y: Number, z: Number }
+})).ops(({ fold }) => ({
     distanceFromOrigin: fold({ out: Number })({
         Point2D({ x, y }) {
             return Math.sqrt(x * x + y * y);

@@ -1,19 +1,18 @@
-import { data, fold, unfold, merge, map } from '../index.mjs';
+import { data } from '../index.mjs';
 import { describe, it } from 'node:test';
 import * as assert from 'node:assert/strict';
 
 describe('Unfold on parameterized ADTs', () => {
     const List = data(({ Family, T }) => ({
         Nil: {},
-        Cons: { head: T, tail: Family(T) },
-
+        Cons: { head: T, tail: Family(T) }
+    })).ops(({ fold, unfold, map, merge, Family, T }) => ({
         FromArray: unfold({ in: Array, out: Family(T) })({
             Nil: (arr: unknown[]) => arr.length === 0 ? {} : null,
             Cons: (arr: unknown[]) => arr.length > 0
                 ? { head: arr[0], tail: arr.slice(1) }
                 : null
         }),
-
         toArray: fold({ out: Array })({
             Nil() { return []; },
             Cons({ head, tail }: { head: unknown; tail: unknown[] }) {
@@ -81,24 +80,21 @@ describe('Unfold on parameterized ADTs', () => {
 describe('Generator merge on parameterized ADTs', () => {
     const List = data(({ Family, T }) => ({
         Nil: {},
-        Cons: { head: T, tail: Family(T) },
-
+        Cons: { head: T, tail: Family(T) }
+    })).ops(({ fold, unfold, map, merge, Family, T }) => ({
         Range: unfold({ in: Number, out: Family(T) })({
             Nil: (n: number) => (n <= 0 ? {} : null),
             Cons: (n: number) => (n > 0 ? { head: n, tail: n - 1 } : null)
         }),
-
         sum: fold({ out: Number })({
             Nil() { return 0; },
-            Cons({ head, tail }: { head: number; tail: number }) {
-                return head + tail;
+            Cons({ head, tail }) {
+                return (head as number) + (tail as number);
             }
         }),
-
         square: map({ out: Family })({
             T: (x: number) => x * x
         }),
-
         Triangular: merge('Range', 'sum'),
         SumOfSquares: merge('Range', 'square', 'sum')
     }));

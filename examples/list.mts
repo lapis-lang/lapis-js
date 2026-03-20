@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { data, fold, map, merge, unfold } from '@lapis-lang/lapis-js';
+import { data } from '@lapis-lang/lapis-js';
 
 // Pair ADT for Zip operation - commented out as not currently used
 // const Pair = data(({ T, U }) => ({
@@ -10,10 +10,11 @@ import { data, fold, map, merge, unfold } from '@lapis-lang/lapis-js';
 // Parameterized recursive list ADT with operations defined inline
 const List = data(({ Family, T }) => ({
         Nil: {},
-        Cons: { head: T, tail: Family(T) },
+        Cons: { head: T, tail: Family(T) }
+    })).ops(({ fold, unfold, map, merge, Family, T }) => ({
         sum: fold({ out: Number })({
             Nil() { return 0; },
-            Cons({ head, tail }) { return head + tail; }
+            Cons({ head, tail }) { return (head as number) + tail; }
         }),
         length: fold({ out: Number })({
             Nil() { return 0; },
@@ -21,7 +22,7 @@ const List = data(({ Family, T }) => ({
         }),
         product: fold({ out: Number })({
             Nil() { return 1; },
-            Cons({ head, tail }) { return head * tail; }
+            Cons({ head, tail }) { return (head as number) * tail; }
         }),
         show: fold({ out: String })({
             Nil() { return '[]'; },
@@ -30,13 +31,13 @@ const List = data(({ Family, T }) => ({
                 return `[${head}, ${tail.slice(1, -1)}]`;
             }
         }),
-        increment: map({ out: Family })({
+        increment: map({ out: Family(Number) })({
             T: (x) => x + 1
         }),
-        double: map({ out: Family })({
+        double: map({ out: Family(Number) })({
             T: (x) => x * 2
         }),
-        square: map({ out: Family })({
+        square: map({ out: Family(Number) })({
             T: (x) => x * x
         }),
         Range: unfold({ in: Number, out: Family(T) })({
@@ -47,51 +48,19 @@ const List = data(({ Family, T }) => ({
         sumOfSquares: merge('square', 'sum'),
         Zip: unfold({ in: Object, out: Family(T) })({
             // @ts-expect-error -- intentional type violation for test
-            Nil: ({ xs, ys }) => (listIsEmpty(xs) || listIsEmpty(ys) ? {} : null),
+            Nil: ({ xs, ys }) => (!xs || !('head' in xs) || !ys || !('head' in ys) ? {} : null),
             // @ts-expect-error -- intentional type violation for test
             Cons: ({ xs, ys }) => {
-                if (!listIsEmpty(xs) && !listIsEmpty(ys)) {
-                    const xHead = listHead(xs),
-                        yHead = listHead(ys),
-                        xTail = listTail(xs),
-                        yTail = listTail(ys);
-                    // Note: This creates a generic pair object since Pair ADT is defined separately
+                if (xs && 'head' in xs && ys && 'head' in ys) {
                     return {
-                        head: { first: xHead, second: yHead },
-                        tail: { xs: xTail, ys: yTail }
+                        head: { first: xs.head, second: ys.head },
+                        tail: { xs: xs.tail, ys: ys.tail }
                     };
                 }
                 return null;
             }
         })
     })),
-
-    // Helper to get head of a list (needed for Zip)
-    listHead = (list) => {
-        if (list && typeof list.peek === 'function')
-            return list.peek();
-
-        // Direct field access for lists without peek
-        return list && 'head' in list ? list.head : null;
-    },
-
-    // Helper to get tail of a list (needed for Zip)
-    listTail = (list) => {
-        if (list && typeof list.rest === 'function')
-            return list.rest();
-
-        // Direct field access for lists without rest
-        return list && 'tail' in list ? list.tail : null;
-    },
-
-    // Helper to check if list is empty (needed for Zip)
-    listIsEmpty = (list) => {
-        if (list && typeof list.length === 'function')
-            return list.length() === 0;
-
-        // Check if it's Nil by checking for absence of head
-        return !list || !('head' in list);
-    },
 
     // Instantiate for numbers
     NumList = List({ T: Number });

@@ -1,18 +1,19 @@
 /**
  * Behavior Unfold Chaining Tests
- * 
+ *
  * Tests for chaining multiple unfold operations on the same behavior type.
  */
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { behavior, unfold } from '../index.mjs';
+import { behavior } from '../index.mjs';
 
 describe('Behavior - Unfold Chaining', () => {
     it('should support chaining multiple unfold operations', () => {
         const Stream = behavior(({ Self, T }) => ({
             head: T,
-            tail: Self(T),
+            tail: Self(T)
+        })).ops(({ fold, unfold, map, merge, Self, T }) => ({
             From: unfold({ in: Number, out: Self })({
                 head: (n) => n,
                 tail: (n) => n + 1
@@ -50,7 +51,8 @@ describe('Behavior - Unfold Chaining', () => {
         const Stream = behavior(({ Self, T }) => ({
             head: T,
             nth: { in: Number, out: T },
-            tail: Self(T),
+            tail: Self(T)
+        })).ops(({ fold, unfold, map, merge, Self, T }) => ({
             From: unfold({ in: Number, out: Self })({
                 head: (n) => n,
                 nth: (n) => (index) => n + index,
@@ -76,47 +78,41 @@ describe('Behavior - Unfold Chaining', () => {
     });
 
     it('should support multiple parametric observers', () => {
-        const logs = [];
-        const inputs = ['mock input'];
-
-        const Console = behavior(({ Self }) => ({
-            log: { in: String, out: undefined },
-            read: { out: String },
-            write: { in: { msg: String, level: Number }, out: Boolean },
-            Create: unfold({ in: { sink: Array, source: Array }, out: Self })({
-                log: ({ sink }) => (msg) => { sink.push(msg); },
-                read: ({ source }) => () => source.shift() ?? '',
-                write: ({ sink }) => ({ msg, level }) => {
-                    if (level > 0) { sink.push(msg); return true; }
-                    return false;
-                }
+        // Sensor: a getter + two parametric observers with different input shapes
+        const Sensor = behavior(({ Self }) => ({
+            value: Number,
+            scale: { in: Number, out: Number },
+            inRange: { in: { lo: Number, hi: Number }, out: Boolean }
+        })).ops(({ fold, unfold, map, merge, Self }) => ({
+            Create: unfold({ in: Number, out: Self })({
+                value: (n) => n,
+                scale: (n) => (factor) => n * factor,
+                inRange: (n) => ({ lo, hi }) => n >= lo && n <= hi
             })
         }));
 
-        const con = Console.Create({ sink: logs, source: inputs });
+        const sensor = Sensor.Create(42);
 
-        assert.equal(typeof con.log, 'function');
-        assert.equal(typeof con.read, 'function');
-        assert.equal(typeof con.write, 'function');
+        // Getter observer
+        assert.equal(sensor.value, 42);
 
-        assert.equal(con.log('test'), undefined);
-        assert.deepEqual(logs, ['test'], 'log should append to sink');
+        // Single-param parametric observer
+        assert.equal(typeof sensor.scale, 'function');
+        assert.equal(sensor.scale(2), 84);
+        assert.equal(sensor.scale(0.5), 21);
 
-        // @ts-expect-error -- intentional type violation for test
-        assert.equal(con.read(), 'mock input');
-        // @ts-expect-error -- intentional type violation for test
-        assert.equal(con.read(), '', 'exhausted source returns empty string');
-
-        assert.equal(con.write({ msg: 'error', level: 1 }), true);
-        assert.deepEqual(logs, ['test', 'error'], 'write at level>0 appends to sink');
-        assert.equal(con.write({ msg: 'debug', level: 0 }), false);
-        assert.deepEqual(logs, ['test', 'error'], 'write at level=0 does not append');
+        // Structured-param parametric observer
+        assert.equal(typeof sensor.inRange, 'function');
+        assert.equal(sensor.inRange({ lo: 0, hi: 100 }), true);
+        assert.equal(sensor.inRange({ lo: 50, hi: 100 }), false);
+        assert.equal(sensor.inRange({ lo: 0, hi: 42 }), true);
     });
 
     it('should maintain separate instances for different unfold operations', () => {
         const Stream = behavior(({ Self }) => ({
             head: Number,
-            tail: Self,
+            tail: Self
+        })).ops(({ fold, unfold, map, merge, Self }) => ({
             From: unfold({ in: Number, out: Self })({
                 head: (n) => n,
                 tail: (n) => n + 1
@@ -144,7 +140,8 @@ describe('Behavior - Unfold Chaining', () => {
     it('should support unfold with complex seed transformations', () => {
         const Fibonacci = behavior(({ Self }) => ({
             current: Number,
-            next: Self,
+            next: Self
+        })).ops(({ fold, unfold, map, merge, Self }) => ({
             From: unfold({ in: { a: Number, b: Number }, out: Self })({
                 current: ({ a }) => a,
                 next: ({ a, b }) => ({ a: b, b: a + b })
@@ -164,7 +161,8 @@ describe('Behavior - Unfold Chaining', () => {
     it('should return behavior type for chaining after unfold', () => {
         const Stream = behavior(({ Self }) => ({
             head: Number,
-            tail: Self,
+            tail: Self
+        })).ops(({ fold, unfold, map, merge, Self }) => ({
             From: unfold({ in: Number, out: Self })({
                 head: (n) => n,
                 tail: (n) => n + 1

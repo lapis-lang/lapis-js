@@ -13,13 +13,14 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { behavior, fold, unfold } from '../index.mjs';
+import { behavior } from '../index.mjs';
 
 describe('Behavior Fold - Basic', () => {
     it('should take N elements from an infinite stream', () => {
         const Stream = behavior(({ Self, T }) => ({
             head: T,
-            tail: Self(T),
+            tail: Self(T)
+        })).ops(({ fold, unfold, map, merge, Self, T }) => ({
             From: unfold({ in: Number, out: Self })({
                 head: (n) => n,
                 tail: (n) => n + 1
@@ -39,7 +40,8 @@ describe('Behavior Fold - Basic', () => {
     it('should sum N elements of an infinite stream', () => {
         const Stream = behavior(({ Self, T }) => ({
             head: T,
-            tail: Self(T),
+            tail: Self(T)
+        })).ops(({ fold, unfold, map, merge, Self, T }) => ({
             From: unfold({ in: Number, out: Self })({
                 head: (n) => n,
                 tail: (n) => n + 1
@@ -59,7 +61,8 @@ describe('Behavior Fold - Basic', () => {
     it('should extract the nth element', () => {
         const Stream = behavior(({ Self, T }) => ({
             head: T,
-            tail: Self(T),
+            tail: Self(T)
+        })).ops(({ fold, unfold, map, merge, Self, T }) => ({
             From: unfold({ in: Number, out: Self })({
                 head: (n) => n,
                 tail: (n) => n + 1
@@ -81,7 +84,8 @@ describe('Behavior Fold - Parameterless (Getter)', () => {
         const Countdown = behavior(({ Self }) => ({
             value: Number,
             next: Self,
-            done: Boolean,
+            done: Boolean
+        })).ops(({ fold, unfold, map, merge, Self }) => ({
             Create: unfold({ in: Number, out: Self })({
                 value: (n) => n,
                 next: (n) => n - 1,
@@ -101,7 +105,8 @@ describe('Behavior Fold - Parameterless (Getter)', () => {
         const Countdown = behavior(({ Self }) => ({
             value: Number,
             next: Self,
-            done: Boolean,
+            done: Boolean
+        })).ops(({ fold, unfold, map, merge, Self }) => ({
             Create: unfold({ in: Number, out: Self })({
                 value: (n) => n,
                 next: (n) => n - 1,
@@ -120,7 +125,8 @@ describe('Behavior Fold - Multiple Operations', () => {
     it('should support multiple fold operations on the same type', () => {
         const Stream = behavior(({ Self, T }) => ({
             head: T,
-            tail: Self(T),
+            tail: Self(T)
+        })).ops(({ fold, unfold, map, merge, Self, T }) => ({
             From: unfold({ in: Number, out: Self })({
                 head: (n) => n,
                 tail: (n) => n + 1
@@ -147,7 +153,8 @@ describe('Behavior Fold - Duality with Data Fold', () => {
     it('base case: not calling continuation returns the base value', () => {
         const Stream = behavior(({ Self, T }) => ({
             head: T,
-            tail: Self(T),
+            tail: Self(T)
+        })).ops(({ fold, unfold, map, merge, Self, T }) => ({
             From: unfold({ in: Number, out: Self })({
                 head: (n) => n,
                 tail: (n) => n + 1
@@ -165,7 +172,8 @@ describe('Behavior Fold - Duality with Data Fold', () => {
     it('fold from a non-zero seed', () => {
         const Stream = behavior(({ Self, T }) => ({
             head: T,
-            tail: Self(T),
+            tail: Self(T)
+        })).ops(({ fold, unfold, map, merge, Self, T }) => ({
             From: unfold({ in: Number, out: Self })({
                 head: (n) => n * 2,
                 tail: (n) => n + 1
@@ -185,7 +193,8 @@ describe('Behavior Fold - Fibonacci Stream', () => {
     it('should fold over a fibonacci stream correctly', () => {
         const Stream = behavior(({ Self, T }) => ({
             head: T,
-            tail: Self(T),
+            tail: Self(T)
+        })).ops(({ fold, unfold, map, merge, Self, T }) => ({
             Fib: unfold({ in: Object, out: Self })({
                 // @ts-expect-error -- intentional type violation for test
                 head: ({ a }) => a,
@@ -206,14 +215,13 @@ describe('Behavior Fold - Tail-call accumulator style', () => {
     it('supports accumulator-passing style for deep folds', () => {
         const Stream = behavior(({ Self, T }) => ({
             head: T,
-            tail: Self(T),
+            tail: Self(T)
+        })).ops(({ fold, unfold, map, merge, Self, T }) => ({
             From: unfold({ in: Number, out: Self })({
                 head: (n) => n,
                 tail: (n) => n + 1
             }),
-            // Tail-call style: fold passes accumulator in params
             sumAcc: fold({ in: Array, out: Number })({
-                // @ts-expect-error -- intentional type violation for test
                 _: ({ head, tail }, [n, acc]) => n > 0 ? tail([n - 1, acc + head]) : acc
             })
         }));
@@ -228,7 +236,8 @@ describe('Behavior Fold - Validation', () => {
         assert.throws(() => {
             behavior(({ Self }) => ({
                 head: Number,
-                tail: Self,
+                tail: Self
+            })).ops(({ fold, unfold, map, merge, Self }) => ({
                 bad: fold({ in: Number, out: Number })({})
             }));
         }, /handler/);
@@ -238,7 +247,8 @@ describe('Behavior Fold - Validation', () => {
         assert.throws(() => {
             behavior(({ Self }) => ({
                 head: Number,
-                tail: Self,
+                tail: Self
+            })).ops(({ fold, unfold, map, merge, Self }) => ({
                 BadFold: fold({ in: Number, out: Number })({
                     _: ({ head, tail }, n) => n > 0 ? head + tail(n - 1) : 0
                 })

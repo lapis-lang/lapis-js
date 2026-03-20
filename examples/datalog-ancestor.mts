@@ -22,28 +22,25 @@
  * This is the μ-side of the LP duality.  For the ν-side (Prolog-like
  * top-down search), see sudoku-bmf.mts and the observer() construct.
  */
-import { relation, fold, origin, destination } from '@lapis-lang/lapis-js';
+import { relation, origin, destination } from '@lapis-lang/lapis-js';
 
 // ---- Relation Definition ----
 
-const Ancestor = relation(({ Family }: { Family: any }) => ({
+const Ancestor = relation(({ Family }) => ({
     Direct: { from: String, to: String },
-    Transitive: { hop: Family, rest: Family },
-
-    // Endpoint projections (span legs)
+    Transitive: { hop: Family, rest: Family }
+})).ops(({ fold, origin, destination }) => ({
     [origin]: fold({ out: String })({
-        Direct({ from }: { from: string }) { return from; },
-        Transitive({ hop }: { hop: string }) { return hop; }
+        Direct({ from }) { return from; },
+        Transitive({ hop }) { return hop; }
     }),
     [destination]: fold({ out: String })({
-        Direct({ to }: { to: string }) { return to; },
-        Transitive({ rest }: { rest: string }) { return rest; }
+        Direct({ to }) { return to; },
+        Transitive({ rest }) { return rest; }
     }),
-
-    // Additional fold: count the number of hops
     depth: fold({ out: Number })({
         Direct() { return 1; },
-        Transitive({ hop, rest }: { hop: number; rest: number }) {
+        Transitive({ hop, rest }) {
             return hop + rest;
         }
     })
@@ -62,7 +59,7 @@ const baseFacts = [
 console.log('=== Datalog-style Ancestor Closure ===\n');
 
 console.log('Base facts:');
-baseFacts.forEach((f: any) => console.log(`  ${f.origin} → ${f.destination}`));
+baseFacts.forEach(f => console.log(`  ${f[origin]} → ${f[destination]}`));
 
 // ---- Compute closure ----
 
@@ -72,7 +69,7 @@ console.log(`\nClosure computed: ${allAncestors.length} total facts`);
 
 console.log('\nAll ancestor relationships:');
 allAncestors.forEach((a: any) => {
-    console.log(`  ${a.origin} → ${a.destination}  (depth: ${a.depth})`);
+    console.log(`  ${a[origin]} → ${a[destination]}  (depth: ${a.depth})`);
 });
 
 // ---- Queries via reachableFrom / reachingTo ----

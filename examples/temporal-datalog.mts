@@ -13,7 +13,7 @@
  * duality captures the μ/ν split directly.
  */
 
-import { data, fold, behavior, unfold } from '../src/index.mjs';
+import { data, behavior } from '../src/index.mjs';
 
 // =============================================================================
 // 1. Static Temporal Facts as Data (μ)
@@ -29,31 +29,20 @@ import { data, fold, behavior, unfold } from '../src/index.mjs';
  */
 const TemporalFact = data(() => ({
     Point: { entity: String, attribute: String, value: String, at: Number },
-    Span:  { entity: String, attribute: String, value: String, validFrom: Number, validTo: Number },
-
-    /**
-     * Query: does this fact hold at a given time?
-     * Fold operates over the immutable structure — each variant
-     * defines its own temporal semantics.
-     */
+    Span:  { entity: String, attribute: String, value: String, validFrom: Number, validTo: Number }
+})).ops(({ fold, unfold, map, merge }) => ({
     holdsAt: fold({ in: Number, out: Boolean })({
         Point: ({ at }, time: number) => at === time,
         Span:  ({ validFrom, validTo }, time: number) => time >= validFrom && time < validTo
     }),
-
-    /** Extract the entity name. */
     getEntity: fold({ out: String })({
         Point: ({ entity }) => entity,
         Span:  ({ entity }) => entity
     }),
-
-    /** Extract the attribute name. */
     getAttribute: fold({ out: String })({
         Point: ({ attribute }) => attribute,
         Span:  ({ attribute }) => attribute
     }),
-
-    /** Extract the value. */
     getValue: fold({ out: String })({
         Point: ({ value }) => value,
         Span:  ({ value }) => value
@@ -102,19 +91,10 @@ console.log('Facts holding at 2023:', queryAt(facts, 2023));
  * The unfold generates a stream of snapshots indexed by time.
  */
 const Timeline = behavior(({ Self }) => ({
-    /** The current time of this snapshot. */
     time: Number,
-
-    /** All facts that hold at this time. */
     activeFacts: Array,
-
-    /** Advance to the next time step. */
-    next: Self,
-
-    /**
-     * Unfold from a seed: initial time + full knowledge base.
-     * Each step produces a snapshot and advances by one unit.
-     */
+    next: Self
+})).ops(({ fold, unfold, map, merge, Self }) => ({
     Stepper: unfold({
         in: { time: Number, facts: Array },
         out: Self

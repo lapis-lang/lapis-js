@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { relation, fold, origin, destination } from '../index.mjs';
+import { relation, origin, destination } from '../index.mjs';
 
 describe('Closure — Basic Ancestor Example', () => {
     // Datalog rule:
@@ -10,12 +10,12 @@ describe('Closure — Basic Ancestor Example', () => {
     // relation() form: ancestor = μ a . parent ∪ (parent ∘ a)
     //   Direct     = base fact (no Family)
     //   Transitive = composition rule (both fields are Family)
-    //   Join invariant auto-generated: hop.destination === rest.origin
+    //   Join invariant auto-generated: hop[destination] === rest[origin]
 
     const Ancestor = relation(({ Family }) => ({
         Direct: { from: String, to: String },
-        Transitive: { hop: Family, rest: Family },
-
+        Transitive: { hop: Family, rest: Family }
+    })).ops(({ fold, unfold, map, merge, origin, destination, Family }) => ({
         [origin]: fold({ out: String })({
             Direct: ({ from }) => from,
             Transitive: ({ hop }) => hop
@@ -37,7 +37,7 @@ describe('Closure — Basic Ancestor Example', () => {
         assert.ok(closed.length >= 3,
             `Expected at least 3 facts, got ${closed.length}`);
 
-        const pairs = closed.map(f => `${f.origin}->${f.destination}`);
+        const pairs = closed.map(f => `${f[origin]}->${f[destination]}`);
 
         assert.ok(pairs.includes('alice->bob'), 'should include alice->bob');
         assert.ok(pairs.includes('bob->charlie'), 'should include bob->charlie');
@@ -52,7 +52,7 @@ describe('Closure — Basic Ancestor Example', () => {
         ];
 
         const closed = Ancestor.closure(facts);
-        const pairs = closed.map(f => `${f.origin}->${f.destination}`);
+        const pairs = closed.map(f => `${f[origin]}->${f[destination]}`);
 
         assert.ok(pairs.includes('alice->bob'));
         assert.ok(pairs.includes('bob->charlie'));
@@ -76,8 +76,8 @@ describe('Closure — Basic Ancestor Example', () => {
     test('depth fold works on closure results', () => {
         const AncestorD = relation(({ Family }) => ({
             Direct: { from: String, to: String },
-            Transitive: { hop: Family, rest: Family },
-
+            Transitive: { hop: Family, rest: Family }
+        })).ops(({ fold, unfold, map, merge, origin, destination, Family }) => ({
             [origin]: fold({ out: String })({
                 Direct: ({ from }) => from,
                 Transitive: ({ hop }) => hop

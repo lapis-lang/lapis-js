@@ -49,8 +49,8 @@ export type MapDef<S, H> =
     { readonly [op]: 'map'; readonly [spec]: S } & H;
 
 /** The type returned by `merge(opNames)`. */
-export type MergeDef =
-    { readonly [op]: 'merge'; readonly [operationsSymbol]: readonly string[] };
+export type MergeDef<N extends readonly string[] = readonly string[]> =
+    { readonly [op]: 'merge'; readonly [operationsSymbol]: N };
 
 // ---- Handler constraint types -----------------------------------------------
 
@@ -112,6 +112,25 @@ type FoldHandlerFn<S> = S extends { in: infer In; out: infer Out }
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             : (this: FoldHandlerThis, ctx: any) => unknown;
 
+// ---- Contract callback constraint types ------------------------------------
+
+/**
+ * Contextual typing for contract callbacks in specs.
+ *
+ * TypeScript cannot evaluate conditional type mappings (e.g. NumberConstructor → number)
+ * during inference of the first curried call, so `demands` params are typed as `any`
+ * rather than the precise mapped type. This prevents noImplicitAny errors while
+ * keeping the code flexible. The handlers in the second call still get precise typing.
+ */
+export interface ContractCallbacks {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    demands?: (self: any, ...args: any[]) => boolean;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ensures?: (self: any, old: any, result: any, ...args: any[]) => boolean;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    rescue?: (self: any, error: any, args: any[], retry: (...newArgs: any[]) => any) => any;
+}
+
 // ---- unfold -----------------------------------------------------------------
 
 /**
@@ -152,7 +171,7 @@ type FoldHandlerFn<S> = S extends { in: infer In; out: infer Out }
  * Reverse: numUnfold({ Nil: (n) => ..., Cons: (n) => ... })
  * ```
  */
-export function unfold<S extends Record<string | symbol, unknown>>(s: S) {
+export function unfold<S extends Record<string | symbol, unknown>>(s: S & ContractCallbacks) {
     return <H extends Record<string, UnfoldHandlerFn<S>>>(
         handlers: H
     ): UnfoldDef<S, H> =>
@@ -196,7 +215,7 @@ export function unfold<S extends Record<string | symbol, unknown>>(s: S) {
  * })
  * ```
  */
-export function fold<S extends Record<string | symbol, unknown>>(s: S) {
+export function fold<S extends Record<string | symbol, unknown>>(s: S & ContractCallbacks) {
     return <H extends Record<string, FoldHandlerFn<S>>>(
         handlers: H
     ): FoldDef<S, H> =>
@@ -258,7 +277,7 @@ export function map<S extends Record<string | symbol, unknown> & { inverse?: str
  * sumOfSquares: merge('square', 'sum')
  * ```
  */
-export function merge(...opNames: readonly string[]): MergeDef {
+export function merge<const N extends readonly string[]>(...opNames: N): MergeDef<N> {
     return {
         [op]: 'merge' as const,
         [operationsSymbol]: opNames

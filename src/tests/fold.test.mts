@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { data , fold } from '../index.mjs';
+import { data } from '../index.mjs';
 
 describe('Fold Operation (Catamorphism)', () => {
     describe('Non-Recursive ADTs', () => {
@@ -8,7 +8,8 @@ describe('Fold Operation (Catamorphism)', () => {
             const Color = data(() => ({
                 Red: {},
                 Green: {},
-                Blue: {},
+                Blue: {}
+            })).ops(({ fold, unfold, map, merge }) => ({
                 toHex: fold({ out: String })({
                     Red() { return '#FF0000'; },
                     Green() { return '#00FF00'; },
@@ -25,8 +26,8 @@ describe('Fold Operation (Catamorphism)', () => {
             const Color = data(() => ({
                 Red: {},
                 Green: {},
-                Blue: {},
-
+                Blue: {}
+            })).ops(({ fold, unfold, map, merge }) => ({
                 toHex: fold({ out: String })({
                     Red() { return '#FF0000'; },
                     Green() { return '#00FF00'; },
@@ -43,8 +44,8 @@ describe('Fold Operation (Catamorphism)', () => {
             const Color = data(() => ({
                 Red: {},
                 Green: {},
-                Blue: {},
-
+                Blue: {}
+            })).ops(({ fold, unfold, map, merge }) => ({
                 toHex: fold({ out: String })({
                     Red() { return '#FF0000'; },
                     Green() { return '#00FF00'; },
@@ -63,7 +64,8 @@ describe('Fold Operation (Catamorphism)', () => {
 
         test('should fold on structured variants with named destructuring (non-recursive)', () => {
             const Point = data(() => ({
-                Point2D: { x: Number, y: Number },
+                Point2D: { x: Number, y: Number }
+            })).ops(({ fold, unfold, map, merge }) => ({
                 quadrant: fold({ out: String })({
                     Point2D({ x, y }) {
                         if (x >= 0 && y >= 0) return 'Q1';
@@ -87,7 +89,8 @@ describe('Fold Operation (Catamorphism)', () => {
 
         test('should work with positional construction (non-recursive)', () => {
             const Point = data(() => ({
-                Point2D: { x: Number, y: Number },
+                Point2D: { x: Number, y: Number }
+            })).ops(({ fold, unfold, map, merge }) => ({
                 toString: fold({ out: String })({
                     Point2D({ x, y }) {
                         return `(${x}, ${y})`;
@@ -106,7 +109,8 @@ describe('Fold Operation (Catamorphism)', () => {
 
         test('should support partial field destructuring (non-recursive)', () => {
             const Point3D = data(() => ({
-                Point3D: { x: Number, y: Number, z: Number },
+                Point3D: { x: Number, y: Number, z: Number }
+            })).ops(({ fold, unfold, map, merge }) => ({
                 sumXY: fold({ out: Number })({
                     Point3D({ x, y }) { // Ignore z
                         return x + y;
@@ -122,7 +126,8 @@ describe('Fold Operation (Catamorphism)', () => {
             const Shape = data(() => ({
                 Circle: { radius: Number },
                 Square: { side: Number },
-                Unknown: {},
+                Unknown: {}
+            })).ops(({ fold, unfold, map, merge }) => ({
                 area: fold({ out: Number })({
                     Circle({ radius }) { return Math.PI * radius * radius; },
                     Square({ side }) { return side * side; },
@@ -144,7 +149,8 @@ describe('Fold Operation (Catamorphism)', () => {
         test('Peano.toValue - should fold Peano numbers to their numeric value', () => {
             const Peano = data(({ Family }) => ({
                 Zero: {},
-                Succ: { pred: Family },
+                Succ: { pred: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 toValue: fold({ out: Number })({
                     Zero() { return 0; },
                     Succ({ pred }) { return 1 + pred; }
@@ -165,7 +171,8 @@ describe('Fold Operation (Catamorphism)', () => {
         test('Peano with callback form - should support Family parameter', () => {
             const Peano = data(({ Family }) => ({
                 Zero: {},
-                Succ: { pred: Family },
+                Succ: { pred: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 toValue: fold({ out: Number })({
                     Zero() { return 0; },
                     Succ({ pred }) { return 1 + pred; }
@@ -179,7 +186,8 @@ describe('Fold Operation (Catamorphism)', () => {
         test('List.length - should count elements in a list', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family },
+                Cons: { head: Number, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 length: fold({ out: Number })({
                     Nil() { return 0; },
                     Cons({ tail }) { return 1 + tail; }
@@ -200,7 +208,8 @@ describe('Fold Operation (Catamorphism)', () => {
         test('List.sum - should sum all elements', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family },
+                Cons: { head: Number, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 sum: fold({ out: Number })({
                     Nil() { return 0; },
                     Cons({ head, tail }) { return head + tail; }
@@ -222,7 +231,8 @@ describe('Fold Operation (Catamorphism)', () => {
         test('List.product - should multiply all elements', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family },
+                Cons: { head: Number, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 product: fold({ out: Number })({
                     Nil() { return 1; },
                     Cons({ head, tail }) { return head * tail; }
@@ -244,7 +254,8 @@ describe('Fold Operation (Catamorphism)', () => {
         test('List.append - should append element to end of list', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family },
+                Cons: { head: Number, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 append: fold({ in: Number })({
                     Nil(_fields, val) {
                         return List.Cons({ head: val, tail: List.Nil });
@@ -258,7 +269,7 @@ describe('Fold Operation (Catamorphism)', () => {
 
             // Empty list
             const empty = List.Nil;
-            const list1 = empty.append(1);
+            const list1: any = empty.append(1);
             assert.ok(list1.constructor.name === 'Cons');
             assert.strictEqual(list1.head, 1);
             assert.ok(list1.tail === List.Nil);
@@ -281,7 +292,8 @@ describe('Fold Operation (Catamorphism)', () => {
             const Color = data(() => ({
                 Red: {},
                 Green: {},
-                Blue: {},
+                Blue: {}
+            })).ops(({ fold, unfold, map, merge }) => ({
                 matches: fold({ in: String, out: Boolean })({
                     Red(_fields, text) { return text.toLowerCase() === 'red'; },
                     _(_fields, text) {
@@ -312,7 +324,8 @@ describe('Fold Operation (Catamorphism)', () => {
         test('Binary tree height - should compute tree height', () => {
             const Tree = data(({ Family }) => ({
                 Leaf: { value: Number },
-                Node: { left: Family, right: Family, value: Number },
+                Node: { left: Family, right: Family, value: Number }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 height: fold({ out: Number })({
                     Leaf() { return 1; },
                     Node({ left, right }) { return 1 + Math.max(left, right); }
@@ -336,7 +349,8 @@ describe('Fold Operation (Catamorphism)', () => {
         test('Binary tree sum - should sum all node values', () => {
             const Tree = data(({ Family }) => ({
                 Leaf: { value: Number },
-                Node: { left: Family, right: Family, value: Number },
+                Node: { left: Family, right: Family, value: Number }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 sum: fold({ out: Number })({
                     Leaf({ value }) { return value; },
                     Node({ left, right, value }) { return left + right + value; }
@@ -358,7 +372,8 @@ describe('Fold Operation (Catamorphism)', () => {
             const Peano = data(({ Family }) => ({
                 Zero: {},
                 Succ: { pred: Family },
-                NegSucc: { pred: Family },
+                NegSucc: { pred: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 toValue: fold({ out: Number })({
                     Zero() { return 0; },
                     _() { return -999; }
@@ -373,7 +388,8 @@ describe('Fold Operation (Catamorphism)', () => {
         test('wildcard should receive full instance via this', () => {
             const Tree = data(({ Family }) => ({
                 Leaf: { value: Number },
-                Node: { left: Family, right: Family },
+                Node: { left: Family, right: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 getType: fold({ out: String })({
                     Leaf() { return 'leaf'; },
                     _() {
@@ -392,7 +408,8 @@ describe('Fold Operation (Catamorphism)', () => {
         test('should support multiple fold operations on same ADT', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family },
+                Cons: { head: Number, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 length: fold({ out: Number })({
                     Nil() { return 0; },
                     Cons({ tail }) { return 1 + tail; }
@@ -425,7 +442,8 @@ describe('Fold Operation (Catamorphism)', () => {
         test('should work with parameterized lists', () => {
             const List = data(({ Family, T }) => ({
                 Nil: {},
-                Cons: { head: T, tail: Family },
+                Cons: { head: T, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
                 length: fold({ out: Number })({
                     Nil() { return 0; },
                     Cons({ tail }) { return 1 + tail; }
@@ -451,7 +469,8 @@ describe('Fold Operation (Catamorphism)', () => {
         test('should detect collision with variant field names', () => {
             assert.throws(() => {
                 data(({ Family }) => ({
-                    Node: { value: Number, left: Family },
+                    Node: { value: Number, left: Family }
+                })).ops(({ fold, unfold, map, merge, Family }) => ({
                     value: fold({ out: Number })({
                         Node({ value }) { return value; }
                     })
@@ -465,7 +484,8 @@ describe('Fold Operation (Catamorphism)', () => {
             const Expr = data(({ Family }) => ({
                 Lit: { value: Number },
                 Add: { left: Family, right: Family },
-                Mul: { left: Family, right: Family },
+                Mul: { left: Family, right: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 eval: fold({ out: Number })({
                     Lit({ value }) { return value; },
                     Add({ left, right }) { return left + right; },
@@ -487,7 +507,8 @@ describe('Fold Operation (Catamorphism)', () => {
         test('fold should work regardless of how variant was constructed', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family },
+                Cons: { head: Number, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 sum: fold({ out: Number })({
                     Nil() { return 0; },
                     Cons({ head, tail }) { return head + tail; }
@@ -509,13 +530,14 @@ describe('Fold Operation (Catamorphism)', () => {
         test('should throw error for missing handler when no wildcard', () => {
             const Peano = data(({ Family }) => ({
                 Zero: {},
-                Succ: { pred: Family },
+                Succ: { pred: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 partial: fold({ out: Number })({
                     Zero() { return 0; },
                     _() {
-                        if (this.constructor.name === 'Succ') 
+                        if (this.constructor.name === 'Succ')
                             throw new Error(`No handler for variant 'Succ' in fold operation 'partial'`);
-                                        
+
                         return -1;
                     }
                 })
@@ -531,7 +553,8 @@ describe('Fold Operation (Catamorphism)', () => {
         test('should work alongside match operations', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family },
+                Cons: { head: Number, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 isEmpty: fold({ out: Boolean })({
                     Nil() { return true; },
                     Cons() { return false; }
@@ -555,7 +578,8 @@ describe('Fold Operation (Catamorphism)', () => {
         test('handlers receive properly typed fields', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family },
+                Cons: { head: Number, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 sum: fold({ out: Number })({
                     Nil() { return 0; },
                     Cons({ head, tail }) {
@@ -576,7 +600,8 @@ describe('Fold Operation (Catamorphism)', () => {
         test('should handle deeply nested recursive structures', () => {
             const Peano = data(({ Family }) => ({
                 Zero: {},
-                Succ: { pred: Family },
+                Succ: { pred: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 toValue: fold({ out: Number })({
                     Zero() { return 0; },
                     Succ({ pred }) { return 1 + pred; }
@@ -585,9 +610,9 @@ describe('Fold Operation (Catamorphism)', () => {
 
             // Build number 10
             let ten = Peano.Zero;
-            for (let i = 0; i < 10; i++) 
+            for (let i = 0; i < 10; i++)
                 ten = Peano.Succ({ pred: ten });
-            
+
 
             assert.strictEqual(ten.toValue, 10);
         });
@@ -595,7 +620,8 @@ describe('Fold Operation (Catamorphism)', () => {
         test('should handle large lists', () => {
             const List = data(({ Family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family },
+                Cons: { head: Number, tail: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 length: fold({ out: Number })({
                     Nil() { return 0; },
                     Cons({ tail }) { return 1 + tail; }
@@ -604,9 +630,9 @@ describe('Fold Operation (Catamorphism)', () => {
 
             // Build list of 100 elements
             let list = List.Nil;
-            for (let i = 0; i < 100; i++) 
+            for (let i = 0; i < 100; i++)
                 list = List.Cons({ head: i, tail: list });
-            
+
 
             assert.strictEqual(list.length, 100);
         });

@@ -45,6 +45,14 @@ export type isSort = typeof isSort;
 export const extend: unique symbol = Symbol('extend');
 export type extend = typeof extend;
 
+/**
+ * Phantom brand symbol: carries the declaration shape D on wrapper types
+ * (DataADTWithParams, BehaviorADTWithParams) so that ParentDecl<D> can
+ * extract it via O(1) property lookup instead of deep structural inference.
+ */
+export declare const DeclBrand: unique symbol;
+export type DeclBrand = typeof DeclBrand;
+
 /** Marks the operation type ('fold' | 'unfold' | 'map' | 'merge') */
 export const op: unique symbol = Symbol('op');
 export type op = typeof op;
@@ -121,6 +129,8 @@ export interface FamilyRef {
 export interface FamilyRefCallable extends FamilyRef {
     (typeParam?: unknown): FamilyRefCallable;
     _adt: ((typeParam?: unknown) => FamilyRefCallable) | null;
+    // Dynamic variant constructor access requires explicit casting
+    [key: string]: unknown;
 }
 
 /** A value with a SelfRef marker */

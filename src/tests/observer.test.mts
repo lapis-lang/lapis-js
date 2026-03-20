@@ -8,7 +8,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { observer, unfold, fold, behavior, output, done, accept } from '../index.mjs';
+import { observer, behavior } from '../index.mjs';
 
 // =============================================================================
 // Test Helpers
@@ -20,12 +20,11 @@ function makeCounter() {
         value: Number,
         isDone: Boolean,
         isActive: Boolean,
-        next: Self,
-
+        next: Self
+    })).ops(({ fold, unfold, map, merge, output, done, accept, Self }) => ({
         [output]: 'value',
         [done]:   'isDone',
         [accept]: 'isActive',
-
         CountUp: unfold({ in: Number, out: Self })({
             value: (n: number) => n,
             isDone: (n: number) => n >= 5,
@@ -46,12 +45,11 @@ function makeReachability() {
         current: Number,
         isExhausted: Boolean,
         isAccepted: Boolean,
-        next: Self,
-
+        next: Self
+    })).ops(({ fold, unfold, map, merge, output, done, accept, Self }) => ({
         [output]: 'current',
         [done]:   'isExhausted',
         [accept]: 'isAccepted',
-
         Walk: unfold({ in: Number, out: Self })({
             current: (n: number) => n,
             isExhausted: (n: number) => (graph[n] ?? []).length === 0,
@@ -77,7 +75,8 @@ describe('observer()', () => {
             assert.throws(() => {
                 observer(({ Self }) => ({
                     value: Number,
-                    next: Self,
+                    next: Self
+                })).ops(({ fold, unfold, map, merge, output, done, accept, Self }) => ({
                     [output]: (obs: any) => obs.value,
                     [done]: 'value',
                     [accept]: 'value',
@@ -93,7 +92,8 @@ describe('observer()', () => {
             assert.throws(() => {
                 observer(({ Self }) => ({
                     value: Number,
-                    next: Self,
+                    next: Self
+                })).ops(({ fold, unfold, map, merge, output, done, accept, Self }) => ({
                     [output]: 'value',
                     [done]: () => true,
                     [accept]: 'value',
@@ -109,7 +109,8 @@ describe('observer()', () => {
             assert.throws(() => {
                 observer(({ Self }) => ({
                     value: Number,
-                    next: Self,
+                    next: Self
+                })).ops(({ fold, unfold, map, merge, output, done, accept, Self }) => ({
                     [output]: 'value',
                     [done]: 'value',
                     [accept]: () => true,
@@ -198,7 +199,8 @@ describe('observer()', () => {
                 value: Number,
                 isDone: Boolean,
                 isAccepted: Boolean,
-                next: Self,
+                next: Self
+            })).ops(({ fold, unfold, map, merge, output, done, accept, Self }) => ({
                 [output]: 'value',
                 [done]: 'isDone',
                 [accept]: 'isAccepted'
@@ -217,12 +219,11 @@ describe('observer()', () => {
                 doubled: Number,
                 isFinished: Boolean,
                 isAccepted: Boolean,
-                next: Self,
-
+                next: Self
+            })).ops(({ fold, unfold, map, merge, output, done, accept, Self }) => ({
                 [output]: 'doubled',
                 [done]:   'isFinished',
                 [accept]: 'isAccepted',
-
                 Gen: unfold({ in: Number, out: Self })({
                     value: (n: number) => n,
                     doubled: (n: number) => n * 2,
@@ -245,12 +246,11 @@ describe('observer()', () => {
                 value: Number,
                 isExhausted: Boolean,
                 isEven: Boolean,
-                next: Self,
-
+                next: Self
+            })).ops(({ fold, unfold, map, merge, output, done, accept, Self }) => ({
                 [output]: 'value',
                 [done]:   'isExhausted',
                 [accept]: 'isEven',
-
                 Count: unfold({ in: Number, out: Self })({
                     value: (n: number) => n,
                     isExhausted: (n: number) => n >= 10,
@@ -270,12 +270,11 @@ describe('observer()', () => {
                 value: Number,
                 isFinished: Boolean,
                 isAccepted: Boolean,
-                next: Self,
-
+                next: Self
+            })).ops(({ fold, unfold, map, merge, output, done, accept, Self }) => ({
                 [output]: 'value',
                 [done]:   'isFinished',
                 [accept]: 'isAccepted',
-
                 Gen: unfold({ in: Number, out: Self })({
                     value: (n: number) => n,
                     isFinished: (n: number) => n >= 3,
@@ -324,19 +323,17 @@ describe('observer()', () => {
                 value: Number,
                 isDone: Boolean,
                 isAccepted: Boolean,
-                next: Self,
-
+                next: Self
+            })).ops(({ fold, unfold, map, merge, output, done, accept, Self }) => ({
                 [output]: 'value',
                 [done]:   'isDone',
                 [accept]: 'isAccepted',
-
                 Gen: unfold({ in: Number, out: Self })({
                     value: (n: number) => n,
                     isDone: (n: number) => n >= 3,
                     isAccepted: () => true,
                     next: (n: number) => n + 1
                 }),
-
                 sum: fold({ in: Number, out: Number })({
                     _: ({ value, next }: { value: number; next: (n: number) => number }, n: number) =>
                         n <= 0 ? 0 : value + next(n - 1)
@@ -356,7 +353,8 @@ describe('observer()', () => {
         it('plain behavior() should NOT have explore()', () => {
             const B = behavior(({ Self }) => ({
                 value: Number,
-                next: Self,
+                next: Self
+            })).ops(({ fold, unfold, map, merge, Self }) => ({
                 Gen: unfold({ in: Number, out: Self })({
                     value: (n: number) => n,
                     next: (n: number) => n + 1
@@ -370,11 +368,12 @@ describe('observer()', () => {
     describe('reserved name validation', () => {
         it("rejects 'explore' as a user-defined key", () => {
             assert.throws(
-                () => observer(({ Self }: any) => ({
+                () => observer(({ Self }) => ({
                     value: Number,
                     isDone: Boolean,
                     isAccepted: Boolean,
-                    next: Self,
+                    next: Self
+                })).ops(({ fold, unfold, map, merge, output, done, accept, Self }) => ({
                     [output]: 'value',
                     [done]: 'isDone',
                     [accept]: 'isAccepted',
@@ -397,12 +396,11 @@ describe('observer()', () => {
                 value: Number,
                 isDone: Boolean,
                 isAccepted: Boolean,
-                next: Self,
-
+                next: Self
+            })).ops(({ fold, unfold, map, merge, output, done, accept, Self }) => ({
                 [output]: 'value',
                 [done]:   'isDone',
                 [accept]: 'isAccepted',
-
                 Gen: unfold({ in: Number, out: Self })({
                     value: (n: number) => n,
                     isDone: (n: number) => n >= 3,
@@ -421,12 +419,11 @@ describe('observer()', () => {
                 value: Number,
                 isDone: Boolean,
                 isAccepted: Boolean,
-                next: Self,
-
+                next: Self
+            })).ops(({ fold, unfold, map, merge, output, done, accept, Self }) => ({
                 [output]: 'value',
                 [done]:   'isDone',
                 [accept]: 'isAccepted',
-
                 Gen: unfold({ in: Number, out: Self })({
                     value: (n: number) => n,
                     isDone: (n: number) => n >= 3,
@@ -446,7 +443,8 @@ describe('observer()', () => {
                     value: Number,
                     isDone: Boolean,
                     isAccepted: Boolean,
-                    next: Self,
+                    next: Self
+                })).ops(({ fold, unfold, map, merge, output, done, accept, Self }) => ({
                     [output]: 'nonExistent',
                     [done]: 'isDone',
                     [accept]: 'isAccepted',
@@ -466,7 +464,8 @@ describe('observer()', () => {
                 () => observer(({ Self }) => ({
                     value: Number,
                     isDone: Boolean,
-                    next: Self,
+                    next: Self
+                })).ops(({ fold, unfold, map, merge, output, done, accept, Self }) => ({
                     [output]: fold({ out: Number })({ _: ({ value }: any) => value }),
                     [done]: 'isDone',
                     [accept]: 'isDone',

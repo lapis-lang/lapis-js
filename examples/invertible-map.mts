@@ -10,57 +10,39 @@
  * 4. Combined: inverse elimination + map-map + map-fold all compose
  */
 
-import { data, fold, map, merge } from '@lapis-lang/lapis-js';
+import { data } from '@lapis-lang/lapis-js';
 
 const TempList = data(({ Family, T }) => ({
     Nil: {},
-    Cons: { head: T, tail: Family(T) },
-
-    // --- Map operations ---
-    toFahrenheit: map({ out: Family })({
+    Cons: { head: T, tail: Family(T) }
+})).ops(({ fold, map, merge, Family, T }) => ({
+    toFahrenheit: map({ out: Family(Number) })({
         T: (c: number) => c * 9 / 5 + 32
     }),
-    toCelsius: map({ out: Family, inverse: 'toFahrenheit' })({
+    toCelsius: map({ out: Family(Number), inverse: 'toFahrenheit' })({
         T: (f: number) => (f - 32) * 5 / 9
     }),
-    double: map({ out: Family })({
+    double: map({ out: Family(Number) })({
         T: (x: number) => x * 2
     }),
-    halve: map({ out: Family, inverse: 'double' })({
+    halve: map({ out: Family(Number), inverse: 'double' })({
         T: (x: number) => x / 2
     }),
-    increment: map({ out: Family })({
+    increment: map({ out: Family(Number) })({
         T: (x: number) => x + 1
     }),
-
-    // --- Fold operations ---
     toArray: fold({ out: Array })({
         Nil() { return []; },
         Cons({ head, tail }) { return [head, ...tail]; }
     }),
     sum: fold({ out: Number })({
         Nil() { return 0; },
-        Cons({ head, tail }) { return head + tail; }
+        Cons({ head, tail }) { return (head as number) + tail; }
     }),
-
-    // --- Merge pipelines (fused at definition time) ---
-
-    // 1. Inverse elimination: toF → toC cancels → just double
     convertAndScale: merge('toFahrenheit', 'toCelsius', 'double'),
-
-    // 2. Full inverse collapse: double → halve → identity
     roundTrip: merge('double', 'halve'),
-
-    // 3. Map-map fusion: double → increment → single traversal (2x + 1)
     doubleThenInc: merge('double', 'increment'),
-
-    // 4. Map-fold fusion: double → sum → single fold (no intermediate)
     doubledSum: merge('double', 'sum'),
-
-    // 5. Combined: double → halve → increment → double → sum
-    //    inverse elimination removes double+halve →
-    //    map-map fuses increment+double →
-    //    map-fold fuses fusedMap + sum
     combined: merge('double', 'halve', 'increment', 'double', 'sum')
 }));
 

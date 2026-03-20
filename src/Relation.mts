@@ -21,8 +21,10 @@
  */
 
 import { data, invariant } from './Data.mjs';
+import type { DataFoldFn } from './Data.mjs';
 import { op, spec as specSym, isOperationDef, isFamilyRefSpec, LapisTypeSymbol } from './operations.mjs';
-import type { DataDeclParams } from './types.mjs';
+import type { DataDeclParams, DataADTWithParams, DataInstance } from './types.mjs';
+import type { unfold, map, merge } from './ops.mjs';
 
 // ---- Symbols ----------------------------------------------------------------
 
@@ -35,6 +37,32 @@ export const destination: unique symbol = Symbol('destination');
 export type destination = typeof destination;
 
 // ---- Types ------------------------------------------------------------------
+
+// ---- Ops context and return structure ------------------------------------
+
+/**
+ * Context provided to the relation().ops() callback.
+ * Includes all data ops plus the relational endpoint symbols.
+ */
+type RelationOpsContext<D> = {
+    fold: DataFoldFn<D>;
+    unfold: typeof unfold;
+    map: typeof map;
+    merge: typeof merge;
+    Family: unknown;
+    origin: typeof origin;
+    destination: typeof destination;
+    [key: string]: unknown;
+};
+
+/**
+ * The base relation shape: data ADT with closure/reachability methods.
+ */
+type RelationShape<D> = DataADTWithParams<D> & {
+    closure(baseFacts: readonly unknown[], options?: { key?: (instance: DataInstance<D>) => string }): DataInstance<D>[];
+    reachableFrom(facts: readonly unknown[], domainValues: readonly unknown[]): unknown[];
+    reachingTo(facts: readonly unknown[], codomainValues: readonly unknown[]): unknown[];
+};
 
 interface RecursiveVariantInfo {
     name: string;
@@ -98,35 +126,22 @@ interface VariantClassification {
  */
 export function relation<D extends Record<string, unknown>>(
     declFn: (params: DataDeclParams) => D
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-): any {
+): RelationShape<D> & {
+    ops<O extends Record<string, unknown>>(
+        opsFn: (ctx: RelationOpsContext<D>) => O
+    ): RelationShape<D & O>;
+} {
     // Pre-computed variant classification, populated during data() creation.
     let classification: VariantClassification | null = null;
 
-    // Wrap the user's declaration function: extract relation-specific keys,
-    // generate the join invariant, then hand the rest to data().
+    // Wrap the user's declaration function: generate the join invariant from the
+    // variant specs, then hand the variants to data().  Origin and destination
+    // fold defs are provided later via .ops().
     const ADT = data((params: DataDeclParams) => {
         const rawSpec = declFn(params);
 
-        // ---- Extract and validate origin / destination fold defs ----
-        const originDef = (rawSpec as Record<symbol, unknown>)[origin] as Record<string | symbol, unknown> | undefined;
-        const destinationDef = (rawSpec as Record<symbol, unknown>)[destination] as Record<string | symbol, unknown> | undefined;
-
-        if (!originDef || typeof originDef !== 'object' || originDef[op] !== 'fold')
-            throw new Error("relation() requires [origin] to be a fold operation, e.g. [origin]: fold({ out: String })({ ... })");
-        if (!destinationDef || typeof destinationDef !== 'object' || destinationDef[op] !== 'fold')
-            throw new Error("relation() requires [destination] to be a fold operation, e.g. [destination]: fold({ out: String })({ ... })");
-
-        // Extract domain/codomain from the fold specs
-        const originSpec = originDef[specSym] as Record<string, unknown> | undefined;
-        const destSpec = destinationDef[specSym] as Record<string, unknown> | undefined;
-        if (!originSpec || !originSpec['out'])
-            throw new Error("relation() origin fold must have an 'out' type, e.g. fold({ out: String })");
-        if (!destSpec || !destSpec['out'])
-            throw new Error("relation() destination fold must have an 'out' type, e.g. fold({ out: String })");
-
         // ---- Classify keys ----
-        const RESERVED = new Set(['closure', 'reachableFrom', 'reachingTo', 'origin', 'destination']);
+        const RESERVED = new Set(['closure', 'reachableFrom', 'reachingTo']);
         const transformed: Record<string | symbol, unknown> = {};
         const leafVariants: string[] = [];
         const recursiveVariants: RecursiveVariantInfo[] = [];
@@ -178,9 +193,9 @@ export function relation<D extends Record<string, unknown>>(
                 // fields[0].destination === fields[1].origin &&
                 // fields[1].destination === fields[2].origin && ...
                 const userInvariant = augmented[invariant] as ((inst: object) => boolean) | undefined;
-                const joinInvariant = (inst: Record<string, Record<string, unknown>>) => {
+                const joinInvariant = (inst: Record<string, Record<string | symbol, unknown>>) => {
                     for (let i = 0; i < familyFields.length - 1; i++) {
-                        if (inst[familyFields[i]].destination !== inst[familyFields[i + 1]].origin)
+                        if (inst[familyFields[i]][destination] !== inst[familyFields[i + 1]][origin])
                             return false;
                     }
                     return true;
@@ -198,15 +213,81 @@ export function relation<D extends Record<string, unknown>>(
             }
         }
 
-        // ---- Pass through origin / destination fold defs as-is ----
-        transformed['origin'] = originDef;
-        transformed['destination'] = destinationDef;
-
         // Store classification for closure computation
         classification = { leafVariants, recursiveVariants };
 
         return transformed as Record<string, unknown>;
     });
+
+    // ---- Intercept .ops() to inject origin/destination context ----
+    const baseOps = (ADT as Record<string, unknown>).ops as
+        ((fn: (ctx: Record<string, unknown>) => Record<string | symbol, unknown>) => typeof ADT) | undefined;
+
+    if (baseOps) {
+        (ADT as Record<string, unknown>).ops = function relationOps(
+            opsFn: (ctx: Record<string, unknown>) => Record<string | symbol, unknown>
+        ) {
+            const adt = baseOps.call(ADT, (baseCtx: Record<string, unknown>) => {
+                // Augment context with relation-specific symbols
+                const augCtx = { ...baseCtx, origin, destination };
+                const userOps = opsFn(augCtx) as Record<string | symbol, unknown>;
+
+                // Reject reserved operation names in .ops()
+                const RESERVED_OPS = new Set(['closure', 'reachableFrom', 'reachingTo']);
+                for (const key of Object.keys(userOps)) {
+                    if (RESERVED_OPS.has(key)) {
+                        throw new Error(
+                            `relation(): '${key}' is a reserved auto-generated operation and cannot be redefined`
+                        );
+                    }
+                }
+
+                // Extract and validate [origin] / [destination]
+                const originDef = userOps[origin] as Record<string | symbol, unknown> | undefined;
+                const destDef = userOps[destination] as Record<string | symbol, unknown> | undefined;
+                if (!originDef || typeof originDef !== 'object' || (originDef as Record<symbol, unknown>)[op] !== 'fold')
+                    throw new Error("relation().ops() requires [origin] to be a fold operation, e.g. [origin]: fold({ out: String })({ ... })");
+                if (!destDef || typeof destDef !== 'object' || (destDef as Record<symbol, unknown>)[op] !== 'fold')
+                    throw new Error("relation().ops() requires [destination] to be a fold operation, e.g. [destination]: fold({ out: String })({ ... })");
+
+                const originSpec = (originDef as Record<symbol, unknown>)[specSym] as Record<string, unknown> | undefined;
+                const destSpec = (destDef as Record<symbol, unknown>)[specSym] as Record<string, unknown> | undefined;
+                if (!originSpec || !originSpec['out'])
+                    throw new Error("relation() origin fold must have an 'out' type, e.g. fold({ out: String })");
+                if (!destSpec || !destSpec['out'])
+                    throw new Error("relation() destination fold must have an 'out' type, e.g. fold({ out: String })");
+
+                // Pass all ops to the base handler with string keys.
+                // The fold pipeline only understands string-keyed opNames,
+                // so we alias [origin]/[destination] symbols → 'origin'/'destination' strings.
+                const result: Record<string, unknown> = {};
+                for (const [key, value] of Object.entries(userOps))
+                    result[key] = value;
+                result['origin'] = originDef;
+                result['destination'] = destDef;
+                return result;
+            });
+
+            // The base handler installed fold getters under string keys 'origin'/'destination'.
+            // Add symbol aliases for public access; keep string keys (non-enumerable) for internal fold recursion.
+            const rawADT = ((ADT as unknown as { _rawADT?: object })._rawADT ?? ADT) as Record<string, unknown>;
+            const proto = rawADT.prototype as Record<string | symbol, unknown> | undefined;
+            if (proto) {
+                const originDesc = Object.getOwnPropertyDescriptor(proto, 'origin');
+                const destDesc = Object.getOwnPropertyDescriptor(proto, 'destination');
+                if (originDesc) {
+                    Object.defineProperty(proto, origin, originDesc!);
+                    Object.defineProperty(proto, 'origin', { ...originDesc!, enumerable: false });
+                }
+                if (destDesc) {
+                    Object.defineProperty(proto, destination, destDesc!);
+                    Object.defineProperty(proto, 'destination', { ...destDesc!, enumerable: false });
+                }
+            }
+
+            return adt;
+        };
+    }
 
     // ---- Attach relation-specific methods ----
 
@@ -257,9 +338,9 @@ export function relation<D extends Record<string, unknown>>(
             const seen = new Set<unknown>();
             const result: unknown[] = [];
             for (const fact of facts) {
-                const o = (fact as Record<string, unknown>).origin;
+                const o = (fact as Record<symbol, unknown>)[origin];
                 if (domainSet.has(o)) {
-                    const d = (fact as Record<string, unknown>).destination;
+                    const d = (fact as Record<symbol, unknown>)[destination];
                     if (!seen.has(d)) {
                         seen.add(d);
                         result.push(d);
@@ -297,9 +378,9 @@ export function relation<D extends Record<string, unknown>>(
             const seen = new Set<unknown>();
             const result: unknown[] = [];
             for (const fact of facts) {
-                const d = (fact as Record<string, unknown>).destination;
+                const d = (fact as Record<symbol, unknown>)[destination];
                 if (codomainSet.has(d)) {
-                    const o = (fact as Record<string, unknown>).origin;
+                    const o = (fact as Record<symbol, unknown>)[origin];
                     if (!seen.has(o)) {
                         seen.add(o);
                         result.push(o);
@@ -314,7 +395,11 @@ export function relation<D extends Record<string, unknown>>(
     });
 
     (ADT as unknown as Record<symbol, boolean>)[LapisTypeSymbol] = true;
-    return ADT;
+    return ADT as unknown as RelationShape<D> & {
+        ops<O extends Record<string, unknown>>(
+            opsFn: (ctx: RelationOpsContext<D>) => O
+        ): RelationShape<D & O>;
+    };
 }
 
 // ---- Closure / Fixpoint Iteration -------------------------------------------
@@ -365,8 +450,8 @@ function computeClosure(
 ): unknown[] {
     const keyFn = options?.key
         ?? ((e: unknown) => {
-            const o = (e as Record<string, unknown>).origin;
-            const d = (e as Record<string, unknown>).destination;
+            const o = (e as Record<symbol, unknown>)[origin];
+            const d = (e as Record<symbol, unknown>)[destination];
             if (o !== null && o !== undefined && typeof o === 'object' || typeof o === 'function' || typeof o === 'symbol')
                 throw new TypeError('closure(): default key cannot safely deduplicate non-primitive origin values — provide options.key');
             if (d !== null && d !== undefined && typeof d === 'object' || typeof d === 'function' || typeof d === 'symbol')

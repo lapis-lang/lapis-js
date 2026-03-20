@@ -5,7 +5,7 @@
  * Using behavior, we can create lazy rose trees where children are generated on demand.
  */
 
-import { behavior, unfold } from '../src/index.mjs';
+import { behavior } from '../src/index.mjs';
 import { isPrime, smallestFactor } from '../src/lib/primes.mjs';
 
 // =============================================================================
@@ -14,12 +14,13 @@ import { isPrime, smallestFactor } from '../src/lib/primes.mjs';
 
 const RoseTree = behavior(({ Self }) => ({
     value: Number,
-    children: Array,  // Array of child trees
+    children: Array
+})).ops(({ unfold, Self }) => ({
     Node: unfold({ in: { value: Number, childGen: Function }, out: Self })({
         value: ({ value }) => value,
         children: ({ value, childGen }) => {
             const childValues = childGen(value);
-            return childValues.map(v => RoseTree.Node({ value: v, childGen }));
+            return childValues.map((v: any) => Self.Node({ value: v, childGen }));
         }
     }),
     Leaf: unfold({ in: Number, out: Self })({
@@ -33,7 +34,7 @@ console.log('\n=== Basic Rose Tree ===');
 // Tree where each node spawns children n*2 and n*2+1
 const tree = RoseTree.Node({
     value: 1,
-    childGen: (n) => [n * 2, n * 2 + 1]
+    childGen: (n: number) => [n * 2, n * 2 + 1]
 });
 
 console.log('tree.value:', tree.value);                        // 1
@@ -54,11 +55,12 @@ console.log('leaf.children.length:', leaf.children.length);    // 0
 
 const NaryTree = behavior(({ Self }) => ({
     value: Number,
-    children: Array,
+    children: Array
+})).ops(({ unfold, Self }) => ({
     Create: unfold({ in: { value: Number, arity: Number }, out: Self })({
         value: ({ value }) => value,
         children: ({ value, arity }) =>
-            Array.from({ length: arity }, (_, i) => NaryTree.Create({ value: value * 10 + i, arity }))
+            Array.from({ length: arity }, (_, i) => Self.Create({ value: value * 10 + i, arity }))
     })
 }));
 
@@ -67,9 +69,9 @@ console.log('\n=== N-ary Tree (3 children per node) ===');
 const ternary = NaryTree.Create({ value: 1, arity: 3 });
 console.log('ternary.value:', ternary.value);                  // 1
 console.log('ternary.children.length:', ternary.children.length); // 3
-console.log('Children values:', ternary.children.map(c => c.value)); // [10, 11, 12]
+console.log('Children values:', ternary.children.map((c: any) => c.value)); // [10, 11, 12]
 console.log('Grandchildren of first child:',
-    ternary.children[0].children.map(c => c.value)); // [100, 101, 102]
+    ternary.children[0].children.map((c: any) => c.value)); // [100, 101, 102]
 
 // =============================================================================
 // Example 3: Directory Tree (File System)
@@ -79,13 +81,14 @@ const FileTree = behavior(({ Self }) => ({
     name: String,
     isDirectory: Boolean,
     children: Array,
-    size: Number,
+    size: Number
+})).ops(({ unfold, Self }) => ({
     Directory: unfold({ in: { name: String, contents: Array }, out: Self })({
         name: ({ name }) => name,
         isDirectory: () => true,
         children: ({ contents }) => contents,
         size: ({ contents }) => {
-            return contents.reduce((sum, child: any) => sum + child.size, 0);
+            return contents.reduce((sum: number, child: any) => sum + child.size, 0);
         }
     }),
     File: unfold({ in: { name: String, size: Number }, out: Self })({
@@ -130,7 +133,8 @@ root.children.forEach((child: any) => {
 const GameTree = behavior(({ Self }) => ({
     state: String,
     isTerminal: Boolean,
-    moves: Array,  // Array of possible next states
+    moves: Array
+})).ops(({ unfold, Self }) => ({
     Create: unfold({ in: { state: String, moveGen: Function }, out: Self })({
         state: ({ state }) => state,
         isTerminal: ({ state, moveGen }) => {
@@ -139,7 +143,7 @@ const GameTree = behavior(({ Self }) => ({
         },
         moves: ({ state, moveGen }) => {
             const nextStates = moveGen(state);
-            return nextStates.map(s => GameTree.Create({ state: s, moveGen }));
+            return nextStates.map((s: any) => Self.Create({ state: s, moveGen }));
         }
     })
 }));
@@ -149,7 +153,7 @@ console.log('\n=== Game Tree (Simple Example) ===');
 // Simple game: subtract 1, 2, or 3 from a number. Goal: reach 0
 const gameState = GameTree.Create({
     state: '5',
-    moveGen: (state) => {
+    moveGen: (state: string) => {
         const n = parseInt(state);
         if (n <= 0) return [];
         const moves: string[] = [];
@@ -172,14 +176,15 @@ console.log('Possible moves from 5:', gameState.moves.map((m: any) => m.state));
 const FactorTree = behavior(({ Self }) => ({
     value: Number,
     isPrime: Boolean,
-    factors: Array,  // Empty if prime, otherwise [left, right] factors
+    factors: Array
+})).ops(({ unfold, Self }) => ({
     Create: unfold({ in: Number, out: Self })({
         value: (n) => n,
         isPrime: (n) => isPrime(n),
         factors: (n) => {
             if (n < 2 || isPrime(n)) return [];
             const f = smallestFactor(n);
-            return [FactorTree.Create(f), FactorTree.Create(n / f)];
+            return [Self.Create(f), Self.Create(n / f)];
         }
     })
 }));
@@ -188,8 +193,8 @@ console.log('\n=== Factor Tree ===');
 
 const factor24 = FactorTree.Create(24);
 console.log('24 isPrime:', factor24.isPrime);                  // false
-console.log('24 factors:', factor24.factors.map(f => f.value)); // [2, 12]
-console.log('12 factors:', factor24.factors[1].factors.map(f => f.value)); // [2, 6]
+console.log('24 factors:', factor24.factors.map((f: any) => f.value)); // [2, 12]
+console.log('12 factors:', factor24.factors[1].factors.map((f: any) => f.value)); // [2, 6]
 
 const factor17 = FactorTree.Create(17);
 console.log('\n17 isPrime:', factor17.isPrime);                // true
@@ -202,7 +207,8 @@ console.log('17 factors:', factor17.factors);                  // []
 const ExprTree = behavior(({ Self }) => ({
     type: String,
     value: Number,
-    children: Array,
+    children: Array
+})).ops(({ unfold, Self }) => ({
     Constant: unfold({ in: Number, out: Self })({
         type: () => 'const',
         value: (n) => n,
@@ -212,16 +218,16 @@ const ExprTree = behavior(({ Self }) => ({
         type: () => 'add',
         value: ({ left, right }) => left + right,
         children: ({ left, right }) => [
-            ExprTree.Constant(left),
-            ExprTree.Constant(right)
+            Self.Constant(left),
+            Self.Constant(right)
         ]
     }),
     Multiply: unfold({ in: { left: Number, right: Number }, out: Self })({
         type: () => 'mul',
         value: ({ left, right }) => left * right,
         children: ({ left, right }) => [
-            ExprTree.Constant(left),
-            ExprTree.Constant(right)
+            Self.Constant(left),
+            Self.Constant(right)
         ]
     })
 }));
@@ -231,7 +237,7 @@ console.log('\n=== Expression Tree ===');
 const expr = ExprTree.Multiply({ left: 3, right: 4 });
 console.log('expr.type:', expr.type);                          // 'mul'
 console.log('expr.value:', expr.value);                        // 12
-console.log('expr.children:', expr.children.map(c => c.value)); // [3, 4]
+console.log('expr.children:', expr.children.map((c: any) => c.value)); // [3, 4]
 
 const complexExpr = ExprTree.Add({
     left: ExprTree.Multiply({ left: 2, right: 3 }).value,

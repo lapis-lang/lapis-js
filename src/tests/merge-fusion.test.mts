@@ -15,7 +15,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { data, map, fold, unfold, merge } from '../index.mjs';
+import { data } from '../index.mjs';
 
 // ---------------------------------------------------------------------------
 // Shared fixture: parameterized list
@@ -24,18 +24,16 @@ import { data, map, fold, unfold, merge } from '../index.mjs';
 function makeList() {
     return data(({ Family, T }) => ({
         Nil: {},
-        Cons: { head: T, tail: Family(T) },
-
+        Cons: { head: T, tail: Family(T) }
+    })).ops(({ fold, unfold, map, merge, Family, T }) => ({
         double:    map({ out: Family })({ T: (x: number) => x * 2 }),
         triple:    map({ out: Family })({ T: (x: number) => x * 3 }),
         increment: map({ out: Family })({ T: (x: number) => x + 1 }),
         square:    map({ out: Family })({ T: (x: number) => x * x }),
-
         sum: fold({ out: Number })({
             Nil() { return 0; },
             Cons({ head, tail }) { return head + tail; }
         }),
-
         toArray: fold({ out: Array })({
             Nil() { return []; },
             Cons({ head, tail }) { return [head, ...tail]; }
@@ -59,17 +57,14 @@ describe('Map-map fusion', () => {
     it('fuses two consecutive maps into a single traversal', () => {
         const List = data(({ Family, T }) => ({
             Nil: {},
-            Cons: { head: T, tail: Family(T) },
-
+            Cons: { head: T, tail: Family(T) }
+        })).ops(({ fold, unfold, map, merge, Family, T }) => ({
             double: map({ out: Family })({ T: (x: number) => x * 2 }),
             triple: map({ out: Family })({ T: (x: number) => x * 3 }),
-
             toArray: fold({ out: Array })({
                 Nil() { return []; },
                 Cons({ head, tail }) { return [head, ...tail]; }
             }),
-
-            // double then triple: each value × 6
             pipeline: merge('double', 'triple')
         }));
 
@@ -82,18 +77,15 @@ describe('Map-map fusion', () => {
     it('fuses three consecutive maps', () => {
         const List = data(({ Family, T }) => ({
             Nil: {},
-            Cons: { head: T, tail: Family(T) },
-
+            Cons: { head: T, tail: Family(T) }
+        })).ops(({ fold, unfold, map, merge, Family, T }) => ({
             double:    map({ out: Family })({ T: (x: number) => x * 2 }),
             triple:    map({ out: Family })({ T: (x: number) => x * 3 }),
             increment: map({ out: Family })({ T: (x: number) => x + 1 }),
-
             toArray: fold({ out: Array })({
                 Nil() { return []; },
                 Cons({ head, tail }) { return [head, ...tail]; }
             }),
-
-            // double → triple → increment: (x*2)*3 + 1 = 6x + 1
             pipeline: merge('double', 'triple', 'increment')
         }));
 
@@ -112,17 +104,14 @@ describe('Map-map fusion', () => {
         // should give (1*2*3) + (2*2*3) + (3*2*3) = 6+12+18 = 36
         const ListWithPipeline = data(({ Family, T }) => ({
             Nil: {},
-            Cons: { head: T, tail: Family(T) },
-
+            Cons: { head: T, tail: Family(T) }
+        })).ops(({ fold, unfold, map, merge, Family, T }) => ({
             double: map({ out: Family })({ T: (x: number) => x * 2 }),
             triple: map({ out: Family })({ T: (x: number) => x * 3 }),
-
             sum: fold({ out: Number })({
                 Nil() { return 0; },
                 Cons({ head, tail }) { return head + tail; }
             }),
-
-            // double → triple → sum: maps fused, then fold
             pipeline: merge('double', 'triple', 'sum')
         }));
 
@@ -135,22 +124,18 @@ describe('Map-map fusion', () => {
     it('map-map fusion works with unfold prefix (postpromorphism → maps)', () => {
         const List = data(({ Family, T }) => ({
             Nil: {},
-            Cons: { head: T, tail: Family(T) },
-
+            Cons: { head: T, tail: Family(T) }
+        })).ops(({ fold, unfold, map, merge, Family, T }) => ({
             Range: unfold({ in: Number, out: Family(T) })({
                 Nil: (n: number) => (n <= 0 ? {} : null),
                 Cons: (n: number) => (n > 0 ? { head: n, tail: n - 1 } : null)
             }),
-
             double:    map({ out: Family })({ T: (x: number) => x * 2 }),
             increment: map({ out: Family })({ T: (x: number) => x + 1 }),
-
             toArray: fold({ out: Array })({
                 Nil() { return []; },
                 Cons({ head, tail }) { return [head, ...tail]; }
             }),
-
-            // Range → double → increment → toArray
             Pipeline: merge('Range', 'double', 'increment', 'toArray')
         }));
 
@@ -168,16 +153,13 @@ describe('Map-fold fusion', () => {
     it('fuses map + fold into single traversal', () => {
         const List = data(({ Family, T }) => ({
             Nil: {},
-            Cons: { head: T, tail: Family(T) },
-
+            Cons: { head: T, tail: Family(T) }
+        })).ops(({ fold, unfold, map, merge, Family, T }) => ({
             double: map({ out: Family })({ T: (x: number) => x * 2 }),
-
             sum: fold({ out: Number })({
                 Nil() { return 0; },
                 Cons({ head, tail }) { return head + tail; }
             }),
-
-            // double then sum = sum of doubled values
             doubleSum: merge('double', 'sum')
         }));
 
@@ -191,20 +173,17 @@ describe('Map-fold fusion', () => {
     it('gives same result as manual chaining', () => {
         const List = data(({ Family, T }) => ({
             Nil: {},
-            Cons: { head: T, tail: Family(T) },
-
+            Cons: { head: T, tail: Family(T) }
+        })).ops(({ fold, unfold, map, merge, Family, T }) => ({
             square: map({ out: Family })({ T: (x: number) => x * x }),
-
             sum: fold({ out: Number })({
                 Nil() { return 0; },
                 Cons({ head, tail }) { return head + tail; }
             }),
-
             toArray: fold({ out: Array })({
                 Nil() { return []; },
                 Cons({ head, tail }) { return [head, ...tail]; }
             }),
-
             squareSum: merge('square', 'sum')
         }));
 
@@ -225,21 +204,17 @@ describe('Map-fold fusion', () => {
     it('works with unfold prefix (hylomorphism with map)', () => {
         const List = data(({ Family, T }) => ({
             Nil: {},
-            Cons: { head: T, tail: Family(T) },
-
+            Cons: { head: T, tail: Family(T) }
+        })).ops(({ fold, unfold, map, merge, Family, T }) => ({
             Range: unfold({ in: Number, out: Family(T) })({
                 Nil: (n: number) => (n <= 0 ? {} : null),
                 Cons: (n: number) => (n > 0 ? { head: n, tail: n - 1 } : null)
             }),
-
             double: map({ out: Family })({ T: (x: number) => x * 2 }),
-
             sum: fold({ out: Number })({
                 Nil() { return 0; },
                 Cons({ head, tail }) { return head + tail; }
             }),
-
-            // Range → double → sum
             DoubleSumOf: merge('Range', 'double', 'sum')
         }));
 
@@ -251,15 +226,13 @@ describe('Map-fold fusion', () => {
     it('map-fold fusion with toArray fold', () => {
         const List = data(({ Family, T }) => ({
             Nil: {},
-            Cons: { head: T, tail: Family(T) },
-
+            Cons: { head: T, tail: Family(T) }
+        })).ops(({ fold, unfold, map, merge, Family, T }) => ({
             increment: map({ out: Family })({ T: (x: number) => x + 1 }),
-
             toArray: fold({ out: Array })({
                 Nil() { return []; },
                 Cons({ head, tail }) { return [head, ...tail]; }
             }),
-
             incrementedArray: merge('increment', 'toArray')
         }));
 
@@ -280,19 +253,14 @@ describe('Combined fusion', () => {
     it('map-map fusion followed by map-fold fusion', () => {
         const List = data(({ Family, T }) => ({
             Nil: {},
-            Cons: { head: T, tail: Family(T) },
-
+            Cons: { head: T, tail: Family(T) }
+        })).ops(({ fold, unfold, map, merge, Family, T }) => ({
             double:    map({ out: Family })({ T: (x: number) => x * 2 }),
             triple:    map({ out: Family })({ T: (x: number) => x * 3 }),
-
             sum: fold({ out: Number })({
                 Nil() { return 0; },
                 Cons({ head, tail }) { return head + tail; }
             }),
-
-            // double → triple → sum
-            // Step 1: map-map fuses double+triple into single map (×6)
-            // Step 2: map-fold fuses fused-map + sum into single fold
             pipeline: merge('double', 'triple', 'sum')
         }));
 
@@ -308,22 +276,16 @@ describe('Combined fusion', () => {
     it('inverse elimination + map-map + map-fold all compose', () => {
         const List = data(({ Family, T }) => ({
             Nil: {},
-            Cons: { head: T, tail: Family(T) },
-
+            Cons: { head: T, tail: Family(T) }
+        })).ops(({ fold, unfold, map, merge, Family, T }) => ({
             double:    map({ out: Family })({ T: (x: number) => x * 2 }),
             halve:     map({ out: Family, inverse: 'double' })({ T: (x: number) => x / 2 }),
             triple:    map({ out: Family })({ T: (x: number) => x * 3 }),
             increment: map({ out: Family })({ T: (x: number) => x + 1 }),
-
             sum: fold({ out: Number })({
                 Nil() { return 0; },
                 Cons({ head, tail }) { return head + tail; }
             }),
-
-            // double → halve → triple → increment → sum
-            // Step 1: inverse elim removes double+halve → [triple, increment, sum]
-            // Step 2: map-map fuses triple+increment → [fused, sum]
-            // Step 3: map-fold fuses fused+sum → single fold
             pipeline: merge('double', 'halve', 'triple', 'increment', 'sum')
         }));
 
@@ -342,24 +304,18 @@ describe('Combined fusion', () => {
         // so typically only works if subsequent ops are methods on the scalar)
         const List = data(({ Family, T }) => ({
             Nil: {},
-            Cons: { head: T, tail: Family(T) },
-
+            Cons: { head: T, tail: Family(T) }
+        })).ops(({ fold, unfold, map, merge, Family, T }) => ({
             double: map({ out: Family })({ T: (x: number) => x * 2 }),
-
             toArray: fold({ out: Array })({
                 Nil() { return []; },
                 Cons({ head, tail }) { return [head, ...tail]; }
             }),
-
             sum: fold({ out: Number })({
                 Nil() { return 0; },
                 Cons({ head, tail }) { return head + tail; }
             }),
-
-            // double → sum (map-fold fused)
             doubledSum: merge('double', 'sum'),
-
-            // double → toArray (map-fold fused)
             doubledArray: merge('double', 'toArray')
         }));
 
@@ -373,21 +329,17 @@ describe('Combined fusion', () => {
     it('single map in pipeline (no fusion, just chaining)', () => {
         const List = data(({ Family, T }) => ({
             Nil: {},
-            Cons: { head: T, tail: Family(T) },
-
+            Cons: { head: T, tail: Family(T) }
+        })).ops(({ fold, unfold, map, merge, Family, T }) => ({
             double: map({ out: Family })({ T: (x: number) => x * 2 }),
-
             toArray: fold({ out: Array })({
                 Nil() { return []; },
                 Cons({ head, tail }) { return [head, ...tail]; }
             }),
-
             sum: fold({ out: Number })({
                 Nil() { return 0; },
                 Cons({ head, tail }) { return head + tail; }
             }),
-
-            // single map followed by fold
             doubleThenSum: merge('double', 'sum')
         }));
 

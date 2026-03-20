@@ -1,6 +1,6 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { data, extend, fold, unfold, map, sort, isSort } from '../index.mjs';
+import { data, extend, sort, isSort } from '../index.mjs';
 import type { DataDeclParams } from '../index.mjs';
 
 /**
@@ -20,7 +20,8 @@ describe('Multi-Sorted Algebras', () => {
         test('single-sorted ADT: [sort] optional, inferred for all variants', () => {
             const Expr = data(({ $E }) => ({
                 Lit: { value: Number },
-                Add: { left: $E, right: $E },
+                Add: { left: $E, right: $E }
+            })).ops(({ fold, unfold, map, merge, $E }) => ({
                 eval: fold({ out: Number })({
                     Lit({ value }) { return value; },
                     Add({ left, right }) { return left + right; }
@@ -34,8 +35,9 @@ describe('Multi-Sorted Algebras', () => {
         test('single-sorted ADT: unannotated variants default to sole sort when some are annotated', () => {
             const Expr = data(({ $E }) => ({
                 Lit: { [sort]: $E, value: Number },
-                Neg: { inner: $E },           // no explicit [sort]
-                Add: { left: $E, right: $E }, // no explicit [sort]
+                Neg: { inner: $E },
+                Add: { left: $E, right: $E }
+            })).ops(({ fold, unfold, map, merge, $E }) => ({
                 eval: fold({ out: Number })({
                     Lit({ value }) { return value; },
                     Neg({ inner }) { return -inner; },
@@ -48,17 +50,18 @@ describe('Multi-Sorted Algebras', () => {
             assert.strictEqual(e.eval, -1);
 
             // isSort should work on unannotated variants too
-            assert.strictEqual((Expr as any)[isSort](Expr.Lit(1), '$E'), true);
-            assert.strictEqual((Expr as any)[isSort](Expr.Neg(Expr.Lit(1)), '$E'), true);
+            assert.strictEqual(Expr[isSort]!(Expr.Lit(1), '$E'), true);
+            assert.strictEqual(Expr[isSort]!(Expr.Neg(Expr.Lit(1)), '$E'), true);
         });
 
         test('regression: partial [sort] annotations brand all variants including singletons', () => {
             // Only Succ has [sort]: $N; Zero (singleton) and Dbl (structured) omit it.
             // All three must receive SortNameSymbol branding for the single sort $N.
             const Nat = data(({ $N }) => ({
-                Zero: {},                                   // singleton, no [sort]
-                Succ: { [sort]: $N, pred: $N },             // annotated
-                Dbl:  { inner: $N },                        // structured, no [sort]
+                Zero: {},
+                Succ: { [sort]: $N, pred: $N },
+                Dbl:  { inner: $N }
+            })).ops(({ fold, unfold, map, merge, $N }) => ({
                 toNum: fold({ out: Number })({
                     Zero() { return 0; },
                     Succ({ pred }) { return 1 + pred; },
@@ -73,9 +76,9 @@ describe('Multi-Sorted Algebras', () => {
             assert.strictEqual(six.toNum, 6);
 
             // Sort branding present on all variants
-            assert.strictEqual((Nat as any)[isSort](Nat.Zero, '$N'), true);
-            assert.strictEqual((Nat as any)[isSort](Nat.Succ(Nat.Zero), '$N'), true);
-            assert.strictEqual((Nat as any)[isSort](Nat.Dbl(Nat.Zero), '$N'), true);
+            assert.strictEqual(Nat[isSort]!(Nat.Zero, '$N'), true);
+            assert.strictEqual(Nat[isSort]!(Nat.Succ(Nat.Zero), '$N'), true);
+            assert.strictEqual(Nat[isSort]!(Nat.Dbl(Nat.Zero), '$N'), true);
         });
 
         test('multi-sorted ADT: $E and $S with explicit [sort]', () => {
@@ -172,10 +175,10 @@ describe('Multi-Sorted Algebras', () => {
             const lit = Lang.Lit(42);
             const assign = Lang.Assign('x', lit);
 
-            assert.strictEqual((Lang as any)[isSort](lit, '$E'), true);
-            assert.strictEqual((Lang as any)[isSort](lit, '$S'), false);
-            assert.strictEqual((Lang as any)[isSort](assign, '$S'), true);
-            assert.strictEqual((Lang as any)[isSort](assign, '$E'), false);
+            assert.strictEqual(Lang[isSort]!(lit, '$E'), true);
+            assert.strictEqual(Lang[isSort]!(lit, '$S'), false);
+            assert.strictEqual(Lang[isSort]!(assign, '$S'), true);
+            assert.strictEqual(Lang[isSort]!(assign, '$E'), false);
         });
     });
 
@@ -188,9 +191,8 @@ describe('Multi-Sorted Algebras', () => {
                 Lit:    { [sort]: $E, value: Number },
                 Add:    { [sort]: $E, left: $E, right: $E },
                 Assign: { [sort]: $S, name: String, expr: $E },
-                Seq:    { [sort]: $S, first: $S, second: $S },
-
-                // Sort-erasing fold: all sorts collapse to String
+                Seq:    { [sort]: $S, first: $S, second: $S }
+            })).ops(({ fold, unfold, map, merge, $E, $S }) => ({
                 pretty: fold({ out: String })({
                     Lit({ value }) { return String(value); },
                     Add({ left, right }) { return `(${left} + ${right})`; },
@@ -212,16 +214,16 @@ describe('Multi-Sorted Algebras', () => {
                 Lit:    { [sort]: $E, value: Number },
                 Add:    { [sort]: $E, left: $E, right: $E },
                 Assign: { [sort]: $S, name: String, expr: $E },
-                Seq:    { [sort]: $S, first: $S, second: $S },
-
+                Seq:    { [sort]: $S, first: $S, second: $S }
+            })).ops(({ fold, unfold, map, merge, $E, $S }) => ({
                 eval: fold({ in: Object })({
                     Lit({ value }) { return value; },
-                    Add({ left, right }, env) { return left(env) + right(env); },
-                    Assign({ name, expr }, env) {
+                    Add({ left, right }: any, env: any) { return left(env) + right(env); },
+                    Assign({ name, expr }: any, env: any) {
                         const newEnv = { ...env, [name]: expr(env) };
                         return newEnv;
                     },
-                    Seq({ first, second }, env) {
+                    Seq({ first, second }: any, env: any) {
                         const env1 = first(env);
                         return second(env1);
                     }
@@ -240,7 +242,8 @@ describe('Multi-Sorted Algebras', () => {
         test('fold on single-sorted with $E (backward compatible)', () => {
             const Nat = data(({ $E }) => ({
                 Zero: {},
-                Succ: { pred: $E },
+                Succ: { pred: $E }
+            })).ops(({ fold, unfold, map, merge, $E }) => ({
                 toNumber: fold({ out: Number })({
                     Zero() { return 0; },
                     Succ({ pred }) { return 1 + pred; }
@@ -256,13 +259,13 @@ describe('Multi-Sorted Algebras', () => {
                 Lit:    { [sort]: $E, value: Number },
                 Add:    { [sort]: $E, left: $E, right: $E },
                 Assign: { [sort]: $S, name: String, expr: $E },
-                Seq:    { [sort]: $S, first: $S, second: $S },
-
+                Seq:    { [sort]: $S, first: $S, second: $S }
+            })).ops(({ fold, unfold, map, merge, $E, $S }) => ({
                 eval: fold({ out: { $E: Number, $S: undefined } })({
                     Lit({ value })         { return value; },
-                    Add({ left, right })   { return left + right; },
-                    Assign({ name, expr }) { void name; void expr; },
-                    Seq({ first, second }) { void first; void second; }
+                    Add({ left, right }: any)   { return left + right; },
+                    Assign({ name, expr }: any) { void name; void expr; },
+                    Seq({ first, second }: any) { void first; void second; }
                 })
             }));
 
@@ -283,13 +286,13 @@ describe('Multi-Sorted Algebras', () => {
             const Lang = data(({ $E, $S }) => ({
                 Lit:    { [sort]: $E, value: Number },
                 Add:    { [sort]: $E, left: $E, right: $E },
-                Print:  { [sort]: $S, expr: $E },
-
+                Print:  { [sort]: $S, expr: $E }
+            })).ops(({ fold, unfold, map, merge, $E, $S }) => ({
                 bad: fold({ out: { $E: Number, $S: String } })({
                     Lit({ value }) { return value; },
-                    Add({ left, right }) { return left + right; },
+                    Add({ left, right }: any) { return left + right; },
                     // Return wrong type for $S: should be String, returns Number
-                    Print({ expr }) { return expr; }
+                    Print({ expr }: any) { return expr; }
                 })
             }));
 
@@ -307,8 +310,8 @@ describe('Multi-Sorted Algebras', () => {
             assert.throws(() => {
                 data(({ $E, $S }) => ({
                     Lit:  { [sort]: $E, value: Number },
-                    Skip: { [sort]: $S },
-                    // Missing $S key
+                    Skip: { [sort]: $S }
+                })).ops(({ fold, unfold, map, merge, $E, $S }) => ({
                     bad: fold({ out: { $E: Number } })({
                         Lit({ value }) { return value; },
                         Skip() { return undefined; }
@@ -321,7 +324,8 @@ describe('Multi-Sorted Algebras', () => {
             assert.throws(() => {
                 data(({ $E, $S }) => ({
                     Lit:  { [sort]: $E, value: Number },
-                    Skip: { [sort]: $S },
+                    Skip: { [sort]: $S }
+                })).ops(({ fold, unfold, map, merge, $E, $S }) => ({
                     bad: fold({ out: { $E: Number, $S: undefined, $X: String } })({
                         Lit({ value }) { return value; },
                         Skip() { return undefined; }
@@ -333,7 +337,8 @@ describe('Multi-Sorted Algebras', () => {
         test('per-sort carrier fold: object out on non-sorted ADT throws', () => {
             assert.throws(() => {
                 data(({ Family }) => ({
-                    Leaf: { value: Number },
+                    Leaf: { value: Number }
+                })).ops(({ fold, unfold, map, merge, Family }) => ({
                     bad: fold({ out: { $E: Number } })({
                         Leaf({ value }) { return value; }
                     })
@@ -347,20 +352,18 @@ describe('Multi-Sorted Algebras', () => {
     describe('Unfold', () => {
 
         test('unfold into multi-sorted ADT', () => {
-            const Lang = data(({ $E, $S }: DataDeclParams) => ({
+            const Lang = data(({ $E, $S }) => ({
                 Lit:    { [sort]: $E, value: Number },
                 Add:    { [sort]: $E, left: $E, right: $E },
                 Assign: { [sort]: $S, name: String, expr: $E },
-                Seq:    { [sort]: $S, first: $S, second: $S },
-
+                Seq:    { [sort]: $S, first: $S, second: $S }
+            })).ops(({ fold, unfold, map, merge, $E, $S }) => ({
                 pretty: fold({ out: String })({
                     Lit({ value }) { return String(value); },
                     Add({ left, right }) { return `(${left} + ${right})`; },
                     Assign({ name, expr }) { return `${name} = ${expr}`; },
                     Seq({ first, second }) { return `${first}; ${second}`; }
                 }),
-
-                // Unfold: build an expression tree from a number
                 FromNumber: unfold({ in: Number })({
                     Lit: (n: number) => (n <= 0 ? { value: 0 } : null),
                     Add: (n: number) => (n > 0 ? { left: n - 1, right: 0 } : null)
@@ -377,15 +380,14 @@ describe('Multi-Sorted Algebras', () => {
     describe('Map', () => {
 
         test('map over type-parameterized fields in multi-sorted ADT', () => {
-            const Expr = data(({ T, $E }: DataDeclParams) => ({
+            const Expr = data(({ T, $E }) => ({
                 Lit:  { [sort]: $E, value: T },
-                Add:  { [sort]: $E, left: $E, right: $E },
-
+                Add:  { [sort]: $E, left: $E, right: $E }
+            })).ops(({ fold, unfold, map, merge, T, $E }) => ({
                 eval: fold({ out: Number })({
                     Lit({ value }) { return Number(value); },
                     Add({ left, right }) { return left + right; }
                 }),
-
                 mapT: map({})({
                     T: (v: unknown) => Number(v) * 10
                 })
@@ -402,11 +404,11 @@ describe('Multi-Sorted Algebras', () => {
     describe('Extend', () => {
 
         test('extend multi-sorted ADT with new variants preserving sorts', () => {
-            const BaseLang = data(({ $E, $S }: DataDeclParams) => ({
+            const BaseLang = data(({ $E, $S }) => ({
                 Lit:    { [sort]: $E, value: Number },
                 Add:    { [sort]: $E, left: $E, right: $E },
-                Assign: { [sort]: $S, name: String, expr: $E },
-
+                Assign: { [sort]: $S, name: String, expr: $E }
+            })).ops(({ fold, unfold, map, merge, $E, $S }) => ({
                 pretty: fold({ out: String })({
                     Lit({ value }) { return String(value); },
                     Add({ left, right }) { return `(${left} + ${right})`; },
@@ -414,11 +416,11 @@ describe('Multi-Sorted Algebras', () => {
                 })
             }));
 
-            const ExtLang = data(({ $E, $S }: DataDeclParams) => ({
+            const ExtLang = data(({ $E, $S }) => ({
                 [extend]: BaseLang,
                 Mul:  { [sort]: $E, left: $E, right: $E },
-                Seq:  { [sort]: $S, first: $S, second: $S },
-
+                Seq:  { [sort]: $S, first: $S, second: $S }
+            })).ops(({ fold, unfold, map, merge, $E, $S }) => ({
                 pretty: fold({ out: String })({
                     Mul({ left, right }) { return `(${left} * ${right})`; },
                     Seq({ first, second }) { return `${first}; ${second}`; }
@@ -446,10 +448,10 @@ describe('Multi-Sorted Algebras', () => {
             }));
 
             // Inherited Lit should still be $E sort
-            assert.strictEqual((ExtLang as any)[isSort]((ExtLang as any).Lit(42), '$E'), true);
-            assert.strictEqual((ExtLang as any)[isSort]((ExtLang as any).Lit(42), '$S'), false);
+            assert.strictEqual(ExtLang[isSort]!(ExtLang.Lit(42), '$E'), true);
+            assert.strictEqual(ExtLang[isSort]!(ExtLang.Lit(42), '$S'), false);
             // Inherited Nop should still be $S sort
-            assert.strictEqual((ExtLang as any)[isSort]((ExtLang as any).Nop, '$S'), true);
+            assert.strictEqual(ExtLang[isSort]!(ExtLang.Nop, '$S'), true);
         });
     });
 
@@ -460,7 +462,8 @@ describe('Multi-Sorted Algebras', () => {
         test('ADT with no sort params works as before (Family-based)', () => {
             const Tree = data(({ Family }) => ({
                 Leaf: { value: Number },
-                Node: { left: Family, right: Family },
+                Node: { left: Family, right: Family }
+            })).ops(({ fold, unfold, map, merge, Family }) => ({
                 sum: fold({ out: Number })({
                     Leaf({ value }) { return value; },
                     Node({ left, right }) { return left + right; }
@@ -476,7 +479,8 @@ describe('Multi-Sorted Algebras', () => {
             // belong to that single sort — no [sort] annotation needed
             const Nat = data(({ $N }) => ({
                 Zero: {},
-                Succ: { pred: $N },
+                Succ: { pred: $N }
+            })).ops(({ fold, unfold, map, merge, $N }) => ({
                 toNum: fold({ out: Number })({
                     Zero() { return 0; },
                     Succ({ pred }) { return 1 + pred; }

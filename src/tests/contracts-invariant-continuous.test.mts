@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { data, fold, unfold, invariant, InvariantError } from '../index.mjs';
+import { data, invariant, InvariantError } from '../index.mjs';
 
 describe('Contracts: Continuous Invariant Enforcement', () => {
     describe('Invariant checked around fold operations', () => {
@@ -13,7 +13,8 @@ describe('Contracts: Continuous Invariant Enforcement', () => {
                 Box: {
                     [invariant]: ({ x }) => x > 0,
                     x: Number
-                },
+                }
+            })).ops(({ fold, unfold, map, merge }) => ({
                 value: fold({ out: Number })({
                     Box({ x }) { return x; }
                 })
@@ -32,8 +33,8 @@ describe('Contracts: Continuous Invariant Enforcement', () => {
                 Box: {
                     [invariant]: () => externalValid,
                     x: Number
-                },
-                // Fold with NO demands, ensures, or rescue
+                }
+            })).ops(({ fold, unfold, map, merge }) => ({
                 value: fold({ out: Number })({
                     Box({ x }) { return x; }
                 })
@@ -60,7 +61,8 @@ describe('Contracts: Continuous Invariant Enforcement', () => {
                 Box: {
                     [invariant]: ({ x }) => x > 0,
                     x: Number
-                },
+                }
+            })).ops(({ fold, unfold, map, merge }) => ({
                 value: fold({ out: Number })({
                     Box({ x }) { return x; }
                 })
@@ -82,7 +84,8 @@ describe('Contracts: Continuous Invariant Enforcement', () => {
                 Box: {
                     [invariant]: () => externalValid,
                     x: Number
-                },
+                }
+            })).ops(({ fold, unfold, map, merge }) => ({
                 identity: fold({})({
                     Box({ x }) {
                         const result = Box.Box({ x });
@@ -120,7 +123,8 @@ describe('Contracts: Continuous Invariant Enforcement', () => {
                 Box: {
                     [invariant]: () => externalValid,
                     x: Number
-                },
+                }
+            })).ops(({ fold, unfold, map, merge }) => ({
                 risky: fold({
                     in: Number,
                     rescue: (_self, _error, _args, retry) => retry(5)
@@ -155,7 +159,8 @@ describe('Contracts: Continuous Invariant Enforcement', () => {
                 Box: {
                     [invariant]: ({ x }) => x > 0,
                     x: Number
-                },
+                }
+            })).ops(({ fold, unfold, map, merge }) => ({
                 value: fold({ out: Number })({
                     Box({ x }) { return x; }
                 })
