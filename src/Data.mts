@@ -818,7 +818,23 @@ function createFamilyMarker(): FamilyMarker {
     };
     (marker as unknown as Record<symbol, unknown>)[FamilyRefSymbol] = true;
     (marker as unknown as { _adt: null })._adt = null;
-    return marker as unknown as FamilyMarker;
+
+    // Wrap marker in a Proxy to delegate variant constructor access to _adt
+    return new Proxy(marker as unknown as FamilyMarker, {
+        get(target, prop, receiver) {
+            // Return properties from the marker itself (like _adt, FamilyRefSymbol)
+            if (prop === '_adt' || prop === FamilyRefSymbol || typeof prop === 'symbol')
+                return Reflect.get(target, prop, receiver);
+
+            // Delegate variant constructor access to _adt if it exists
+            const adt = target._adt;
+            if (adt && (typeof adt === 'object' || typeof adt === 'function') && prop in adt)
+                return Reflect.get(adt, prop, adt);
+
+            // Otherwise return from the marker itself
+            return Reflect.get(target, prop, receiver);
+        }
+    });
 }
 
 function createTypeParam(name: string): object {

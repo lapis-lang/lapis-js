@@ -190,7 +190,7 @@ const PathFinder: any = observer(({ Self }) => ({
         in: Object,
         out: Self,
         // Mode declaration: reject null/undefined seeds
-        demands: (_self: any, s: null) => s != null && typeof s === 'object',
+        demands: (_self: any, s: unknown) => s != null && typeof s === 'object',
         // Rescue: if something goes wrong during unfold, treat as exhausted
         rescue: () => {
             return PathFinder.Search(SearchState.Exhausted);

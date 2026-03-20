@@ -38,9 +38,11 @@ const Matrix: any = data((_) => ({
     }),
     cols: fold({ out: Object })({
         Matrix({ cells }) {
-            if (cells.length === 0) return Matrix.Matrix({ cells: [] });
+            const cells2d = cells as unknown[][];
+            if (cells2d.length === 0) return Matrix.Matrix({ cells: [] });
+            if (cells2d[0].length === 0) return Matrix.Matrix({ cells: [] });
             return Matrix.Matrix({
-                cells: (cells as unknown[][]).map((_: unknown, i: number) => (cells as unknown[][]).map(r => r[i]))
+                cells: cells2d[0].map((_: unknown, i: number) => cells2d.map(r => r[i]))
             });
         }
     }),

@@ -129,8 +129,8 @@ export interface FamilyRef {
 export interface FamilyRefCallable extends FamilyRef {
     (typeParam?: unknown): FamilyRefCallable;
     _adt: ((typeParam?: unknown) => FamilyRefCallable) | null;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    [key: string]: any;
+    // Dynamic variant constructor access requires explicit casting
+    [key: string]: unknown;
 }
 
 /** A value with a SelfRef marker */

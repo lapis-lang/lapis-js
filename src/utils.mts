@@ -15,17 +15,23 @@ import { IsSingleton } from './Data.mjs';
 
 /** Read a symbol-keyed property from an object. */
 export function getSymbolProp<T = unknown>(obj: unknown, sym: symbol): T {
+    if (obj == null || (typeof obj !== 'object' && typeof obj !== 'function')) 
+        throw new TypeError(`Cannot read symbol property from ${obj}`);
+    
     return (obj as Record<symbol, unknown>)[sym] as T;
 }
 
 /** Write a symbol-keyed property on an object. */
 export function setSymbolProp(obj: unknown, sym: symbol, value: unknown): void {
+    if (obj == null || (typeof obj !== 'object' && typeof obj !== 'function')) 
+        throw new TypeError(`Cannot write symbol property to ${obj}`);
+    
     (obj as Record<symbol, unknown>)[sym] = value;
 }
 
 /** Check if an object has a specific symbol-keyed property. */
 export function hasSymbolProp(obj: unknown, sym: symbol): boolean {
-    return obj != null && typeof obj === 'object' && sym in obj;
+    return obj != null && (typeof obj === 'object' || typeof obj === 'function') && sym in obj;
 }
 
 // Symbols for parameterized ADT/Behavior instances
@@ -161,8 +167,18 @@ export function omitSymbol<T extends object>(obj: T, symbol: symbol): Omit<T, sy
 
 /** Ensure a symbol-keyed slot on `target` holds a Map, creating it if absent. */
 export function ensureOwnMap<K, V>(target: Record<symbol, unknown>, symbol: symbol): Map<K, V> {
-    if (!Object.hasOwn(target, symbol)) target[symbol] = new Map<K, V>();
-    return target[symbol] as Map<K, V>;
+    const existing = target[symbol];
+    if (existing !== undefined) {
+        if (!(existing instanceof Map)) {
+            throw new TypeError(
+                `Expected symbol slot to contain a Map, but found ${typeof existing}`
+            );
+        }
+        return existing as Map<K, V>;
+    }
+    const newMap = new Map<K, V>();
+    target[symbol] = newMap;
+    return newMap;
 }
 
 // ---- Operation installation helpers -----------------------------------------
