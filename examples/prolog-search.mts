@@ -1,7 +1,7 @@
 /**
- * Prolog-Style Top-Down Search — observer() with Contracts
+ * Prolog-Style Top-Down Search — query() with Contracts
  *
- * Demonstrates Prolog-like search using observer() (ν-side LP):
+ * Demonstrates Prolog-like search using query() (ν-side LP):
  *
  *   - unfold    = goal expansion (generate search states)
  *   - demands   = mode declarations / early pruning
@@ -26,7 +26,7 @@
  */
 
 import {
-    data, observer, relation, origin, destination
+    data, query, relation, origin, destination
 } from '@lapis-lang/lapis-js';
 
 // ---- Weighted Edge Relation (μ) ---------------------------------------------
@@ -176,7 +176,7 @@ const Query: any = data(() => ({
 //   - demands on unfold: state must be a SearchState instance
 //   - rescue on unfold:  if unfold fails, return Exhausted-like state
 
-const PathFinder: any = observer(({ Self }) => ({
+const PathFinder: any = query(({ Self }) => ({
     path: Array,
     cost: Number,
     found: Boolean,
@@ -209,7 +209,7 @@ const PathFinder: any = observer(({ Self }) => ({
 // =============================================================================
 
 console.log('╔════════════════════════════════════════════════════════╗');
-console.log('║  Prolog-Style Search — observer() with Contracts       ║');
+console.log('║  Prolog-Style Search — query() with Contracts       ║');
 console.log('╚════════════════════════════════════════════════════════╝\n');
 
 console.log('Weighted Graph:');
@@ -303,7 +303,7 @@ console.log('\n━━━ Structure ━━━');
 console.log('  relation() WEdge        from|to|weight + Path composition');
 console.log('  data()     Query        edges|start|target|maxCost → toState');
 console.log('             SearchState  Active|Found|Exhausted + cost pruning');
-console.log('  observer() PathFinder   path|cost|found|exhausted|next');
+console.log('  query() PathFinder   path|cost|found|exhausted|next');
 console.log('  Contracts: demands (mode decl), rescue (backtrack fallback)');
 console.log('  Cut:       maxResults: 1 → first solution only');
 console.log('  Tabling:   auto-derived from [output] → cycle detection');

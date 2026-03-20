@@ -61,7 +61,7 @@ export interface MealyMachine<State = unknown, Req = unknown, Res = unknown> {
 }
 
 /**
- * A Lapis type: the result of `data()`, `behavior()`, `relation()`, or `observer()`.
+ * A Lapis type: the result of `data()`, `behavior()`, `relation()`, or `query()`.
  *
  * The compile-time type is intentionally broad (`{ [key: string]: any }`) because
  * the concrete return types of those four factories (`DataADT`, `BehaviorADT`, etc.)
@@ -231,7 +231,7 @@ function buildExports(entries: ChainEntry[]): Record<string | symbol, unknown> {
     }, {} as Record<string | symbol, unknown>);
 }
 
-/** Returns true iff v was produced by data(), behavior(), relation(), or observer(). */
+/** Returns true iff v was produced by data(), behavior(), relation(), or query(). */
 function isLapisValue(v: unknown): boolean {
     return typeof v === 'function' &&
         (v as unknown as Record<symbol, unknown>)[LapisTypeSymbol] === true;

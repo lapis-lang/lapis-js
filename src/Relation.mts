@@ -436,7 +436,7 @@ export function relation<D extends Record<string, unknown>>(
  * eliminating the need for `maxIterations` or `maxFacts` safety limits.
  *
  * Users who want all distinct proof trees (path enumeration) should use
- * `observer()` instead — it explores lazily top-down without materialising
+ * `query()` instead — it explores lazily top-down without materialising
  * every derivation.
  */
 function computeClosure(

@@ -70,12 +70,12 @@ there is an emphasis on the Bird-Meertens Formalism (BMF) (Squiggol) of making p
   - [Logic Programming Interpretation (Relation)](#logic-programming-interpretation-relation)
   - [Complete Example: Ancestor Relation](#complete-example-ancestor-relation)
   - [Cycle Handling](#cycle-handling)
-- [Observer (Stepwise Exploration on Behavior)](#observer-stepwise-exploration-on-behavior)
-  - [Observer Declaration](#observer-declaration)
+- [Query (Stepwise Exploration on Behavior)](#query-stepwise-exploration-on-behavior)
+  - [Query Declaration](#query-declaration)
   - [Auto-Generated Operation: `explore(seed, options?)`](#auto-generated-operation-exploreseed-options)
   - [Complete Example: Graph Path Finder](#complete-example-graph-path-finder)
-  - [Relation vs Observer: When to Use Which](#relation-vs-observer-when-to-use-which)
-  - [Logic Programming Interpretation (Observer)](#logic-programming-interpretation-observer)
+  - [Relation vs Query: When to Use Which](#relation-vs-query-when-to-use-which)
+  - [Logic Programming Interpretation (Query)](#logic-programming-interpretation-query)
 - [Design by Contract](#design-by-contract)
   - [Assertions](#assertions)
   - [Implies](#implies)
@@ -2624,21 +2624,21 @@ const all = Edge.closure(cyclic);
 // 9 pairs - full connectivity, no infinite loop
 ```
 
-## Observer (Stepwise Exploration on Behavior)
+## Query (Stepwise Exploration on Behavior)
 
-An observer is a `behavior()` type enriched with **exploration structure**: fold operations that extract results, detect termination, and filter successes from the observation stream:
+A query is a `behavior()` type enriched with **exploration structure**: fold operations that extract results, detect termination, and filter successes from the observation stream:
 
 ```text
 Query →input- P ←output- Path[]
 ```
 
-Where `relation()` computes exhaustively bottom-up (like Datalog), `observer()` explores lazily top-down (like Prolog). This makes `observer()` suited for large or infinite search spaces where you only need some results.
+Where `relation()` computes exhaustively bottom-up (like Datalog), `query()` explores lazily top-down (like Prolog). This makes `query()` suited for large or infinite search spaces where you only need some results.
 
 > Categorically, the `[output]`/`[done]`/`[accept]` triple forms a *cospan*: the dual of a relation's span. `explore()` computes a greatest fixpoint, dual to `closure()`'s least fixpoint.
 
-**Relation vs Observer at a glance:**
+**Relation vs Query at a glance:**
 
-| Relation | Observer |
+| Relation | Query |
 | --- | --- |
 | Computes **all** reachable pairs (bottom-up) | Explores **lazily** from a seed (top-down) |
 | `[origin]` / `[destination]` project endpoints (fold ops) | `[output]` / `[done]` / `[accept]` observe state (field references) |
@@ -2647,17 +2647,17 @@ Where `relation()` computes exhaustively bottom-up (like Datalog), `observer()` 
 | Datalog-style | Prolog-style |
 
 ```ts
-import { observer } from '@lapis-lang/lapis-js';
+import { query } from '@lapis-lang/lapis-js';
 ```
 
-### Observer Declaration
+### Query Declaration
 
-An observer is declared like a `behavior()` type, with three required cospan projections that define the cospan structure. This parallels how `relation()` requires `[origin]`/`[destination]` fold defs for its span structure.
+A query is declared like a `behavior()` type, with three required cospan projections that define the cospan structure. This parallels how `relation()` requires `[origin]`/`[destination]` fold defs for its span structure.
 
 Each cospan key is a **string naming an observer field**. The framework auto-generates the corresponding fold projection:
 
 ```ts
-const PathFinder = observer(({ Self }) => ({
+const PathFinder = query(({ Self }) => ({
     // Observers (same as behavior)
     path: Array,
     found: Boolean,
@@ -2669,7 +2669,7 @@ const PathFinder = observer(({ Self }) => ({
     [done]:   'exhausted',
     [accept]: 'found',
 
-    // Unfold (observer map, same as behavior)
+    // Unfold (query map, same as behavior)
     Search: unfold({ in: Object, out: Self })({
         path:      (s) => s.path,
         found:     (s) => s.isFound,
@@ -2709,7 +2709,7 @@ All other keys follow the same rules as `behavior()`: observers, fold/unfold ope
 
 ### Auto-Generated Operation: `explore(seed, options?)`
 
-The `explore()` method drives the observer step by step, collecting results along the way:
+The `explore()` method drives the query step by step, collecting results along the way:
 
 1. Unfold the seed into an initial behavior instance
 2. At each step, read `[accept]` (fold getter) on the current instance
@@ -2737,10 +2737,10 @@ Options:
 
 ### Complete Example: Graph Path Finder
 
-This example uses `data()` for the search state ADT and `observer()` for the lazy path-finding behavior:
+This example uses `data()` for the search state ADT and `query()` for the lazy path-finding behavior:
 
 ```ts
-import { data, observer } from '@lapis-lang/lapis-js';
+import { data, query } from '@lapis-lang/lapis-js';
 
 // SearchState ::= Active | Found | Exhausted
 const SearchState = data(() => {
@@ -2803,8 +2803,8 @@ const Query = data(() => ({
     })
 }));
 
-// PathFinder - observer with cospan structure
-const PathFinder = observer(({ Self }) => ({
+// PathFinder - query with cospan structure
+const PathFinder = query(({ Self }) => ({
     path: Array,
     found: Boolean,
     exhausted: Boolean,
@@ -2838,22 +2838,22 @@ const first = PathFinder.explore(
 // first = [['A', 'D', 'C', 'E']]
 ```
 
-### Relation vs Observer: When to Use Which
+### Relation vs Query: When to Use Which
 
 | Scenario | Use | Why |
 | --- | --- | --- |
 | Enumerate **all** reachable pairs | `relation()` + `closure()` | Bottom-up exhaustive computation |
-| Answer **one** specific query lazily | `observer()` + `explore()` | Top-down, stops after finding results |
+| Answer **one** specific query lazily | `query()` + `explore()` | Top-down, stops after finding results |
 | Need `reachableFrom()` / `reachingTo()` projections | `relation()` | Built-in relational algebra |
-| Need to control search (DFS, BFS, heuristics) | `observer()` | Observer map controls traversal strategy |
+| Need to control search (DFS, BFS, heuristics) | `query()` | Query map controls traversal strategy |
 | Small, finite relation | Either | Both produce correct results |
-| Large or infinite search space | `observer()` | Lazy evaluation avoids materializing all facts |
+| Large or infinite search space | `query()` | Lazy evaluation avoids materializing all facts |
 
-### Logic Programming Interpretation (Observer)
+### Logic Programming Interpretation (Query)
 
-Just as `relation()` operations have LP meanings on proof trees, `observer()` operations have dual meanings on the **search process** (proof search driven by behavior):
+Just as `relation()` operations have LP meanings on proof trees, `query()` operations have dual meanings on the **search process** (proof search driven by behavior):
 
-| Operation | behavior() meaning | observer() LP meaning |
+| Operation | behavior() meaning | query() LP meaning |
 | --- | --- | --- |
 | **fold** | Observe/consume behavior state | **Read search state**: extract the current result (`[output]`), check termination (`[done]`), test acceptance (`[accept]`) |
 | **unfold** | Construct behavior from a seed | **Expand the search**: produce the next search state from a query (goal resolution, SLD-resolution step) |
@@ -2864,12 +2864,12 @@ Just as `relation()` operations have LP meanings on proof trees, `observer()` op
 | **map** | Lazy type transformation on observations | **Transform the search space**: re-label states or results without altering the search strategy |
 | **merge** | Fuse observation pipeline (deforestation) | **Compose search strategies**: fuse goal expansion with result extraction, avoiding intermediate state materialization |
 
-Where `relation()` stores proof witnesses (data: what was proved), `observer()` drives proof search (behavior: how to prove it). The duality is:
+Where `relation()` stores proof witnesses (data: what was proved), `query()` drives proof search (behavior: how to prove it). The duality is:
 
 - **Relation**: data side. Proof trees are constructed and inspected. `closure()` computes a least fixpoint (enumerate all proofs). *(CT: initial algebra, μ-side.)*
-- **Observer**: behavior side. Search processes are stepped and observed. `explore()` computes a greatest fixpoint (lazily find proofs on demand). *(CT: final coalgebra, ν-side.)*
+- **Query**: behavior side. Search processes are stepped and observed. `explore()` computes a greatest fixpoint (lazily find proofs on demand). *(CT: final coalgebra, ν-side.)*
 
-Together they form a complete LP system: relations for exhaustive bottom-up derivation, observers for lazy top-down search.
+Together they form a complete LP system: relations for exhaustive bottom-up derivation, queries for lazy top-down search.
 
 ## Design by Contract
 
@@ -3803,7 +3803,7 @@ import { module, system, extend } from '@lapis-lang/lapis-js';
 
 `module(spec, body)` creates a **`ModuleDef`** — a callable that accepts a dependency object
 and returns a frozen record of exports. Module bodies may only export Lapis types: values
-produced by `data()`, `behavior()`, `relation()`, or `observer()`.
+produced by `data()`, `behavior()`, `relation()`, or `query()`.
 
 ```ts
 import { module, data } from '@lapis-lang/lapis-js';

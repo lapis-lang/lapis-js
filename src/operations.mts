@@ -74,7 +74,7 @@ export const aux: unique symbol = Symbol('aux');
 export type aux = typeof aux;
 
 /**
- * Stamps values produced by data(), behavior(), relation(), and observer().
+ * Stamps values produced by data(), behavior(), relation(), and query().
  * Used by module() at instantiation time to validate that all exported values
  * are Lapis types rather than arbitrary JavaScript values.
  */
