@@ -2654,7 +2654,7 @@ import { query } from '@lapis-lang/lapis-js';
 
 A query is declared like a `behavior()` type, with three required cospan projections that define the cospan structure. This parallels how `relation()` requires `[origin]`/`[destination]` fold defs for its span structure.
 
-Each cospan key is a **string naming an observer field**. The framework auto-generates the corresponding fold projection:
+Each cospan key is a **string naming a query field**. The framework auto-generates the corresponding fold projection:
 
 ```ts
 const PathFinder = query(({ Self }) => ({

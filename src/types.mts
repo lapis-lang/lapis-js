@@ -668,13 +668,13 @@ export type QueryADT<D = Record<string, unknown>> =
     BehaviorMergeCtors<D> & {
         readonly prototype: BehaviorObservers<D>;
     } & (D extends { readonly [output]?: unknown } ? {
-        /** Observer output cospan projection (present when D declares [output]) */
+        /** Query output cospan projection (present when D declares [output]) */
         readonly [output]?: unknown;
     } : object) & (D extends { readonly [done]?: unknown } ? {
-        /** Observer done cospan projection (present when D declares [done]) */
+        /** Query done cospan projection (present when D declares [done]) */
         readonly [done]?: unknown;
     } : object) & (D extends { readonly [accept]?: unknown } ? {
-        /** Observer accept cospan projection (present when D declares [accept]) */
+        /** Query accept cospan projection (present when D declares [accept]) */
         readonly [accept]?: unknown;
     } : object);
 

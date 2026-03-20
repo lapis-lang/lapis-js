@@ -26,7 +26,7 @@ import {
 
 describe('Contracts x LP: Demands on Unfold (Early Pruning)', () => {
     it('demands reject invalid seeds (mode declaration)', () => {
-        // A search observer that requires the seed to be a valid starting state.
+        // A query that requires the seed to be a valid starting state.
         // In LP terms: the demand is a mode declaration — the query must be ground.
         const Counter = query(({ Self }) => ({
             value: Number,
@@ -63,7 +63,7 @@ describe('Contracts x LP: Demands on Unfold (Early Pruning)', () => {
     });
 
     it('demands on unfold prune invalid states during exploration', () => {
-        // Observer where the unfold has demands that prune certain states.
+        // Query where the unfold has demands that prune certain states.
         // This models constraint propagation: a demand at each step that
         // rejects partial solutions violating constraints.
 
@@ -148,7 +148,7 @@ describe('Contracts x LP: Ensures on Closure Results (Integrity Constraints)', (
 
 describe('Contracts x LP: Rescue as Backtracking', () => {
     it('rescue on unfold provides fallback when ensures fails (backtrack)', () => {
-        // An observer where the unfold has ensures + rescue.
+        // A query where the unfold has ensures + rescue.
         // When ensures fails (invalid state), rescue provides a fallback
         // (backtrack to a safe state). This models Prolog backtracking:
         // constraint violation → try next alternative.
