@@ -279,7 +279,7 @@ export function resolveContracts(
  * - ensures: AND (strengthen) — child ensures ∧ parent ensures
  * - rescue: override or inherit — child rescue replaces parent, or parent inherited if absent
  */
-function composeContracts(
+export function composeContracts(
     parentContracts: ContractSpec,
     childContracts: ContractSpec
 ): ContractSpec {

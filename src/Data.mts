@@ -26,6 +26,7 @@ import {
 
 import {
     resolveContracts,
+    composeContracts,
     checkDemands,
     checkEnsures,
     checkInvariant,
@@ -64,8 +65,10 @@ import {
     type ProtocolEntry,
     registerConformance,
     applyUnconditionalProtocols,
+    validateProtocolInvariant,
     parseProtocolEntries,
-    conformanceRegistry
+    conformanceRegistry,
+    gatherProtocolContracts
 } from './Protocol.mjs';
 
 // Re-export symbols.
@@ -425,7 +428,8 @@ function attachOpsMethod<D extends Record<string, unknown>>(
             // Recover ownVariants from the ADT (they are enumerable properties that are variant-like)
             getOwnVariantsFromADT(rawADT),
             opsDecl,
-            decl.typeParams
+            decl.typeParams,
+            decl.protocols
         );
 
         // Validate protocol conformance and register unconditional conformances
@@ -433,7 +437,8 @@ function attachOpsMethod<D extends Record<string, unknown>>(
             rawADT.prototype,
             new Set(rawADT._getTransformerNames()),
             decl.protocols,
-            'ADT'
+            'ADT',
+            rawADT
         );
 
         return ADT as DataADTWithParams<D & O>;
@@ -924,11 +929,11 @@ function createADT(decl: ParsedDecl): ADTLike {
 
     const ownVariants = createVariants(ADT as unknown as ADTLike, decl.variants, decl.typeParams, decl.sortVariants);
 
-    createOperations(ADT as unknown as ADTLike, ownVariants, decl.operations, decl.typeParams);
+    createOperations(ADT as unknown as ADTLike, ownVariants, decl.operations, decl.typeParams, decl.protocols);
 
     // Inherit unfold operations from parent, rebound to child variants
     if (parentADT)
-        inheritUnfoldOperations(ADT as unknown as ADTLike, ownVariants, parentADT, decl.operations);
+        inheritUnfoldOperations(ADT as unknown as ADTLike, ownVariants, parentADT, decl.operations, decl.protocols);
 
     const ProxiedADT = createDelegationProxy(
         ADT as unknown as ADTLike,
@@ -1394,7 +1399,8 @@ function createOperations(
     ADT: ADTLike,
     variants: Record<string, unknown>,
     operationSpecs: SpecRecord,
-    _typeParams: SpecRecord
+    _typeParams: SpecRecord,
+    protocols: ProtocolEntry[] = []
 ): void {
     const localParentADT = parentADTMap.get(ADT as unknown as object) as ADTLike | null ?? null,
         sortedOps = topologicalSortOperations(operationSpecs, localParentADT);
@@ -1403,9 +1409,9 @@ function createOperations(
         const opKind = opDef[op as unknown as string];
 
         if (opKind === 'fold')
-            createFoldOperation(ADT, variants, opName, opDef);
+            createFoldOperation(ADT, variants, opName, opDef, protocols);
         else if (opKind === 'unfold')
-            createUnfoldOperation(ADT, variants, opName, opDef);
+            createUnfoldOperation(ADT, variants, opName, opDef, protocols);
         else if (opKind === 'map')
             createMapOperation(ADT, variants, opName, opDef);
         else if (opKind === 'merge')
@@ -1435,7 +1441,8 @@ function createFoldOperation(
     ADT: ADTLike,
     variants: Record<string, unknown>,
     opName: string,
-    opDef: Record<string, unknown>
+    opDef: Record<string, unknown>,
+    protocols: ProtocolEntry[] = []
 ): void {
     // Exclude op and spec keys from handlers
     const { [op as unknown as string]: _op, [spec as unknown as string]: opSpec = {}, ...handlers } = opDef,
@@ -1497,11 +1504,18 @@ function createFoldOperation(
     }
 
     // Extract + subcontract: compose child contracts with parent's (LSP rules)
+    // Protocol contracts form the outermost layer (algebraic law); parent ADT
+    // contracts compose on top; then the child implementation's own contracts.
+    const protocolFoldContracts = gatherProtocolContracts(protocols, opName);
     const parentFoldTransformer = localParentADT
         ? adtTransformers.get(localParentADT as unknown as object)?.get(opName)
         : undefined;
+    const combinedParentFoldContracts: ContractSpec | null =
+        protocolFoldContracts && parentFoldTransformer?.contracts
+            ? composeContracts(protocolFoldContracts, parentFoldTransformer.contracts)
+            : (parentFoldTransformer?.contracts ?? protocolFoldContracts ?? null);
     const foldContracts: ContractSpec | null = resolveContracts(
-        opSpecObj, parentFoldTransformer?.contracts
+        opSpecObj, combinedParentFoldContracts
     );
 
     const hasExtraParams = !hasInput && Object.values(handlers).some(h =>
@@ -2061,15 +2075,22 @@ function installUnfoldImpl(
     variants: Record<string, unknown>,
     opName: string,
     cases: Record<string, (seed: unknown) => unknown | null>,
-    opSpecObj: Record<string, unknown>
+    opSpecObj: Record<string, unknown>,
+    protocols: ProtocolEntry[] = []
 ): void {
     // Extract + subcontract: compose child contracts with parent's (LSP rules)
+    // Protocol contracts form the outermost layer; parent ADT contracts compose on top.
     const localParentADT = parentADTMap.get(ADT as unknown as object) as ADTLike | null ?? null;
     const parentUnfoldTransformer = localParentADT
         ? adtTransformers.get(localParentADT as unknown as object)?.get(opName)
         : undefined;
+    const protocolUnfoldContracts = gatherProtocolContracts(protocols, opName);
+    const combinedParentUnfoldContracts: ContractSpec | null =
+        protocolUnfoldContracts && parentUnfoldTransformer?.contracts
+            ? composeContracts(protocolUnfoldContracts, parentUnfoldTransformer.contracts)
+            : (parentUnfoldTransformer?.contracts ?? protocolUnfoldContracts ?? null);
     const unfoldContracts: ContractSpec | null = resolveContracts(
-        opSpecObj, parentUnfoldTransformer?.contracts
+        opSpecObj, combinedParentUnfoldContracts
     );
 
     const hasAnyUnfoldContracts = unfoldContracts !== null;
@@ -2215,7 +2236,8 @@ function inheritUnfoldOperations(
     childADT: ADTLike,
     ownVariants: Record<string, unknown>,
     parentADT: ADTLike,
-    childOperations: Record<string, unknown>
+    childOperations: Record<string, unknown>,
+    protocols: ProtocolEntry[] = []
 ): void {
     const rawParent = (parentADT as { _rawADT?: ADTLike })._rawADT || parentADT,
         parentRegistry = adtTransformers.get(rawParent as unknown as object);
@@ -2236,7 +2258,8 @@ function inheritUnfoldOperations(
         installUnfoldImpl(
             childADT, ownVariants, name,
             tx.unfoldCases as Record<string, (seed: unknown) => unknown | null>,
-            cleanSpec as Record<string, unknown>
+            cleanSpec as Record<string, unknown>,
+            protocols
         );
     }
 }
@@ -2245,7 +2268,8 @@ function createUnfoldOperation(
     ADT: ADTLike,
     variants: Record<string, unknown>,
     opName: string,
-    opDef: Record<string, unknown>
+    opDef: Record<string, unknown>,
+    protocols: ProtocolEntry[] = []
 ): void {
     const {
         [op as unknown as string]: _op,
@@ -2263,7 +2287,7 @@ function createUnfoldOperation(
         throw new TypeError(`cannot use Function as 'in' guard`);
 
 
-    installUnfoldImpl(ADT, variants, opName, cases, opSpecObj);
+    installUnfoldImpl(ADT, variants, opName, cases, opSpecObj, protocols);
 }
 
 // ---- Map implementation factory ---------------------------------------------
@@ -2867,6 +2891,9 @@ function createParameterized(
     type FailedEntry = { ownOps: string[]; failedParams: Array<{ param: string; argName: string }> };
     const failedEntries: FailedEntry[] = [];
 
+    // Hoist paramProto so contract wrappers inside the satisfaction loop can use it.
+    const paramProto = (ParameterizedADT as unknown as { prototype: object }).prototype;
+
     for (const entry of decl.protocols) {
         if (!entry.conditional) continue;
         let allSatisfied = true;
@@ -2908,8 +2935,91 @@ function createParameterized(
         }
         if (allSatisfied) {
             registerConformance((ParameterizedADT as unknown as { prototype: object }).prototype, entry.protocol);
+            validateProtocolInvariant(entry.protocol, ParameterizedADT, 'Parameterized ADT');
             for (const opName of entry.protocol.requiredOps.keys())
                 satisfiedOpNames.add(opName);
+
+            // Apply conditional protocol contracts onto the parameterized type.
+            //
+            // Composition rules (LSP subcontracting):
+            //   demands : OR  — if the fold already has baked-in demands (from unconditional
+            //                   protocols + parent + own), those are broader by LSP, so we only
+            //                   add a demands check when there are no existing baked demands
+            //                   (the conditional protocol is the sole demands source).
+            //   ensures : AND — always wrap; the additional ensures check fires after the inner
+            //                   result is produced, giving AND(bakedEnsures, protocolEnsures).
+            //   rescue  : skip — the operation's own rescue (baked in) takes precedence.
+            for (const [opName, opSpec] of entry.protocol.requiredOps) {
+                if (!opSpec.contracts) continue;
+                const c = opSpec.contracts;
+
+                if (opSpec.kind === 'fold') {
+                    // Folds are instance-level getters or methods on the prototype chain.
+                    let desc: PropertyDescriptor | undefined;
+                    let searchProto: object | null = Base.prototype as object;
+                    while (searchProto !== null) {
+                        const d = Object.getOwnPropertyDescriptor(searchProto, opName);
+                        if (d) { desc = d; break; }
+                        searchProto = Object.getPrototypeOf(searchProto) as object | null;
+                    }
+                    if (!desc) continue;
+
+                    // Only add a demands wrapper when the fold has no baked-in demands.
+                    // If baked demands exist, LSP guarantees they are at least as broad as
+                    // the protocol's demands — OR-composition is already satisfied.
+                    const bakedContracts = adtTransformers.get(Base as unknown as object)?.get(opName)?.contracts ?? null;
+                    const mustAddDemands = !!c.demands && !bakedContracts?.demands;
+
+                    if ('get' in desc) {
+                        const origGetter = desc.get!;
+                        Object.defineProperty(paramProto, opName, {
+                            get(this: unknown) {
+                                if (mustAddDemands)
+                                    checkDemands(c.demands!, opName, 'conditional protocol', this, []);
+                                const result = origGetter.call(this);
+                                if (c.ensures)
+                                    checkEnsures(c.ensures, opName, 'conditional protocol', this, this, result, []);
+                                return result;
+                            },
+                            configurable: true,
+                            enumerable: false
+                        });
+                    } else {
+                        const origMethod = desc.value as (...a: unknown[]) => unknown;
+                        Object.defineProperty(paramProto, opName, {
+                            value(this: unknown, ...args: unknown[]) {
+                                if (mustAddDemands)
+                                    checkDemands(c.demands!, opName, 'conditional protocol', this, args);
+                                const result = origMethod.apply(this, args);
+                                if (c.ensures)
+                                    checkEnsures(c.ensures, opName, 'conditional protocol', this, this, result, args);
+                                return result;
+                            },
+                            writable: false,
+                            configurable: true,
+                            enumerable: false
+                        });
+                    }
+                } else if (opSpec.kind === 'unfold') {
+                    // Unfolds are static methods on the ADT constructor.
+                    const origUnfold = (ParameterizedADT as unknown as Record<string, unknown>)[opName] as
+                        ((seed: unknown) => unknown) | undefined;
+                    if (!origUnfold) continue;
+
+                    const bakedContracts = adtTransformers.get(ParameterizedADT as unknown as object)?.get(opName)?.contracts ?? null;
+                    const mustAddDemands = !!c.demands && !bakedContracts?.demands;
+
+                    (ParameterizedADT as unknown as Record<string, unknown>)[opName] = function wrappedUnfold(seed: unknown): unknown {
+                        if (mustAddDemands)
+                            checkDemands(c.demands!, opName, 'conditional protocol', null, [seed]);
+                        const result = origUnfold(seed);
+                        if (c.ensures)
+                            checkEnsures(c.ensures, opName, 'conditional protocol', null, seed, result, [seed]);
+                        return result;
+                    };
+                }
+                // map / merge kinds: no demands/ensures in the protocol spec, nothing to wrap.
+            }
         } else
             failedEntries.push({ ownOps: [...entry.protocol.requiredOps.keys()], failedParams });
 
@@ -2919,7 +3029,6 @@ function createParameterized(
     // satisfied protocol, install an error-throwing stub on ParameterizedADT.prototype.
     // This ensures callers get a clear TypeError at the call site rather than a cryptic
     // failure deep inside the handler.
-    const paramProto = (ParameterizedADT as unknown as { prototype: object }).prototype;
     for (const { ownOps, failedParams } of failedEntries) {
         const failDesc = failedParams.length > 0
             ? failedParams.map(({ param, argName }) => `'${param}' is '${argName}'`).join(', ')

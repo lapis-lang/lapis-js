@@ -21,7 +21,9 @@ import {
     protocol,
     satisfies,
     extend,
-    invariant
+    invariant,
+    DemandsError,
+    EnsuresError
 } from '../index.mjs';
 
 // ---- Shared fixtures (used across multiple sections) -----------------------
@@ -170,6 +172,151 @@ describe('protocol() [invariant]', () => {
     });
 });
 
+describe('protocol [invariant] enforcement', () => {
+    it('throws TypeError when data ADT fails unconditional protocol invariant', () => {
+        // Protocol requires that the type has a static 'tag' property
+        const Tagged = protocol(({ Family, fold }) => ({
+            name: fold({ out: String }),
+            [invariant]: (type: unknown) =>
+                typeof (type as Record<string, unknown>)['tag'] === 'string'
+        }));
+
+        // ADT does NOT have a static 'tag' property → invariant fails
+        assert.throws(() => {
+            data(() => ({
+                [satisfies]: [Tagged],
+                T: { label: String }
+            })).ops(({ fold }) => ({
+                name: fold({ out: String })({
+                    T({ label }) { return label; }
+                })
+            }));
+        }, TypeError);
+    });
+
+    it('no error when data ADT passes unconditional protocol invariant', () => {
+        const HasIdentity = protocol(({ Family, unfold }) => ({
+            Identity: unfold({ out: Family }),
+            [invariant]: (type: unknown) =>
+                typeof (type as Record<string, unknown>)['Identity'] !== 'undefined'
+        }));
+
+        const Unit = data(() => ({
+            [satisfies]: [HasIdentity],
+            Unit: {}
+        })).ops(({ unfold, Family }) => ({
+            Identity: unfold({ out: Family })({
+                Unit: () => ({})
+            })
+        }));
+
+        assert.ok(Unit.Identity);
+    });
+
+    it('ancestor protocol invariant is also checked', () => {
+        const Base = protocol(({ Family, fold }) => ({
+            val: fold({ out: Number }),
+            [invariant]: (_type: unknown) => false   // always fails
+        }));
+
+        const Child = protocol(({ Family, fold }) => ({
+            [extend]: Base,
+            extra: fold({ out: Number })
+        }));
+
+        assert.throws(() => {
+            data(() => ({
+                [satisfies]: [Child],
+                X: { n: Number }
+            })).ops(({ fold }) => ({
+                val: fold({ out: Number })({
+                    X({ n }) { return n; }
+                }),
+                extra: fold({ out: Number })({
+                    X({ n }) { return n + 1; }
+                })
+            }));
+        }, TypeError);
+    });
+
+    it('invariant that throws is caught and wrapped in TypeError', () => {
+        const Boom = protocol(({ Family, fold }) => ({
+            go: fold({ out: Number }),
+            [invariant]: () => { throw new Error('kaboom'); }
+        }));
+
+        assert.throws(() => {
+            data(() => ({
+                [satisfies]: [Boom],
+                B: { v: Number }
+            })).ops(({ fold }) => ({
+                go: fold({ out: Number })({
+                    B({ v }) { return v; }
+                })
+            }));
+        }, (e) => e instanceof TypeError && /kaboom/.test(e.message));
+    });
+
+    it('behavior type fails protocol invariant', () => {
+        const NeedsStatic = protocol(({ Family, fold }) => ({
+            step: fold({ out: Number }),
+            [invariant]: (type: unknown) =>
+                typeof (type as Record<string, unknown>)['magic'] === 'function'
+        }));
+
+        assert.throws(() => {
+            behavior(({ Self }) => ({
+                [satisfies]: [NeedsStatic],
+                value: Number
+            })).ops(({ fold, unfold, Self }) => ({
+                Start: unfold({ in: Number, out: Self })({
+                    value: (n) => n
+                }),
+                step: fold({ out: Number })({
+                    _: (ctx) => ctx.value
+                })
+            }));
+        }, TypeError);
+    });
+
+    it('conditional protocol invariant is checked when constraints are met', () => {
+        // Base protocol — no invariant, easy to satisfy
+        const Checkable = protocol(({ Family, fold }) => ({
+            check: fold({ out: Boolean })
+        }));
+
+        // Conditional protocol — has a strict invariant that Box won't satisfy
+        const Strict = protocol(({ Family, fold }) => ({
+            check: fold({ out: Boolean }),
+            [invariant]: (type: unknown) =>
+                (type as Record<string, unknown>)['magic'] === 42
+        }));
+
+        const Box = data(({ T }) => ({
+            [satisfies]: [Strict({ T: Checkable })],
+            Box: { val: T }
+        })).ops(({ fold }) => ({
+            check: fold({ out: Boolean })({
+                Box() { return true; }
+            })
+        }));
+
+        // SimpleT satisfies Checkable (no invariant) — that's the constraint
+        const SimpleT = data(() => ({
+            [satisfies]: [Checkable],
+            S: {}
+        })).ops(({ fold }) => ({
+            check: fold({ out: Boolean })({
+                S() { return true; }
+            })
+        }));
+
+        // Constraint met (T=SimpleT satisfies Checkable), so Strict's invariant fires.
+        // Box has no 'magic' property → invariant fails → TypeError
+        assert.throws(() => Box({ T: SimpleT }), TypeError);
+    });
+});
+
 // =============================================================================
 // 4. Conditional conformance (callable protocol)
 // =============================================================================
@@ -223,6 +370,17 @@ describe('data() [satisfies] unconditional', () => {
 
         const t = Tag.Tag({ label: 'hello' });
         assert.ok(!(t instanceof asClass(Serializable)));
+    });
+
+    it('primitives return false for instanceof protocol without throwing', () => {
+        const P = protocol(({ Family, fold }) => ({
+            doIt: fold({ out: Number })
+        }));
+        const cls = asClass(P);
+        assert.strictEqual((3 as unknown) instanceof cls, false);
+        assert.strictEqual(('' as unknown) instanceof cls, false);
+        assert.strictEqual((true as unknown) instanceof cls, false);
+        assert.strictEqual((Symbol() as unknown) instanceof cls, false);
     });
 
     it('satisfying Monoid also satisfies parent Semigroup via instanceof', () => {
@@ -477,5 +635,372 @@ describe('protocol [extend] transitive instanceof', () => {
         assert.ok(n instanceof asClass(C));
         assert.ok(n instanceof asClass(B));
         assert.ok(n instanceof asClass(A));
+    });
+});
+
+// ==========================================================================
+// Protocol contract composition (data)
+// ==========================================================================
+
+describe('protocol contract composition — data() fold', () => {
+    // A protocol whose fold requires a non-negative input argument.
+    const NonNeg = protocol(({ Family, fold }) => ({
+        doubled: fold({
+            in: Number,
+            out: Number,
+            demands: (_self, n) => (n as number) >= 0
+        })
+    }));
+
+    const Box = data(() => ({
+        [satisfies]: [NonNeg],
+        Box: { value: Number }
+    })).ops(({ fold }) => ({
+        doubled: fold({ in: Number, out: Number })({
+            Box: ({ value }, n) => (value + (n as number)) * 2
+        })
+    }));
+
+    it('protocol demands (OR) are enforced when op has no own demands', () => {
+        const b = Box.Box({ value: 5 });
+        // valid: protocol demands pass (n >= 0)
+        assert.strictEqual(b.doubled(3), 16);
+        // invalid: protocol demands fail (n < 0)
+        assert.throws(() => b.doubled(-1), DemandsError);
+    });
+
+    it('operation demands (OR) allow wider input than protocol alone', () => {
+        // When the op has its own demands, OR-composition means passing
+        // EITHER the protocol OR the op demands is sufficient.
+        const BoxWider = data(() => ({
+            [satisfies]: [NonNeg],
+            Box: { value: Number }
+        })).ops(({ fold }) => ({
+            // Op also accepts n === -1 (its own demands pass for n === -1),
+            // even though the protocol would reject it.
+            doubled: fold({
+                in: Number,
+                out: Number,
+                demands: (_self, n) => (n as number) === -1 || (n as number) >= 0
+            })({
+                Box: ({ value }, n) => (value + (n as number)) * 2
+            })
+        }));
+
+        const b = BoxWider.Box({ value: 5 });
+        assert.strictEqual(b.doubled(-1), 8);  // op demands accept -1
+        assert.strictEqual(b.doubled(3), 16);  // both accept 3
+        assert.throws(() => b.doubled(-2), DemandsError); // neither accepts -2
+    });
+
+    it('protocol ensures (AND) are enforced in addition to op ensures', () => {
+        // Protocol requires result > 0; op requires result < 1000.
+        // Both must hold (AND).
+        const Bounded = protocol(({ Family, fold }) => ({
+            compute: fold({
+                out: Number,
+                ensures: (_self, _old, result) => (result as number) > 0
+            })
+        }));
+
+        const Num = data(() => ({
+            [satisfies]: [Bounded],
+            Num: { value: Number }
+        })).ops(({ fold }) => ({
+            compute: fold({
+                out: Number,
+                ensures: (_self, _old, result) => (result as number) < 1000
+            })({
+                Num: ({ value }) => value
+            })
+        }));
+
+        const n = Num.Num({ value: 5 });
+        assert.strictEqual(n.compute, 5); // 0 < 5 < 1000 — passes both
+
+        const nZero = Num.Num({ value: 0 });
+        // result === 0: op ensures (< 1000) passes; protocol ensures (> 0) fails → EnsuresError
+        assert.throws(() => nZero.compute, EnsuresError);
+
+        const nBig = Num.Num({ value: 999 });
+        assert.strictEqual(nBig.compute, 999); // 0 < 999 < 1000 — passes both
+
+        const nTooBig = Num.Num({ value: 1001 });
+        // result === 1001: protocol ensures passes; op ensures fails → EnsuresError
+        assert.throws(() => nTooBig.compute, EnsuresError);
+    });
+});
+
+describe('protocol contract composition — data() unfold', () => {
+    it('protocol unfold demands are enforced when op has no own demands', () => {
+        const PositiveSeed = protocol(({ Family, unfold }) => ({
+            FromNum: unfold({
+                in: Number,
+                out: Family,
+                demands: (_self, n) => (n as number) > 0
+            })
+        }));
+
+        const Box = data(() => ({
+            [satisfies]: [PositiveSeed],
+            Box: { value: Number }
+        })).ops(({ unfold }) => ({
+            FromNum: unfold({ in: Number, out: Object })({
+                Box: (n) => ({ value: n as number })
+            })
+        }));
+
+        assert.deepStrictEqual(Box.FromNum(5), Box.Box({ value: 5 }));
+        assert.throws(() => Box.FromNum(-1), DemandsError);
+        assert.throws(() => Box.FromNum(0), DemandsError);
+    });
+});
+
+describe('protocol contract composition — behavior() fold', () => {
+    it('protocol fold demands are enforced on behavior folds', () => {
+        const ValidStep = protocol(({ Family, fold }) => ({
+            stepped: fold({
+                in: Number,
+                out: Number,
+                demands: (_self, n) => (n as number) >= 0
+            })
+        }));
+
+        const Counter = behavior(({ Self }) => ({
+            [satisfies]: [ValidStep],
+            value: Number,
+            next: Self
+        })).ops(({ fold, unfold, Self }) => ({
+            Start: unfold({ in: Number, out: Self })({
+                value: (n) => n as number,
+                next: (n) => n as number
+            }),
+            stepped: fold({ in: Number, out: Number })({
+                _: ({ value }, n) => value + (n as number)
+            })
+        }));
+
+        const c = Counter.Start(10);
+        assert.strictEqual(c.stepped(5), 15);
+        assert.throws(() => c.stepped(-1), DemandsError);
+    });
+});
+
+describe('protocol contract composition — behavior() unfold', () => {
+    it('protocol unfold demands are enforced on behavior unfolds', () => {
+        const PositiveSeed = protocol(({ Family, unfold }) => ({
+            Start: unfold({
+                in: Number,
+                out: Family,
+                demands: (_self, n) => (n as number) >= 0
+            })
+        }));
+
+        const Counter = behavior(({ Self }) => ({
+            [satisfies]: [PositiveSeed],
+            value: Number,
+            next: Self
+        })).ops(({ fold, unfold, Self }) => ({
+            Start: unfold({ in: Number, out: Self })({
+                value: (n) => n as number,
+                next: (n) => n as number
+            }),
+            count: fold({ out: Number })({ _: ({ value }) => value })
+        }));
+
+        assert.strictEqual(Counter.Start(3).count, 3);
+        assert.throws(() => Counter.Start(-1), DemandsError);
+    });
+});
+
+// ==========================================================================
+// Conditional protocol contract composition (data parameterized type)
+// ==========================================================================
+
+describe('conditional protocol contract composition — data() getter fold', () => {
+    // Measurable protocol: size must be non-negative (ensures law).
+    const Measurable = protocol(({ Family, fold }) => ({
+        size: fold({
+            out: Number,
+            ensures: (_self, _old, result) => (result as number) >= 0
+        })
+    }));
+
+    // Element unconditionally satisfies Measurable.
+    const Element = data(() => ({
+        [satisfies]: [Measurable],
+        El: { x: Number }
+    })).ops(({ fold }) => ({
+        size: fold({ out: Number })({ El({ x }) { return x; } })
+    }));
+
+    // Pair(T) conditionally satisfies Measurable when T satisfies Measurable.
+    // The 'size' implementation intentionally returns -1 to exercise the ensures check.
+    const Pair = data(({ T }) => ({
+        [satisfies]: [Measurable({ T: Measurable })],
+        Pair: { a: T, b: T }
+    })).ops(({ fold }) => ({
+        size: fold({ out: Number })({
+            Pair() { return -1; }  // intentionally violates ensures (< 0)
+        })
+    }));
+
+    it('conditional protocol ensures is enforced when constraint is met', () => {
+        const PairOfEl = Pair({ T: Element });
+        const p = PairOfEl.Pair({ a: Element.El({ x: 1 }), b: Element.El({ x: 2 }) });
+        // size returns -1 → violates Measurable.ensures ≥ 0 → must throw EnsuresError
+        assert.throws(() => p.size, EnsuresError);
+    });
+
+    it('conditional protocol ensures is NOT enforced when constraint is not met', () => {
+        // Plain object does not satisfy Measurable.
+        const PlainVal = data(() => ({
+            Val: { n: Number }
+        })).ops(({ fold }) => ({
+            weight: fold({ out: Number })({ Val({ n }) { return n; } })
+            // no 'size' — does not satisfy Measurable
+        }));
+
+        const PairOfPlain = Pair({ T: PlainVal });
+        const p = PairOfPlain.Pair({ a: PlainVal.Val({ n: 1 }), b: PlainVal.Val({ n: 2 }) });
+        // Constraint NOT met — 'size' is a stub, NOT wrapped with Measurable.ensures.
+        // The stub should throw TypeError ("not available"), not EnsuresError.
+        assert.throws(() => p.size, TypeError);
+        assert.throws(() => p.size, (e) => !(e instanceof EnsuresError));
+    });
+});
+
+describe('conditional protocol contract composition — data() method fold', () => {
+    // Comparable protocol: compare(n) must return -1, 0, or 1 (ensures law).
+    // demands: the argument must not be null.
+    const Comparable = protocol(({ Family, fold }) => ({
+        compare: fold({
+            in: Number,
+            out: Number,
+            demands: (_self, n) => n !== null && n !== undefined,
+            ensures: (_self, _old, result) =>
+                result === -1 || result === 0 || result === 1
+        })
+    }));
+
+    const Scalar = data(() => ({
+        [satisfies]: [Comparable],
+        Scalar: { value: Number }
+    })).ops(({ fold }) => ({
+        compare: fold({ in: Number, out: Number })({
+            Scalar({ value }, n) { return value < (n as number) ? -1 : value > (n as number) ? 1 : 0; }
+        })
+    }));
+
+    // Boxed(T) conditionally satisfies Comparable when T does.
+    const Boxed = data(({ T }) => ({
+        [satisfies]: [Comparable({ T: Comparable })],
+        Boxed: { item: T }
+    })).ops(({ fold }) => ({
+        // Returns 99 — intentionally violates ensures (not -1/0/1) so an EnsuresError fires.
+        compare: fold({ in: Number, out: Number })({
+            Boxed() { return 99; }
+        })
+    }));
+
+    it('conditional protocol ensures is enforced on method fold when constraint is met', () => {
+        const BoxedScalar = Boxed({ T: Scalar });
+        const b = BoxedScalar.Boxed({ item: Scalar.Scalar({ value: 1 }) });
+        // compare returns 99 → violates Comparable.ensures → must throw EnsuresError
+        assert.throws(() => b.compare(5), EnsuresError);
+    });
+
+    it('conditional protocol demands are enforced on method fold when there are no prior demands', () => {
+        // NoDemandType has no own demands on compare.
+        const NoDemandType = data(() => ({
+            [satisfies]: [Comparable],
+            Val: { n: Number }
+        })).ops(({ fold }) => ({
+            // No demands — conditional protocol demands are the sole source.
+            compare: fold({ in: Number, out: Number })({
+                Val({ n }, x) { return n < (x as number) ? -1 : n > (x as number) ? 1 : 0; }
+            })
+        }));
+
+        const v = NoDemandType.Val({ n: 5 });
+        assert.strictEqual(v.compare(5), 0);
+        assert.throws(() => v.compare(null as unknown as number), DemandsError);
+        assert.throws(() => v.compare(undefined as unknown as number), DemandsError);
+    });
+});
+
+describe('conditional protocol contract composition — data() unfold', () => {
+    // Protocol: From unfold must produce a result whose 'n' field is positive.
+    const Positive = protocol(({ Family, unfold }) => ({
+        From: unfold({
+            in: Number,
+            out: Family,
+            ensures: (_self, _old, result) =>
+                ((result as Record<string, unknown>)['n'] as number) > 0
+        })
+    }));
+
+    // Satisfies Positive unconditionally.
+    const AtomP = data(() => ({
+        [satisfies]: [Positive],
+        AtomP: { n: Number }
+    })).ops(({ unfold, Family }) => ({
+        From: unfold({ in: Number, out: Family })({
+            AtomP: (n) => ({ n: Math.abs(n as number) || 1 })
+        })
+    }));
+
+    // Wrapper(T) satisfies Positive conditionally when T does.
+    // Its unfold always returns { n: -1 } — intentionally violates Positive.ensures.
+    const Wrapper = data(({ T }) => ({
+        [satisfies]: [Positive({ T: Positive })],
+        WP: { n: Number }
+    })).ops(({ unfold, Family }) => ({
+        From: unfold({ in: Number, out: Family })({
+            WP: (_n) => ({ n: -1 })
+        })
+    }));
+
+    it('conditional protocol unfold ensures is enforced when constraint is met', () => {
+        // T = AtomP satisfies Positive → contract wrapping active → n=-1 violates ensures.
+        const WrappedAtomP = Wrapper({ T: AtomP });
+        assert.throws(() => WrappedAtomP.From(42), EnsuresError);
+    });
+
+    it('conditional protocol unfold ensures NOT enforced when constraint is NOT met', () => {
+        // T = Plain does not satisfy Positive → no contract wrapping → n=-1 is allowed.
+        const Plain = data(() => ({ Plain: { v: Number } }));
+        const WrappedPlain = Wrapper({ T: Plain });
+        const result = WrappedPlain.From(7);
+        assert.strictEqual((result as Record<string, unknown>)['n'], -1);
+    });
+});
+
+describe('protocol conformance — behavior merge ops are recognized', () => {
+    it('behavior satisfying a protocol with a merge op passes conformance', () => {
+        const Summable = protocol(({ Family, fold, unfold, merge }) => ({
+            From: unfold({ in: Number, out: Family }),
+            take: fold({ in: Number, out: Array }),
+            TakeFrom: merge('From', 'take')
+        }));
+
+        const Stream = behavior(({ Self }) => ({
+            [satisfies]: [Summable],
+            head: Number,
+            tail: Self
+        })).ops(({ fold, unfold, merge, Self }) => ({
+            From: unfold({ in: Number, out: Self })({
+                head: (n) => n,
+                tail: (n) => n + 1
+            }),
+            take: fold({ in: Number, out: Array })({
+                _: ({ head, tail }, n) => (n as number) > 0 ? [head, ...tail((n as number) - 1)] : []
+            }),
+            TakeFrom: merge('From', 'take')
+        }));
+
+        assert.ok(Stream.TakeFrom(0, 3));
+        const s = Stream.From(10);
+        assert.ok(s instanceof Summable);
     });
 });

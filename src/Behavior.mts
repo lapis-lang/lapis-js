@@ -36,11 +36,13 @@ import {
 import {
     type ProtocolEntry,
     parseProtocolEntries,
-    applyUnconditionalProtocols
+    applyUnconditionalProtocols,
+    gatherProtocolContracts
 } from './Protocol.mjs';
 
 import {
     resolveContracts,
+    composeContracts,
     checkDemands,
     checkEnsures,
     tryRescue,
@@ -66,7 +68,10 @@ const BehaviorSymbol: unique symbol = Symbol('Behavior'),
     MapOpsSymbol: unique symbol = Symbol('MapOps'),
 
     /** Stores raw unfold handler sets on a behavior type (for inheritance) */
-    UnfoldOpsSymbol: unique symbol = Symbol('UnfoldOps');
+    UnfoldOpsSymbol: unique symbol = Symbol('UnfoldOps'),
+
+    /** Tracks merge operation names on a behavior type (for protocol conformance) */
+    MergeOpsSymbol: unique symbol = Symbol('MergeOps');
 
 // ---- Internal types ---------------------------------------------------------
 
@@ -121,6 +126,7 @@ type BehaviorTypeLike = {
     [FoldOpsSymbol]?: Map<string, FoldOpEntry>;
     [MapOpsSymbol]?: Map<string, MapOpEntry>;
     [UnfoldOpsSymbol]?: Map<string, UnfoldOpEntry>;
+    [MergeOpsSymbol]?: Set<string>;
     _call?: AnyFn;
     prototype?: object;
     [key: string]: unknown;
@@ -512,6 +518,15 @@ export function behavior<D extends Record<string, unknown>>(
                 }
             }
         }
+
+        const parentMergeOps = ptBT[MergeOpsSymbol] as Set<string> | undefined;
+        if (parentMergeOps) {
+            const childBT = callableBehavior as unknown as Record<symbol, unknown>;
+            let childMergeOps = childBT[MergeOpsSymbol] as Set<string> | undefined;
+            if (!childMergeOps) { childMergeOps = new Set(); childBT[MergeOpsSymbol] = childMergeOps; }
+            for (const opName of parentMergeOps)
+                childMergeOps.add(opName);
+        }
     }
 
     // (paramParent ops are inherited via prototype chain for parameterized specializations)
@@ -639,6 +654,8 @@ function getBehaviorOpNames(BehaviorType: BehaviorTypeLike): Set<string> {
     if (mapOps) for (const name of mapOps.keys()) names.add(name);
     const unfoldOps = bt[UnfoldOpsSymbol] as Map<string, unknown> | undefined;
     if (unfoldOps) for (const name of unfoldOps.keys()) names.add(name);
+    const mergeOps = bt[MergeOpsSymbol] as Set<string> | undefined;
+    if (mergeOps) for (const name of mergeOps) names.add(name);
     return names;
 }
 
@@ -724,7 +741,8 @@ function attachBehaviorOpsMethod<D extends Record<string, unknown>>(
                     : opSpec as Record<string, unknown>;
                 addUnfoldOperation(
                     BehaviorType, observerMap, entryName,
-                    mergedSpec, handlers as Record<string, AnyFn>
+                    mergedSpec, handlers as Record<string, AnyFn>,
+                    protocols
                 );
             } else if (opKind === 'fold') {
                 const {
@@ -736,7 +754,8 @@ function attachBehaviorOpsMethod<D extends Record<string, unknown>>(
                     BehaviorType, observerMap, entryName,
                     opSpec as Record<string, unknown>,
                     handler as AnyFn,
-                    parentBT
+                    parentBT,
+                    protocols
                 );
             } else if (opKind === 'map') {
                 const { [op as unknown as string]: _op, ...transforms } = entrySpec as Record<string, unknown>;
@@ -776,7 +795,8 @@ function attachBehaviorOpsMethod<D extends Record<string, unknown>>(
             (BehaviorType as unknown as { prototype: object }).prototype,
             registeredOpNames,
             protocols,
-            'Behavior'
+            'Behavior',
+            BehaviorType
         );
 
         return BehaviorType as BehaviorADTWithParams<D & O>;
@@ -790,7 +810,8 @@ function addUnfoldOperation(
     observerMap: Map<string, ObserverEntry>,
     name: string,
     opSpec: unknown,
-    handlers: Record<string, AnyFn>
+    handlers: Record<string, AnyFn>,
+    protocols: ProtocolEntry[] = []
 ): BehaviorTypeLike {
     assertPascalCase(name, 'Unfold operation');
 
@@ -849,8 +870,10 @@ function addUnfoldOperation(
         }
     }
 
-    // Extract contracts from spec
-    const unfoldContracts: ContractSpec | null = resolveContracts(parsedSpec);
+    // Extract contracts from spec, composing with any protocol-level contracts
+    // as the outermost layer (algebraic law → implementation).
+    const protocolUnfoldContracts = gatherProtocolContracts(protocols, name);
+    const unfoldContracts: ContractSpec | null = resolveContracts(parsedSpec, protocolUnfoldContracts);
 
     const hasInput = hasInputSpec(parsedSpec),
         makeInstance = (seed: unknown) =>
@@ -1180,7 +1203,8 @@ function addFoldOperation(
     name: string,
     opSpecArg: Record<string, unknown>,
     handler: AnyFn,
-    parentBehaviorType?: BehaviorTypeLike | null
+    parentBehaviorType?: BehaviorTypeLike | null,
+    protocols: ProtocolEntry[] = []
 ): void {
     assertCamelCase(name, 'Fold operation');
 
@@ -1199,14 +1223,19 @@ function addFoldOperation(
         );
     }
 
-    // Extract contracts from spec
-    // Extract + subcontract: compose child contracts with parent's (LSP rules)
+    // Extract contracts from spec, composing with protocol-level contracts (outermost)
+    // then parent behavior contracts (middle), then child implementation contracts.
+    const protocolFoldContracts = gatherProtocolContracts(protocols, name);
     const parentFoldEntry = parentBehaviorType
         ? ((parentBehaviorType as Record<symbol, unknown>)[FoldOpsSymbol] as
             Map<string, FoldOpEntry> | undefined)?.get(name)
         : undefined;
+    const combinedParentFoldContracts: ContractSpec | null =
+        protocolFoldContracts && parentFoldEntry?.contracts
+            ? composeContracts(protocolFoldContracts, parentFoldEntry.contracts)
+            : (parentFoldEntry?.contracts ?? protocolFoldContracts ?? null);
     const foldContracts: ContractSpec | null = resolveContracts(
-        parsedSpec, parentFoldEntry?.contracts
+        parsedSpec, combinedParentFoldContracts
     );
 
     ensureOwnMap<string, FoldOpEntry>(
@@ -1318,6 +1347,12 @@ function addMergeOperation(
 ): void {
     if (!Array.isArray(operationNames) || operationNames.length === 0)
         throw new TypeError(`Merge operation '${name}' requires a non-empty 'operations' array`);
+
+    // Track merge operation name for protocol conformance checking
+    const bt = BehaviorType as unknown as Record<symbol, unknown>;
+    let mergeSet = bt[MergeOpsSymbol] as Set<string> | undefined;
+    if (!mergeSet) { mergeSet = new Set(); bt[MergeOpsSymbol] = mergeSet; }
+    mergeSet.add(name);
 
     const foldMap = getSymbolMap<FoldOpEntry>(BehaviorType, FoldOpsSymbol),
         mapOpsMap = getSymbolMap<MapOpEntry>(BehaviorType, MapOpsSymbol),

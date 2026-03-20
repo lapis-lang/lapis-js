@@ -22,7 +22,7 @@ import {
 } from './operations.mjs';
 
 import { TypeParamSymbol } from './utils.mjs';
-import { type ContractSpec, resolveContracts } from './contracts.mjs';
+import { type ContractSpec, resolveContracts, composeContracts } from './contracts.mjs';
 
 // ---- Symbols ----------------------------------------------------------------
 
@@ -299,8 +299,9 @@ export function protocol(
         [Symbol.hasInstance]: {
             value(instance: unknown): boolean {
                 if (instance === null || instance === undefined) return false;
+                if (typeof instance !== 'object' && typeof instance !== 'function') return false;
                 // Walk the prototype chain looking for a registry entry
-                let proto: object | null = Object.getPrototypeOf(instance as object);
+                let proto: object | null = Object.getPrototypeOf(instance);
                 while (proto !== null) {
                     const set = conformanceRegistry.get(proto);
                     if (set?.has(thisProtocol)) return true;
@@ -317,6 +318,32 @@ export function protocol(
     return thisProtocol;
 }
 
+// ---- Protocol contract helpers ---------------------------------------------
+
+/**
+ * Collect and compose all per-operation contracts declared by unconditional
+ * protocol entries for the given operation name.
+ *
+ * If multiple unconditional protocols define contracts for `opName`, they are
+ * composed using LSP subcontracting rules (demands OR, ensures AND).
+ *
+ * Conditional protocol entries are skipped — their constraints are only
+ * resolved at parameterization time.
+ */
+export function gatherProtocolContracts(
+    protocols: ProtocolEntry[],
+    opName: string
+): ContractSpec | null {
+    let combined: ContractSpec | null = null;
+    for (const entry of protocols) {
+        if (entry.conditional) continue;
+        const opContracts = entry.protocol.requiredOps.get(opName)?.contracts ?? null;
+        if (!opContracts) continue;
+        combined = combined !== null ? composeContracts(combined, opContracts) : opContracts;
+    }
+    return combined;
+}
+
 // ---- Protocol validation helpers --------------------------------------------
 
 /**
@@ -330,13 +357,50 @@ export function protocol(
 export function validateProtocolConformance(
     adtOpNames: Set<string>,
     proto: ProtocolLike,
-    adtLabel: string
+    adtLabel: string,
+    type?: unknown
 ): void {
     for (const [opName] of proto.requiredOps) {
         if (!adtOpNames.has(opName)) {
             throw new TypeError(
                 `${adtLabel} declares [satisfies] for protocol but is missing ` +
                 `required operation '${opName}'`
+            );
+        }
+    }
+    if (type !== undefined)
+        validateProtocolInvariant(proto, type, adtLabel);
+}
+
+/**
+ * Check the protocol's `[invariant]` predicate (and those of ancestor
+ * protocols) against the given type. Throws a descriptive TypeError when
+ * the predicate returns false or itself throws.
+ */
+export function validateProtocolInvariant(
+    proto: ProtocolLike,
+    type: unknown,
+    label: string
+): void {
+    // Walk ancestor chain first (parent invariant checked before child)
+    if (proto.parentProtocol)
+        validateProtocolInvariant(proto.parentProtocol, type, label);
+
+    if (proto.invariantFn) {
+        let ok: boolean;
+        try {
+            ok = proto.invariantFn(type);
+        } catch (e) {
+            throw new TypeError(
+                `${label} fails protocol [invariant]: predicate threw: ${
+                    e instanceof Error ? e.message : String(e)
+                }`
+            );
+        }
+        if (!ok) {
+            throw new TypeError(
+                `${label} fails protocol [invariant]: the type does not satisfy ` +
+                `the protocol-level invariant predicate`
             );
         }
     }
@@ -355,11 +419,12 @@ export function applyUnconditionalProtocols(
     prototype: object,
     opNames: Set<string>,
     protocols: ProtocolEntry[],
-    label: string
+    label: string,
+    type?: unknown
 ): void {
     for (const entry of protocols) {
         if (entry.conditional) continue;
-        validateProtocolConformance(opNames, entry.protocol, label);
+        validateProtocolConformance(opNames, entry.protocol, label, type);
         registerConformance(prototype, entry.protocol);
     }
 }
