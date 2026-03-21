@@ -79,6 +79,8 @@ there is an emphasis on the Bird-Meertens Formalism (BMF) (Squiggol) of making p
 - [Protocols](#protocols)
   - [Declaring a Protocol](#declaring-a-protocol)
   - [Protocol Inheritance](#protocol-inheritance)
+  - [Multiple Parents (Multi-Trait Composition)](#multiple-parents-multi-trait-composition)
+  - [Default Method Bodies](#default-method-bodies)
   - [Declaring Conformance with `[satisfies]`](#declaring-conformance-with-satisfies)
   - [Checking Conformance with `instanceof`](#checking-conformance-with-instanceof)
   - [Conditional Conformance](#conditional-conformance)
@@ -2946,6 +2948,125 @@ console.log([...Monoid.requiredOps.keys()]); // ['combine', 'Identity']
 ```
 
 Conformance is transitive: satisfying `Monoid` automatically implies satisfying `Semigroup`.
+
+### Multiple Parents (Multi-Trait Composition)
+
+Protocol `[extend]` accepts an **array of parents**, enabling protocols that sit at the intersection of multiple hierarchies:
+
+```ts
+const Group = protocol(({ Family, fold, unfold }) => ({
+    [extend]: Monoid,
+    inverse: fold({ out: Family })  // every element has an inverse
+}));
+
+const CommutativeMonoid = protocol(({ Family, fold, unfold }) => ({
+    [extend]: Monoid,
+    // combine is inherited with commutativity implied by the protocol's name
+}));
+
+// AbelianGroup logically has two parents:
+const AbelianGroup = protocol(({ Family, fold, unfold }) => ({
+    [extend]: [Group, CommutativeMonoid]   // ← array of parents
+}));
+```
+
+`requiredOps` on the child is the **union** of all parents' required operations (including their ancestors). In the example above, `AbelianGroup.requiredOps` contains `combine`, `Identity`, and `inverse` — everything from both lineages.
+
+**Diamond resolution:** When two parent protocols each declare an operation with the same name:
+
+- If the specs are identical (or one parent inherited it from the other), the operation merges silently — no duplication error.
+- If the specs differ, the child protocol **must explicitly re-declare** the operation. Failing to do so throws a `TypeError` at declaration time.
+
+```ts
+const PA = protocol(({ Family, fold }) => ({
+    op: fold({ in: Family, out: Number })
+}));
+const PB = protocol(({ Family, fold }) => ({
+    op: fold({ in: Family, out: String })  // different spec!
+}));
+
+// Throws: Protocol declares conflicting required ops from multiple parents
+// without resolving them: op
+const Bad = protocol(({ Family, fold }) => ({
+    [extend]: [PA, PB]
+}));
+
+// OK — child re-declares 'op', resolving the conflict
+const Good = protocol(({ Family, fold }) => ({
+    [extend]: [PA, PB],
+    op: fold({ in: Family, out: Boolean })  // resolution
+}));
+```
+
+Conformance remains fully transitive: an ADT or behavior satisfying `AbelianGroup` automatically satisfies `Group`, `CommutativeMonoid`, `Monoid`, and `Semigroup`.
+
+> **ADT `[extend]` is unaffected.** Only protocol `[extend]` allows multiple parents. ADT structural inheritance remains single-parent, preserving the prototype chain semantics.
+
+### Default Method Bodies
+
+Protocol operation specs can include a **default implementation** by providing a wildcard `_` handler body inline — the same `_` wildcard used in `.ops()`. When a conforming type does not declare the operation in its own `.ops()`, the default is automatically installed on its prototype at conformance validation time.
+
+```ts
+const Ord = protocol(({ Family, fold }) => ({
+    // Required: every conforming type must implement compare
+    compare: fold({ in: Family, out: Number }),
+
+    // Default: equals is derived from compare — no implementation required
+    equals: fold({ in: Family, out: Boolean })({
+        _: function(this: any, other: unknown) {
+            return (this as any).compare(other) === 0;
+        }
+    })
+}));
+
+const Temperature = data(({ Family }) => ({
+    [satisfies]: Ord,
+    Celsius: { degrees: Number }
+})).ops(({ fold, Family }) => ({
+    // Only 'compare' is provided — 'equals' is installed automatically from Ord's default
+    compare: fold({ in: Family, out: Number })({
+        Celsius: ({ degrees }, other) =>
+            degrees < other.degrees ? -1 : degrees > other.degrees ? 1 : 0
+    })
+}));
+
+const a = Temperature.Celsius({ degrees: 20 });
+const b = Temperature.Celsius({ degrees: 20 });
+console.log(a.equals(b)); // true — installed from Ord's default
+```
+
+Defaults are inherited through `[extend]` chains: if `Ord` extends another protocol that has defaults, those defaults propagate to all conforming types that don't override them.
+
+**Overriding a default:** A conforming type can always override a default by providing its own implementation in `.ops()`. The user-provided implementation completely replaces the default (shadowing). Protocol contracts (`demands`, `ensures`) still apply to both the default and any override.
+
+```ts
+const MyTemp = data(({ Family }) => ({
+    [satisfies]: Ord,
+    Celsius: { degrees: Number }
+})).ops(({ fold, Family }) => ({
+    compare: fold({ in: Family, out: Number })({
+        Celsius: ({ degrees }, other) =>
+            degrees < other.degrees ? -1 : degrees > other.degrees ? 1 : 0
+    }),
+    // Override the default — e.g. treat 0.001-degree differences as equal
+    equals: fold({ in: Family, out: Boolean })({
+        Celsius: ({ degrees }, other) => Math.abs(degrees - other.degrees) < 0.001
+    })
+}));
+```
+
+**Zero-argument defaults (getters):** A `fold` or `map` spec with no `in` type produces a getter. The same applies to defaults — a default on a no-argument op is installed as a getter property:
+
+```ts
+const Stringifiable = protocol(({ Family, fold }) => ({
+    // Default description is a getter: `instance.description`
+    description: fold({ out: String })({
+        _: function(this: any) {
+            return `${this.constructor.name}(${JSON.stringify(this)})`;
+        }
+    })
+}));
+```
 
 ### Declaring Conformance with `[satisfies]`
 
