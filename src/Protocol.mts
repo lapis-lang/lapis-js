@@ -18,6 +18,8 @@ import {
     LapisTypeSymbol,
     ProtocolSymbol,
     createFamily,
+    properties as propertiesSym,
+    parseProperties,
     type FamilyRefCallable
 } from './operations.mjs';
 
@@ -66,6 +68,12 @@ export interface ProtocolOpSpec {
     spec: Record<string, unknown>;
     /** Per-operation contract, if any (demands/ensures/rescue from the spec). */
     contracts: ContractSpec | null;
+    /**
+     * Algebraic property annotations declared via `[properties]: [...]` on the
+     * operation spec. Validated against {@link KNOWN_PROPERTIES}. Inherited
+     * properties from parent protocols are unioned in (never removed).
+     */
+    properties: ReadonlySet<string>;
 }
 
 /** A protocol object — callable to produce a conditional conformance spec. */
@@ -123,11 +131,11 @@ export function isConditionalConformance(value: unknown): value is ConditionalCo
 
 // ---- Spec-only helpers (phase 1 only, no handlers phase) --------------------
 
-type SpecOnlyOpFn = (specObj: Record<string, unknown>) => Record<string | symbol, unknown>;
+type SpecOnlyOpFn = (specObj: Record<string | symbol, unknown>) => Record<string | symbol, unknown>;
 type SpecOnlyMergeFn = (...names: string[]) => Record<string | symbol, unknown>;
 
 function makeSpecOp(kind: string): SpecOnlyOpFn {
-    return (specObj: Record<string, unknown>): Record<string | symbol, unknown> =>
+    return (specObj: Record<string | symbol, unknown>): Record<string | symbol, unknown> =>
         ({ [op]: kind, [specSym]: specObj });
 }
 
@@ -171,9 +179,9 @@ function extractTypeParamNames(fn: (...args: unknown[]) => unknown): string[] {
 /** Context passed to the `protocol()` declaration callback. */
 export interface ProtocolDeclContext {
     readonly Family: FamilyRefCallable;
-    readonly fold: (specObj: Record<string, unknown>) => Record<string | symbol, unknown>;
-    readonly unfold: (specObj: Record<string, unknown>) => Record<string | symbol, unknown>;
-    readonly map: (specObj: Record<string, unknown>) => Record<string | symbol, unknown>;
+    readonly fold: (specObj: Record<string | symbol, unknown>) => Record<string | symbol, unknown>;
+    readonly unfold: (specObj: Record<string | symbol, unknown>) => Record<string | symbol, unknown>;
+    readonly map: (specObj: Record<string | symbol, unknown>) => Record<string | symbol, unknown>;
     readonly merge: (...names: string[]) => Record<string | symbol, unknown>;
     readonly [key: string]: unknown;
 }
@@ -214,10 +222,14 @@ export function protocol(
             ? (resultRaw[invariant] as (type: unknown) => boolean)
             : null;
 
-    // Build requiredOps map, starting with inherited ops from parent
-    const requiredOps = new Map<string, ProtocolOpSpec>(
-        parentProtocol ? parentProtocol.requiredOps : []
-    );
+    // Build requiredOps map, starting with deep-cloned inherited ops from parent.
+    // Each ProtocolOpSpec (and its mutable `properties` Set) is cloned so that
+    // mutations to a child protocol's metadata never alias back to the parent.
+    const requiredOps = new Map<string, ProtocolOpSpec>();
+    if (parentProtocol) {
+        for (const [name, spec] of parentProtocol.requiredOps)
+            requiredOps.set(name, { ...spec, properties: new Set(spec.properties) });
+    }
 
     for (const [name, value] of Object.entries(result)) {
         const entry = value as Record<string | symbol, unknown>;
@@ -225,33 +237,44 @@ export function protocol(
 
         if (kind === 'fold') {
             assertCamelCase(name, 'Protocol fold operation');
-            const rawSpec = (entry[specSym] ?? {}) as Record<string, unknown>;
+            const rawSpec = (entry[specSym] ?? {}) as Record<string | symbol, unknown>;
+            const childProps = parseProperties(rawSpec[propertiesSym], name);
+            const parentProps = parentProtocol?.requiredOps.get(name)?.properties ?? new Set<string>();
             requiredOps.set(name, {
                 kind: 'fold',
-                spec: rawSpec,
-                contracts: resolveContracts(rawSpec)
+                spec: rawSpec as Record<string, unknown>,
+                contracts: resolveContracts(rawSpec as Record<string, unknown>),
+                properties: new Set([...parentProps, ...childProps])
             });
         } else if (kind === 'unfold') {
             assertPascalCase(name, 'Protocol unfold operation');
-            const rawSpec = (entry[specSym] ?? {}) as Record<string, unknown>;
+            const rawSpec = (entry[specSym] ?? {}) as Record<string | symbol, unknown>;
+            const childProps = parseProperties(rawSpec[propertiesSym], name);
+            const parentProps = parentProtocol?.requiredOps.get(name)?.properties ?? new Set<string>();
             requiredOps.set(name, {
                 kind: 'unfold',
-                spec: rawSpec,
-                contracts: resolveContracts(rawSpec)
+                spec: rawSpec as Record<string, unknown>,
+                contracts: resolveContracts(rawSpec as Record<string, unknown>),
+                properties: new Set([...parentProps, ...childProps])
             });
         } else if (kind === 'map') {
             assertCamelCase(name, 'Protocol map operation');
-            const rawSpec = (entry[specSym] ?? {}) as Record<string, unknown>;
+            const rawSpec = (entry[specSym] ?? {}) as Record<string | symbol, unknown>;
+            const childProps = parseProperties(rawSpec[propertiesSym], name);
+            const parentProps = parentProtocol?.requiredOps.get(name)?.properties ?? new Set<string>();
             requiredOps.set(name, {
                 kind: 'map',
-                spec: rawSpec,
-                contracts: null
+                spec: rawSpec as Record<string, unknown>,
+                contracts: null,
+                properties: new Set([...parentProps, ...childProps])
             });
         } else if (kind === 'merge') {
+            const parentProps = parentProtocol?.requiredOps.get(name)?.properties ?? new Set<string>();
             requiredOps.set(name, {
                 kind: 'merge',
                 spec: {},
-                contracts: null
+                contracts: null,
+                properties: new Set(parentProps)
             });
         }
         // string keys that are neither op defs nor symbol keys are ignored

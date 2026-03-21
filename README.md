@@ -85,6 +85,10 @@ there is an emphasis on the Bird-Meertens Formalism (BMF) (Squiggol) of making p
   - [Higher-Kinded Protocol Parameters](#higher-kinded-protocol-parameters)
   - [Algebraic Laws via Contracts](#algebraic-laws-via-contracts)
   - [Protocol-Level `[invariant]`](#protocol-level-invariant)
+  - [Algebraic Property Annotations](#algebraic-property-annotations)
+    - [Declaring Properties](#declaring-properties)
+    - [Property Vocabulary](#property-vocabulary)
+    - [Property Inheritance](#property-inheritance)
   - [Protocols on Behavior Types](#protocols-on-behavior-types)
 - [Design by Contract](#design-by-contract)
   - [Assertions](#assertions)
@@ -3111,6 +3115,162 @@ const Monoid = protocol(({ Family, fold, unfold }) => ({
 ```
 
 The `[invariant]` key on a protocol mirrors `[invariant]` on a variant spec — a predicate that must hold for the type as a whole. Access it via `protocol.invariantFn`.
+
+### Algebraic Property Annotations
+
+Operation specs support first-class **algebraic property annotations** via the `[properties]` symbol. Where contracts are opaque predicates, properties are named, well-known algebraic laws (associativity, commutativity, etc.) that the system can reason about structurally.
+
+This bridges the gap between `ensures` (which the system can *check* but not *exploit*) and named algebraic metadata (which enables optimization).
+
+`[properties]` works on all operation specs — `protocol()`, `data().ops()`, and `behavior().ops()`. Since `relation()` delegates to `data()` and `query()` delegates to `behavior()`, they also support `[properties]` automatically.
+
+#### Declaring Properties
+
+Annotate any `fold`/`unfold`/`map` spec with `[properties]` — an array of property names drawn from the closed vocabulary.
+
+**On protocol specs:**
+
+```ts
+import { protocol, extend, properties } from '@lapis-lang/lapis-js';
+
+const Semigroup = protocol(({ Family, fold }) => ({
+    combine: fold({
+        in: Family,
+        out: Family,
+        [properties]: ['associative']
+    })
+}));
+
+const CommutativeMonoid = protocol(({ Family, fold, unfold }) => ({
+    [extend]: Semigroup,
+    Identity: unfold({ out: Family }),
+    combine: fold({
+        in: Family,
+        out: Family,
+        [properties]: ['commutative', 'identity']
+    })
+}));
+
+const Ordered = protocol(({ Family, fold }) => ({
+    compare: fold({
+        in: Family,
+        out: Number,
+        [properties]: ['antisymmetric', 'transitive', 'total']
+    })
+}));
+```
+
+**On data operation specs:**
+
+```ts
+import { data, properties } from '@lapis-lang/lapis-js';
+
+const IntSet = data(({ Self }) => ({
+    Empty: {},
+    Insert: { value: Number, rest: Self }
+})).ops(({ fold, map, Self }) => ({
+    union: fold({
+        in: Self,
+        out: Self,
+        [properties]: ['associative', 'commutative', 'idempotent']
+    })({
+        Empty: (other) => other,
+        Insert: ({ value, rest }, other) => IntSet.Insert(value, rest.union(other))
+    }),
+    negate: map({
+        [properties]: ['involutory']
+    })({
+        Empty: () => IntSet.Empty(),
+        Insert: ({ value, rest }) => IntSet.Insert(-value, rest.negate())
+    })
+}));
+```
+
+**On behavior operation specs:**
+
+```ts
+import { behavior, properties } from '@lapis-lang/lapis-js';
+
+const Counter = behavior(({ Self }) => ({
+    value: Number
+})).ops(({ fold, unfold, Self }) => ({
+    Counting: unfold({
+        in: Number,
+        out: Self,
+        [properties]: ['identity']
+    })({
+        value: (n) => n
+    }),
+    read: fold({
+        out: Number,
+        [properties]: ['idempotent']
+    })({
+        _: (ctx) => ctx.value
+    })
+}));
+```
+
+`[properties]` is validated at declaration time — unknown names throw a `TypeError`.
+
+Properties compose with existing contracts: a protocol that declares both `[properties]: ['associative']` and `ensures: ...` enforces both.
+
+#### Property Vocabulary
+
+The vocabulary is a closed, curated set. Properties are organized by what they describe:
+
+**Binary operation properties** (apply to fold specs with `in: Family, out: Family`):
+
+| Property | Law |
+|---|---|
+| `associative` | `f(f(a,b), c) ≡ f(a, f(b,c))` |
+| `commutative` | `f(a, b) ≡ f(b, a)` |
+| `idempotent` | `f(a, a) ≡ a` |
+| `identity` | `f(a, e) ≡ a ∧ f(e, a) ≡ a` |
+| `absorbing` | `f(a, z) ≡ z ∧ f(z, a) ≡ z` |
+| `distributive` | `f(a, g(b,c)) ≡ g(f(a,b), f(a,c))` |
+
+**Unary operation properties** (apply to map specs or unary folds):
+
+| Property | Law |
+|---|---|
+| `involutory` | `f(f(a)) ≡ a` |
+| `idempotent` | `f(f(a)) ≡ f(a)` |
+
+**Relation properties** (apply to binary predicates / comparison operations):
+
+| Property | Law |
+|---|---|
+| `reflexive` | `R(a, a)` |
+| `symmetric` | `R(a, b) → R(b, a)` |
+| `antisymmetric` | `R(a, b) ∧ R(b, a) → a ≡ b` |
+| `transitive` | `R(a, b) ∧ R(b, c) → R(a, c)` |
+| `total` | `R(a, b) ∨ R(b, a)` |
+
+**Functor / natural transformation properties** (apply to map specs):
+
+| Property | Law |
+|---|---|
+| `composition` | `fmap(g ∘ f) ≡ fmap(g) ∘ fmap(f)` |
+
+#### Property Inheritance
+
+Properties inherit through `[extend]` just like operations. When a child protocol redeclares an operation, properties from the parent are **unioned** — a child cannot remove a parent's properties (this preserves the Liskov Substitution Principle):
+
+```ts
+const Semigroup = protocol(({ Family, fold }) => ({
+    combine: fold({ in: Family, out: Family, [properties]: ['associative'] })
+}));
+
+const CommutativeMonoid = protocol(({ Family, fold, unfold }) => ({
+    [extend]: Semigroup,
+    Identity: unfold({ out: Family }),
+    // Only declares 'commutative', but 'associative' is inherited from Semigroup
+    combine: fold({ in: Family, out: Family, [properties]: ['commutative'] })
+}));
+// CommutativeMonoid.combine now has both 'associative' (inherited) and 'commutative' (declared)
+```
+
+If the child does *not* redeclare the operation, the parent's spec (including its properties) is inherited wholesale.
 
 ### Protocols on Behavior Types
 

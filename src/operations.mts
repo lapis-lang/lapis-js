@@ -462,6 +462,95 @@ export type satisfies = typeof satisfies;
 export const ProtocolSymbol: unique symbol = Symbol('Protocol');
 export type ProtocolSymbol = typeof ProtocolSymbol;
 
+// ---- Algebraic property annotations ----------------------------------------
+
+/**
+ * Annotates a protocol operation spec with algebraic law declarations.
+ *
+ * Usage:
+ * ```ts
+ * import { protocol, properties } from '@lapis-lang/lapis-js';
+ *
+ * const Semigroup = protocol(({ Family, fold }) => ({
+ *     combine: fold({ in: Family, out: Family, [properties]: ['associative'] })
+ * }));
+ * ```
+ */
+export const properties: unique symbol = Symbol('properties');
+export type properties = typeof properties;
+
+/**
+ * The closed set of recognised algebraic property names.
+ *
+ * Names are organised by the category of operation they describe:
+ *
+ * **Binary operation properties** (fold with `in: Family, out: Family`):
+ * `associative`, `commutative`, `idempotent`, `identity`, `absorbing`, `distributive`
+ *
+ * **Unary operation properties** (map or unary fold):
+ * `involutory`
+ *
+ * **Relation / comparison properties** (binary predicates):
+ * `reflexive`, `symmetric`, `antisymmetric`, `transitive`, `total`
+ *
+ * **Functor / natural transformation properties** (map specs):
+ * `composition`
+ */
+export const KNOWN_PROPERTIES: ReadonlySet<string> = new Set([
+    // Binary operation
+    'associative',
+    'commutative',
+    'idempotent',
+    'identity',
+    'absorbing',
+    'distributive',
+    // Unary
+    'involutory',
+    // Relation
+    'reflexive',
+    'symmetric',
+    'antisymmetric',
+    'transitive',
+    'total',
+    // Functor
+    'composition'
+]);
+
+/**
+ * Parse and validate a `[properties]` value from an operation spec.
+ *
+ * Accepts a `string[]` of property names drawn from {@link KNOWN_PROPERTIES}.
+ * Throws a `TypeError` if an unknown property name is encountered.
+ *
+ * @param raw     - The raw value stored under `[properties]` in the spec.
+ * @param opName  - Operation name, used in error messages.
+ * @returns A `ReadonlySet<string>` of validated property names.
+ */
+export function parseProperties(raw: unknown, opName: string): ReadonlySet<string> {
+    if (raw === undefined || raw === null) return new Set<string>();
+    if (!Array.isArray(raw)) {
+        throw new TypeError(
+            `[properties] on operation '${opName}' must be an array of strings, got ${typeof raw}`
+        );
+    }
+    const result = new Set<string>();
+    for (const item of raw) {
+        if (typeof item !== 'string') {
+            throw new TypeError(
+                `[properties] on operation '${opName}' must contain strings, got ${typeof item}`
+            );
+        }
+        if (!KNOWN_PROPERTIES.has(item)) {
+            throw new TypeError(
+                `[properties] on operation '${opName}' contains unknown property '${item}'. ` +
+                `Known properties: ${[...KNOWN_PROPERTIES].join(', ')}`
+            );
+        }
+        result.add(item);
+    }
+    return result;
+}
+
 // ---- Invariant symbol (used by both Data and Protocol) ----------------------
 
 /**

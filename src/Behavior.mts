@@ -30,7 +30,9 @@ import {
     assertCamelCase,
     assertPascalCase,
     LapisTypeSymbol,
-    satisfies
+    satisfies,
+    properties as propertiesSym,
+    parseProperties
 } from './operations.mjs';
 
 import {
@@ -100,6 +102,7 @@ interface FoldOpEntry {
     auxIsArray: boolean;
     preMapTransforms?: MapTransformEntry[];
     contracts?: ContractSpec;
+    properties?: ReadonlySet<string>;
 }
 
 interface MapOpEntry {
@@ -112,6 +115,7 @@ interface UnfoldOpEntry {
     spec: Record<string, unknown>;
     handlers: Record<string, AnyFn>;
     contracts?: ContractSpec;
+    properties?: ReadonlySet<string>;
 }
 
 interface BehaviorInstanceState {
@@ -928,7 +932,17 @@ function addUnfoldOperation(
     ensureOwnMap<string, UnfoldOpEntry>(
         BehaviorType as unknown as Record<symbol, unknown>,
         UnfoldOpsSymbol
-    ).set(name, { spec: parsedSpec, handlers, contracts: unfoldContracts ?? undefined });
+    ).set(name, {
+        spec: parsedSpec,
+        handlers,
+        contracts: unfoldContracts ?? undefined,
+        properties: (() => {
+            const p = parseProperties(
+                (parsedSpec as Record<string | symbol, unknown>)[propertiesSym], name
+            );
+            return p.size > 0 ? p : undefined;
+        })()
+    });
 
     return BehaviorType;
 }
@@ -1248,7 +1262,13 @@ function addFoldOperation(
         isHisto: parsedSpec['history'] === true,
         auxNames: parsedAux.names,
         auxIsArray: parsedAux.isArray,
-        contracts: foldContracts ?? undefined
+        contracts: foldContracts ?? undefined,
+        properties: (() => {
+            const p = parseProperties(
+                (parsedSpec as Record<string | symbol, unknown>)[propertiesSym], name
+            );
+            return p.size > 0 ? p : undefined;
+        })()
     });
 }
 
