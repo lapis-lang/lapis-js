@@ -21,6 +21,8 @@ import {
     LapisTypeSymbol,
     invariant,
     satisfies,
+    properties as propertiesSym,
+    parseProperties,
     type TypeSpec
 } from './operations.mjs';
 
@@ -1562,6 +1564,12 @@ function createFoldOperation(
     // Store contracts on transformer for subcontracting inheritance
     if (foldContracts)
         transformer.contracts = foldContracts;
+    // Store algebraic property annotations
+    const foldProps = parseProperties(
+        (opSpecObj as Record<string | symbol, unknown>)[propertiesSym], opName
+    );
+    if (foldProps.size > 0)
+        transformer.properties = foldProps;
     ADT._registerTransformer(opName, transformer, false, variants);
 
     // DAG-safe fold cache — closure-scoped so each (ADT, opName) pair is
@@ -2108,6 +2116,12 @@ function installUnfoldImpl(
     // Store contracts on transformer for subcontracting inheritance
     if (unfoldContracts)
         transformer.contracts = unfoldContracts;
+    // Store algebraic property annotations
+    const unfoldProps = parseProperties(
+        (opSpecObj as Record<string | symbol, unknown>)[propertiesSym], opName
+    );
+    if (unfoldProps.size > 0)
+        transformer.properties = unfoldProps;
 
     ADT._registerTransformer(opName, transformer, false, variants);
 
@@ -2425,6 +2439,12 @@ function createMapOperation(
             getParamTransform: (paramName) => transformers[paramName] as HandlerFn | undefined,
             getAtomTransform: (fieldName) => transformers[fieldName] as HandlerFn | undefined
         });
+
+    // Store algebraic property annotations
+    const mapSpec = (_opSpec ?? {}) as Record<string | symbol, unknown>;
+    const mapProps = parseProperties(mapSpec[propertiesSym], opName);
+    if (mapProps.size > 0)
+        transformer.properties = mapProps;
 
     ADT._registerTransformer(opName, transformer, false, variants);
 

@@ -5,7 +5,7 @@ export { data } from './Data.mjs';
 export { protocol } from './Protocol.mjs';
 export { satisfies } from './operations.mjs';
 export type { ProtocolLike, ProtocolEntry, ConditionalConformance, ProtocolDeclContext } from './Protocol.mjs';
-export { op, spec, operations, history, aux, sort, isSort } from './operations.mjs';
+export { op, spec, operations, history, aux, sort, isSort, properties } from './operations.mjs';
 export { unfold, fold, map, merge } from './ops.mjs';
 export type { UnfoldDef, FoldDef, MapDef, MergeDef, InstanceOf } from './ops.mjs';
 export { behavior } from './Behavior.mjs';
