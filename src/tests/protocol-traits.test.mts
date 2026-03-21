@@ -7,8 +7,9 @@
  * - `parentProtocols` array property
  * - `parentProtocol` backward-compat first-parent accessor
  * - `requiredTypeParams` union from all parents
- * - Diamond resolution: identical specs merge silently (properties union)
- * - Diamond resolution: conflicting specs throw at protocol definition time
+ * - Diamond resolution: identical specs (same kind + matching in/out/contracts) merge silently
+ * - Diamond resolution: same kind but incompatible specs throw at protocol definition time
+ * - Diamond resolution: different kinds throw at protocol definition time
  * - Transitive instanceof / conformance registry with multiple parents
  * - Protocol-level [invariant] checked for all parents transitively
  */
@@ -190,12 +191,12 @@ describe('diamond protocol resolution', () => {
     });
 
     it('properties are unioned when same op comes from two paths', () => {
-        const PA = protocol(({ Family, fold: f, properties }) => ({
-            combine: f({ out: Family })
+        // PA uses the same in/out shape as Semigroup.combine so the specs are
+        // compatible and merge silently (both FamilyRef values normalise as equal).
+        const PA = protocol(({ Family, fold: f }) => ({
+            combine: f({ in: Family, out: Family })
         }));
 
-        // Reuse existing Semigroup.combine which has no special properties
-        // Just verify no error and the op exists
         const Child = protocol(({ Family, fold: f }) => ({
             [extend]: [PA, Semigroup]
         }));
@@ -227,7 +228,61 @@ describe('diamond protocol resolution', () => {
         );
     });
 
-    it('child re-declaration resolves a conflict', () => {
+    it('throws when same-kind op has incompatible out types in two parents', () => {
+        const PA = protocol(({ Family, fold: f }) => ({
+            foo: f({ out: Boolean })   // out = Boolean
+        }));
+        const PB = protocol(({ Family, fold: f }) => ({
+            foo: f({ out: Number })    // out = Number — incompatible!
+        }));
+
+        assert.throws(
+            () => protocol(({ Family, fold: f }) => ({
+                [extend]: [PA, PB]
+            })),
+            (e: Error) =>
+                e instanceof TypeError &&
+                e.message.includes("'foo'") &&
+                e.message.includes('incompatible specs')
+        );
+    });
+
+    it('throws when same-kind op has incompatible in types in two parents', () => {
+        const PA = protocol(({ Family, fold: f }) => ({
+            bar: f({ in: Family, out: Boolean })
+        }));
+        const PB = protocol(({ Family, fold: f }) => ({
+            bar: f({ out: Boolean })   // no 'in' — incompatible!
+        }));
+
+        assert.throws(
+            () => protocol(({ Family, fold: f }) => ({
+                [extend]: [PA, PB]
+            })),
+            (e: Error) =>
+                e instanceof TypeError &&
+                e.message.includes("'bar'") &&
+                e.message.includes('incompatible specs')
+        );
+    });
+
+    it('child re-declaration resolves a same-kind spec conflict', () => {
+        const PA = protocol(({ Family, fold: f }) => ({
+            foo: f({ out: Boolean })
+        }));
+        const PB = protocol(({ Family, fold: f }) => ({
+            foo: f({ out: Number })    // same kind, different out
+        }));
+
+        assert.doesNotThrow(() => {
+            protocol(({ Family, fold: f }) => ({
+                [extend]: [PA, PB],
+                foo: f({ out: Boolean })   // child re-declares, resolves the conflict
+            }));
+        });
+    });
+
+    it('child re-declaration resolves a kind conflict', () => {
         const PA = protocol(({ Family, fold: f }) => ({
             foo: f({ out: Boolean })
         }));

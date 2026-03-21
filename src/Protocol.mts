@@ -20,10 +20,11 @@ import {
     createFamily,
     properties as propertiesSym,
     parseProperties,
+    isFamilyRefSpec,
     type FamilyRefCallable
 } from './operations.mjs';
 
-import { TypeParamSymbol, installOperation } from './utils.mjs';
+import { TypeParamSymbol, installOperation, extractParamNames } from './utils.mjs';
 import { type ContractSpec, resolveContracts, composeContracts } from './contracts.mjs';
 
 // ---- Symbols ----------------------------------------------------------------
@@ -191,18 +192,49 @@ function protocolMerge(...names: string[]): Record<string | symbol, unknown> {
 // ---- Protocol factory -------------------------------------------------------
 
 /**
- * Extract single-uppercase-letter parameter names from a function's source code.
- * Mirrors the technique used in `behavior()`.
+ * Returns true when two spec type-ref values represent the same type.
+ * Reference equality suffices for concrete types (Boolean, Number, …).
+ * Each `protocol()` call creates its own `Family` marker, so any two
+ * FamilyRef objects are treated as semantically identical.
  */
-function extractTypeParamNames(fn: (...args: unknown[]) => unknown): string[] {
-    const src = fn.toString();
-    // Match the first destructured parameter: ({ A, B, Family, fold, ... })
-    const match = src.match(/^\s*(?:function\s*\w*\s*)?\(\s*\{\s*([^}]*)\}/);
-    if (!match) return [];
-    return match[1]
-        .split(',')
-        .map(s => s.trim().replace(/\s*:.*/, '').replace(/\s*=.*/, ''))
-        .filter(s => /^[A-Z]$/.test(s));
+function typeRefEqual(a: unknown, b: unknown): boolean {
+    if (a === b) return true;
+    if (isFamilyRefSpec(a) && isFamilyRefSpec(b)) return true;
+    return false;
+}
+
+/**
+ * Returns true when two same-kind ProtocolOpSpecs are compatible enough to
+ * be silently merged in a diamond: must have matching `in`/`out` type refs
+ * and identical contract presence.
+ */
+function opSpecsCompatible(a: ProtocolOpSpec, b: ProtocolOpSpec): boolean {
+    if (!typeRefEqual(a.spec['in'], b.spec['in'])) return false;
+    if (!typeRefEqual(a.spec['out'], b.spec['out'])) return false;
+    if ((a.contracts === null) !== (b.contracts === null)) return false;
+    return true;
+}
+
+/**
+ * Shared spec-parsing setup for fold / unfold / map child op entries.
+ * Returns the raw spec object, child-declared property set, and the property
+ * set already inherited from parent protocols.
+ */
+function extractSpecParts(
+    entry: Record<string | symbol, unknown>,
+    name: string,
+    requiredOps: Map<string, ProtocolOpSpec>
+): { rawSpec: Record<string | symbol, unknown>; childProps: ReadonlySet<string>; parentProps: ReadonlySet<string> } {
+    const rawSpec = (entry[specSym] ?? {}) as Record<string | symbol, unknown>;
+    const childProps = parseProperties(rawSpec[propertiesSym], name);
+    const parentProps = requiredOps.get(name)?.properties ?? new Set<string>();
+    return { rawSpec, childProps, parentProps };
+}
+
+/** Returns the `_` wildcard handler from an op entry as a typed function, or null. */
+function extractWildcard(entry: Record<string | symbol, unknown>): ((...args: unknown[]) => unknown) | null {
+    const handler = (entry as Record<string, unknown>)['_'];
+    return typeof handler === 'function' ? handler as (...args: unknown[]) => unknown : null;
 }
 
 /**
@@ -231,7 +263,7 @@ export function protocol(
     callback: (ctx: ProtocolDeclContext) => Record<string | symbol, unknown>
 ): ProtocolLike {
     // Extract type param names from the callback signature
-    const typeParamNames = extractTypeParamNames(callback as (...args: unknown[]) => unknown);
+    const typeParamNames = extractParamNames(callback as (...args: unknown[]) => unknown, s => /^[A-Z]$/.test(s));
 
     // Build the Family marker and type-param objects for the callback context
     const Family = createFamily() as unknown as FamilyRefCallable;
@@ -279,22 +311,24 @@ export function protocol(
 
     // Build requiredOps map by merging from all parents.
     // Diamond resolution rules:
-    //   - Same op from two parents with IDENTICAL kinds → merge (union properties, keep first spec).
-    //   - Same op from two parents with CONFLICTING kinds → conflict deferred; child re-declaration
-    //     resolves it. Remaining conflicts after child ops throw a TypeError.
+    //   - Same op from two parents with identical kind AND compatible specs (same in/out type
+    //     refs, matching contract presence) → merge (union properties, keep first spec).
+    //   - Same op from two parents with CONFLICTING kinds OR incompatible specs → conflict
+    //     deferred; child re-declaration resolves it. Remaining conflicts throw a TypeError.
     // Each ProtocolOpSpec is cloned so mutations never alias back to a parent.
     const requiredOps = new Map<string, ProtocolOpSpec>();
-    const parentConflicts = new Set<string>(); // op names with kind conflicts between parents
+    const parentConflicts = new Set<string>(); // op names with conflicts (kind or spec) between parents
     for (const parent of parentProtocols) {
         for (const [name, parentSpec] of parent.requiredOps) {
             const existing = requiredOps.get(name);
             if (existing) {
                 // Diamond: same op name from two parent paths.
-                if (existing.kind !== parentSpec.kind) {
-                    // Conflict — defer; child re-declaration can resolve it.
+                if (existing.kind !== parentSpec.kind ||
+                        !opSpecsCompatible(existing, parentSpec)) {
+                    // Kind or spec conflict — defer; child re-declaration can resolve it.
                     parentConflicts.add(name);
                 } else {
-                    // Same kind — merge properties (Set union) into a fresh Set.
+                    // Same kind, compatible spec — merge properties (Set union) into a fresh Set.
                     const mergedProps = new Set(existing.properties);
                     for (const p of parentSpec.properties) mergedProps.add(p);
                     requiredOps.set(name, { ...existing, properties: mergedProps });
@@ -311,51 +345,41 @@ export function protocol(
 
         if (kind === 'fold') {
             assertCamelCase(name, 'Protocol fold operation');
-            const rawSpec = (entry[specSym] ?? {}) as Record<string | symbol, unknown>;
-            const childProps = parseProperties(rawSpec[propertiesSym], name);
-            // Inherited properties already merged into requiredOps during parent merge phase.
-            const parentProps = requiredOps.get(name)?.properties ?? new Set<string>();
-            const wildcardHandler = (entry as Record<string, unknown>)['_'];
+            const { rawSpec, childProps, parentProps } = extractSpecParts(entry, name, requiredOps);
             requiredOps.set(name, {
                 kind: 'fold',
                 spec: rawSpec as Record<string, unknown>,
                 contracts: resolveContracts(rawSpec as Record<string, unknown>),
                 properties: new Set([...parentProps, ...childProps]),
-                defaultBody: typeof wildcardHandler === 'function'
-                    ? wildcardHandler as (...args: unknown[]) => unknown
-                    : null
+                defaultBody: extractWildcard(entry)
             });
             childDeclaredOps.add(name);
         } else if (kind === 'unfold') {
             assertPascalCase(name, 'Protocol unfold operation');
-            const rawSpec = (entry[specSym] ?? {}) as Record<string | symbol, unknown>;
-            const childProps = parseProperties(rawSpec[propertiesSym], name);
-            const parentProps = requiredOps.get(name)?.properties ?? new Set<string>();
-            const wildcardHandler = (entry as Record<string, unknown>)['_'];
+            if (typeof (entry as Record<string, unknown>)['_'] === 'function') {
+                throw new TypeError(
+                    `Protocol unfold operation '${name}' cannot have a default body ('_' handler). ` +
+                    `Unfold defaults are not supported because they require a constructor reference.`
+                );
+            }
+            const { rawSpec, childProps, parentProps } = extractSpecParts(entry, name, requiredOps);
             requiredOps.set(name, {
                 kind: 'unfold',
                 spec: rawSpec as Record<string, unknown>,
                 contracts: resolveContracts(rawSpec as Record<string, unknown>),
                 properties: new Set([...parentProps, ...childProps]),
-                defaultBody: typeof wildcardHandler === 'function'
-                    ? wildcardHandler as (...args: unknown[]) => unknown
-                    : null
+                defaultBody: null
             });
             childDeclaredOps.add(name);
         } else if (kind === 'map') {
             assertCamelCase(name, 'Protocol map operation');
-            const rawSpec = (entry[specSym] ?? {}) as Record<string | symbol, unknown>;
-            const childProps = parseProperties(rawSpec[propertiesSym], name);
-            const parentProps = requiredOps.get(name)?.properties ?? new Set<string>();
-            const wildcardHandler = (entry as Record<string, unknown>)['_'];
+            const { rawSpec, childProps, parentProps } = extractSpecParts(entry, name, requiredOps);
             requiredOps.set(name, {
                 kind: 'map',
                 spec: rawSpec as Record<string, unknown>,
                 contracts: null,
                 properties: new Set([...parentProps, ...childProps]),
-                defaultBody: typeof wildcardHandler === 'function'
-                    ? wildcardHandler as (...args: unknown[]) => unknown
-                    : null
+                defaultBody: extractWildcard(entry)
             });
             childDeclaredOps.add(name);
         } else if (kind === 'merge') {
@@ -373,16 +397,20 @@ export function protocol(
         // (e.g. if user mistakenly puts a plain string key)
     }
 
-    // Throw for any parent kind-conflicts not resolved by the child re-declaring the op.
+    // Throw for any conflicts (kind or spec) not resolved by the child re-declaring the op.
     for (const conflictName of parentConflicts) {
         if (!childDeclaredOps.has(conflictName)) {
-            const kinds = [...parentProtocols]
+            const conflictingSpecs = [...parentProtocols]
                 .filter(p => p.requiredOps.has(conflictName))
-                .map(p => p.requiredOps.get(conflictName)!.kind)
-                .join("' vs '");
+                .map(p => p.requiredOps.get(conflictName)!);
+            const allSameKind = conflictingSpecs.every(s => s.kind === conflictingSpecs[0].kind);
+            const detail = allSameKind
+                ? `same kind ('${conflictingSpecs[0].kind}') but incompatible specs ` +
+                  `(in/out types or contracts differ)`
+                : `different kinds ('${conflictingSpecs.map(s => s.kind).join("' vs '")}')`;
             throw new TypeError(
                 `Protocol [extend] conflict: operation '${conflictName}' appears in multiple ` +
-                `parents with different kinds ('${kinds}'). ` +
+                `parents with ${detail}. ` +
                 `Re-declare it in the child protocol to resolve the conflict.`
             );
         }
@@ -487,7 +515,31 @@ export function gatherProtocolContracts(
     return combined;
 }
 
-// ---- Protocol validation helpers --------------------------------------------
+// ---- Contract composition helper -------------------------------------------
+
+/**
+ * Resolve the full contract chain for a fold/unfold operation.
+ *
+ * Composes protocol-level contracts (algebraic laws, outermost) with
+ * parent-level contracts (middle), then resolves against the operation's
+ * own spec contracts (innermost; LSP subcontracting).
+ *
+ * @param parentContracts - contracts from the parent's transformer for this
+ *   operation, or `undefined`/`null` when there is no parent.
+ */
+export function resolveOperationContracts(
+    protocols: ProtocolEntry[],
+    opName: string,
+    opSpec: Record<string, unknown>,
+    parentContracts?: ContractSpec | null
+): ContractSpec | null {
+    const protocolContracts = gatherProtocolContracts(protocols, opName);
+    const combined: ContractSpec | null =
+        protocolContracts && parentContracts
+            ? composeContracts(protocolContracts, parentContracts)
+            : (parentContracts ?? protocolContracts ?? null);
+    return resolveContracts(opSpec, combined);
+}
 
 // ---- Default implementation installation -----------------------------------
 
@@ -501,16 +553,18 @@ export function gatherProtocolContracts(
  * instance (as the `ctx` / fields parameter), and `...args` are the method's
  * own arguments (e.g. the `in` parameter for binary folds).
  *
- * This makes law-derived defaults natural:
- *   `equals: fold({ in: Family, out: Boolean })({ _: function(ctx, other) { return this.compare(other) === 0; } })`
+ * Since `ctx` and `this` are the same value, arrow functions work naturally:
+ *   `equals: fold({ in: Family, out: Boolean })({ _: (ctx, other) => ctx.compare(other) === 0 })`
  *
- * Unfold defaults (static constructor-level operations) are not currently
- * supported — they require a constructor reference not available here.
+ * Unfold operations never reach this function: their `defaultBody` is always
+ * `null` (a `TypeError` is thrown at protocol declaration time if a `_`
+ * handler is supplied for an unfold), so the `!defaultBody` guard below exits
+ * first.
  */
-function installDefaultOp(prototype: object, opName: string, opSpec: ProtocolOpSpec): void {
+/** Returns true when a default was actually installed, false when there is no default body. */
+function installDefaultOp(prototype: object, opName: string, opSpec: ProtocolOpSpec): boolean {
     const { defaultBody, kind } = opSpec;
-    if (!defaultBody) return;
-    if (kind === 'unfold') return; // Not yet supported
+    if (!defaultBody) return false;
 
     // A fold/map operation with no `in` spec is a zero-argument getter.
     const isGetter = (kind === 'fold' || kind === 'map') && !opSpec.spec['in'];
@@ -529,6 +583,7 @@ function installDefaultOp(prototype: object, opName: string, opSpec: ProtocolOpS
             },
         isGetter
     );
+    return true;
 }
 
 // ---- Protocol validation helpers --------------------------------------------
@@ -537,9 +592,11 @@ function installDefaultOp(prototype: object, opName: string, opSpec: ProtocolOpS
  * Validate that `adtOpNames` contains all operations required by `proto`
  * and all of its ancestors. Throws a descriptive TypeError on failure.
  *
- * When `prototype` is provided, any missing operation that has a `defaultBody`
- * on its spec is automatically installed on `prototype` (and added to
- * `adtOpNames`) rather than throwing.
+ * When `prototype` is provided, any missing operation whose spec has a
+ * `defaultBody` that can be successfully installed (i.e. `installDefaultOp`
+ * returns `true`) is added to `adtOpNames` rather than throwing. Operations
+ * whose kind does not support defaults (currently `unfold`) are treated as
+ * missing even when `defaultBody` is non-null.
  *
  * @param adtOpNames  - set of operation names provided by the ADT's `.ops()`
  * @param proto       - protocol whose requirements must be satisfied
@@ -556,9 +613,9 @@ export function validateProtocolConformance(
 ): void {
     for (const [opName, opSpec] of proto.requiredOps) {
         if (!adtOpNames.has(opName)) {
-            if (opSpec.defaultBody !== null && prototype !== undefined) {
-                // Install the default implementation and mark the op as satisfied.
-                installDefaultOp(prototype, opName, opSpec);
+            if (opSpec.defaultBody !== null && prototype !== undefined &&
+                    installDefaultOp(prototype, opName, opSpec)) {
+                // Default was actually installed — mark the op as satisfied.
                 adtOpNames.add(opName);
             } else {
                 throw new TypeError(
@@ -582,7 +639,7 @@ export function validateProtocolInvariant(
     type: unknown,
     label: string
 ): void {
-    // Walk all parent invariants first (breadth-first order of parentProtocols)
+    // Walk all parent invariants first (depth-first, left-to-right through parentProtocols)
     for (const parent of proto.parentProtocols)
         validateProtocolInvariant(parent, type, label);
 

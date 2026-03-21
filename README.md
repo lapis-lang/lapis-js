@@ -2972,26 +2972,26 @@ const AbelianGroup = protocol(({ Family, fold, unfold }) => ({
 
 `requiredOps` on the child is the **union** of all parents' required operations (including their ancestors). In the example above, `AbelianGroup.requiredOps` contains `combine`, `Identity`, and `inverse` — everything from both lineages.
 
-**Diamond resolution:** When two parent protocols each declare an operation with the same name:
+**Diamond resolution:** When two parent protocols each declare an operation with the same name, the resolution rule depends on the operation **kind** (`fold`, `unfold`, `map`, `merge`):
 
-- If the specs are identical (or one parent inherited it from the other), the operation merges silently — no duplication error.
-- If the specs differ, the child protocol **must explicitly re-declare** the operation. Failing to do so throws a `TypeError` at declaration time.
+- If both parents declare the operation with the **same kind** _and_ identical `in`/`out` type refs and matching contract presence, they merge silently — the first parent's spec is kept, and `[properties]` sets are unioned.
+- If both parents declare the operation with the **same kind** but with differing `in`/`out` types or contract presence, the child protocol **must explicitly re-declare** the operation. Failing to do so throws a `TypeError` at declaration time.
+- If the parents declare the operation with **different kinds**, the child protocol **must explicitly re-declare** the operation. Failing to do so throws a `TypeError` at declaration time.
 
 ```ts
 const PA = protocol(({ Family, fold }) => ({
-    op: fold({ in: Family, out: Number })
+    op: fold({ out: Boolean })   // kind = 'fold'
 }));
-const PB = protocol(({ Family, fold }) => ({
-    op: fold({ in: Family, out: String })  // different spec!
+const PB = protocol(({ Family, map }) => ({
+    op: map({ out: Family })     // kind = 'map' — conflicts with fold!
 }));
 
-// Throws: Protocol declares conflicting required ops from multiple parents
-// without resolving them: op
+// Throws: 'op' appears in multiple parents with different kinds ('fold' vs 'map')
 const Bad = protocol(({ Family, fold }) => ({
     [extend]: [PA, PB]
 }));
 
-// OK — child re-declares 'op', resolving the conflict
+// OK — child re-declares 'op', resolving the kind conflict
 const Good = protocol(({ Family, fold }) => ({
     [extend]: [PA, PB],
     op: fold({ in: Family, out: Boolean })  // resolution
@@ -3013,9 +3013,7 @@ const Ord = protocol(({ Family, fold }) => ({
 
     // Default: equals is derived from compare — no implementation required
     equals: fold({ in: Family, out: Boolean })({
-        _: function(this: any, other: unknown) {
-            return (this as any).compare(other) === 0;
-        }
+        _: (ctx: any, other: unknown) => ctx.compare(other) === 0
     })
 }));
 
@@ -3061,12 +3059,21 @@ const MyTemp = data(({ Family }) => ({
 const Stringifiable = protocol(({ Family, fold }) => ({
     // Default description is a getter: `instance.description`
     description: fold({ out: String })({
-        _: function(this: any) {
-            return `${this.constructor.name}(${JSON.stringify(this)})`;
-        }
+        _: (ctx: any) => `${ctx.constructor.name}(${JSON.stringify(ctx)})`
     })
 }));
 ```
+
+**`unfold` ops do not support defaults.** Providing a `_` handler on an `unfold` spec throws a `TypeError` at protocol declaration time:
+
+```ts
+// Throws: Protocol unfold operation 'From' cannot have a default body
+const Bad = protocol(({ Family, unfold }) => ({
+    From: unfold({ out: Family })({ _: (ctx: any) => ctx })
+}));
+```
+
+This limitation exists because `unfold` operations act as constructors — installing a default requires a constructor reference that is not available at protocol declaration time.
 
 ### Declaring Conformance with `[satisfies]`
 

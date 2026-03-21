@@ -11,6 +11,7 @@
  * - Law-derived default style: `this.compare(other) === 0`
  * - `fold(spec)` without handler call still works (no default, spec-only)
  * - `map(spec)({ _: fn })` default installation
+ * - `unfold(spec)({ _: fn })` throws TypeError at declaration time (not supported)
  */
 
 import { describe, it } from 'node:test';
@@ -34,9 +35,7 @@ const Orderable = protocol(({ Family, fold: f }) => ({
     compare: f({ in: Family, out: Number }),
     // Default: equals derived from compare (law theorem)
     equals: f({ in: Family, out: Boolean })({
-        _: function(this: any, _ctx: unknown, other: unknown) {
-            return this.compare(other) === 0;
-        }
+        _: (ctx: any, other: unknown) => ctx.compare(other) === 0
     })
 }));
 
@@ -96,8 +95,8 @@ describe('default auto-installation', () => {
     it('installed default is callable as a method', () => {
         const P = protocol(({ Family, fold: f }) => ({
             base: f({ out: Number }),
-            derived: f({ out: Number })({
-                _: function(this: any) { return this.base * 2; }
+            derived: f({ in: Number, out: Number })({
+                _: (ctx: any, factor: any) => ctx.base * factor
             })
         }));
 
@@ -110,7 +109,7 @@ describe('default auto-installation', () => {
         }));
 
         const v = MyData.Val({ n: 5 });
-        assert.strictEqual((v as unknown as { derived: number }).derived, 10);
+        assert.strictEqual((v as unknown as { derived: (factor: number) => number }).derived(2), 10);
     });
 });
 
@@ -123,9 +122,7 @@ describe('user implementation shadows default', () => {
         const Eq = protocol(({ Family, fold: f }) => ({
             compare: f({ in: Family, out: Number }),
             equals: f({ in: Family, out: Boolean })({
-                _: function(this: any, _ctx: unknown, _other: unknown) {
-                    return false; // default always returns false
-                }
+                _: () => false // default always returns false
             })
         }));
 
@@ -160,7 +157,7 @@ describe('getter default', () => {
             label: f({ out: String }),
             // labelUpper defaults from label getter
             labelUpper: f({ out: String })({
-                _: function(this: any) { return this.label.toUpperCase(); }
+                _: (ctx: any) => ctx.label.toUpperCase()
             })
         }));
 
@@ -186,7 +183,7 @@ describe('default inherited through protocol extension', () => {
         const Base = protocol(({ Family, fold: f }) => ({
             base: f({ out: Number }),
             derived: f({ out: Number })({
-                _: function(this: any) { return this.base + 1; }
+                _: (ctx: any) => ctx.base + 1
             })
         }));
 
@@ -208,7 +205,7 @@ describe('default inherited through protocol extension', () => {
         const Base = protocol(({ Family, fold: f }) => ({
             base: f({ out: Number }),
             derived: f({ out: Number })({
-                _: function(this: any) { return this.base + 100; }
+                _: (ctx: any) => ctx.base + 100
             })
         }));
 
@@ -241,7 +238,7 @@ describe('map default', () => {
             raw: f({ out: Number }),
             // doubled: a no-arg map that doubles the raw value
             doubled: m({ out: Number })({
-                _: function(this: any) { return (this as { raw: number }).raw * 2; }
+                _: (ctx: { raw: number }) => ctx.raw * 2
             })
         }));
 
@@ -267,10 +264,10 @@ describe('multiple defaults on a single protocol', () => {
         const MultiDefault = protocol(({ Family, fold: f }) => ({
             raw: f({ out: Number }),
             plus1: f({ out: Number })({
-                _: function(this: any) { return this.raw + 1; }
+                _: (ctx: any) => ctx.raw + 1
             }),
             plus2: f({ out: Number })({
-                _: function(this: any) { return this.raw + 2; }
+                _: (ctx: any) => ctx.raw + 2
             })
         }));
 
@@ -296,7 +293,7 @@ describe('default via multi-parent protocol', () => {
         const PA = protocol(({ Family, fold: f }) => ({
             base: f({ out: Number }),
             derived: f({ out: Number })({
-                _: function(this: any) { return this.base * 3; }
+                _: (ctx: any) => ctx.base * 3
             })
         }));
 
@@ -319,5 +316,30 @@ describe('default via multi-parent protocol', () => {
 
         const x = MyData.X({ v: 4 });
         assert.strictEqual((x as unknown as { derived: number }).derived, 12);
+    });
+});
+
+// =============================================================================
+// 8. unfold _ handler is rejected at declaration time
+// =============================================================================
+
+describe('unfold default body rejection', () => {
+    it('throws TypeError when a _ handler is provided for an unfold op', () => {
+        assert.throws(
+            () => protocol(({ Family, unfold: u }) => ({
+                From: u({ out: Family })({ _: (ctx: any) => ctx })
+            })),
+            (e: Error) =>
+                e instanceof TypeError &&
+                e.message.includes("'From'") &&
+                e.message.includes('Unfold defaults are not supported')
+        );
+    });
+
+    it('unfold op without _ handler stores null defaultBody', () => {
+        const P = protocol(({ Family, unfold: u }) => ({
+            From: u({ out: Family })
+        }));
+        assert.strictEqual(P.requiredOps.get('From')?.defaultBody, null);
     });
 });

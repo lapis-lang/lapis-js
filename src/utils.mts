@@ -15,17 +15,17 @@ import { IsSingleton } from './Data.mjs';
 
 /** Read a symbol-keyed property from an object. */
 export function getSymbolProp<T = unknown>(obj: unknown, sym: symbol): T {
-    if (obj == null || (typeof obj !== 'object' && typeof obj !== 'function')) 
+    if (obj == null || (typeof obj !== 'object' && typeof obj !== 'function'))
         throw new TypeError(`Cannot read symbol property from ${obj}`);
-    
+
     return (obj as Record<symbol, unknown>)[sym] as T;
 }
 
 /** Write a symbol-keyed property on an object. */
 export function setSymbolProp(obj: unknown, sym: symbol, value: unknown): void {
-    if (obj == null || (typeof obj !== 'object' && typeof obj !== 'function')) 
+    if (obj == null || (typeof obj !== 'object' && typeof obj !== 'function'))
         throw new TypeError(`Cannot write symbol property to ${obj}`);
-    
+
     (obj as Record<symbol, unknown>)[sym] = value;
 }
 
@@ -353,4 +353,31 @@ function seenId(obj: unknown): number {
         _seenIdMap.set(obj as object, id);
     }
     return id;
+}
+
+// ---- Function introspection -------------------------------------------------
+
+/**
+ * Extract destructured parameter names from the first argument of a function.
+ * Works by parsing the function's source text at runtime.
+ *
+ * Handles arrow functions and named/anonymous function expressions with a
+ * single destructured object parameter: `({ A, B, fold }) => ...`.
+ *
+ * @param fn     - The function whose parameter names to extract.
+ * @param filter - Optional predicate to select a subset of names.
+ */
+export function extractParamNames(
+    fn: (...args: unknown[]) => unknown,
+    filter?: (name: string) => boolean
+): string[] {
+    const src = fn.toString();
+    // Match the first destructured parameter: ({ A, B, fold, ... })
+    const match = src.match(/^\s*(?:function\s*\w*\s*)?\(\s*\{\s*([^}]*)\}/);
+    if (!match) return [];
+    const names = match[1]
+        .split(',')
+        .map(s => s.trim().replace(/\s*:.*/, '').replace(/\s*=.*/, ''))
+        .filter(s => s.length > 0);
+    return filter ? names.filter(filter) : names;
 }

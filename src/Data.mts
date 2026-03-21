@@ -27,14 +27,11 @@ import {
 } from './operations.mjs';
 
 import {
-    resolveContracts,
-    composeContracts,
     checkDemands,
     checkEnsures,
     checkInvariant,
     tryRescue,
-    EnsuresError,
-    type ContractSpec
+    EnsuresError
 } from './contracts.mjs';
 
 import {
@@ -70,7 +67,7 @@ import {
     validateProtocolInvariant,
     parseProtocolEntries,
     conformanceRegistry,
-    gatherProtocolContracts
+    resolveOperationContracts
 } from './Protocol.mjs';
 
 // Re-export symbols.
@@ -1508,16 +1505,11 @@ function createFoldOperation(
     // Extract + subcontract: compose child contracts with parent's (LSP rules)
     // Protocol contracts form the outermost layer (algebraic law); parent ADT
     // contracts compose on top; then the child implementation's own contracts.
-    const protocolFoldContracts = gatherProtocolContracts(protocols, opName);
     const parentFoldTransformer = localParentADT
         ? adtTransformers.get(localParentADT as unknown as object)?.get(opName)
         : undefined;
-    const combinedParentFoldContracts: ContractSpec | null =
-        protocolFoldContracts && parentFoldTransformer?.contracts
-            ? composeContracts(protocolFoldContracts, parentFoldTransformer.contracts)
-            : (parentFoldTransformer?.contracts ?? protocolFoldContracts ?? null);
-    const foldContracts: ContractSpec | null = resolveContracts(
-        opSpecObj, combinedParentFoldContracts
+    const foldContracts = resolveOperationContracts(
+        protocols, opName, opSpecObj, parentFoldTransformer?.contracts
     );
 
     const hasExtraParams = !hasInput && Object.values(handlers).some(h =>
@@ -2092,13 +2084,8 @@ function installUnfoldImpl(
     const parentUnfoldTransformer = localParentADT
         ? adtTransformers.get(localParentADT as unknown as object)?.get(opName)
         : undefined;
-    const protocolUnfoldContracts = gatherProtocolContracts(protocols, opName);
-    const combinedParentUnfoldContracts: ContractSpec | null =
-        protocolUnfoldContracts && parentUnfoldTransformer?.contracts
-            ? composeContracts(protocolUnfoldContracts, parentUnfoldTransformer.contracts)
-            : (parentUnfoldTransformer?.contracts ?? protocolUnfoldContracts ?? null);
-    const unfoldContracts: ContractSpec | null = resolveContracts(
-        opSpecObj, combinedParentUnfoldContracts
+    const unfoldContracts = resolveOperationContracts(
+        protocols, opName, opSpecObj, parentUnfoldTransformer?.contracts
     );
 
     const hasAnyUnfoldContracts = unfoldContracts !== null;
