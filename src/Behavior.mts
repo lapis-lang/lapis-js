@@ -102,7 +102,7 @@ interface FoldOpEntry {
     auxIsArray: boolean;
     preMapTransforms?: MapTransformEntry[];
     contracts?: ContractSpec;
-    properties?: Set<string>;
+    properties?: ReadonlySet<string>;
 }
 
 interface MapOpEntry {
@@ -115,7 +115,7 @@ interface UnfoldOpEntry {
     spec: Record<string, unknown>;
     handlers: Record<string, AnyFn>;
     contracts?: ContractSpec;
-    properties?: Set<string>;
+    properties?: ReadonlySet<string>;
 }
 
 interface BehaviorInstanceState {

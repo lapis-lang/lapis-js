@@ -524,9 +524,9 @@ export const KNOWN_PROPERTIES: ReadonlySet<string> = new Set([
  *
  * @param raw     - The raw value stored under `[properties]` in the spec.
  * @param opName  - Operation name, used in error messages.
- * @returns A frozen `Set<string>` of validated property names.
+ * @returns A `ReadonlySet<string>` of validated property names.
  */
-export function parseProperties(raw: unknown, opName: string): Set<string> {
+export function parseProperties(raw: unknown, opName: string): ReadonlySet<string> {
     if (raw === undefined || raw === null) return new Set<string>();
     if (!Array.isArray(raw)) {
         throw new TypeError(

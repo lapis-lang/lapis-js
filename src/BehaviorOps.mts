@@ -48,7 +48,7 @@ export interface Observer {
     /** True when the observer spec is a `SelfRef` (recursive continuation). */
     isContinuation?: boolean;
     /** Algebraic property annotations from `[properties]` on the operation spec. */
-    properties?: Set<string>;
+    properties?: ReadonlySet<string>;
     /** Stored handler map (set by createFoldObserver) */
     [HandlerMapSymbol]?: FoldCases;
 }

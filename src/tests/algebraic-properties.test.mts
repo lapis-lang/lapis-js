@@ -202,7 +202,7 @@ describe('[properties] on data() operations', () => {
             })
         }));
 
-        const transformer = (Nat as unknown as { _getTransformer: (n: string) => { properties?: Set<string> } })
+        const transformer = (Nat as unknown as { _getTransformer: (n: string) => { properties?: ReadonlySet<string> } })
             ._getTransformer('add');
         assert.ok(transformer, 'add transformer should exist');
         assert.ok(transformer.properties instanceof Set);
@@ -219,7 +219,7 @@ describe('[properties] on data() operations', () => {
             })
         }));
 
-        const transformer = (Wrapper as unknown as { _getTransformer: (n: string) => { properties?: Set<string> } })
+        const transformer = (Wrapper as unknown as { _getTransformer: (n: string) => { properties?: ReadonlySet<string> } })
             ._getTransformer('FromNum');
         assert.ok(transformer, 'FromNum transformer should exist');
         assert.ok(transformer.properties instanceof Set);
@@ -235,7 +235,7 @@ describe('[properties] on data() operations', () => {
             })
         }));
 
-        const transformer = (Box as unknown as { _getTransformer: (n: string) => { properties?: Set<string> } })
+        const transformer = (Box as unknown as { _getTransformer: (n: string) => { properties?: ReadonlySet<string> } })
             ._getTransformer('fmap');
         assert.ok(transformer, 'fmap transformer should exist');
         assert.ok(transformer.properties instanceof Set);
@@ -253,7 +253,7 @@ describe('[properties] on data() operations', () => {
             })
         }));
 
-        const transformer = (Color as unknown as { _getTransformer: (n: string) => { properties?: Set<string> } })
+        const transformer = (Color as unknown as { _getTransformer: (n: string) => { properties?: ReadonlySet<string> } })
             ._getTransformer('toHex');
         assert.ok(transformer, 'toHex transformer should exist');
         assert.strictEqual(transformer.properties, undefined);
@@ -295,7 +295,7 @@ describe('[properties] on behavior() operations', () => {
             s => s.description === 'FoldOps'
         );
         assert.ok(FoldOpsSymbol, 'FoldOps symbol should exist');
-        const foldOps = (Counter as unknown as Record<symbol, Map<string, { properties?: Set<string> }>>)[FoldOpsSymbol];
+        const foldOps = (Counter as unknown as Record<symbol, Map<string, { properties?: ReadonlySet<string> }>>)[FoldOpsSymbol];
         assert.ok(foldOps instanceof Map);
         const stepEntry = foldOps.get('step');
         assert.ok(stepEntry, 'step fold entry should exist');
@@ -319,7 +319,7 @@ describe('[properties] on behavior() operations', () => {
             s => s.description === 'UnfoldOps'
         );
         assert.ok(UnfoldOpsSymbol, 'UnfoldOps symbol should exist');
-        const unfoldOps = (Counter as unknown as Record<symbol, Map<string, { properties?: Set<string> }>>)[UnfoldOpsSymbol];
+        const unfoldOps = (Counter as unknown as Record<symbol, Map<string, { properties?: ReadonlySet<string> }>>)[UnfoldOpsSymbol];
         assert.ok(unfoldOps instanceof Map);
         const startEntry = unfoldOps.get('Start');
         assert.ok(startEntry, 'Start unfold entry should exist');
@@ -343,7 +343,7 @@ describe('[properties] on behavior() operations', () => {
             s => s.description === 'FoldOps'
         );
         assert.ok(FoldOpsSymbol);
-        const foldOps = (Counter as unknown as Record<symbol, Map<string, { properties?: Set<string> }>>)[FoldOpsSymbol];
+        const foldOps = (Counter as unknown as Record<symbol, Map<string, { properties?: ReadonlySet<string> }>>)[FoldOpsSymbol];
         const stepEntry = foldOps.get('step');
         assert.ok(stepEntry);
         assert.strictEqual(stepEntry.properties, undefined);

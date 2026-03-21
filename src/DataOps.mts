@@ -52,7 +52,7 @@ export interface Transformer {
     /** Contract spec for design by contract (demands, ensures, rescue) */
     contracts?: ContractSpec;
     /** Algebraic property annotations from `[properties]` on the operation spec. */
-    properties?: Set<string>;
+    properties?: ReadonlySet<string>;
     /** Unfold case map (set by unfold operations) */
     unfoldCases?: Record<string, (seed: unknown) => unknown | null>;
     /** Unfold spec (set by unfold operations) */

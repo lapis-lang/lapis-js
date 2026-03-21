@@ -73,7 +73,7 @@ export interface ProtocolOpSpec {
      * operation spec. Validated against {@link KNOWN_PROPERTIES}. Inherited
      * properties from parent protocols are unioned in (never removed).
      */
-    properties: Set<string>;
+    properties: ReadonlySet<string>;
 }
 
 /** A protocol object — callable to produce a conditional conformance spec. */
@@ -222,10 +222,14 @@ export function protocol(
             ? (resultRaw[invariant] as (type: unknown) => boolean)
             : null;
 
-    // Build requiredOps map, starting with inherited ops from parent
-    const requiredOps = new Map<string, ProtocolOpSpec>(
-        parentProtocol ? parentProtocol.requiredOps : []
-    );
+    // Build requiredOps map, starting with deep-cloned inherited ops from parent.
+    // Each ProtocolOpSpec (and its mutable `properties` Set) is cloned so that
+    // mutations to a child protocol's metadata never alias back to the parent.
+    const requiredOps = new Map<string, ProtocolOpSpec>();
+    if (parentProtocol) {
+        for (const [name, spec] of parentProtocol.requiredOps)
+            requiredOps.set(name, { ...spec, properties: new Set(spec.properties) });
+    }
 
     for (const [name, value] of Object.entries(result)) {
         const entry = value as Record<string | symbol, unknown>;
