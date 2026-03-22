@@ -28,7 +28,7 @@ import type {
 } from './operations.mjs';
 
 /** Phantom brand symbol: carries the declaration shape D on DataADTWithParams/BehaviorADTWithParams */
-export const DeclBrand: unique symbol = Symbol('DeclBrand') as never;
+export const DeclBrand: unique symbol = Symbol('DeclBrand');
 export type DeclBrand = typeof DeclBrand;
 
 /** Checks sort membership on a multi-sorted ADT instance */
@@ -40,8 +40,6 @@ import type { output, done, accept } from './Query.mjs';
 
 // Re-export so consumers can import all types from a single place
 export type { TypeSpec, FamilyRef, FamilyRefCallable, SelfRef, SelfRefCallable, TypeParamRef, SortRef, origin, destination, output, done, accept };
-
-
 
 // ---- SpecValue: TypeSpec → runtime value type ---------------------------------
 

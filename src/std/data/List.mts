@@ -6,9 +6,8 @@
  * Satisfies: Functor, Foldable, Traversable, Monoid (append),
  * Eq({ T: Eq }), Ord({ T: Ord })
  *
- * Note: Also declares [satisfies]: [Functor] explicitly so that
- * `instanceof Functor` works alongside Traversable (which inherits Foldable,
- * not Functor, due to the single-parent constraint).
+ * Traversable extends both Foldable and Functor, so registering [satisfies]: [Traversable]
+ * automatically satisfies `instanceof Functor` and `instanceof Foldable` transitively.
  *
  * Operations:
  *   - FromArray  (unfold): Array → List(T)
@@ -30,13 +29,11 @@
 
 import { data, satisfies } from '../../index.mjs';
 
-import { Functor, Foldable, Traversable, Monoid, Eq, Ord } from '../protocols/index.mjs';
+import { Traversable, Monoid, Eq, Ord } from '../protocols/index.mjs';
 
 const List = data(({ Family, T }) => ({
     [satisfies]: [
-        Functor,        // explicit so instanceof Functor works (Traversable extends Foldable, not Functor)
-        Foldable,
-        Traversable,
+        Traversable,    // extends Foldable + Functor → instanceof Functor/Foldable works transitively
         Monoid,
         Eq({ T: Eq }),
         Ord({ T: Ord })
@@ -75,7 +72,7 @@ const List = data(({ Family, T }) => ({
             return head === value || tail(value);
         }
     }),
-    filter: fold({ in: Function, out: Object })({
+    filter: fold({ in: Function, out: Family })({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         Nil() { return (Family(T) as any).Nil; },
         // eslint-disable-next-line @typescript-eslint/no-explicit-any

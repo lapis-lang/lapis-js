@@ -2,8 +2,8 @@
  * Tests for algebraic property annotations.
  *
  * Covers:
- * - `properties` symbol and `KNOWN_PROPERTIES`
- * - `[properties]` annotation on fold/unfold/map protocol specs
+ * - `properties` key and `KNOWN_PROPERTIES`
+ * - `properties` annotation on fold/unfold/map protocol specs
  * - Validation against the closed property vocabulary
  * - Property storage on `ProtocolOpSpec.properties`
  * - Property inheritance through `[extend]` (union, never removal)
@@ -39,16 +39,13 @@ describe('KNOWN_PROPERTIES', () => {
             assert.ok(KNOWN_PROPERTIES.has(name), `Expected '${name}' in KNOWN_PROPERTIES`);
     });
 
-    it('properties key is a plain string', () => {
-        assert.strictEqual('properties', 'properties');
-    });
 });
 
 // =============================================================================
-// 2. [properties] annotation on protocol specs — Phase 1 metadata
+// 2. properties annotation on protocol specs — Phase 1 metadata
 // =============================================================================
 
-describe('[properties] metadata in protocol specs', () => {
+describe('properties metadata in protocol specs', () => {
     it('stores properties on fold spec', () => {
         const Semigroup = protocol(({ Family, fold }) => ({
             combine: fold({ in: Family, out: Family, properties: ['associative'] })
@@ -88,7 +85,7 @@ describe('[properties] metadata in protocol specs', () => {
         assert.ok(props.has('composition'));
     });
 
-    it('properties set is empty when [properties] is absent', () => {
+    it('properties set is empty when properties is absent', () => {
         const P = protocol(({ Family, fold }) => ({
             size: fold({ out: Number })
         }));
@@ -107,7 +104,7 @@ describe('[properties] metadata in protocol specs', () => {
         );
     });
 
-    it('throws TypeError when [properties] is not an array', () => {
+    it('throws TypeError when properties is not an array', () => {
         assert.throws(
             () => protocol(({ Family, fold }) => ({
                 combine: fold({ in: Family, out: Family, properties: 'associative' as never })
@@ -116,7 +113,7 @@ describe('[properties] metadata in protocol specs', () => {
         );
     });
 
-    it('throws TypeError when [properties] contains a non-string', () => {
+    it('throws TypeError when properties contains a non-string', () => {
         assert.throws(
             () => protocol(({ Family, fold }) => ({
                 combine: fold({ in: Family, out: Family, properties: [42 as never] })
@@ -130,7 +127,7 @@ describe('[properties] metadata in protocol specs', () => {
 // 3. Property inheritance through [extend]
 // =============================================================================
 
-describe('[properties] inheritance via [extend]', () => {
+describe('properties inheritance via [extend]', () => {
     it('child inherits parent op properties when not overriding', () => {
         const Semigroup = protocol(({ Family, fold }) => ({
             combine: fold({ in: Family, out: Family, properties: ['associative'] })
@@ -180,10 +177,10 @@ describe('[properties] inheritance via [extend]', () => {
 });
 
 // =============================================================================
-// 4. [properties] on data() operations
+// 4. properties on data() operations
 // =============================================================================
 
-describe('[properties] on data() operations', () => {
+describe('properties on data() operations', () => {
     it('stores properties on a fold operation via transformer', () => {
         const Nat = data(({ Family }) => ({
             Zero: {},
@@ -241,7 +238,7 @@ describe('[properties] on data() operations', () => {
         assert.ok(transformer.properties.has('composition'));
     });
 
-    it('transformer has no properties when [properties] is absent', () => {
+    it('transformer has no properties when properties is absent', () => {
         const Color = data(() => ({
             Red: {}, Green: {}, Blue: {}
         })).ops(({ fold }) => ({
@@ -273,10 +270,10 @@ describe('[properties] on data() operations', () => {
 });
 
 // =============================================================================
-// 6. [properties] on behavior() operations
+// 6. properties on behavior() operations
 // =============================================================================
 
-describe('[properties] on behavior() operations', () => {
+describe('properties on behavior() operations', () => {
     it('stores properties on a behavior fold operation', () => {
         const Counter = behavior(({ Self }) => ({
             value: Number
