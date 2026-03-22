@@ -12,6 +12,8 @@
  * - `fold(spec)` without handler call still works (no default, spec-only)
  * - `map(spec)({ _: fn })` default installation
  * - `unfold(spec)({ _: fn })` throws TypeError at declaration time (not supported)
+ * - Inherited op satisfies conformance — default not installed / no false throw
+ * - Protocol default does not clobber an inherited implementation
  */
 
 import { describe, it } from 'node:test';
@@ -320,6 +322,77 @@ describe('default via multi-parent protocol', () => {
 });
 
 // =============================================================================
+// 9. Contract enforcement on installed defaults
+// =============================================================================
+
+describe('contract enforcement on protocol defaults', () => {
+    it('demands predicate on default is checked before execution', () => {
+        const P = protocol(({ Family, fold: f }) => ({
+            base: f({ out: Number }),
+            safe: f({
+                in: Number,
+                out: Number,
+                demands: (_self: unknown, n: unknown) => (n as number) > 0
+            })({
+                _: (ctx: any, n: any) => ctx.base + n
+            })
+        }));
+
+        const T = data(({ Family }) => ({
+            [satisfies]: P,
+            Box: { n: Number }
+        })).ops(({ fold: f }) => ({
+            base: f({ out: Number })({ Box: ({ n }) => n })
+        }));
+
+        const b = T.Box({ n: 10 }) as unknown as { safe: (n: number) => number };
+        assert.strictEqual(b.safe(5), 15);                    // valid input
+        assert.throws(() => b.safe(-1), /demands|DemandsError/i); // negative violates demand
+    });
+
+    it('ensures predicate on default is checked after execution', () => {
+        const P = protocol(({ Family, fold: f }) => ({
+            base: f({ out: Number }),
+            bounded: f({
+                in: Number,
+                out: Number,
+                ensures: (_self: unknown, _old: unknown, result: unknown) =>
+                    (result as number) >= 0
+            })({
+                _: (ctx: any, n: any) => ctx.base + n
+            })
+        }));
+
+        const T = data(({ Family }) => ({
+            [satisfies]: P,
+            Box: { n: Number }
+        })).ops(({ fold: f }) => ({
+            base: f({ out: Number })({ Box: ({ n }) => n })
+        }));
+
+        const b = T.Box({ n: 5 }) as unknown as { bounded: (n: number) => number };
+        assert.strictEqual(b.bounded(3), 8);                      // result ≥ 0 — ok
+        assert.throws(() => b.bounded(-20), /ensures|EnsuresError/i); // result = -15 — fails
+    });
+
+    it('input type mismatch on a default method throws TypeError', () => {
+        const P = protocol(({ Family, fold: f }) => ({
+            double: f({ in: Number, out: Number })({
+                _: (_ctx: any, n: any) => n * 2
+            })
+        }));
+
+        const T = data(({ Family }) => ({
+            [satisfies]: P,
+            Box: { n: Number }
+        })).ops(({ fold: f }) => ({}));
+
+        const u = T.Box({ n: 0 }) as unknown as { double: (n: unknown) => number };
+        assert.throws(() => u.double('hello' as unknown as number), TypeError);
+    });
+});
+
+// =============================================================================
 // 8. unfold _ handler is rejected at declaration time
 // =============================================================================
 
@@ -341,5 +414,72 @@ describe('unfold default body rejection', () => {
             From: u({ out: Family })
         }));
         assert.strictEqual(P.requiredOps.get('From')?.defaultBody, null);
+    });
+});
+
+// =============================================================================
+// 10. Inherited implementations satisfy protocol conformance
+// =============================================================================
+
+describe('inherited operations satisfy protocol conformance', () => {
+    it('child ADT does not throw when an inherited op satisfies a required op (no default)', () => {
+        const P = protocol(({ Family, fold: f }) => ({
+            eval: f({ out: Number }),
+            size: f({ out: Number })  // required, no default
+        }));
+
+        const Parent = data(({ Family }) => ({
+            [satisfies]: P,
+            Lit: { value: Number }
+        })).ops(({ fold: f }) => ({
+            eval: f({ out: Number })({ Lit: ({ n }: any) => n }),
+            size: f({ out: Number })({ Lit: () => 1 })
+        }));
+
+        // Child re-declares eval for new variants but NOT size.
+        // size is inherited from Parent — should satisfy protocol without throwing.
+        assert.doesNotThrow(() =>
+            data(({ Family }) => ({
+                [extend]: Parent,
+                [satisfies]: P,
+                Add: { left: Family, right: Family }
+            })).ops(({ fold: f }) => ({
+                eval: f({ out: Number })({ Add: ({ left, right }: any) => left + right })
+                // size intentionally omitted — inherited from Parent
+            }))
+        );
+    });
+
+    it('protocol default does not clobber an inherited op', () => {
+        // Protocol has a default for 'size' that would return -1.
+        // The parent ADT provides a real implementation that returns 99.
+        // The child inherits that real implementation and must NOT have it replaced
+        // by the protocol default.
+        const P = protocol(({ Family, fold: f }) => ({
+            eval: f({ out: Number }),
+            size: f({ out: Number })({ _: () => -1 })  // default: -1
+        }));
+
+        const Parent = data(({ Family }) => ({
+            [satisfies]: P,
+            Lit: { value: Number }
+        })).ops(({ fold: f }) => ({
+            eval: f({ out: Number })({ Lit: ({ value }: any) => value }),
+            size: f({ out: Number })({ Lit: () => 99 })  // real impl: 99
+        }));
+
+        const Child = data(({ Family }) => ({
+            [extend]: Parent,
+            [satisfies]: P,
+            Add: { left: Family, right: Family }
+        })).ops(({ fold: f }) => ({
+            eval: f({ out: Number })({ Add: ({ left, right }: any) => left + right })
+            // size not re-declared — inherited from Parent
+        }));
+
+        const lit = Child.Lit({ value: 5 }) as unknown as { eval: number; size: number };
+        assert.strictEqual(lit.eval, 5);
+        // Must be 99 (inherited), not -1 (protocol default).
+        assert.strictEqual(lit.size, 99);
     });
 });

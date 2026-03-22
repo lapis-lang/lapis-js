@@ -65,6 +65,7 @@ import {
     registerConformance,
     applyUnconditionalProtocols,
     validateProtocolInvariant,
+    validateProtocolConformance,
     parseProtocolEntries,
     conformanceRegistry,
     resolveOperationContracts
@@ -2943,8 +2944,6 @@ function createParameterized(
         if (allSatisfied) {
             registerConformance((ParameterizedADT as unknown as { prototype: object }).prototype, entry.protocol);
             validateProtocolInvariant(entry.protocol, ParameterizedADT, 'Parameterized ADT');
-            for (const opName of entry.protocol.requiredOps.keys())
-                satisfiedOpNames.add(opName);
 
             // Apply conditional protocol contracts onto the parameterized type.
             //
@@ -2956,6 +2955,10 @@ function createParameterized(
             //   ensures : AND — always wrap; the additional ensures check fires after the inner
             //                   result is produced, giving AND(bakedEnsures, protocolEnsures).
             //   rescue  : skip — the operation's own rescue (baked in) takes precedence.
+            //
+            // Note: ops with missing implementations are handled after this loop by
+            // validateProtocolConformance, which installs defaults (with contracts baked
+            // in) for ops with a defaultBody, and throws for genuinely-absent ops.
             for (const [opName, opSpec] of entry.protocol.requiredOps) {
                 if (!opSpec.contracts) continue;
                 const c = opSpec.contracts;
@@ -3027,6 +3030,21 @@ function createParameterized(
                 }
                 // map / merge kinds: no demands/ensures in the protocol spec, nothing to wrap.
             }
+
+            // Verify all required ops are now reachable on the parameterized prototype chain
+            // (either inherited, contract-wrapped above, or default-installable). For ops
+            // whose defaultBody is non-null and that are genuinely absent, installDefaultOp
+            // is called here so defaults are auto-installed — the same behaviour as
+            // applyUnconditionalProtocols provides for unconditional protocols.
+            //
+            // Unfold ops are constructor-level static methods, not instance-level. They
+            // can't be probed with `opName in prototype`, so mark them satisfied upfront;
+            // the contract-wrapping loop above already handles their absence gracefully.
+            //
+            // Pass undefined for `type` — protocol invariant was already checked above.
+            for (const [opName, opSpec] of entry.protocol.requiredOps)
+                if (opSpec.kind === 'unfold') satisfiedOpNames.add(opName);
+            validateProtocolConformance(satisfiedOpNames, entry.protocol, 'Parameterized ADT', undefined, paramProto);
         } else
             failedEntries.push({ ownOps: [...entry.protocol.requiredOps.keys()], failedParams });
 

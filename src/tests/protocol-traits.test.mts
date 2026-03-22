@@ -190,6 +190,25 @@ describe('diamond protocol resolution', () => {
         });
     });
 
+    it('same op with matching TypeParam names in both parents merges silently', () => {
+        // Two independent protocols both declare `transform: fold({ in: T, out: T })`.
+        // The T markers have different object identities (separate protocol() calls)
+        // but the same param name, so typeRefEqual must treat them as equal.
+        const PA = protocol(({ T, Family, fold: f }) => ({
+            transform: f({ in: T, out: T })
+        }));
+
+        const PB = protocol(({ T, Family, fold: f }) => ({
+            transform: f({ in: T, out: T })
+        }));
+
+        assert.doesNotThrow(() => {
+            protocol(({ Family, fold: f }) => ({
+                [extend]: [PA, PB]
+            }));
+        });
+    });
+
     it('properties are unioned when same op comes from two paths', () => {
         // PA uses the same in/out shape as Semigroup.combine so the specs are
         // compatible and merge silently (both FamilyRef values normalise as equal).
@@ -264,6 +283,45 @@ describe('diamond protocol resolution', () => {
                 e.message.includes("'bar'") &&
                 e.message.includes('incompatible specs')
         );
+    });
+
+    it('throws when same-kind op has different contract functions in two parents', () => {
+        const demandA = () => true;
+        const demandB = () => true; // different function reference, same shape
+
+        const PA = protocol(({ Family, fold: f }) => ({
+            foo: f({ out: Boolean, demands: demandA })
+        }));
+        const PB = protocol(({ Family, fold: f }) => ({
+            foo: f({ out: Boolean, demands: demandB })
+        }));
+
+        assert.throws(
+            () => protocol(({ Family, fold: f }) => ({
+                [extend]: [PA, PB]
+            })),
+            (e: Error) =>
+                e instanceof TypeError &&
+                e.message.includes("'foo'") &&
+                e.message.includes('incompatible specs')
+        );
+    });
+
+    it('merges silently when same-kind op shares the exact same contract reference', () => {
+        const sharedDemand = () => true;
+
+        const PA = protocol(({ Family, fold: f }) => ({
+            foo: f({ out: Boolean, demands: sharedDemand })
+        }));
+        const PB = protocol(({ Family, fold: f }) => ({
+            foo: f({ out: Boolean, demands: sharedDemand })
+        }));
+
+        assert.doesNotThrow(() => {
+            protocol(({ Family, fold: f }) => ({
+                [extend]: [PA, PB]
+            }));
+        });
     });
 
     it('child re-declaration resolves a same-kind spec conflict', () => {

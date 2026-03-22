@@ -21,11 +21,20 @@ import {
     properties as propertiesSym,
     parseProperties,
     isFamilyRefSpec,
-    type FamilyRefCallable
+    validateTypeSpec,
+    type FamilyRefCallable,
+    type TypeSpec
 } from './operations.mjs';
 
 import { TypeParamSymbol, installOperation, extractParamNames } from './utils.mjs';
-import { type ContractSpec, resolveContracts, composeContracts } from './contracts.mjs';
+import {
+    type ContractSpec,
+    resolveContracts,
+    composeContracts,
+    checkDemands,
+    checkEnsures,
+    tryRescue
+} from './contracts.mjs';
 
 // ---- Symbols ----------------------------------------------------------------
 
@@ -196,23 +205,37 @@ function protocolMerge(...names: string[]): Record<string | symbol, unknown> {
  * Reference equality suffices for concrete types (Boolean, Number, …).
  * Each `protocol()` call creates its own `Family` marker, so any two
  * FamilyRef objects are treated as semantically identical.
+ * Type-parameter markers `{ [TypeParamSymbol]: name }` are equal when their
+ * names match, so two parent protocols that both use `T` in an op spec
+ * are not falsely flagged as incompatible during diamond resolution.
  */
 function typeRefEqual(a: unknown, b: unknown): boolean {
     if (a === b) return true;
     if (isFamilyRefSpec(a) && isFamilyRefSpec(b)) return true;
+    if (a !== null && b !== null && typeof a === 'object' && typeof b === 'object' &&
+            TypeParamSymbol in a && TypeParamSymbol in b) {
+        return (a as Record<symbol, unknown>)[TypeParamSymbol] ===
+               (b as Record<symbol, unknown>)[TypeParamSymbol];
+    }
     return false;
 }
 
 /**
  * Returns true when two same-kind ProtocolOpSpecs are compatible enough to
  * be silently merged in a diamond: must have matching `in`/`out` type refs
- * and identical contract presence.
+ * and identical contracts (reference equality for each function slot, since
+ * two independent function literals represent distinct contracts even if they
+ * happen to have the same source text).
  */
 function opSpecsCompatible(a: ProtocolOpSpec, b: ProtocolOpSpec): boolean {
     if (!typeRefEqual(a.spec['in'], b.spec['in'])) return false;
     if (!typeRefEqual(a.spec['out'], b.spec['out'])) return false;
-    if ((a.contracts === null) !== (b.contracts === null)) return false;
-    return true;
+    // Both null → compatible. Both non-null → each function slot must be the same reference.
+    if (a.contracts === null && b.contracts === null) return true;
+    if (a.contracts === null || b.contracts === null) return false;
+    return a.contracts.demands === b.contracts.demands &&
+           a.contracts.ensures === b.contracts.ensures &&
+           a.contracts.rescue  === b.contracts.rescue;
 }
 
 /**
@@ -560,14 +583,26 @@ export function resolveOperationContracts(
  * `null` (a `TypeError` is thrown at protocol declaration time if a `_`
  * handler is supplied for an unfold), so the `!defaultBody` guard below exits
  * first.
+ *
+ * The installed wrapper mirrors the contract lifecycle of a `.ops()`-registered
+ * fold/map operation: input-type validation → demands check → body → ensures
+ * check → rescue on failure.  This ensures that defaults honour the protocol
+ * spec and cannot silently violate their own contracts.
  */
 /** Returns true when a default was actually installed, false when there is no default body. */
 function installDefaultOp(prototype: object, opName: string, opSpec: ProtocolOpSpec): boolean {
-    const { defaultBody, kind } = opSpec;
+    const { defaultBody, kind, contracts } = opSpec;
     if (!defaultBody) return false;
 
     // A fold/map operation with no `in` spec is a zero-argument getter.
     const isGetter = (kind === 'fold' || kind === 'map') && !opSpec.spec['in'];
+    const inSpec = opSpec.spec['in'] as TypeSpec | undefined;
+    const ctx = 'protocol default';
+
+    const executeBody = (self: unknown, args: unknown[]): unknown =>
+        isGetter
+            ? (defaultBody as (ctx: unknown) => unknown).call(self, self)
+            : (defaultBody as (ctx: unknown, ...rest: unknown[]) => unknown).call(self, self, ...args);
 
     installOperation(
         prototype,
@@ -575,11 +610,33 @@ function installDefaultOp(prototype: object, opName: string, opSpec: ProtocolOpS
 
         isGetter
             ? function(this: unknown): unknown {
-                return (defaultBody as (this: unknown, ctx: unknown) => unknown).call(this, this);
+                const self = this;
+                if (contracts?.demands) checkDemands(contracts.demands, opName, ctx, self, []);
+                let result: unknown;
+                try {
+                    result = executeBody(self, []);
+                } catch (e) {
+                    const rescued = tryRescue(contracts, e, self, [], () => executeBody(self, []), opName, ctx);
+                    if (rescued)  result = rescued.result;
+                    else throw e;
+                }
+                if (contracts?.ensures) checkEnsures(contracts.ensures, opName, ctx, self, self, result, []);
+                return result;
             }
             : function(this: unknown, ...args: unknown[]): unknown {
-                return (defaultBody as (this: unknown, ctx: unknown, ...rest: unknown[]) => unknown)
-                    .call(this, this, ...args);
+                const self = this;
+                if (inSpec !== undefined) validateTypeSpec(args[0], inSpec, opName, 'input of type');
+                if (contracts?.demands) checkDemands(contracts.demands, opName, ctx, self, args);
+                let result: unknown;
+                try {
+                    result = executeBody(self, args);
+                } catch (e) {
+                    const rescued = tryRescue(contracts, e, self, args, (...newArgs) => executeBody(self, newArgs), opName, ctx);
+                    if (rescued)  result = rescued.result;
+                    else throw e;
+                }
+                if (contracts?.ensures) checkEnsures(contracts.ensures, opName, ctx, self, self, result, args);
+                return result;
             },
         isGetter
     );
@@ -598,6 +655,13 @@ function installDefaultOp(prototype: object, opName: string, opSpec: ProtocolOpS
  * whose kind does not support defaults (currently `unfold`) are treated as
  * missing even when `defaultBody` is non-null.
  *
+ * Before attempting to install a default, the prototype chain is consulted:
+ * if the operation already exists anywhere on `prototype`'s chain (e.g.
+ * inherited from a parent ADT/behavior that was extended with `[extend]`),
+ * that inherited implementation satisfies conformance and no default is
+ * installed. This prevents defaults from silently clobbering inherited ops
+ * that are not tracked by the own-only `_getTransformerNames()` set.
+ *
  * @param adtOpNames  - set of operation names provided by the ADT's `.ops()`
  * @param proto       - protocol whose requirements must be satisfied
  * @param adtLabel    - human-readable name / description for error messages
@@ -613,7 +677,11 @@ export function validateProtocolConformance(
 ): void {
     for (const [opName, opSpec] of proto.requiredOps) {
         if (!adtOpNames.has(opName)) {
-            if (opSpec.defaultBody !== null && prototype !== undefined &&
+            if (prototype !== undefined && opName in prototype) {
+                // Op exists on the prototype chain (inherited from a parent ADT/behavior).
+                // Inherited implementations satisfy conformance; do not install a default.
+                adtOpNames.add(opName);
+            } else if (opSpec.defaultBody !== null && prototype !== undefined &&
                     installDefaultOp(prototype, opName, opSpec)) {
                 // Default was actually installed — mark the op as satisfied.
                 adtOpNames.add(opName);
