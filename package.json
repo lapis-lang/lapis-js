@@ -11,6 +11,30 @@
         "./io": {
             "types": "./dist/lib/io/index.d.mts",
             "import": "./dist/lib/io/index.mjs"
+        },
+        "./std": {
+            "types": "./dist/std/index.d.mts",
+            "import": "./dist/std/index.mjs"
+        },
+        "./std/protocols/*": {
+            "types": "./dist/std/protocols/*.d.mts",
+            "import": "./dist/std/protocols/*.mjs"
+        },
+        "./std/data/*": {
+            "types": "./dist/std/data/*.d.mts",
+            "import": "./dist/std/data/*.mjs"
+        },
+        "./std/behavior/*": {
+            "types": "./dist/std/behavior/*.d.mts",
+            "import": "./dist/std/behavior/*.mjs"
+        },
+        "./std/primitive/*": {
+            "types": "./dist/std/primitive/*.d.mts",
+            "import": "./dist/std/primitive/*.mjs"
+        },
+        "./std/derive/*": {
+            "types": "./dist/std/derive/*.d.mts",
+            "import": "./dist/std/derive/*.mjs"
         }
     },
     "main": "./dist/index.mjs",
@@ -30,7 +54,7 @@
     "scripts": {
         "prebuild": "npm run typecheck && npm run lint:fix",
         "build": "webpack",
-        "postbuild": "tsc --emitDeclarationOnly && tsc -p tsconfig.io.json && cpy \"dist-io/lib/io/*\" dist/lib/io && rimraf dist-io",
+        "postbuild": "tsc --emitDeclarationOnly && tsc -p tsconfig.io.json && tsc -p tsconfig.std.json && cpy \"dist-io/lib/io/*\" dist/lib/io && rimraf dist-io",
         "typecheck": "tsc --noEmit",
         "typecheck:tests": "tsc --noEmit --project tsconfig.test.json",
         "lint": "eslint .",

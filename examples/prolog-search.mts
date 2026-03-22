@@ -36,7 +36,7 @@ import {
 // Ground facts live in the initial algebra; the relation provides
 // origin/destination/weight projections and transitive-closure machinery.
 
-const WEdge: any = relation(({ Family }) => ({
+const WEdge = relation(({ Family }) => ({
     Direct: { from: String, to: String, weight: Number },
     Path:   { first: Family, second: Family }
 })).ops(({ fold, origin, destination }) => ({
@@ -70,14 +70,14 @@ interface SearchItem {
     visited: Set<string>;
 }
 
-const SearchState: any = data(() => ({
+const SearchState = data(() => ({
     Active: { target: String, edges: Array, maxCost: Number, workList: Array },
     Found: {
         target: String, edges: Array, maxCost: Number,
         foundPath: Array, foundCost: Number, workList: Array
     },
     Exhausted: {}
-})).ops(({ fold }) => ({
+})).ops(({ fold, Family }) => ({
     path: fold({ out: Array })({
         Active() { return []; },
         Found({ foundPath }) { return foundPath as string[]; },
@@ -99,7 +99,7 @@ const SearchState: any = data(() => ({
         Exhausted() { return true; }
     }),
     step: fold({ out: Object })({
-        Exhausted() { return SearchState.Exhausted; },
+        Exhausted() { return Family.Exhausted; },
         _({ target, edges, maxCost, workList }: {
             target: string; edges: any[];
             maxCost: number; workList: SearchItem[]
@@ -108,7 +108,7 @@ const SearchState: any = data(() => ({
             while (wl.length > 0) {
                 const item = wl.pop()!;
                 if (item.node === target) {
-                    return SearchState.Found({
+                    return Family.Found({
                         target, edges, maxCost,
                         foundPath: item.path,
                         foundCost: item.cost,
@@ -132,14 +132,14 @@ const SearchState: any = data(() => ({
                     });
                 }
             }
-            return SearchState.Exhausted;
+            return Family.Exhausted;
         }
     })
 }));
 
 // ---- Query ADT (μ) ----------------------------------------------------------
 
-const Query: any = data(() => ({
+const Query = data(() => ({
     Query: { edges: Array, start: String, target: String, maxCost: Number }
 })).ops(({ fold }) => ({
     toState: fold({ out: Object })({
@@ -176,7 +176,7 @@ const Query: any = data(() => ({
 //   - demands on unfold: state must be a SearchState instance
 //   - rescue on unfold:  if unfold fails, return Exhausted-like state
 
-const PathFinder: any = query(({ Self }) => ({
+const PathFinder = query(({ Self }) => ({
     path: Array,
     cost: Number,
     found: Boolean,

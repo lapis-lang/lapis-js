@@ -37,21 +37,9 @@ export type SortRefSymbol = typeof SortRefSymbol;
 export const sort: unique symbol = Symbol('sort');
 export type sort = typeof sort;
 
-/** Checks sort membership on a multi-sorted ADT instance */
-export const isSort: unique symbol = Symbol('isSort');
-export type isSort = typeof isSort;
-
 /** Marks parent ADT for declarative extension */
 export const extend: unique symbol = Symbol('extend');
 export type extend = typeof extend;
-
-/**
- * Phantom brand symbol: carries the declaration shape D on wrapper types
- * (DataADTWithParams, BehaviorADTWithParams) so that ParentDecl<D> can
- * extract it via O(1) property lookup instead of deep structural inference.
- */
-export declare const DeclBrand: unique symbol;
-export type DeclBrand = typeof DeclBrand;
 
 /** Marks the operation type ('fold' | 'unfold' | 'map' | 'merge') */
 export const op: unique symbol = Symbol('op');
@@ -68,10 +56,6 @@ export type operations = typeof operations;
 /** Provides access to course-of-values history in histomorphism folds */
 export const history: unique symbol = Symbol('history');
 export type history = typeof history;
-
-/** Provides access to auxiliary fold results in zygomorphism folds */
-export const aux: unique symbol = Symbol('aux');
-export type aux = typeof aux;
 
 /**
  * Stamps values produced by data(), behavior(), relation(), and query().
@@ -469,15 +453,11 @@ export type ProtocolSymbol = typeof ProtocolSymbol;
  *
  * Usage:
  * ```ts
- * import { protocol, properties } from '@lapis-lang/lapis-js';
- *
  * const Semigroup = protocol(({ Family, fold }) => ({
- *     combine: fold({ in: Family, out: Family, [properties]: ['associative'] })
+ *     combine: fold({ in: Family, out: Family, properties: ['associative'] })
  * }));
  * ```
  */
-export const properties: unique symbol = Symbol('properties');
-export type properties = typeof properties;
 
 /**
  * The closed set of recognised algebraic property names.

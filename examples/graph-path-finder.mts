@@ -6,11 +6,11 @@ import { data, query } from '@lapis-lang/lapis-js';
 //               | Found(target, adj, foundPath, workList)
 //               | Exhausted
 
-const SearchState: any = data(() => ({
+const SearchState = data(() => ({
     Active:    { target: String, adj: Object, workList: Array },
     Found:     { target: String, adj: Object, foundPath: Array, workList: Array },
     Exhausted: {}
-})).ops(({ fold }) => ({
+})).ops(({ fold, Family }) => ({
     path: fold({ out: Array })({
         Active()             { return []; },
         Found({ foundPath }) { return foundPath as string[]; },
@@ -33,31 +33,31 @@ const SearchState: any = data(() => ({
     step: fold({ out: Object })({
         Active({ target, adj, workList }) {
             const wl = [...(workList as { node: string; path: string[] }[])];
-            if (wl.length === 0) return SearchState.Exhausted;
+            if (wl.length === 0) return Family.Exhausted;
             const item = wl.pop()!;
             if (item.node === (target as string))
-                return SearchState.Found({ target, adj, foundPath: item.path, workList: wl });
+                return Family.Found({ target, adj, foundPath: item.path, workList: wl });
             const visited = new Set(item.path as string[]);
             const adjMap = adj as Record<string, string[]>;
             for (const n of (adjMap[item.node] ?? []).filter((x: string) => !visited.has(x)))
                 wl.push({ node: n, path: [...(item.path as string[]), n] });
-            return SearchState.Active({ target, adj, workList: wl });
+            return Family.Active({ target, adj, workList: wl });
         },
         Found({ target, adj, workList }) {
             const wl = workList as { node: string; path: string[] }[];
             return wl.length === 0
-                ? SearchState.Exhausted
-                : SearchState.Active({ target, adj, workList: wl });
+                ? Family.Exhausted
+                : Family.Active({ target, adj, workList: wl });
         },
         Exhausted() {
-            return SearchState.Exhausted;
+            return Family.Exhausted;
         }
     })
 }));
 
 // Query ::= Query(adj, start, target)
 
-const Query: any = data(() => ({
+const Query = data(() => ({
     Query: { adj: Object, start: String, target: String }
 })).ops(({ fold }) => ({
     toState: fold({ out: Object })({

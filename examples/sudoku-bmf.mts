@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { data, behavior } from '@lapis-lang/lapis-js';
-import { List } from '../src/lib/list.mjs';
+import { List } from '../src/std/data/List.mjs';
 import { Matrix } from '../src/lib/matrix.mjs';
 
 // Cell ::= Given(digit) | Blank | Filled(digit)
@@ -51,7 +51,7 @@ const Region = data(() => ({
 
 // Board ::= Board(cells, size)
 
-const Board: any = data(({ Family }) => ({
+const Board = data(({ Family }) => ({
     Board: { cells: Array, size: Number }
 })).ops(({ fold, unfold, Family }) => ({
     FromGrid: unfold({ in: Array, out: Family })({
@@ -74,7 +74,7 @@ const Board: any = data(({ Family }) => ({
         Board({ cells }) {
             const grid = cells as unknown as CellInstance[][];
             const m = Matrix.FromArray(grid);
-            const allGroups = [...m.rows.toArray, ...m.cols.toArray, ...m.boxs(3).toArray];
+            const allGroups = [...m.rows.toArray, ...m.cols.toArray, ...m.boxs(3).toArray] as unknown[][];
             return allGroups.every(g =>
                 (Region.Row(List.FromArray(g)).digits as Set<number>).size === 9
             );
@@ -103,7 +103,7 @@ const Board: any = data(({ Family }) => ({
 //   pruneBy f = f ∘ map reduce ∘ f
 //   prune     = pruneBy boxs ∘ pruneBy cols ∘ pruneBy rows
 
-const ChoiceBoard: any = data(() => ({
+const ChoiceBoard = data(() => ({
     ChoiceBoard: { cells: Array }
 })).ops(({ fold, unfold, Family }) => {
     /** Remove determined digits from non-singleton cells in a group. */
@@ -148,7 +148,7 @@ const ChoiceBoard: any = data(() => ({
                     (m: any, inv: any) => pruneBy(inv)(m),
                     Matrix.FromArray(grid)
                 );
-                return ChoiceBoard.ChoiceBoard({ cells: pruned.toArray });
+                return Family.ChoiceBoard({ cells: pruned.toArray });
             }
         }),
 
@@ -170,7 +170,7 @@ const ChoiceBoard: any = data(() => ({
                 if (grid.some(row => row.some(xs => xs.length === 0)))
                     return true;
                 const m = Matrix.FromArray(grid);
-                const allGroups = [...m.rows.toArray, ...m.cols.toArray, ...m.boxs(3).toArray];
+                const allGroups = [...m.rows.toArray, ...m.cols.toArray, ...m.boxs(3).toArray] as number[][][];
                 return allGroups.some(hasDupSingles);
             }
         }),
@@ -190,7 +190,7 @@ const ChoiceBoard: any = data(() => ({
                 }
                 if (minR === -1) return [];
                 return grid[minR][minC].map(d =>
-                    ChoiceBoard.ChoiceBoard({
+                    Family.ChoiceBoard({
                         cells: grid.map((row, ri) =>
                             row.map((xs, ci) =>
                                 ri === minR && ci === minC ? [d] : xs
@@ -220,7 +220,7 @@ const ChoiceBoard: any = data(() => ({
 
 // SearchState ::= Start(worklist) | Found(board, worklist) | Exhausted
 
-const SearchState: any = data(() => ({
+const SearchState = data(() => ({
     Start:     { worklist: Array },
     Found:     { board: Object, worklist: Array },
     Exhausted: {}
@@ -258,7 +258,7 @@ type SearchStateInstance = {
     [k: string]: unknown;
 };
 
-const SolverStream: any = behavior(({ Self }) => ({
+const SolverStream = behavior(({ Self }) => ({
     board: Object,
     isSolved: Boolean,
     isExhausted: Boolean,
@@ -338,7 +338,7 @@ const seed = SearchState.Start({ worklist: [cb] });
 // solve = first ∘ Search  (hylomorphism)
 
 const t0 = performance.now();
-const stream = SolverStream.Search(seed);
+const stream = SolverStream.Search(seed as any);
 const [solution] = stream.first;
 const elapsed = (performance.now() - t0).toFixed(1);
 

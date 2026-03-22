@@ -18,16 +18,22 @@ import type {
     spec,
     operations,
     extend,
-    DeclBrand,
     FamilyRef,
     FamilyRefCallable,
     SelfRef,
     SelfRefCallable,
     TypeParamRef,
     SortRef,
-    TypeSpec,
-    isSort
+    TypeSpec
 } from './operations.mjs';
+
+/** Phantom brand symbol: carries the declaration shape D on DataADTWithParams/BehaviorADTWithParams */
+export const DeclBrand: unique symbol = Symbol('DeclBrand') as never;
+export type DeclBrand = typeof DeclBrand;
+
+/** Checks sort membership on a multi-sorted ADT instance */
+export const isSort: unique symbol = Symbol('isSort');
+export type isSort = typeof isSort;
 
 import type { origin, destination } from './Relation.mjs';
 import type { output, done, accept } from './Query.mjs';
@@ -243,19 +249,59 @@ type OpOutType<V, Self = unknown> =
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         : any;  // no [spec] key → treated as any (untyped)
 
-/** Extract the input type from an operation spec, if declared. */
-type OpInType<V> =
+/** Extract the input type from an operation spec, if declared.
+ *
+ * **Design compromise — Family/Self/Sort ref inputs resolve to `unknown`**
+ *
+ * When an operation's `in` spec is `Family`, `Self`, or a `SortRef` (e.g.
+ * `combine: fold({ in: Family, out: Family })`), the ideal parameter type
+ * would be `DataInstance<D>`.  However threading the full instance type into
+ * the parameter position is unsafe because function parameters are
+ * *contravariant*: `(x: DataInstance<D>) => R` is only assignable if every
+ * caller supplies a value that is at-least as specific as `DataInstance<D>`.
+ *
+ * `DataInstance<D>` is built from a four-level bounded self-approximation
+ * (`_DataInstanceSelf0..._DataInstanceSelf`).  At each level the `Self`
+ * placeholder for recursive fields is substituted with the previous layer.
+ * The deepest layer uses `unknown` as the base.  Because of contravariance,
+ * TypeScript requires the parameter types of two otherwise-identical
+ * function signatures to be mutually assignable before it considers them
+ * compatible.  A function that accepts `_DataInstanceSelf<D>` (where the
+ * deepest `Identity: unknown`) is *not* assignable to one that accepts
+ * `_DataInstanceSelf0<D>` (where `Identity: _DataInstanceSelf0<D>`), so the
+ * cross-layer compatibility check fails with a cascade of "Type … is not
+ * assignable to type …" errors.
+ *
+ * Using `unknown` for self-ref inputs is the standard TypeScript idiom for
+ * "accepts any value" — equivalent to bivariant parameter handling but
+ * opt-in.  The **runtime** already validates the actual argument type via
+ * `validateTypeSpec`, so type safety at the call site is maintained by the
+ * library at run time.
+ *
+ * **Consumer-visible limitation**: TypeScript will not statically reject
+ * passing an unrelated type to a binary fold like `equals` or `compare`,
+ * e.g. `myNum.equals(42)` compiles without error.  The type-level signal
+ * for "this parameter should be the same ADT type" is therefore weakened to
+ * `unknown`.  If stricter call-site checking is desired, consumers can cast:
+ * ```ts
+ * const typedEquals = myNum.equals as (other: typeof myNum) => boolean;
+ * typedEquals(42); // TS2345 — correctly rejected
+ * ```
+ */
+type OpInType<V, Self = unknown> =
     (typeof spec) extends keyof V
         ? V[typeof spec] extends { in: infer In }
-            ? SpecValue<In, never>
+            ? In extends FamilyRef | SelfRef | SortRef
+                ? unknown
+                : SpecValue<In, Self>
             : undefined
         : undefined;
 
 /** Derives the instance-level method/getter shape of an operation. */
 type OpShape<V, Self = unknown> =
-    OpInType<V> extends undefined | never
+    OpInType<V, Self> extends undefined
         ? OpOutType<V, Self>   // parameterless → getter
-        : (input: NonNullable<OpInType<V>>) => OpOutType<V, Self>;  // parameterized → method
+        : (input: NonNullable<OpInType<V, Self>>) => OpOutType<V, Self>;  // parameterized → method
 
 /**
  * Map of operation name → method/getter type for ADT instances.
@@ -278,19 +324,36 @@ type OpKindKeys<Keys extends keyof D, D, Kind extends string> = {
 /** All OperationKeys<D> whose declaration has [op] === 'unfold'. */
 type UnfoldOpKeys<D> = OpKindKeys<OperationKeys<D>, D, 'unfold'>;
 
-/** Static unfold factory shape: callable when spec has `in`, bare instance otherwise. */
+/**
+ * Behavior unfold factory shape: no-arg unfolds are installed as getters, so
+ * the type is the bare Instance. Parameterized unfolds are functions.
+ */
 type UnfoldCtorShape<V, Instance> =
     OpInType<V> extends undefined | never
         ? Instance
         : (n: NonNullable<OpInType<V>>) => Instance;
 
-/** Shared unfold constructor mapped type, parameterised over a pre-filtered key union. */
+/** Static unfold constructors for BehaviorADT (no-arg → getter-typed bare Instance). */
 type UnfoldCtorsFor<Keys extends keyof D, D, Instance = unknown> = {
     readonly [K in Keys]: UnfoldCtorShape<D[K], Instance>
 };
 
-/** Static unfold constructors exposed on the DataADT value (e.g. `List.Range(3)`). */
-type UnfoldCtors<D, Instance = unknown> = UnfoldCtorsFor<UnfoldOpKeys<D> & keyof D, D, Instance>;
+/**
+ * Data unfold factory shape: Data unfolds are always installed as functions
+ * at runtime (`function unfoldImpl(seed)`), even when parameterless.
+ * No-arg unfolds → `() => Instance`; parameterized → `(n: N) => Instance`.
+ */
+type DataUnfoldCtorShape<V, Instance> =
+    OpInType<V> extends undefined | never
+        ? () => Instance
+        : (n: NonNullable<OpInType<V>>) => Instance;
+
+type DataUnfoldCtorsFor<Keys extends keyof D, D, Instance = unknown> = {
+    readonly [K in Keys]: DataUnfoldCtorShape<D[K], Instance>
+};
+
+/** Static unfold constructors for DataADT (all unfolds are callable factories). */
+type DataUnfoldCtors<D, Instance = unknown> = DataUnfoldCtorsFor<UnfoldOpKeys<D> & keyof D, D, Instance>;
 
 // ---- Merge static constructors on the ADT -----------------------------------
 
@@ -488,7 +551,7 @@ export type DataInstance<D> =
 type ExtendedParentCtorsImpl<D, Leaf> =
     ParentDecl<D> extends never ? object
         : VariantCtors<ParentDecl<D>, DataInstance<Leaf>, CombinedOperationMethods<Leaf, DataInstance<Leaf>>>
-          & UnfoldCtors<ParentDecl<D>, DataInstance<Leaf>>
+          & DataUnfoldCtors<ParentDecl<D>, DataInstance<Leaf>>
           & MergeCtors<ParentDecl<D>>
           & ExtendedParentCtorsImpl<ParentDecl<D>, Leaf>;
 
@@ -508,11 +571,31 @@ type ExtendedParentCtors<D> = ExtendedParentCtorsImpl<D, D>;
  * `BehaviorADT` uses `unknown` because behavior instances are accessed only
  * through typed observer getters and do not need an escape hatch.
  */
+/**
+ * Interface holding [isSort] so TypeScript's declaration emitter can reference
+ * this type by name instead of expanding the raw unique symbol in consumer
+ * .d.ts files.
+ *
+ * Workaround for TypeScript bug {@link https://github.com/microsoft/TypeScript/issues/37888}.
+ * The bug causes the declaration emitter to expand `unique symbol` types inline
+ * in .d.ts output instead of referencing the named alias, which breaks symbol
+ * identity comparisons in downstream consumers.
+ *
+ * This interface can be inlined (removed) once:
+ *   1. The bug is fixed in a TypeScript release, AND
+ *   2. The minimum TypeScript version in `devDependencies` is bumped to that release.
+ * As of TypeScript 5.x the bug remains open.
+ */
+export interface DataADTIsSort {
+    readonly [isSort]?: (instance: unknown, sortName: string) => boolean;
+}
+
 export type DataADT<D = Record<string, unknown>> =
     VariantCtors<D, DataInstance<D>, CombinedOperationMethods<D, DataInstance<D>>> &
     ExtendedParentCtors<D> &
-    UnfoldCtors<D, DataInstance<D>> &
-    MergeCtors<D> & {
+    DataUnfoldCtors<D, DataInstance<D>> &
+    MergeCtors<D> &
+    DataADTIsSort & {
         readonly prototype: DataInstance<D>;
         [Symbol.hasInstance](value: unknown): boolean;
         /** @internal */ _registerTransformer(
@@ -521,8 +604,6 @@ export type DataADT<D = Record<string, unknown>> =
         /** @internal */ _getTransformer(name: string): unknown;
         /** @internal */ _getTransformerNames(): string[];
         /** @internal */ _rawADT?: unknown;
-        /** Multi-sorted algebra: check if instance belongs to a sort (runtime only, present when sorts declared) */
-        readonly [isSort]?: (instance: unknown, sortName: string) => boolean;
     };
 
 // ---- Behavior types ---------------------------------------------------------
@@ -806,21 +887,40 @@ type SubstDecl<D, TArgs extends Record<string, unknown>> = {
  *
  * For non-parameterized ADTs, `SubstDecl` is a no-op (identity).
  */
-export type DataADTWithParams<D> =
-    DataADT<D> & {
-        readonly [DeclBrand]: D;
-        <TArgs extends Record<string, unknown>>(args: TArgs): DataADT<SubstDecl<D, TArgs>>;
-    };
+/**
+ * Interface holding [DeclBrand] and the parametric callable overload.
+ * Made into an interface so TypeScript's declaration emitter references this
+ * by name rather than expanding the raw unique symbol into consumer .d.ts
+ * files.
+ *
+ * Workaround for TypeScript bug {@link https://github.com/microsoft/TypeScript/issues/37888}.
+ * See `DataADTIsSort` for full explanation and removal conditions.
+ */
+export interface DataADTDeclBrand<D> {
+    readonly [DeclBrand]: D;
+    <TArgs extends Record<string, unknown>>(args: TArgs): DataADT<SubstDecl<D, TArgs>>;
+}
+
+export type DataADTWithParams<D> = DataADT<D> & DataADTDeclBrand<D>;
+
+/**
+ * Interface holding [DeclBrand] and the parametric callable overload for
+ * BehaviorADT.
+ *
+ * Same workaround as `DataADTDeclBrand` for
+ * {@link https://github.com/microsoft/TypeScript/issues/37888}.
+ * See `DataADTIsSort` for full explanation and removal conditions.
+ */
+export interface BehaviorADTDeclBrand<D> {
+    readonly [DeclBrand]: D;
+    <TArgs extends Record<string, unknown>>(args: TArgs): BehaviorADT<SubstDecl<D, TArgs>>;
+}
 
 /**
  * A `BehaviorADT` that additionally provides a callable overload for
  * parameterized type instantiation.
  */
-export type BehaviorADTWithParams<D> =
-    BehaviorADT<D> & {
-        readonly [DeclBrand]: D;
-        <TArgs extends Record<string, unknown>>(args: TArgs): BehaviorADT<SubstDecl<D, TArgs>>;
-    };
+export type BehaviorADTWithParams<D> = BehaviorADT<D> & BehaviorADTDeclBrand<D>;
 
 // Re-export symbols used as declaration keys
-export type { op, spec, operations, extend, DeclBrand };
+export type { op, spec, operations, extend };

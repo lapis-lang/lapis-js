@@ -26,21 +26,22 @@ import {
     operations,
     extend,
     history,
-    aux,
     parseAux,
     assertCamelCase,
     assertPascalCase,
     LapisTypeSymbol,
     satisfies,
-    properties as propertiesSym,
     parseProperties
 } from './operations.mjs';
+
+import { aux } from './Data.mjs';
 
 import {
     type ProtocolEntry,
     parseProtocolEntries,
     applyUnconditionalProtocols,
-    resolveOperationContracts
+    resolveOperationContracts,
+    gatherProtocolSpec
 } from './Protocol.mjs';
 
 import {
@@ -50,7 +51,7 @@ import {
     type ContractSpec
 } from './contracts.mjs';
 
-import type { BehaviorADT, BehaviorADTWithParams, BehaviorDeclParams, ObserverInputValue, SpecValue, SelfRef } from './types.mjs';
+import type { BehaviorADT, BehaviorADTWithParams, BehaviorDeclParams, ObserverInputValue, SpecValue, SelfRef, SelfRefCallable } from './types.mjs';
 import type { UnfoldDef, ContractCallbacks } from './ops.mjs';
 import { fold as foldOp, unfold as unfoldOp, map as mapOp, merge as mergeOp } from './ops.mjs';
 
@@ -108,6 +109,7 @@ interface MapOpEntry {
     typeParam: string;
     transformFn: AnyFn;
     isGetter: boolean;
+    properties?: ReadonlySet<string>;
 }
 
 interface UnfoldOpEntry {
@@ -468,8 +470,8 @@ export function behavior<D extends Record<string, unknown>>(
 
     // Register inline map operations
     for (const { name, spec: entrySpec } of declarations.map) {
-        const { [op as unknown as string]: _op, ...transforms } = entrySpec;
-        addMapOperation(callableBehavior, observerMap, name, transforms as Record<string, AnyFn>);
+        const { [op as unknown as string]: _op, [spec as unknown as string]: mapSpec, ...transforms } = entrySpec;
+        addMapOperation(callableBehavior, observerMap, name, (mapSpec as Record<string, unknown>) ?? {}, transforms as Record<string, AnyFn>);
     }
 
     // Register inline merge operations
@@ -631,7 +633,7 @@ type BehaviorOpsContext<D> = {
     unfold: BehaviorUnfoldFn<D>;
     map: typeof mapOp;
     merge: typeof mergeOp;
-    Self: { [SelfRefSymbol]: true; (typeParam?: unknown): unknown; [key: string]: (...args: unknown[]) => unknown };
+    Self: SelfRefCallable & { [key: string]: (...args: unknown[]) => unknown };
     [key: string]: unknown;
 };
 
@@ -755,8 +757,8 @@ function attachBehaviorOpsMethod<D extends Record<string, unknown>>(
                     protocols
                 );
             } else if (opKind === 'map') {
-                const { [op as unknown as string]: _op, ...transforms } = entrySpec as Record<string, unknown>;
-                addMapOperation(BehaviorType, observerMap, entryName, transforms as Record<string, AnyFn>);
+                const { [op as unknown as string]: _op, [spec as unknown as string]: mapSpec, ...transforms } = entrySpec as Record<string, unknown>;
+                addMapOperation(BehaviorType, observerMap, entryName, (mapSpec as Record<string, unknown>) ?? {}, transforms as Record<string, AnyFn>, protocols);
             } else if (opKind === 'merge') {
                 const {
                     [op as unknown as string]: _op,
@@ -914,9 +916,14 @@ function addUnfoldOperation(
         handlers,
         contracts: unfoldContracts ?? undefined,
         properties: (() => {
-            const p = parseProperties(
-                (parsedSpec as Record<string | symbol, unknown>)[propertiesSym], name
+            let p = parseProperties(
+                (parsedSpec as Record<string, unknown>).properties, name
             );
+            if (p.size === 0) {
+                const protoSpec = gatherProtocolSpec(protocols, name);
+                if (protoSpec?.properties)
+                    p = parseProperties(protoSpec.properties, name);
+            }
             return p.size > 0 ? p : undefined;
         })()
     });
@@ -1236,9 +1243,14 @@ function addFoldOperation(
         auxIsArray: parsedAux.isArray,
         contracts: foldContracts ?? undefined,
         properties: (() => {
-            const p = parseProperties(
-                (parsedSpec as Record<string | symbol, unknown>)[propertiesSym], name
+            let p = parseProperties(
+                (parsedSpec as Record<string, unknown>).properties, name
             );
+            if (p.size === 0) {
+                const protoSpec = gatherProtocolSpec(protocols, name);
+                if (protoSpec?.properties)
+                    p = parseProperties(protoSpec.properties, name);
+            }
             return p.size > 0 ? p : undefined;
         })()
     });
@@ -1250,7 +1262,9 @@ function addMapOperation(
     BehaviorType: BehaviorTypeLike,
     _observerMap: Map<string, ObserverEntry>,
     name: string,
-    transforms: Record<string, AnyFn>
+    opSpec: Record<string, unknown>,
+    transforms: Record<string, AnyFn>,
+    protocols: ProtocolEntry[] = []
 ): void {
     assertCamelCase(name, 'Map operation');
 
@@ -1269,10 +1283,14 @@ function addMapOperation(
 
     const isGetter = transformFn.length <= 1;
 
+    const protoMapSpec = gatherProtocolSpec(protocols, name);
+    const mapPropsSource = opSpec.properties ?? protoMapSpec?.properties;
+    const mapProps = mapPropsSource ? parseProperties(mapPropsSource, name) : new Set<string>();
+
     ensureOwnMap<string, MapOpEntry>(
         BehaviorType as unknown as Record<symbol, unknown>,
         MapOpsSymbol
-    ).set(name, { typeParam, transformFn, isGetter });
+    ).set(name, { typeParam, transformFn, isGetter, properties: mapProps.size > 0 ? mapProps : undefined });
 }
 
 // ---- Merge helpers ----------------------------------------------------------
