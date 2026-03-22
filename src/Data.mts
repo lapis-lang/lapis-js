@@ -27,14 +27,11 @@ import {
 } from './operations.mjs';
 
 import {
-    resolveContracts,
-    composeContracts,
     checkDemands,
     checkEnsures,
     checkInvariant,
     tryRescue,
-    EnsuresError,
-    type ContractSpec
+    EnsuresError
 } from './contracts.mjs';
 
 import {
@@ -68,9 +65,10 @@ import {
     registerConformance,
     applyUnconditionalProtocols,
     validateProtocolInvariant,
+    validateProtocolConformance,
     parseProtocolEntries,
     conformanceRegistry,
-    gatherProtocolContracts
+    resolveOperationContracts
 } from './Protocol.mjs';
 
 // Re-export symbols.
@@ -1508,16 +1506,11 @@ function createFoldOperation(
     // Extract + subcontract: compose child contracts with parent's (LSP rules)
     // Protocol contracts form the outermost layer (algebraic law); parent ADT
     // contracts compose on top; then the child implementation's own contracts.
-    const protocolFoldContracts = gatherProtocolContracts(protocols, opName);
     const parentFoldTransformer = localParentADT
         ? adtTransformers.get(localParentADT as unknown as object)?.get(opName)
         : undefined;
-    const combinedParentFoldContracts: ContractSpec | null =
-        protocolFoldContracts && parentFoldTransformer?.contracts
-            ? composeContracts(protocolFoldContracts, parentFoldTransformer.contracts)
-            : (parentFoldTransformer?.contracts ?? protocolFoldContracts ?? null);
-    const foldContracts: ContractSpec | null = resolveContracts(
-        opSpecObj, combinedParentFoldContracts
+    const foldContracts = resolveOperationContracts(
+        protocols, opName, opSpecObj, parentFoldTransformer?.contracts
     );
 
     const hasExtraParams = !hasInput && Object.values(handlers).some(h =>
@@ -2092,13 +2085,8 @@ function installUnfoldImpl(
     const parentUnfoldTransformer = localParentADT
         ? adtTransformers.get(localParentADT as unknown as object)?.get(opName)
         : undefined;
-    const protocolUnfoldContracts = gatherProtocolContracts(protocols, opName);
-    const combinedParentUnfoldContracts: ContractSpec | null =
-        protocolUnfoldContracts && parentUnfoldTransformer?.contracts
-            ? composeContracts(protocolUnfoldContracts, parentUnfoldTransformer.contracts)
-            : (parentUnfoldTransformer?.contracts ?? protocolUnfoldContracts ?? null);
-    const unfoldContracts: ContractSpec | null = resolveContracts(
-        opSpecObj, combinedParentUnfoldContracts
+    const unfoldContracts = resolveOperationContracts(
+        protocols, opName, opSpecObj, parentUnfoldTransformer?.contracts
     );
 
     const hasAnyUnfoldContracts = unfoldContracts !== null;
@@ -2956,8 +2944,6 @@ function createParameterized(
         if (allSatisfied) {
             registerConformance((ParameterizedADT as unknown as { prototype: object }).prototype, entry.protocol);
             validateProtocolInvariant(entry.protocol, ParameterizedADT, 'Parameterized ADT');
-            for (const opName of entry.protocol.requiredOps.keys())
-                satisfiedOpNames.add(opName);
 
             // Apply conditional protocol contracts onto the parameterized type.
             //
@@ -2969,6 +2955,10 @@ function createParameterized(
             //   ensures : AND — always wrap; the additional ensures check fires after the inner
             //                   result is produced, giving AND(bakedEnsures, protocolEnsures).
             //   rescue  : skip — the operation's own rescue (baked in) takes precedence.
+            //
+            // Note: ops with missing implementations are handled after this loop by
+            // validateProtocolConformance, which installs defaults (with contracts baked
+            // in) for ops with a defaultBody, and throws for genuinely-absent ops.
             for (const [opName, opSpec] of entry.protocol.requiredOps) {
                 if (!opSpec.contracts) continue;
                 const c = opSpec.contracts;
@@ -3040,6 +3030,21 @@ function createParameterized(
                 }
                 // map / merge kinds: no demands/ensures in the protocol spec, nothing to wrap.
             }
+
+            // Verify all required ops are now reachable on the parameterized prototype chain
+            // (either inherited, contract-wrapped above, or default-installable). For ops
+            // whose defaultBody is non-null and that are genuinely absent, installDefaultOp
+            // is called here so defaults are auto-installed — the same behaviour as
+            // applyUnconditionalProtocols provides for unconditional protocols.
+            //
+            // Unfold ops are constructor-level static methods, not instance-level. They
+            // can't be probed with `opName in prototype`, so mark them satisfied upfront;
+            // the contract-wrapping loop above already handles their absence gracefully.
+            //
+            // Pass undefined for `type` — protocol invariant was already checked above.
+            for (const [opName, opSpec] of entry.protocol.requiredOps)
+                if (opSpec.kind === 'unfold') satisfiedOpNames.add(opName);
+            validateProtocolConformance(satisfiedOpNames, entry.protocol, 'Parameterized ADT', undefined, paramProto);
         } else
             failedEntries.push({ ownOps: [...entry.protocol.requiredOps.keys()], failedParams });
 

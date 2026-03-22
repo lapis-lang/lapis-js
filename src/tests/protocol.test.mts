@@ -11,6 +11,7 @@
  * - Naming convention enforcement
  * - Error on missing required operations
  * - behavior() conformance
+ * - Defaults auto-installed for satisfied conditional protocols
  */
 
 import { describe, it } from 'node:test';
@@ -1002,5 +1003,84 @@ describe('protocol conformance — behavior merge ops are recognized', () => {
         assert.ok(Stream.TakeFrom(0, 3));
         const s = Stream.From(10);
         assert.ok(s instanceof Summable);
+    });
+});
+
+// ---- Defaults auto-installed for satisfied conditional protocols ----
+
+describe('conditional protocol defaults — installed when constraints are satisfied', () => {
+    it('default op is installed on parameterized ADT when constraint is met', () => {
+        // HasSize protocol: size() returns a number; equals() has a default
+        // derived from size: two instances are equal when both have the same size.
+        const HasSize = protocol(({ Family, fold: f }) => ({
+            size: f({ out: Number }),
+            equals: f({
+                in: Family,
+                out: Boolean
+            })({
+                _: (ctx: any, other: any) => ctx.size === other.size
+            })
+        }));
+
+        const Element = data(() => ({
+            [satisfies]: [HasSize],
+            El: { value: Number }
+        })).ops(({ fold }) => ({
+            size: fold({ out: Number })({ El: ({ value }) => value })
+            // 'equals' intentionally omitted — should come from the default
+        }));
+
+        // Wrapper(T) conditionally satisfies HasSize when T satisfies HasSize.
+        const Wrapper = data(({ T }) => ({
+            [satisfies]: [HasSize({ T: HasSize })],
+            Wrap: { inner: T }
+        })).ops(({ fold }) => ({
+            size: fold({ out: Number })({
+                Wrap: ({ inner }) => (inner as { size: number }).size
+            })
+            // 'equals' omitted — should be installed via default when T: HasSize
+        }));
+
+        const WrapEl = Wrapper({ T: Element });
+        const a = WrapEl.Wrap({ inner: Element.El({ value: 3 }) });
+        const b = WrapEl.Wrap({ inner: Element.El({ value: 3 }) });
+        const c = WrapEl.Wrap({ inner: Element.El({ value: 7 }) });
+
+        // Default 'equals' compares size — should be callable via the installed default.
+        const aTyped = a as unknown as { equals: (other: unknown) => boolean };
+        assert.strictEqual(aTyped.equals(b), true);  // size 3 === size 3
+        assert.strictEqual(aTyped.equals(c), false); // size 3 !== size 7
+    });
+
+    it('default op is NOT installed when constraint is not met (stub throws)', () => {
+        const HasSize = protocol(({ Family, fold: f }) => ({
+            size: f({ out: Number }),
+            equals: f({ in: Family, out: Boolean })({
+                _: (ctx: any, other: any) => ctx.size === other.size
+            })
+        }));
+
+        const Plain = data(() => ({
+            Val: { n: Number }
+        })).ops(({ fold }) => ({
+            weight: fold({ out: Number })({ Val: ({ n }) => n })
+            // does NOT satisfy HasSize
+        }));
+
+        const Wrapper = data(({ T }) => ({
+            [satisfies]: [HasSize({ T: HasSize })],
+            Wrap: { inner: T }
+        })).ops(({ fold }) => ({
+            size: fold({ out: Number })({
+                Wrap: ({ inner }) => (inner as { weight: number }).weight
+            })
+        }));
+
+        // Constraint NOT satisfied (Plain doesn't satisfy HasSize).
+        const WrapPlain = Wrapper({ T: Plain });
+        const w = WrapPlain.Wrap({ inner: Plain.Val({ n: 1 }) });
+        const wTyped = w as unknown as { equals: (other: unknown) => boolean };
+        // 'equals' should be the error-throwing stub, not the default.
+        assert.throws(() => wTyped.equals(w), TypeError);
     });
 });

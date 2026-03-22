@@ -12,7 +12,8 @@ import {
     isConstructable,
     hasInputSpec,
     ensureOwnMap,
-    installGetter
+    installGetter,
+    extractParamNames
 } from './utils.mjs';
 
 import {
@@ -39,12 +40,10 @@ import {
     type ProtocolEntry,
     parseProtocolEntries,
     applyUnconditionalProtocols,
-    gatherProtocolContracts
+    resolveOperationContracts
 } from './Protocol.mjs';
 
 import {
-    resolveContracts,
-    composeContracts,
     checkDemands,
     checkEnsures,
     tryRescue,
@@ -189,6 +188,24 @@ function specsCompatible(a: unknown, b: unknown): boolean {
     return a === b;
 }
 
+function validateAuxFoldReferences(behaviorType: BehaviorTypeLike): void {
+    const allFoldOps = (behaviorType as unknown as Record<symbol, unknown>)[FoldOpsSymbol] as
+        Map<string, FoldOpEntry> | undefined;
+    if (!allFoldOps) return;
+    for (const [foldName, entry] of allFoldOps) {
+        if (entry.auxNames) {
+            for (const auxName of entry.auxNames) {
+                if (!allFoldOps.has(auxName)) {
+                    throw new Error(
+                        `Fold operation '${foldName}' references auxiliary fold '${auxName}' via 'aux', ` +
+                        `but no fold named '${auxName}' exists on this behavior type`
+                    );
+                }
+            }
+        }
+    }
+}
+
 // ---- Main entry point -------------------------------------------------------
 
 /**
@@ -216,18 +233,9 @@ export function behavior<D extends Record<string, unknown>>(
 
     // Extract type parameter names from callback function
     // ts-runtime-only: cannot be typed statically — reads function source
-    let typeParamNames: string[] = [];
-    const fnStr = declFn.toString(),
-
-        destructuredMatch = fnStr.match(/^\s*(?:function\s*[^(]*)?\(\s*\{\s*([^}]+)\s*\}/);
-
-    if (destructuredMatch) {
-        const params = destructuredMatch[1];
-        typeParamNames = params
-            .split(',')
-            .map((p: string) => p.trim())
-            .filter((p: string) => p && p !== 'Self');
-    }
+    const typeParamNames = extractParamNames(
+        declFn as (...args: unknown[]) => unknown, p => p !== 'Self'
+    );
 
     function createBehavior(
         typeArgs?: Record<string, unknown> | null,
@@ -537,22 +545,7 @@ export function behavior<D extends Record<string, unknown>>(
 
     // Validate that every fold with aux references names a known fold operation.
     // This runs after all folds (own + inherited) are registered.
-    const allFoldOps = (callableBehavior as unknown as Record<symbol, unknown>)[FoldOpsSymbol] as
-        Map<string, FoldOpEntry> | undefined;
-    if (allFoldOps) {
-        for (const [foldName, entry] of allFoldOps) {
-            if (entry.auxNames) {
-                for (const auxName of entry.auxNames) {
-                    if (!allFoldOps.has(auxName)) {
-                        throw new Error(
-                            `Fold operation '${foldName}' references auxiliary fold '${auxName}' via 'aux', ` +
-                            `but no fold named '${auxName}' exists on this behavior type`
-                        );
-                    }
-                }
-            }
-        }
-    }
+    validateAuxFoldReferences(callableBehavior);
 
     (callableBehavior as unknown as Record<symbol, boolean>)[LapisTypeSymbol] = true;
 
@@ -776,22 +769,7 @@ function attachBehaviorOpsMethod<D extends Record<string, unknown>>(
         }
 
         // Validate aux references after all ops from .ops() are registered
-        const allFoldOps = (BehaviorType as unknown as Record<symbol, unknown>)[FoldOpsSymbol] as
-            Map<string, FoldOpEntry> | undefined;
-        if (allFoldOps) {
-            for (const [foldName, entry] of allFoldOps) {
-                if (entry.auxNames) {
-                    for (const auxName of entry.auxNames) {
-                        if (!allFoldOps.has(auxName)) {
-                            throw new Error(
-                                `Fold operation '${foldName}' references auxiliary fold '${auxName}' via 'aux', ` +
-                                `but no fold named '${auxName}' exists on this behavior type`
-                            );
-                        }
-                    }
-                }
-            }
-        }
+        validateAuxFoldReferences(BehaviorType);
 
         // Validate protocol conformance and register unconditional conformances
         const registeredOpNames = getBehaviorOpNames(BehaviorType);
@@ -876,8 +854,7 @@ function addUnfoldOperation(
 
     // Extract contracts from spec, composing with any protocol-level contracts
     // as the outermost layer (algebraic law → implementation).
-    const protocolUnfoldContracts = gatherProtocolContracts(protocols, name);
-    const unfoldContracts: ContractSpec | null = resolveContracts(parsedSpec, protocolUnfoldContracts);
+    const unfoldContracts = resolveOperationContracts(protocols, name, parsedSpec);
 
     const hasInput = hasInputSpec(parsedSpec),
         makeInstance = (seed: unknown) =>
@@ -1239,17 +1216,12 @@ function addFoldOperation(
 
     // Extract contracts from spec, composing with protocol-level contracts (outermost)
     // then parent behavior contracts (middle), then child implementation contracts.
-    const protocolFoldContracts = gatherProtocolContracts(protocols, name);
     const parentFoldEntry = parentBehaviorType
         ? ((parentBehaviorType as Record<symbol, unknown>)[FoldOpsSymbol] as
             Map<string, FoldOpEntry> | undefined)?.get(name)
         : undefined;
-    const combinedParentFoldContracts: ContractSpec | null =
-        protocolFoldContracts && parentFoldEntry?.contracts
-            ? composeContracts(protocolFoldContracts, parentFoldEntry.contracts)
-            : (parentFoldEntry?.contracts ?? protocolFoldContracts ?? null);
-    const foldContracts: ContractSpec | null = resolveContracts(
-        parsedSpec, combinedParentFoldContracts
+    const foldContracts = resolveOperationContracts(
+        protocols, name, parsedSpec, parentFoldEntry?.contracts
     );
 
     ensureOwnMap<string, FoldOpEntry>(
