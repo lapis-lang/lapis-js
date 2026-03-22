@@ -23,31 +23,31 @@
 
 import { data } from '../index.mjs';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const Matrix: any = data((_) => ({
+
+const Matrix = data((_) => ({
     Matrix: { cells: Array }
 })).ops(({ fold, unfold, Family }) => ({
     FromArray: unfold({ in: Array, out: Family })({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         Matrix: (cells: any) => ({ cells })
     }),
-    rows: fold({ out: Object })({
+    rows: fold({ out: Family })({
         Matrix({ cells }) {
-            return Matrix.Matrix({ cells });
+            return Family.Matrix({ cells });
         }
     }),
-    cols: fold({ out: Object })({
+    cols: fold({ out: Family })({
         Matrix({ cells }) {
             const cells2d = cells as unknown[][];
-            if (cells2d.length === 0) return Matrix.Matrix({ cells: [] });
-            if (cells2d[0].length === 0) return Matrix.Matrix({ cells: [] });
-            return Matrix.Matrix({
+            if (cells2d.length === 0) return Family.Matrix({ cells: [] });
+            if (cells2d[0].length === 0) return Family.Matrix({ cells: [] });
+            return Family.Matrix({
                 cells: cells2d[0].map((_: unknown, i: number) => cells2d.map(r => r[i]))
             });
         }
     }),
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    boxs: fold({ in: Number, out: Object, demands: (self: any, blockSize: number) => {
+    boxs: fold({ in: Number, out: Family, demands: (self: any, blockSize: number) => {
         const cells = self.toArray;
         const n = cells.length;
         if (n === 0) return true;
@@ -58,7 +58,7 @@ const Matrix: any = data((_) => ({
         Matrix({ cells }, blockSize: number) {
             const cells2d = cells as unknown[][];
             const n = cells2d.length;
-            if (n === 0) return Matrix.Matrix({ cells: [] });
+            if (n === 0) return Family.Matrix({ cells: [] });
             const blocks = n / blockSize;
             const result: unknown[][] = [];
             for (let bR = 0; bR < blocks; bR++) {
@@ -71,16 +71,16 @@ const Matrix: any = data((_) => ({
                     result.push(block);
                 }
             }
-            return Matrix.Matrix({ cells: result });
+            return Family.Matrix({ cells: result });
         }
     }),
     toArray: fold({ out: Array })({
         Matrix({ cells }) { return cells; }
     }),
-    mapRows: fold({ in: Function, out: Object })({
+    mapRows: fold({ in: Function, out: Family })({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         Matrix({ cells }, f: any) {
-            return Matrix.Matrix({ cells: (cells as unknown[]).map(f) });
+            return Family.Matrix({ cells: (cells as unknown[]).map(f) });
         }
     })
 }));

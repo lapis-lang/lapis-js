@@ -9,8 +9,8 @@ import { data } from '../index.mjs';
 //   OddRange unfold  → generates [start, start+2, …, limit]
 //   hasFactor fold   → true if any element divides n
 //   firstFactor fold → smallest divisor found, or 0 if none
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const Divisors: any = data(({ Family }) => ({
+
+const Divisors = data(({ Family }) => ({
         Nil: {},
         Cons: { head: Number, tail: Family }
     })).ops(({ fold, unfold, Family }) => ({
@@ -52,8 +52,7 @@ const Divisors: any = data(({ Family }) => ({
 
     // nthPrime search: anamorphism over { candidate, count }
     // Done fires when candidate is prime and the countdown reaches 0
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    NthPrimeFinder: any = data(({ Family }) => ({
+    NthPrimeFinder = data(({ Family }) => ({
         Done: { value: Number },
         Step: { next: Family }
     })).ops(({ fold, unfold, Family }) => ({

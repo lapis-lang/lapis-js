@@ -3246,26 +3246,26 @@ The `[invariant]` key on a protocol mirrors `[invariant]` on a variant spec — 
 
 ### Algebraic Property Annotations
 
-Operation specs support first-class **algebraic property annotations** via the `[properties]` symbol. Where contracts are opaque predicates, properties are named, well-known algebraic laws (associativity, commutativity, etc.) that the system can reason about structurally.
+Operation specs support first-class **algebraic property annotations** via the `properties` key. Where contracts are opaque predicates, properties are named, well-known algebraic laws (associativity, commutativity, etc.) that the system can reason about structurally.
 
 This bridges the gap between `ensures` (which the system can *check* but not *exploit*) and named algebraic metadata (which enables optimization).
 
-`[properties]` works on all operation specs — `protocol()`, `data().ops()`, and `behavior().ops()`. Since `relation()` delegates to `data()` and `query()` delegates to `behavior()`, they also support `[properties]` automatically.
+`properties` works on all operation specs — `protocol()`, `data().ops()`, and `behavior().ops()`. Since `relation()` delegates to `data()` and `query()` delegates to `behavior()`, they also support `properties` automatically.
 
 #### Declaring Properties
 
-Annotate any `fold`/`unfold`/`map` spec with `[properties]` — an array of property names drawn from the closed vocabulary.
+Annotate any `fold`/`unfold`/`map` spec with `properties` — an array of property names drawn from the closed vocabulary.
 
 **On protocol specs:**
 
 ```ts
-import { protocol, extend, properties } from '@lapis-lang/lapis-js';
+import { protocol, extend } from '@lapis-lang/lapis-js';
 
 const Semigroup = protocol(({ Family, fold }) => ({
     combine: fold({
         in: Family,
         out: Family,
-        [properties]: ['associative']
+        properties: ['associative']
     })
 }));
 
@@ -3275,7 +3275,7 @@ const CommutativeMonoid = protocol(({ Family, fold, unfold }) => ({
     combine: fold({
         in: Family,
         out: Family,
-        [properties]: ['commutative', 'identity']
+        properties: ['commutative', 'identity']
     })
 }));
 
@@ -3283,7 +3283,7 @@ const Ordered = protocol(({ Family, fold }) => ({
     compare: fold({
         in: Family,
         out: Number,
-        [properties]: ['antisymmetric', 'transitive', 'total']
+        properties: ['antisymmetric', 'transitive', 'total']
     })
 }));
 ```
@@ -3291,7 +3291,7 @@ const Ordered = protocol(({ Family, fold }) => ({
 **On data operation specs:**
 
 ```ts
-import { data, properties } from '@lapis-lang/lapis-js';
+import { data } from '@lapis-lang/lapis-js';
 
 const IntSet = data(({ Self }) => ({
     Empty: {},
@@ -3300,13 +3300,13 @@ const IntSet = data(({ Self }) => ({
     union: fold({
         in: Self,
         out: Self,
-        [properties]: ['associative', 'commutative', 'idempotent']
+        properties: ['associative', 'commutative', 'idempotent']
     })({
         Empty: (other) => other,
         Insert: ({ value, rest }, other) => IntSet.Insert(value, rest.union(other))
     }),
     negate: map({
-        [properties]: ['involutory']
+        properties: ['involutory']
     })({
         Empty: () => IntSet.Empty(),
         Insert: ({ value, rest }) => IntSet.Insert(-value, rest.negate())
@@ -3317,7 +3317,7 @@ const IntSet = data(({ Self }) => ({
 **On behavior operation specs:**
 
 ```ts
-import { behavior, properties } from '@lapis-lang/lapis-js';
+import { behavior } from '@lapis-lang/lapis-js';
 
 const Counter = behavior(({ Self }) => ({
     value: Number
@@ -3325,22 +3325,22 @@ const Counter = behavior(({ Self }) => ({
     Counting: unfold({
         in: Number,
         out: Self,
-        [properties]: ['identity']
+        properties: ['identity']
     })({
         value: (n) => n
     }),
     read: fold({
         out: Number,
-        [properties]: ['idempotent']
+        properties: ['idempotent']
     })({
         _: (ctx) => ctx.value
     })
 }));
 ```
 
-`[properties]` is validated at declaration time — unknown names throw a `TypeError`.
+`properties` is validated at declaration time — unknown names throw a `TypeError`.
 
-Properties compose with existing contracts: a protocol that declares both `[properties]: ['associative']` and `ensures: ...` enforces both.
+Properties compose with existing contracts: a protocol that declares both `properties: ['associative']` and `ensures: ...` enforces both.
 
 #### Property Vocabulary
 
@@ -3386,14 +3386,14 @@ Properties inherit through `[extend]` just like operations. When a child protoco
 
 ```ts
 const Semigroup = protocol(({ Family, fold }) => ({
-    combine: fold({ in: Family, out: Family, [properties]: ['associative'] })
+    combine: fold({ in: Family, out: Family, properties: ['associative'] })
 }));
 
 const CommutativeMonoid = protocol(({ Family, fold, unfold }) => ({
     [extend]: Semigroup,
     Identity: unfold({ out: Family }),
     // Only declares 'commutative', but 'associative' is inherited from Semigroup
-    combine: fold({ in: Family, out: Family, [properties]: ['commutative'] })
+    combine: fold({ in: Family, out: Family, properties: ['commutative'] })
 }));
 // CommutativeMonoid.combine now has both 'associative' (inherited) and 'commutative' (declared)
 ```

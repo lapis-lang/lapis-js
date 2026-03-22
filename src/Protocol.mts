@@ -18,7 +18,6 @@ import {
     LapisTypeSymbol,
     ProtocolSymbol,
     createFamily,
-    properties as propertiesSym,
     parseProperties,
     isFamilyRefSpec,
     validateTypeSpec,
@@ -79,7 +78,7 @@ export interface ProtocolOpSpec {
     /** Per-operation contract, if any (demands/ensures/rescue from the spec). */
     contracts: ContractSpec | null;
     /**
-     * Algebraic property annotations declared via `[properties]: [...]` on the
+     * Algebraic property annotations declared via `properties: [...]` on the
      * operation spec. Validated against {@link KNOWN_PROPERTIES}. Inherited
      * properties from parent protocols are unioned in (never removed).
      */
@@ -249,7 +248,7 @@ function extractSpecParts(
     requiredOps: Map<string, ProtocolOpSpec>
 ): { rawSpec: Record<string | symbol, unknown>; childProps: ReadonlySet<string>; parentProps: ReadonlySet<string> } {
     const rawSpec = (entry[specSym] ?? {}) as Record<string | symbol, unknown>;
-    const childProps = parseProperties(rawSpec[propertiesSym], name);
+    const childProps = parseProperties((rawSpec as Record<string, unknown>).properties, name);
     const parentProps = requiredOps.get(name)?.properties ?? new Set<string>();
     return { rawSpec, childProps, parentProps };
 }
@@ -562,6 +561,28 @@ export function resolveOperationContracts(
             ? composeContracts(protocolContracts, parentContracts)
             : (parentContracts ?? protocolContracts ?? null);
     return resolveContracts(opSpec, combined);
+}
+
+/**
+ * Return the merged spec record for `opName` gathered from all unconditional
+ * protocol entries. Fields from later entries override earlier ones.
+ * Returns `null` when no unconditional entry declares the operation.
+ */
+export function gatherProtocolSpec(
+    protocols: ProtocolEntry[],
+    opName: string
+): Record<string, unknown> | null {
+    let merged: Record<string, unknown> | null = null;
+    for (const entry of protocols) {
+        if (entry.conditional) continue;
+        const opEntry = entry.protocol.requiredOps.get(opName);
+        if (!opEntry) continue;
+        const opSpec: Record<string, unknown> = opEntry.spec;
+        merged = merged !== null
+            ? Object.assign({}, merged, opSpec)
+            : Object.assign({}, opSpec);
+    }
+    return merged;
 }
 
 // ---- Default implementation installation -----------------------------------

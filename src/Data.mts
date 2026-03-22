@@ -3,14 +3,12 @@ import {
     TypeParamSymbol,
     SortRefSymbol,
     sort,
-    isSort,
     isOperationDef,
     extend,
     op,
     spec,
     operations,
     history,
-    aux,
     parseAux,
     validateTypeSpec,
     validateReturnType,
@@ -21,7 +19,6 @@ import {
     LapisTypeSymbol,
     invariant,
     satisfies,
-    properties as propertiesSym,
     parseProperties,
     type TypeSpec
 } from './operations.mjs';
@@ -57,6 +54,7 @@ import {
 } from './utils.mjs';
 
 import type { DataADTWithParams, DataInstance, DataDeclParams, VariantKeys, SpecValue, FamilyRef, SelfRef, SortRef, TypeParamRef, DeclBrand } from './types.mjs';
+import { isSort } from './types.mjs';
 import type { FoldDef, InstanceOf, ContractCallbacks } from './ops.mjs';
 import { fold as foldOp, unfold as unfoldOp, map as mapOp, merge as mergeOp } from './ops.mjs';
 
@@ -68,7 +66,8 @@ import {
     validateProtocolConformance,
     parseProtocolEntries,
     conformanceRegistry,
-    resolveOperationContracts
+    resolveOperationContracts,
+    gatherProtocolSpec
 } from './Protocol.mjs';
 
 // Re-export symbols.
@@ -174,6 +173,12 @@ const TypeArgsSymbol: unique symbol = Symbol('TypeArgs'),
     // WeakMap to store parent ADT references (for Comb Inheritance parent chain)
     parentADTMap = new WeakMap<object, object>();
 
+/** Provides access to auxiliary fold results in zygomorphism folds */
+export const aux: unique symbol = Symbol('aux');
+export type aux = typeof aux;
+
+export { TypeArgsSymbol, FamilyRefSymbol };
+
 // ---- Internal types ---------------------------------------------------------
 
 type SpecRecord = Record<string, unknown>;
@@ -213,7 +218,7 @@ type ParsedDecl = {
     protocols: ProtocolEntry[];
 };
 
-type FamilyMarker = {
+export type FamilyMarker = {
     [FamilyRefSymbol]: true;
     _adt: ((typeParam?: unknown) => FamilyMarker) | ADTLike | null;
     (typeParam?: unknown): FamilyMarker;
@@ -229,8 +234,14 @@ type TransformerMethods = {
 
 // ---- D-aware fold types for .ops() context ----------------------------------
 
+/**
+ * Interface holding [history] and [aux] symbols for fold context.
+ * Made into an exported interface so TypeScript's declaration emitter can
+ * reference this by name rather than expanding the raw unique symbols into
+ * consumer .d.ts files (workaround for TypeScript bug microsoft/TypeScript#37888).
+ */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type FoldCtxSymbolKeys = { readonly [history]: any; readonly [aux]: any };
+export interface FoldCtxSymbolKeys { readonly [history]: any; readonly [aux]: any; }
 
 /**
  * D-aware fold output type: resolves `out` spec against the concrete family
@@ -1413,7 +1424,7 @@ function createOperations(
         else if (opKind === 'unfold')
             createUnfoldOperation(ADT, variants, opName, opDef, protocols);
         else if (opKind === 'map')
-            createMapOperation(ADT, variants, opName, opDef);
+            createMapOperation(ADT, variants, opName, opDef, protocols);
         else if (opKind === 'merge')
             createMergeOperation(ADT, variants, opName, opDef);
 
@@ -1435,6 +1446,21 @@ function checkResultInvariant(value: unknown, opName: string): void {
     const variantName = (value as Record<symbol, unknown>)[VariantNameSymbol] as string | undefined;
     if (!variantName) return;
     checkInvariant(ctor._invariant as (i: unknown) => boolean, opName, variantName, 'post', value);
+}
+
+/**
+ * Resolve algebraic property annotations for an operation:
+ * prefers the explicitly declared `properties` key on the local spec; falls
+ * back to the same key gathered from the matching protocol spec, if any.
+ */
+function resolvePropertiesWithFallback(
+    spec: Record<string, unknown>,
+    protocols: ProtocolEntry[],
+    opName: string
+): ReadonlySet<string> {
+    const protoSpec = gatherProtocolSpec(protocols, opName);
+    const source = spec.properties ?? protoSpec?.properties;
+    return parseProperties(source, opName);
 }
 
 function createFoldOperation(
@@ -1557,10 +1583,8 @@ function createFoldOperation(
     // Store contracts on transformer for subcontracting inheritance
     if (foldContracts)
         transformer.contracts = foldContracts;
-    // Store algebraic property annotations
-    const foldProps = parseProperties(
-        (opSpecObj as Record<string | symbol, unknown>)[propertiesSym], opName
-    );
+    // Store algebraic property annotations — fall back to protocol spec if implementor omitted them
+    const foldProps = resolvePropertiesWithFallback(finalSpec as Record<string, unknown>, protocols, opName);
     if (foldProps.size > 0)
         transformer.properties = foldProps;
     ADT._registerTransformer(opName, transformer, false, variants);
@@ -2104,10 +2128,8 @@ function installUnfoldImpl(
     // Store contracts on transformer for subcontracting inheritance
     if (unfoldContracts)
         transformer.contracts = unfoldContracts;
-    // Store algebraic property annotations
-    const unfoldProps = parseProperties(
-        (opSpecObj as Record<string | symbol, unknown>)[propertiesSym], opName
-    );
+    // Store algebraic property annotations — fall back to protocol spec if implementor omitted them
+    const unfoldProps = resolvePropertiesWithFallback(opSpecObj as Record<string, unknown>, protocols, opName);
     if (unfoldProps.size > 0)
         transformer.properties = unfoldProps;
 
@@ -2377,7 +2399,8 @@ function createMapOperation(
     ADT: ADTLike,
     variants: Record<string, unknown>,
     opName: string,
-    opDef: Record<string, unknown>
+    opDef: Record<string, unknown>,
+    protocols: ProtocolEntry[] = []
 ): void {
     const {
         [op as unknown as string]: _op,
@@ -2428,9 +2451,9 @@ function createMapOperation(
             getAtomTransform: (fieldName) => transformers[fieldName] as HandlerFn | undefined
         });
 
-    // Store algebraic property annotations
-    const mapSpec = (_opSpec ?? {}) as Record<string | symbol, unknown>;
-    const mapProps = parseProperties(mapSpec[propertiesSym], opName);
+    // Store algebraic property annotations — fall back to protocol spec if implementor omitted them
+    const mapSpec = (_opSpec ?? {}) as Record<string, unknown>;
+    const mapProps = resolvePropertiesWithFallback(mapSpec, protocols, opName);
     if (mapProps.size > 0)
         transformer.properties = mapProps;
 

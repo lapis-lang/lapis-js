@@ -34,7 +34,6 @@ function makeStream() {
             T: (x) => -x
         }),
         apply: map({})({
-            // @ts-expect-error -- intentional type violation for test
             T: (x, f) => f(x)
         })
     }));

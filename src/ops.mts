@@ -255,7 +255,7 @@ export function fold<S extends Record<string | symbol, unknown>>(s: S & Contract
  */
 export function map<S extends Record<string | symbol, unknown> & { inverse?: string }>(s: S) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return <H extends Record<string, (x: any) => unknown>>(
+    return <H extends Record<string, (x: any, ...args: any[]) => unknown>>(
         handlers: H
     ): MapDef<S, H> =>
         Object.assign({ [op]: 'map' as const, [spec]: s }, handlers) as MapDef<S, H>;

@@ -287,8 +287,7 @@ describe('Map Operations', () => {
                 Nil: {},
                 Cons: { head: T, tail: Family(T) }
             })).ops(({ fold, unfold, map, merge, Family, T }) => ({
-                scale: map({ out: Family })({
-                    // @ts-expect-error -- intentional type violation for test
+                scale: map({ in: Number, out: Family })({
                     T: (x, factor) => x * factor
                 })
             }));
@@ -298,7 +297,6 @@ describe('Map Operations', () => {
                 tail: List.Cons({ head: 3, tail: List.Nil })
             });
 
-            // @ts-expect-error -- intentional type violation for test
             const scaled = list.scale(10);
 
             assert.strictEqual(scaled.head, 20);
@@ -311,7 +309,6 @@ describe('Map Operations', () => {
                 Cons: { head: T, tail: Family(T) }
             })).ops(({ fold, unfold, map, merge, Family, T }) => ({
                 combine: map({ out: Family })({
-                    // @ts-expect-error -- intentional type violation for test
                     T: (x, a, b) => x + a + b
                 })
             }));
