@@ -95,9 +95,18 @@ export interface ProtocolOpSpec {
 }
 
 /** A protocol object — callable to produce a conditional conformance spec. */
-export interface ProtocolLike {
+export interface ProtocolLike<Ops = unknown> {
     [ProtocolSymbol]: true;
     [LapisTypeSymbol]: true;
+    /**
+     * Phantom field carrying the instance-side shape inferred from the protocol
+     * declaration.  Never assigned at runtime (always `undefined`); exists only
+     * in the type system so that `InstanceOf<typeof MyProtocol>` resolves to the
+     * correct instance shape without requiring hand-written type aliases.
+     *
+     * @see InstanceOf
+     */
+    readonly _type: Ops;
     /** All required operation names → their specs. Includes inherited ops. */
     requiredOps: Map<string, ProtocolOpSpec>;
     /** Type parameter names declared by the protocol (e.g. "T", "U"). */
@@ -168,6 +177,50 @@ export function isConditionalConformance(value: unknown): value is ConditionalCo
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type ProtocolSpecEntry = ((handlers: Record<string, (...args: any[]) => unknown>) => Record<string | symbol, unknown>) & Record<string | symbol, unknown>;
+
+/**
+ * A fold spec entry — produced by `fold(spec)` inside a `protocol()` callback.
+ * Branded with `[op]: 'fold'` so TypeScript can infer which declaration keys are
+ * fold operations and compute the instance-side shape automatically.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type FoldSpecEntry = ProtocolSpecEntry & { readonly [op]: 'fold' } & { (handlers: Record<string, (...args: any[]) => unknown>): Record<string | symbol, unknown> & { readonly [op]: 'fold' } };
+
+/**
+ * An unfold spec entry — produced by `unfold(spec)` inside a `protocol()` callback.
+ * Branded with `[op]: 'unfold'`.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type UnfoldSpecEntry = ProtocolSpecEntry & { readonly [op]: 'unfold' } & { (handlers: Record<string, (...args: any[]) => unknown>): Record<string | symbol, unknown> & { readonly [op]: 'unfold' } };
+
+/**
+ * A map spec entry — produced by `map(spec)` inside a `protocol()` callback.
+ * Branded with `[op]: 'map'`.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type MapSpecEntry = ProtocolSpecEntry & { readonly [op]: 'map' } & { (handlers: Record<string, (...args: any[]) => unknown>): Record<string | symbol, unknown> & { readonly [op]: 'map' } };
+
+/**
+ * Computes the instance-side shape of a protocol from the declaration callback's
+ * return type `R`.
+ *
+ * Mapping rules (string keys only — symbol keys like `[extend]` are excluded):
+ * - `fold` entry  → `(other: unknown) => unknown`  (instance method)
+ * - `unfold` entry → `unknown`                      (value / identity element)
+ * - `map` entry   → `(f: unknown) => unknown`       (transform method)
+ */
+type RawProtocolOps<R> =
+    { [K in keyof R & string as R[K] extends FoldSpecEntry   ? K : never]: (other: unknown) => unknown } &
+    { [K in keyof R & string as R[K] extends UnfoldSpecEntry ? K : never]: unknown } &
+    { [K in keyof R & string as R[K] extends MapSpecEntry    ? K : never]: (f: unknown) => unknown };
+
+/**
+ * Eagerly simplifies the intersection produced by {@link RawProtocolOps} into a
+ * single flat object type.  This ensures TypeScript serializes the resolved
+ * property map in `.d.ts` files instead of keeping a deferred reference to the
+ * full callback return type `R` (which may contain un-nameable symbol keys).
+ */
+export type ProtocolOps<R> = RawProtocolOps<R> extends infer O ? { [K in keyof O]: O[K] } : never;
 
 type SpecOnlyOpFn = (specObj: Record<string | symbol, unknown>) => ProtocolSpecEntry;
 type SpecOnlyMergeFn = (...names: string[]) => Record<string | symbol, unknown>;
@@ -274,16 +327,33 @@ function extractWildcard(entry: Record<string | symbol, unknown>): ((...args: un
 /** Context passed to the `protocol()` declaration callback. */
 export interface ProtocolDeclContext {
     readonly Family: FamilyRefCallable;
-    readonly fold: (specObj: Record<string | symbol, unknown>) => ProtocolSpecEntry;
-    readonly unfold: (specObj: Record<string | symbol, unknown>) => ProtocolSpecEntry;
-    readonly map: (specObj: Record<string | symbol, unknown>) => ProtocolSpecEntry;
+    readonly fold: (specObj: Record<string | symbol, unknown>) => FoldSpecEntry;
+    readonly unfold: (specObj: Record<string | symbol, unknown>) => UnfoldSpecEntry;
+    readonly map: (specObj: Record<string | symbol, unknown>) => MapSpecEntry;
     readonly merge: (...names: string[]) => Record<string | symbol, unknown>;
     readonly [key: string]: unknown;
 }
 
-export function protocol(
-    callback: (ctx: ProtocolDeclContext) => Record<string | symbol, unknown>
-): ProtocolLike {
+/**
+ * Declare a protocol — public overload with automatic inference.
+ *
+ * The callback return type `R` is inferred and the instance-side shape
+ * `ProtocolOps<R>` (fold → method, unfold → value, map → transform) is
+ * computed automatically from the fold/unfold/map entries.  Symbol keys
+ * like `[extend]` are excluded.
+ *
+ * An explicit type parameter is still accepted for edge cases where the
+ * automatic inference is insufficient.
+ */
+export function protocol<R extends Record<string | symbol, unknown>>(
+    callback: (ctx: ProtocolDeclContext) => R
+): ProtocolLike<ProtocolOps<R>>;
+/**
+ * Declare a protocol — back-compat overload: if a single explicit type
+ * parameter is provided and it is NOT the default `unknown`, use it directly.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function protocol(callback: (ctx: ProtocolDeclContext) => Record<string | symbol, unknown>): ProtocolLike<any> {
     // Extract type param names from the callback signature
     const typeParamNames = extractParamNames(callback as (...args: unknown[]) => unknown, s => /^[A-Z]$/.test(s));
 
@@ -295,9 +365,9 @@ export function protocol(
 
     const ctx: Record<string, unknown> = {
         Family,
-        fold: protocolFold as SpecOnlyOpFn,
-        unfold: protocolUnfold as SpecOnlyOpFn,
-        map: protocolMap as SpecOnlyOpFn,
+        fold: protocolFold as unknown as (specObj: Record<string | symbol, unknown>) => FoldSpecEntry,
+        unfold: protocolUnfold as unknown as (specObj: Record<string | symbol, unknown>) => UnfoldSpecEntry,
+        map: protocolMap as unknown as (specObj: Record<string | symbol, unknown>) => MapSpecEntry,
         merge: protocolMerge as SpecOnlyMergeFn,
         ...typeParamObjects
     };
@@ -452,7 +522,8 @@ export function protocol(
         };
     }
 
-    const thisProtocol = protocolFn as unknown as ProtocolLike;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const thisProtocol = protocolFn as unknown as ProtocolLike<any>;
 
     // Union type param names from all parents with the child's own.
     const allTypeParams = new Set(typeParamNames);

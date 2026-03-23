@@ -9,11 +9,11 @@
  */
 
 import { behavior, satisfies } from '../../index.mjs';
-import { Functor, Foldable } from '../protocols/index.mjs';
+import type { InstanceOf } from '../../index.mjs';
+import { Functor, Foldable, Monoid } from '../protocols/index.mjs';
 
-type MonoidLike = { Identity: unknown; combine: (a: unknown, b: unknown) => unknown };
 type LazyMapSelf = { lookup: (k: unknown) => unknown; has: (k: unknown) => boolean; size: number };
-type FoldMapOpts = { monoid: MonoidLike; f: (v: unknown) => unknown; keys: unknown[] };
+type FoldMapOpts = { monoid: InstanceOf<typeof Monoid>; f: (v: unknown) => unknown; keys: unknown[] };
 
 const LazyMap = behavior(({ T, U }) => ({
     [satisfies]: [Functor, Foldable],
@@ -60,7 +60,7 @@ const LazyMap = behavior(({ T, U }) => ({
         _: ({ lookup, has, size: _size }: LazyMapSelf, opts: FoldMapOpts) =>
             opts.keys.reduce(
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                (acc: any, k: unknown) => has(k) ? opts.monoid.combine(acc, opts.f(lookup(k))) : acc,
+                (acc: any, k: unknown) => has(k) ? opts.monoid.combine.call(acc, opts.f(lookup(k))) : acc,
                 opts.monoid.Identity
             )
     })

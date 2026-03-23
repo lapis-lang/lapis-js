@@ -6,12 +6,35 @@ export { TypeArgsSymbol, FamilyRefSymbol, aux } from './Data.mjs';
 export type { FamilyMarker, FoldCtxSymbolKeys } from './Data.mjs';
 export { protocol } from './Protocol.mjs';
 export { satisfies } from './operations.mjs';
-export type { ProtocolLike, ProtocolEntry, ConditionalConformance, ProtocolDeclContext } from './Protocol.mjs';
+export type { ProtocolLike, ProtocolEntry, ConditionalConformance, ProtocolDeclContext, FoldSpecEntry, UnfoldSpecEntry, MapSpecEntry, ProtocolOps } from './Protocol.mjs';
 export { op, spec, operations, history, sort } from './operations.mjs';
 export { DeclBrand, isSort } from './types.mjs';
 export { unfold, fold, map, merge } from './ops.mjs';
-export type { UnfoldDef, FoldDef, MapDef, MergeDef, InstanceOf } from './ops.mjs';
+export type { UnfoldDef, FoldDef, MapDef, MergeDef } from './ops.mjs';
 export { behavior } from './Behavior.mjs';
+
+// ---- Unified InstanceOf / StaticOf -----------------------------------------
+
+import type { ProtocolLike } from './Protocol.mjs';
+import type { InstanceOf as DataInstanceOf } from './ops.mjs';
+
+/**
+ * Extracts the TypeScript type associated with a Lapis value declarator.
+ *
+ * - For a **protocol** (`P extends ProtocolLike<Ops>`), resolves to the
+ *   instance-side shape inferred from the protocol declaration:
+ *   ```ts
+ *   type MonoidConformer = InstanceOf<typeof Monoid>;
+ *   // => { combine: (other: unknown) => unknown; Identity: unknown }
+ *   ```
+ *
+ * - For a **data ADT constructor** (`C`), resolves to the runtime instance type
+ *   produced by that constructor (the existing behavior):
+ *   ```ts
+ *   type NumberInstance = InstanceOf<NumberConstructor>; // => number
+ *   ```
+ */
+export type InstanceOf<T> = T extends ProtocolLike<infer Ops> ? Ops : DataInstanceOf<T>;
 export { createTransformer, composeTransformers, composeMultipleTransformers } from './DataOps.mjs';
 export { createObserver, composeObservers, composeMultipleObservers, createFoldObserver, behaviorObservers } from './BehaviorOps.mjs';
 

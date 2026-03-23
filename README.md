@@ -83,6 +83,7 @@ there is an emphasis on the Bird-Meertens Formalism (BMF) (Squiggol) of making p
   - [Default Method Bodies](#default-method-bodies)
   - [Declaring Conformance with `[satisfies]`](#declaring-conformance-with-satisfies)
   - [Checking Conformance with `instanceof`](#checking-conformance-with-instanceof)
+  - [Typed Instances (`InstanceOf`)](#typed-instances-instanceof)
   - [Conditional Conformance](#conditional-conformance)
   - [Higher-Kinded Protocol Parameters](#higher-kinded-protocol-parameters)
   - [Algebraic Laws via Contracts](#algebraic-laws-via-contracts)
@@ -3128,6 +3129,79 @@ console.log(list instanceof Monoid);    // true
 console.log(list instanceof Semigroup); // true — transitively
 console.log(list instanceof List);      // true — still works (prototype chain)
 ```
+
+### Typed Instances (`InstanceOf`)
+
+`InstanceOf<typeof X>` extracts the **instance-side TypeScript type** of any Lapis declaration. It works uniformly across all five declaration kinds:
+
+| Declaration kind | `InstanceOf` resolves to |
+|------------------|--------------------------|
+| `protocol()`     | Instance-side shape inferred from `fold`/`unfold`/`map` specs |
+| `data()`         | Runtime instance type (the data record) |
+| `behavior()`     | Observer interface (the behavior's observations) |
+| `relation()`     | Runtime instance type (same as `data`) |
+| `query()`        | Observer interface (same as `behavior`) |
+
+For protocols the shape is inferred automatically from the declaration — no hand-written type alias is required:
+
+```ts
+import type { InstanceOf } from '@lapis-lang/lapis-js';
+import { Monoid } from '@lapis-lang/lapis-js/std';
+
+// Resolves automatically to:
+//   { combine: (other: unknown) => unknown; Identity: unknown }
+type MonoidConformer = InstanceOf<typeof Monoid>;
+```
+
+Protocol operation kinds map to TypeScript types as follows:
+
+| Protocol kind | Example declaration                  | Instance-side type              |
+|---------------|--------------------------------------|---------------------------------|
+| `fold`        | `combine: fold({ in: Family, out: Family })` | `(other: unknown) => unknown`   |
+| `unfold`      | `Identity: unfold({ out: Family })` | `unknown`                       |
+| `map`         | `fmap: map({ out: Family })`        | `(f: unknown) => unknown`       |
+
+Symbol-keyed entries in the declaration (such as `[extend]` for protocol inheritance) are excluded from the resolved type.
+
+A typical use-case is writing generic functions that accept any conforming value:
+
+```ts
+import type { InstanceOf } from '@lapis-lang/lapis-js';
+import { Monoid } from '@lapis-lang/lapis-js/std';
+
+function foldAll<A>(items: A[], monoid: InstanceOf<typeof Monoid>): unknown {
+    return items.reduce(
+        (acc, x) => monoid.combine.call(acc, x),
+        monoid.Identity
+    );
+}
+```
+
+#### Data, Behavior, Relation, and Query
+
+For `data` and `relation` declarations, `InstanceOf` resolves to the runtime data-record type. For `behavior` and `query` declarations, it resolves to the observer interface:
+
+```ts
+import type { InstanceOf } from '@lapis-lang/lapis-js';
+import { data, behavior, relation, query } from '@lapis-lang/lapis-js';
+
+const Point = data(() => ({
+    Point2D: { x: Number, y: Number }
+})).ops(/* ... */);
+
+type PointInstance = InstanceOf<typeof Point>;
+// => data record type with x, y fields
+
+const Stream = behavior(() => ({
+    head: Number,
+    tail: Object
+})).ops(/* ... */);
+
+type StreamInstance = InstanceOf<typeof Stream>;
+// => observer interface with head, tail observations
+```
+
+`Relation` and `Query` follow the same pattern — `Relation` is built on `data` and `Query` on `behavior`, so `InstanceOf` resolves through the same mechanism.
 
 ### Conditional Conformance
 

@@ -9,11 +9,11 @@
  */
 
 import { behavior, satisfies } from '../../index.mjs';
-import { Foldable } from '../protocols/index.mjs';
+import type { InstanceOf } from '../../index.mjs';
+import { Foldable, Monoid } from '../protocols/index.mjs';
 
-type MonoidLike = { Identity: unknown; combine: (a: unknown, b: unknown) => unknown };
 type LazySetSelf = { has: (e: unknown) => boolean; size: number };
-type FoldMapOpts = { monoid: MonoidLike; f: (v: unknown) => unknown; elements: unknown[] };
+type FoldMapOpts = { monoid: InstanceOf<typeof Monoid>; f: (v: unknown) => unknown; elements: unknown[] };
 
 const LazySet = behavior(({ T }) => ({
     [satisfies]: [Foldable],
@@ -47,7 +47,7 @@ const LazySet = behavior(({ T }) => ({
         _: ({ has, size: _size }: LazySetSelf, opts: FoldMapOpts) =>
             opts.elements.reduce(
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                (acc: any, e: unknown) => has(e) ? opts.monoid.combine(acc, opts.f(e)) : acc,
+                (acc: any, e: unknown) => has(e) ? opts.monoid.combine.call(acc, opts.f(e)) : acc,
                 opts.monoid.Identity
             )
     })
