@@ -209,14 +209,28 @@ const p1 = Point.Point2D({ x: 10, y: 20 });  // Named arguments
 const p2 = Point.Point2D(10, 20);             // Positional arguments
 ```
 
-Both forms are fully type-checked by TypeScript. Passing arguments of the wrong type in either form is a compile-time error for variants whose fields are all primitive types (`Number`, `String`, `Boolean`, etc.):
+Both forms are type-checked by TypeScript, but with an important difference in strength:
+
+- The **named form** provides full per-field type checking at compile time for all variants.
+- The **positional form** provides a weaker, best-effort check. Each argument is checked against the *union* of all field types in the spec, not its specific per-position type. This means:
+  - For a single-primitive-type spec (`{ x: Number, y: Number }`), the overload is `(...args: number[])` and wrong types are caught at compile time.
+  - For a mixed-primitive spec (`{ name: String, age: Number }`), the overload is `(...args: string | number[])`, so transposed arguments like `Ctor(42, 'Alice')` are **not** a compile-time error.
+  - If any field is recursive (`Family`), parameterized (`T`, `U`, …), or a predicate function, the entire overload widens to `(...args: unknown[])` and **all** positional type errors are only caught at runtime.
 
 ```ts
+// All-number spec: compile-time error ✓
 Point.Point2D('a', 'b'); // TS error: string not assignable to number
-Point.Point2D(1, 2, 3);  // runtime error only: rest-param overload, no arity check
+
+// Mixed-primitive spec: no compile-time error for transposed args
+const Person = data(() => ({ Make: { name: String, age: Number } }));
+Person.Make(42, 'Alice'); // NOT a TS error — both in (string | number)[]
+
+// Recursive spec: entire overload becomes unknown[], no compile-time checks
+const List = data(({ Family }) => ({ Cons: { head: Number, tail: Family } }));
+List.Cons('bad', List.Nil); // NOT a TS error
 ```
 
-For variants that include **recursive** (`Family`) or **parameterized** (`T`, `U`, …) fields, the positional overload accepts `unknown` for those argument positions and type errors are only caught at runtime. This is a fundamental TypeScript limitation: recursive ADT types are approximated across multiple layers to avoid infinite instantiation, and the positional overload cannot thread that approximation into individual argument types without causing overload resolution failures. Use the named-argument form if you want compile-time checking on those field positions.
+Use the named-argument form whenever per-field type safety matters.
 
 If you attempt to construct a variant with missing or extra fields, or with fields of the wrong type, a `TypeError` is thrown at runtime.
 

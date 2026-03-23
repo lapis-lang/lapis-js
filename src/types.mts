@@ -144,12 +144,18 @@ export type VariantSpec = Record<string, unknown>;
 type IsEmpty<T> = keyof T extends never ? true : false;
 
 /**
- * The union of all primitive field value types for a given spec.
- * Used to type the positional constructor overload.
+ * Rest-parameter type for the positional variant constructor overload.
  *
- * `Self` is fixed to `unknown` so that recursive (`FamilyRef`/`SelfRef`) fields
- * collapse to `unknown` — keeping the positional overload permissive for
- * recursive variants while still enforcing concrete types for primitive ones.
+ * Resolves to an array of the union of all field value types, with `Self`
+ * fixed to `unknown`. Builtin primitives (`Number`, `String`, etc.) resolve
+ * to their concrete types (`number`, `string`, etc.); all other field kinds —
+ * recursive (`Family`/`SelfRef`), type-parameter (`T`, `U`, …), and predicate
+ * functions — resolve to `unknown`.
+ *
+ * Because `unknown` absorbs any union (`unknown | string ≡ unknown`), a spec
+ * that contains even one non-primitive field produces `unknown[]`, making the
+ * entire positional overload permissive. Compile-time type checking therefore
+ * only takes effect when **every** field in the spec is a builtin primitive.
  */
 type PositionalArgs<Spec extends VariantSpec> = FieldValues<Spec, unknown>[keyof Spec & string][];
 
