@@ -299,14 +299,14 @@ export function validateTypeSpec(
     // Handle structured object-literal guards: { key1: Guard1, key2: Guard2, ... }
     // This is distinct from the ObjectConstructor guard (Object) which is a function.
     if (isObjectLiteral(spec)) {
-        if (typeof value !== 'object' || value === null) {
+        if (!isObjectLiteral(value)) {
             throw new TypeError(
-                `Operation '${opName}' expected ${context} a plain object, but got ${typeof value}`
+                `Operation '${opName}' expected ${context} a plain object, but got ${Array.isArray(value) ? 'Array' : value === null ? 'null' : typeof value}`
             );
         }
         const structuredSpec = spec as Record<string, TypeSpec>;
         for (const [fieldName, fieldGuard] of Object.entries(structuredSpec)) {
-            if (!(fieldName in (value as object))) {
+            if (!Object.prototype.hasOwnProperty.call(value, fieldName)) {
                 throw new TypeError(
                     `Operation '${opName}' expected ${context} to have field '${fieldName}'`
                 );

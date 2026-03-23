@@ -1703,7 +1703,7 @@ function createFoldOperation(
         // Only applies to the new structured object-literal form { key: Guard, ... };
         // primitive/constructor specs (Number, Function, etc.) are type-level annotations
         // and continue to be enforced via TypeScript alone, preserving contract ordering.
-        if (contractDepth === 0 && hasInput && args.length > 0 && isObjectLiteral(opSpecObj['in'])) {
+        if (contractDepth === 0 && hasInput && isObjectLiteral(opSpecObj['in'])) {
             validateTypeSpec(
                 args[0],
                 opSpecObj['in'] as Parameters<typeof validateTypeSpec>[1],
