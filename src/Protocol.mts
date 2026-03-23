@@ -179,12 +179,26 @@ export function isConditionalConformance(value: unknown): value is ConditionalCo
 export type ProtocolSpecEntry = ((handlers: Record<string, (...args: any[]) => unknown>) => Record<string | symbol, unknown>) & Record<string | symbol, unknown>;
 
 /**
- * A fold spec entry — produced by `fold(spec)` inside a `protocol()` callback.
- * Branded with `[op]: 'fold'` so TypeScript can infer which declaration keys are
- * fold operations and compute the instance-side shape automatically.
+ * A method-fold spec entry — produced by `fold(spec)` where `spec` includes an `in` key.
+ * Installed at runtime as a plain method: `instance.opName(other)`.
+ * `ProtocolOps` maps this to `(other: unknown) => unknown`.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type FoldSpecEntry = ProtocolSpecEntry & { readonly [op]: 'fold' } & { (handlers: Record<string, (...args: any[]) => unknown>): Record<string | symbol, unknown> & { readonly [op]: 'fold' } };
+export type MethodFoldSpecEntry = ProtocolSpecEntry & { readonly [op]: 'fold'; readonly _foldStyle: 'method' } & { (handlers: Record<string, (...args: any[]) => unknown>): Record<string | symbol, unknown> & { readonly [op]: 'fold'; readonly _foldStyle: 'method' } };
+
+/**
+ * A getter-fold spec entry — produced by `fold(spec)` where `spec` has NO `in` key.
+ * Installed at runtime as a getter: `instance.opName` returns a computed value.
+ * `ProtocolOps` maps this to `unknown` (not callable).
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type GetterFoldSpecEntry = ProtocolSpecEntry & { readonly [op]: 'fold'; readonly _foldStyle: 'getter' } & { (handlers: Record<string, (...args: any[]) => unknown>): Record<string | symbol, unknown> & { readonly [op]: 'fold'; readonly _foldStyle: 'getter' } };
+
+/**
+ * A fold spec entry — either a method fold (with `in`) or a getter fold (without `in`).
+ * Prefer {@link MethodFoldSpecEntry} or {@link GetterFoldSpecEntry} for precise inference.
+ */
+export type FoldSpecEntry = MethodFoldSpecEntry | GetterFoldSpecEntry;
 
 /**
  * An unfold spec entry — produced by `unfold(spec)` inside a `protocol()` callback.
@@ -205,14 +219,16 @@ export type MapSpecEntry = ProtocolSpecEntry & { readonly [op]: 'map' } & { (han
  * return type `R`.
  *
  * Mapping rules (string keys only — symbol keys like `[extend]` are excluded):
- * - `fold` entry  → `(other: unknown) => unknown`  (instance method)
- * - `unfold` entry → `unknown`                      (value / identity element)
- * - `map` entry   → `(f: unknown) => unknown`       (transform method)
+ * - method-`fold` entry (has `in`) → `(other: unknown) => unknown`
+ * - getter-`fold` entry (no `in`)  → `unknown`  (property, not callable)
+ * - `unfold` entry                 → `unknown`  (value / identity element)
+ * - `map` entry                    → `(f: unknown) => unknown`
  */
 type RawProtocolOps<R> =
-    { [K in keyof R & string as R[K] extends FoldSpecEntry   ? K : never]: (other: unknown) => unknown } &
-    { [K in keyof R & string as R[K] extends UnfoldSpecEntry ? K : never]: unknown } &
-    { [K in keyof R & string as R[K] extends MapSpecEntry    ? K : never]: (f: unknown) => unknown };
+    { [K in keyof R & string as R[K] extends { readonly [op]: 'fold'; readonly _foldStyle: 'method' } ? K : never]: (other: unknown) => unknown } &
+    { [K in keyof R & string as R[K] extends { readonly [op]: 'fold'; readonly _foldStyle: 'getter' } ? K : never]: unknown } &
+    { [K in keyof R & string as R[K] extends { readonly [op]: 'unfold' }                               ? K : never]: unknown } &
+    { [K in keyof R & string as R[K] extends { readonly [op]: 'map'    }                               ? K : never]: (f: unknown) => unknown };
 
 /**
  * Eagerly simplifies the intersection produced by {@link RawProtocolOps} into a
@@ -327,7 +343,9 @@ function extractWildcard(entry: Record<string | symbol, unknown>): ((...args: un
 /** Context passed to the `protocol()` declaration callback. */
 export interface ProtocolDeclContext {
     readonly Family: FamilyRefCallable;
-    readonly fold: (specObj: Record<string | symbol, unknown>) => FoldSpecEntry;
+    /** `fold` with `in` → method fold; `fold` without `in` → getter fold. */
+    readonly fold: <S extends Record<string | symbol, unknown>>(specObj: S) =>
+    S extends { in: unknown } ? MethodFoldSpecEntry : GetterFoldSpecEntry;
     readonly unfold: (specObj: Record<string | symbol, unknown>) => UnfoldSpecEntry;
     readonly map: (specObj: Record<string | symbol, unknown>) => MapSpecEntry;
     readonly merge: (...names: string[]) => Record<string | symbol, unknown>;
@@ -335,23 +353,14 @@ export interface ProtocolDeclContext {
 }
 
 /**
- * Declare a protocol — public overload with automatic inference.
- *
- * The callback return type `R` is inferred and the instance-side shape
- * `ProtocolOps<R>` (fold → method, unfold → value, map → transform) is
- * computed automatically from the fold/unfold/map entries.  Symbol keys
- * like `[extend]` are excluded.
- *
- * An explicit type parameter is still accepted for edge cases where the
- * automatic inference is insufficient.
+ * Declare a protocol — the callback return type `R` is inferred and the
+ * instance-side shape `ProtocolOps<R>` (fold → method, unfold → value,
+ * map → transform) is computed automatically.  Symbol keys like `[extend]`
+ * are excluded from the computed shape.
  */
 export function protocol<R extends Record<string | symbol, unknown>>(
     callback: (ctx: ProtocolDeclContext) => R
 ): ProtocolLike<ProtocolOps<R>>;
-/**
- * Declare a protocol — back-compat overload: if a single explicit type
- * parameter is provided and it is NOT the default `unknown`, use it directly.
- */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function protocol(callback: (ctx: ProtocolDeclContext) => Record<string | symbol, unknown>): ProtocolLike<any> {
     // Extract type param names from the callback signature

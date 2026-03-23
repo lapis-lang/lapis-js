@@ -6,14 +6,14 @@ export { TypeArgsSymbol, FamilyRefSymbol, aux } from './Data.mjs';
 export type { FamilyMarker, FoldCtxSymbolKeys } from './Data.mjs';
 export { protocol } from './Protocol.mjs';
 export { satisfies } from './operations.mjs';
-export type { ProtocolLike, ProtocolEntry, ConditionalConformance, ProtocolDeclContext, FoldSpecEntry, UnfoldSpecEntry, MapSpecEntry, ProtocolOps } from './Protocol.mjs';
+export type { ProtocolLike, ProtocolEntry, ConditionalConformance, ProtocolDeclContext, FoldSpecEntry, MethodFoldSpecEntry, GetterFoldSpecEntry, UnfoldSpecEntry, MapSpecEntry, ProtocolOps } from './Protocol.mjs';
 export { op, spec, operations, history, sort } from './operations.mjs';
 export { DeclBrand, isSort } from './types.mjs';
 export { unfold, fold, map, merge } from './ops.mjs';
 export type { UnfoldDef, FoldDef, MapDef, MergeDef } from './ops.mjs';
 export { behavior } from './Behavior.mjs';
 
-// ---- Unified InstanceOf / StaticOf -----------------------------------------
+// ---- InstanceOf -------------------------------------------------------------
 
 import type { ProtocolLike } from './Protocol.mjs';
 import type { InstanceOf as DataInstanceOf } from './ops.mjs';

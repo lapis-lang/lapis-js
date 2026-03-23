@@ -3157,11 +3157,12 @@ Protocol operation kinds map to TypeScript types as follows:
 
 | Protocol kind | Example declaration                  | Instance-side type              |
 |---------------|--------------------------------------|---------------------------------|
-| `fold`        | `combine: fold({ in: Family, out: Family })` | `(other: unknown) => unknown`   |
+| `fold` (with `in`)    | `combine: fold({ in: Family, out: Family })` | `(other: unknown) => unknown` — instance method |
+| `fold` (no `in`)      | `size: fold({ out: Number })`        | `unknown` — computed getter property |
 | `unfold`      | `Identity: unfold({ out: Family })` | `unknown`                       |
 | `map`         | `fmap: map({ out: Family })`        | `(f: unknown) => unknown`       |
 
-Symbol-keyed entries in the declaration (such as `[extend]` for protocol inheritance) are excluded from the resolved type.
+Within a `protocol()` declaration, `in` presence is the discriminant: `fold({ out: X })` declares a getter contract; `fold({ in: Y, out: X })` declares a method contract. `ProtocolOps` reflects this declared contract. Note that within `.ops()` implementations, handler arity is the authoritative runtime signal — a handler with more than one argument is installed as a method even when `in` is absent from the spec — and `in` can also be inherited from a parent protocol. `ProtocolOps` does not inspect implementations.
 
 A typical use-case is writing generic functions that accept any conforming value:
 

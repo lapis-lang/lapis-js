@@ -10,7 +10,8 @@
 
 import { behavior, satisfies } from '../../index.mjs';
 import type { InstanceOf } from '../../index.mjs';
-import { Functor, Foldable, Monoid } from '../protocols/index.mjs';
+import { Functor, Foldable } from '../protocols/index.mjs';
+import type { Monoid } from '../protocols/index.mjs';
 
 type LazyMapSelf = { lookup: (k: unknown) => unknown; has: (k: unknown) => boolean; size: number };
 type FoldMapOpts = { monoid: InstanceOf<typeof Monoid>; f: (v: unknown) => unknown; keys: unknown[] };
