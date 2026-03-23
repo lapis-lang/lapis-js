@@ -53,7 +53,7 @@ const Either = data(({ L, R }) => ({
     }),
 
     // ── Foldable (fold only Right values) ─────────────────────────────────
-    foldMap: fold({ in: Object, out: Object })({
+    foldMap: fold({ in: { monoid: Object, f: Function }, out: Object })({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         Left(_ctx: unknown, opts: any)  { return opts.monoid.Identity; },
         // eslint-disable-next-line @typescript-eslint/no-explicit-any

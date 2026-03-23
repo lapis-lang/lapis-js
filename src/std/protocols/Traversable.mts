@@ -16,10 +16,10 @@ const Traversable = protocol(({ fold }) => ({
     [extend]: [Foldable, Functor],
     // traverse({ applicative, f }) maps each element through f: A → F B
     // and reassembles the structure inside the applicative F.
-    // `in: Object`  — the options bundle { applicative, f }.
+    // `in: { applicative, f }` — the options bundle with typed fields.
     // `out: Object` — the result is F(Structure(B)), an applicative-wrapped value,
     //                 not a bare Family instance.
-    traverse: fold({ in: Object, out: Object })
+    traverse: fold({ in: { applicative: Object, f: Function }, out: Object })
 }));
 
 export { Traversable };

@@ -34,7 +34,7 @@ const NonEmpty = data(({ Family, T }) => ({
     }),
 
     // ── Foldable ─────────────────────────────────────────────────────────
-    foldMap: fold({ in: Object, out: Object })({
+    foldMap: fold({ in: { monoid: Object, f: Function }, out: Object })({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         Singleton({ value }: any, opts: any)  { return opts.f(value); },
         // eslint-disable-next-line @typescript-eslint/no-explicit-any

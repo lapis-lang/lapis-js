@@ -1652,7 +1652,17 @@ function createBehaviorInstance(
 
 
                         if (hasInput) {
+                            const foldInSpec = foldOp.spec['in'];
+                            const hasStructuredIn = isObjectLiteral(foldInSpec);
                             return function (...params: unknown[]) {
+                                if (hasStructuredIn) {
+                                    validateTypeSpec(
+                                        params[0],
+                                        foldInSpec as Parameters<typeof validateTypeSpec>[1],
+                                        prop,
+                                        'input of type'
+                                    );
+                                }
                                 return executeFold(
                                     foldTarget as Record<string, unknown>,
                                     observerMap, handler, params, foldIsHisto,

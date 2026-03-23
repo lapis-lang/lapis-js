@@ -715,7 +715,9 @@ The spec (first argument to `fold()`, `unfold()`, or `map()`) is an **object lit
 
 When provided, the spec can contain:
 
-- `in`: The input guard for parameters: validated at runtime for both fold and unfold operations
+- `in`: The input guard for parameters: validated at runtime for both fold and unfold operations. Two forms are supported:
+  - **Scalar guard** — a single constructor or type marker (e.g. `in: Number`, `in: Object`, `in: Family`). Validated at call time for unfold; used as a type annotation for fold (handler arity is the runtime signal).
+  - **Structured object-literal guard** — a plain object mapping field names to guards (e.g. `in: { monoid: Object, f: Function }`). Validated at call time for fold **and** unfold — the caller-supplied argument must be a plain object with every declared key present and each value matching its guard.
 - `out`: The return guard: **only validated at runtime for fold operations**; on unfold operations it carries no runtime enforcement
 
 **Why `out` is not checked on unfold:** fold handlers are *user code* that returns a value: the framework validates it against `out` because the handler could return the wrong type. Unfold handlers, by contrast, never return the ADT/behavior instance directly; they return either `null` or a plain fields object (e.g. `{ head: n, tail: n-1 }`), and the framework constructs the actual output instance itself. The output type is therefore a structural guarantee enforced by construction, not something a handler can violate. Stating `out: Family` or `out: Self` on an unfold is documentation of intent only.
@@ -1131,7 +1133,7 @@ The parameter is threaded through the entire structure, allowing each level to u
 **Key points for parameterized folds:**
 
 - Fold operations accept **at most one input parameter**
-- **Getter vs method is determined by handler arity**: if any handler declares more than one argument (e.g., `Cons({ head, tail }, val)`), the fold is installed as an instance method; otherwise it is a getter. `spec.in` is *not* what controls this, it is optional and used only for documentation/type hints.
+- **Getter vs method is determined by handler arity**: if any handler declares more than one argument (e.g., `Cons({ head, tail }, val)`), the fold is installed as an instance method; otherwise it is a getter. `spec.in` is *not* what controls this. For scalar guards (`in: Number`, `in: Object`, etc.) it is optional documentation. For **object-literal guards** (`in: { key: Guard, ... }`), the argument is validated at runtime: the caller must supply a plain object with every declared key present and each value matching its guard.
 - For recursive ADTs, `Family` fields become **partially applied functions** that accept the input parameter
 - Handler signature for singleton variants: `Variant({}, inputArg) => result`
 - Handler signature for structured variants: `Variant({ field1, field2, ... }, inputArg) => result`
@@ -1158,6 +1160,30 @@ const List = data(({ Family, T }) => ({
 const NumList = List({ T: Number });
 const nums = NumList.Cons(1, NumList.Cons(2, NumList.Nil));
 const result = nums.append(3);  // Returns NumList instance, not generic List
+```
+
+**Structured input guards** — use an object-literal `in` spec to require a named options bag. Each declared key is validated at call time; missing or wrong-typed keys throw a `TypeError` that names the offending field:
+
+```ts
+const Shape = data(() => ({
+    Circle: { radius: Number },
+    Rect:   { width: Number, height: Number }
+})).ops(({ fold }) => ({
+    scale: fold({ in: { factor: Number, offset: Number }, out: Number })({
+        Circle({ radius }, opts) {
+            const { factor, offset } = opts as { factor: number; offset: number };
+            return radius * factor + offset;
+        },
+        Rect({ width, height }, opts) {
+            const { factor, offset } = opts as { factor: number; offset: number };
+            return (width + height) * factor + offset;
+        }
+    })
+}));
+
+Shape.Circle({ radius: 3 }).scale({ factor: 2, offset: 1 }); // 7
+Shape.Circle({ radius: 3 }).scale({ factor: 2 });             // TypeError: expected field 'offset'
+Shape.Circle({ radius: 3 }).scale(42);                        // TypeError: expected a plain object
 ```
 
 **Wildcard handlers with parameterized folds:**
