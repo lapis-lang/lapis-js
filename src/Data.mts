@@ -55,8 +55,8 @@ import {
 
 import type { DataADTWithParams, DataInstance, DataDeclParams, VariantKeys, SpecValue, FamilyRef, SelfRef, SortRef, TypeParamRef, DeclBrand } from './types.mjs';
 import { isSort } from './types.mjs';
-import type { FoldDef, InstanceOf, ContractCallbacks } from './ops.mjs';
-import { fold as foldOp, unfold as unfoldOp, map as mapOp, merge as mergeOp } from './ops.mjs';
+import type { FoldDef, InstanceOf, ContractCallbacks, ExpandAliases } from './ops.mjs';
+import { fold as foldOp, unfold as unfoldOp, map as mapOp, merge as mergeOp, getAliases } from './ops.mjs';
 
 import {
     type ProtocolEntry,
@@ -358,7 +358,7 @@ type DataOpsContext<D> = {
 export type DataStructure<D> = DataADTWithParams<D> & {
     ops<O extends Record<string, unknown>>(
         opsFn: (ctx: DataOpsContext<D>) => O
-    ): DataADTWithParams<D & O>;
+    ): DataADTWithParams<D & O & ExpandAliases<O>>;
 };
 
 // ---- Main entry point -------------------------------------------------------
@@ -410,7 +410,7 @@ function attachOpsMethod<D extends Record<string, unknown>>(
 ): void {
     (ADT as DataStructure<D>).ops = function ops<O extends Record<string, unknown>>(
         opsFn: (ctx: DataOpsContext<D>) => O
-    ): DataADTWithParams<D & O> {
+    ): DataADTWithParams<D & O & ExpandAliases<O>> {
         // Build the context: type params + Family + operations
         const ctx = {
             fold: foldOp as DataFoldFn<D>,
@@ -452,7 +452,7 @@ function attachOpsMethod<D extends Record<string, unknown>>(
             rawADT
         );
 
-        return ADT as DataADTWithParams<D & O>;
+        return ADT as DataADTWithParams<D & O & ExpandAliases<O>>;
     };
 }
 
@@ -2062,6 +2062,19 @@ function createFoldOperation(
     };
 
     installOperation(ADT.prototype, opName, foldImpl, !hasInput && !hasExtraParams);
+
+    // Install any aliases declared via .as(...)
+    const foldAliases = getAliases(opDef);
+    if (foldAliases?.length) {
+        const isGetter = !hasInput && !hasExtraParams;
+        for (const aliasName of foldAliases) {
+            assertCamelCase(aliasName, 'Fold alias');
+            if (ADT._getTransformer(aliasName) !== undefined)
+                throw new Error(`Fold alias '${aliasName}' conflicts with existing operation '${aliasName}'`);
+            ADT._registerTransformer(aliasName, transformer, false, variants);
+            installOperation(ADT.prototype, aliasName, foldImpl, isGetter);
+        }
+    }
 }
 
 // ---- Unfold helpers ---------------------------------------------------------
@@ -2312,6 +2325,21 @@ function createUnfoldOperation(
 
 
     installUnfoldImpl(ADT, variants, opName, cases, opSpecObj, protocols);
+
+    // Install any aliases declared via .as(...)
+    const unfoldAliases = getAliases(opDef);
+    if (unfoldAliases?.length) {
+        const transformer = ADT._getTransformer(opName);
+        if (transformer) {
+            for (const aliasName of unfoldAliases) {
+                assertPascalCase(aliasName, 'Unfold alias');
+                if (ADT._getTransformer(aliasName) !== undefined)
+                    throw new Error(`Unfold alias '${aliasName}' conflicts with existing operation '${aliasName}'`);
+                ADT._registerTransformer(aliasName, transformer, false, variants);
+                (ADT as Record<string, unknown>)[aliasName] = (ADT as Record<string, unknown>)[opName];
+            }
+        }
+    }
 }
 
 // ---- Map implementation factory ---------------------------------------------
@@ -2468,6 +2496,18 @@ function createMapOperation(
     );
 
     installOperation(ADT.prototype, opName, mapImpl, !hasExtraParams);
+
+    // Install any aliases declared via .as(...)
+    const mapAliases = getAliases(opDef);
+    if (mapAliases?.length) {
+        for (const aliasName of mapAliases) {
+            assertCamelCase(aliasName, 'Map alias');
+            if (ADT._getTransformer(aliasName) !== undefined)
+                throw new Error(`Map alias '${aliasName}' conflicts with existing operation '${aliasName}'`);
+            ADT._registerTransformer(aliasName, transformer, false, variants);
+            installOperation(ADT.prototype, aliasName, mapImpl, !hasExtraParams);
+        }
+    }
 }
 
 // ---- Map-map fusion ---------------------------------------------------------

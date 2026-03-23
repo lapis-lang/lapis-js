@@ -25,6 +25,32 @@
 import { op, spec, operations as operationsSymbol } from './operations.mjs';
 import type { SpecValue, ObserverInputValue } from './types.mjs';
 
+// ---- Alias symbol -----------------------------------------------------------
+
+/**
+ * Symbol used by `.as()` to store alias names on fold/unfold/map def objects.
+ * Consumed at install time by createFoldOperation, createUnfoldOperation,
+ * createMapOperation (Data.mts) and attachBehaviorOpsMethod (Behavior.mts).
+ */
+export const aliasesSymbol: unique symbol = Symbol('lapis.aliases');
+export type AliasesSymbol = typeof aliasesSymbol;
+
+/**
+ * Interface wrapper for alias names added by `.as()`. Declared as an interface
+ * (not a type alias) so TypeScript's declaration emitter references it by name
+ * rather than expanding the `[aliasesSymbol]` key inline — same workaround as
+ * `DataADTDeclBrand` in types.mts for
+ * {@link https://github.com/microsoft/TypeScript/issues/37888}.
+ */
+export interface HasAliases<A extends string> {
+    readonly [aliasesSymbol]: readonly A[];
+}
+
+/** Returns the alias names stored by `.as()` on a fold/unfold/map def, or `undefined` if none. */
+export function getAliases(opDef: unknown): readonly string[] | undefined {
+    return (opDef as Record<symbol, unknown>)[aliasesSymbol] as readonly string[] | undefined;
+}
+
 // ---- Type helpers -----------------------------------------------------------
 
 /**
@@ -36,17 +62,74 @@ export type InstanceOf<C> = SpecValue<C, never>;
 
 // ---- Return types -----------------------------------------------------------
 
+/**
+ * Interface base for unfold operation defs. Declared as an **interface** so
+ * TypeScript's declaration emitter always references it by name — never
+ * inlining `[op]`/`[spec]` unique-symbol keys into `.d.ts` files (TS4023
+ * workaround, same technique as `DataADTDeclBrand` in types.mts).
+ */
+export interface UnfoldDefBase<S> {
+    readonly [op]: 'unfold';
+    readonly [spec]: S;
+    as<A extends string>(...aliases: A[]): UnfoldDefBase<S> & HasAliases<A>;
+}
+
 /** The type returned by `unfold(spec)(handlers)`. */
-export type UnfoldDef<S, H> =
-    { readonly [op]: 'unfold'; readonly [spec]: S } & H;
+export type UnfoldDef<S, H> = UnfoldDefBase<S> & H;
+
+/**
+ * Interface base for fold operation defs. Declared as an **interface** so
+ * TypeScript's declaration emitter always references it by name — never
+ * inlining `[op]`/`[spec]` unique-symbol keys into `.d.ts` files (TS4023
+ * workaround, same technique as `DataADTDeclBrand` in types.mts).
+ */
+export interface FoldDefBase<S> {
+    readonly [op]: 'fold';
+    readonly [spec]: S;
+    as<A extends string>(...aliases: A[]): FoldDefBase<S> & HasAliases<A>;
+}
 
 /** The type returned by `fold(spec)(handlers)`. */
-export type FoldDef<S, H> =
-    { readonly [op]: 'fold'; readonly [spec]: S } & H;
+export type FoldDef<S, H> = FoldDefBase<S> & H;
+
+/**
+ * Interface base for map operation defs. Declared as an **interface** so
+ * TypeScript's declaration emitter always references it by name — never
+ * inlining `[op]`/`[spec]` unique-symbol keys into `.d.ts` files (TS4023
+ * workaround, same technique as `DataADTDeclBrand` in types.mts).
+ */
+export interface MapDefBase<S> {
+    readonly [op]: 'map';
+    readonly [spec]: S;
+    as<A extends string>(...aliases: A[]): MapDefBase<S> & HasAliases<A>;
+}
 
 /** The type returned by `map(spec)(handlers)`. */
-export type MapDef<S, H> =
-    { readonly [op]: 'map'; readonly [spec]: S } & H;
+export type MapDef<S, H> = MapDefBase<S> & H;
+
+// ---- Alias expansion type ---------------------------------------------------
+
+/**
+ * Expands aliases declared via `.as()` in an ops object into additional keys
+ * typed identically to their canonical operation.
+ *
+ * Values in the expanded entries resolve to `FoldDefBase<S>`, `UnfoldDefBase<S>`,
+ * or `MapDefBase<S>` — interfaces that TypeScript always emits by name rather
+ * than inlining `[op]`/`[spec]` unique symbols. This avoids TS4023.
+ */
+export type ExpandAliases<O> = O & {
+    // Iterate over every key K in the ops object O.
+    // The `as` clause re-maps each key: if the value O[K] carries HasAliases<A>
+    // (i.e. .as() was called on it), emit the alias string(s) A as new keys;
+    // otherwise drop the key with `never` so only aliased ops contribute entries.
+    readonly [K in keyof O as (O[K] extends HasAliases<infer A> ? A : never)]:
+    // For each alias key, resolve the value type back to the base operation
+    // (FoldDefBase<S> | UnfoldDefBase<S> | MapDefBase<S>) by stripping the
+    // HasAliases<string> intersection that .as() appended. This keeps the
+    // emitted declaration free of the [aliasesSymbol] unique-symbol key,
+    // avoiding TS4023 errors when declaration files are generated.
+    O[K] extends (infer Base) & HasAliases<string> ? Base : O[K]
+};
 
 /** The type returned by `merge(opNames)`. */
 export type MergeDef<N extends readonly string[] = readonly string[]> =
@@ -174,8 +257,15 @@ export interface ContractCallbacks {
 export function unfold<S extends Record<string | symbol, unknown>>(s: S & ContractCallbacks) {
     return <H extends Record<string, UnfoldHandlerFn<S>>>(
         handlers: H
-    ): UnfoldDef<S, H> =>
-        Object.assign({ [op]: 'unfold' as const, [spec]: s }, handlers) as UnfoldDef<S, H>;
+    ): UnfoldDef<S, H> => {
+        const def = Object.assign({ [op]: 'unfold' as const, [spec]: s }, handlers) as UnfoldDef<S, H>;
+        Object.defineProperty(def, 'as', {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            value(...aliases: string[]) { (this as any)[aliasesSymbol] = aliases; return this; },
+            enumerable: false, configurable: true, writable: true
+        });
+        return def;
+    };
 }
 
 // ---- fold -------------------------------------------------------------------
@@ -218,8 +308,15 @@ export function unfold<S extends Record<string | symbol, unknown>>(s: S & Contra
 export function fold<S extends Record<string | symbol, unknown>>(s: S & ContractCallbacks) {
     return <H extends Record<string, FoldHandlerFn<S>>>(
         handlers: H
-    ): FoldDef<S, H> =>
-        Object.assign({ [op]: 'fold' as const, [spec]: s }, handlers) as FoldDef<S, H>;
+    ): FoldDef<S, H> => {
+        const def = Object.assign({ [op]: 'fold' as const, [spec]: s }, handlers) as FoldDef<S, H>;
+        Object.defineProperty(def, 'as', {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            value(...aliases: string[]) { (this as any)[aliasesSymbol] = aliases; return this; },
+            enumerable: false, configurable: true, writable: true
+        });
+        return def;
+    };
 }
 
 // ---- map --------------------------------------------------------------------
@@ -257,8 +354,15 @@ export function map<S extends Record<string | symbol, unknown> & { inverse?: str
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return <H extends Record<string, (x: any, ...args: any[]) => unknown>>(
         handlers: H
-    ): MapDef<S, H> =>
-        Object.assign({ [op]: 'map' as const, [spec]: s }, handlers) as MapDef<S, H>;
+    ): MapDef<S, H> => {
+        const def = Object.assign({ [op]: 'map' as const, [spec]: s }, handlers) as MapDef<S, H>;
+        Object.defineProperty(def, 'as', {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            value(...aliases: string[]) { (this as any)[aliasesSymbol] = aliases; return this; },
+            enumerable: false, configurable: true, writable: true
+        });
+        return def;
+    };
 }
 
 // ---- merge ------------------------------------------------------------------

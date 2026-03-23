@@ -20,103 +20,93 @@ const Bool = data(({ Family: _Family }) => ({
     [satisfies]: [Eq, Ord, BoundedLattice],
     False: {},
     True:  {}
-})).ops(({ fold, unfold, Family }) => {
+})).ops(({ fold, unfold, Family }) => ({
 
-    // Shared fold bodies — aliased by and≡meet and or≡join
-     
-    const _meet = fold({ in: Family, out: Family })({
-        // @ts-expect-error — binary fold handler
+    // ── From — wrap a native boolean ─────────────────────────────────────
+    From: unfold({ in: Boolean, out: Family })({
+        True:  (v: boolean) => v ? {} : null,
+        False: (v: boolean) => v ? null : {}
+    }),
+
+    // ── Eq ───────────────────────────────────────────────────────────────
+    equals: fold({
+        in: Family,
+        out: Boolean
+    })({
+    // @ts-expect-error -- arity
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        False({}, other: any) { return this.constructor === other?.constructor; },
+        // @ts-expect-error -- arity
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        False(_: any, _other: any) { return this;  },
-        // @ts-expect-error — binary fold handler
+        True({},  other: any) { return this.constructor === other?.constructor; }
+    }),
+
+    // ── Ord (False < True) ───────────────────────────────────────────────
+    compare: fold({
+        in: Family,
+        out: Number
+    })({
+    // @ts-expect-error -- arity
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        False({}, other: any) { return this.constructor === other?.constructor ? 0 : -1; },
+        // @ts-expect-error -- arity
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        True(_: any, other: any)   { return other; }
-    });
+        True({},  other: any) { return this.constructor === other?.constructor ? 0 :  1; }
+    }),
 
-     
-    const _join = fold({ in: Family, out: Family })({
-        // @ts-expect-error — binary fold handler
+    // ── Lattice / Boolean algebra ─────────────────────────────────────────
+    // meet ≡ and: False AND x = False,  True AND x = x
+    meet: fold({ in: Family, out: Family })({
+        // @ts-expect-error -- arity
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        False(_: any, other: any)  { return other; },
-        // @ts-expect-error — binary fold handler
+        False({}, _other: any) { return this;  },
+        // @ts-expect-error -- arity
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        True(_: any, _other: any)  { return this;  }
-    });
-
-    return {
-
-        // ── From — wrap a native boolean ─────────────────────────────────────
-        From: unfold({ in: Boolean, out: Family })({
-            True:  (v: boolean) => v ? {} : null,
-            False: (v: boolean) => v ? null : {}
-        }),
-
-        // ── Eq ───────────────────────────────────────────────────────────────
-        equals: fold({
-            in: Family,
-            out: Boolean
-        })({
-        // @ts-expect-error — binary fold handler
+        True({},  other: any)  { return other; }
+    }).as('and'),
+    // join ≡ or:  False OR x = x,  True OR x = True
+    join: fold({ in: Family, out: Family })({
+        // @ts-expect-error -- arity
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            False(_: any, other: any) { return this.constructor === other?.constructor; },
-            // @ts-expect-error — binary fold handler
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            True(_: any, other: any)  { return this.constructor === other?.constructor; }
-        }),
-
-        // ── Ord (False < True) ───────────────────────────────────────────────
-        compare: fold({
-            in: Family,
-            out: Number
-        })({
-        // @ts-expect-error — binary fold handler
+        False({}, other: any)  { return other; },
+        // @ts-expect-error -- arity
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            False(_: any, other: any) { return this.constructor === other?.constructor ? 0 : -1; },
-            // @ts-expect-error — binary fold handler
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            True(_: any, other: any)  { return this.constructor === other?.constructor ? 0 :  1; }
-        }),
+        True({},  _other: any) { return this;  }
+    }).as('or'),
 
-        // ── Lattice / Boolean algebra (shared declarations) ──────────────────
-        // join ≡ or:  False OR x = x,  True OR x = True
-        join: _join,  or: _join,
-        // meet ≡ and: False AND x = False,  True AND x = x
-        meet: _meet,  and: _meet,
+    // ── BoundedLattice ───────────────────────────────────────────────────
+    Top: unfold({ out: Family })({
+        True: () => ({})
+    }),
+    Bottom: unfold({ out: Family })({
+        False: () => ({})
+    }),
 
-        // ── BoundedLattice ───────────────────────────────────────────────────
-        Top: unfold({ out: Family })({
-            True: () => ({})
-        }),
-        Bottom: unfold({ out: Family })({
-            False: () => ({})
-        }),
-
-        // ── Boolean algebra (derived operations) ─────────────────────────────
-        // not — unary complement: False.not = True, True.not = False
-        not: fold({ out: Family })({
-            False() { return Family.True;  },
-            True()  { return Family.False; }
-        }),
-        // xor — exclusive or: F xor x = x,  T xor x = ¬x
-        xor: fold({ in: Family, out: Family })({
-        // @ts-expect-error — binary fold handler
+    // ── Boolean algebra (derived operations) ─────────────────────────────
+    // not — unary complement: False.not = True, True.not = False
+    not: fold({ out: Family })({
+        False() { return Family.True;  },
+        True()  { return Family.False; }
+    }),
+    // xor — exclusive or: F xor x = x,  T xor x = ¬x
+    xor: fold({ in: Family, out: Family })({
+    // @ts-expect-error -- arity
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        False({}, other: any)  { return other;     },
+        // @ts-expect-error -- arity
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            False(_: any, other: any)  { return other;     },
-            // @ts-expect-error — binary fold handler
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            True(_: any, other: any)   { return other.not; }
-        }),
-        // implies — logical implication: F → x = T,  T → x = x
-        implies: fold({ in: Family, out: Family })({
-        // @ts-expect-error — binary fold handler
+        True({},  other: any)  { return other.not; }
+    }),
+    // implies — logical implication: F → x = T,  T → x = x
+    implies: fold({ in: Family, out: Family })({
+    // @ts-expect-error -- arity
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        False({}, _other: any) { return Family.True;  },
+        // @ts-expect-error -- arity
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            False(_: any, _other: any) { return Family.True;  },
-            // @ts-expect-error — binary fold handler
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            True(_: any, other: any)   { return other; }
-        })
+        True({},  other: any)  { return other; }
+    })
 
-    };
-});
+}));
 
 export { Bool };

@@ -35,6 +35,7 @@ there is an emphasis on the Bird-Meertens Formalism (BMF) (Squiggol) of making p
   - [Wildcard Handlers](#wildcard-handlers)
   - [Exhaustiveness Checking](#exhaustiveness-checking)
   - [Multiple Fold Operations](#multiple-fold-operations)
+  - [Operation Aliases (.as())](#operation-aliases-as)
   - [Structural Recursion](#structural-recursion)
   - [Parameterized Folds](#parameterized-folds)
   - [Course-of-Values Recursion (Histomorphisms)](#course-of-values-recursion-histomorphisms)
@@ -985,6 +986,51 @@ const Color = data(() => ({
 console.log(Color.Red.toHex); // '#FF0000'
 console.log(Color.Red.toRGB); // 'rgb(255, 0, 0)'
 ```
+
+### Operation Aliases (`.as()`)
+
+Any `fold`, `unfold`, or `map` definition can be given one or more additional names by chaining `.as(...names)` after the handler object. The aliases are installed alongside the canonical name and behave identically at runtime.
+
+```ts
+const Lattice = data(() => ({ False: {}, True: {} }))
+    .ops(({ fold, unfold, Family }) => ({
+        // Canonical: instance.meet(other)  — Alias: instance.and(other)
+        meet: fold({ in: Family, out: Family })({
+            // @ts-expect-error -- arity
+            False({}, _other: any) { return this; },
+            // @ts-expect-error -- arity
+            True({},  other: any)  { return other; }
+        }).as('and'),
+
+        // Canonical: instance.join(other)  — Alias: instance.or(other)
+        join: fold({ in: Family, out: Family })({
+            // @ts-expect-error -- arity
+            False({}, other: any)  { return other; },
+            // @ts-expect-error -- arity
+            True({},  _other: any) { return this; }
+        }).as('or'),
+
+        // Canonical: Lattice.FromBool(v)  — Aliases: Lattice.Of(v), Lattice.From(v)
+        FromBool: unfold({ in: Boolean, out: Family })({
+            True:  (v: boolean) => v ? {} : null,
+            False: (v: boolean) => v ? null : {}
+        }).as('Of', 'From')
+    }));
+
+// All three names refer to the same operation:
+Lattice.True.meet(Lattice.False);   // false  (canonical)
+Lattice.True.and(Lattice.False);    // false  (alias)
+
+Lattice.FromBool(true);             // Lattice.True  (canonical)
+Lattice.Of(true);                   // Lattice.True  (alias)
+Lattice.From(true);                 // Lattice.True  (alias)
+```
+
+**Rules:**
+- `fold` / `map` aliases follow the same camelCase requirement as canonical names.
+- `unfold` aliases follow the same PascalCase requirement as canonical names.
+- Multiple aliases can be provided: `.as('a', 'b', 'c')`.
+- Aliases work for `fold`, `unfold`, and `map` operations in both `data()` and `behavior()` declarations.
 
 ### Structural Recursion
 

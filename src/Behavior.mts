@@ -52,8 +52,8 @@ import {
 } from './contracts.mjs';
 
 import type { BehaviorADT, BehaviorADTWithParams, BehaviorDeclParams, ObserverInputValue, SpecValue, SelfRef, SelfRefCallable } from './types.mjs';
-import type { UnfoldDef, ContractCallbacks } from './ops.mjs';
-import { fold as foldOp, unfold as unfoldOp, map as mapOp, merge as mergeOp } from './ops.mjs';
+import type { UnfoldDef, ContractCallbacks, ExpandAliases } from './ops.mjs';
+import { fold as foldOp, unfold as unfoldOp, map as mapOp, merge as mergeOp, getAliases } from './ops.mjs';
 
 // ---- Internal symbols -------------------------------------------------------
 
@@ -71,6 +71,10 @@ const BehaviorSymbol: unique symbol = Symbol('Behavior'),
 
     /** Stores raw unfold handler sets on a behavior type (for inheritance) */
     UnfoldOpsSymbol: unique symbol = Symbol('UnfoldOps'),
+
+    /** Maps canonical unfold name → alias names[], so that aliases are inherited
+     *  without being stored as full entries in UnfoldOpsSymbol (which enforces PascalCase). */
+    UnfoldAliasMapSymbol: unique symbol = Symbol('UnfoldAliasMap'),
 
     /** Tracks merge operation names on a behavior type (for protocol conformance) */
     MergeOpsSymbol: unique symbol = Symbol('MergeOps');
@@ -131,6 +135,7 @@ type BehaviorTypeLike = {
     [FoldOpsSymbol]?: Map<string, FoldOpEntry>;
     [MapOpsSymbol]?: Map<string, MapOpEntry>;
     [UnfoldOpsSymbol]?: Map<string, UnfoldOpEntry>;
+    [UnfoldAliasMapSymbol]?: Map<string, readonly string[]>;
     [MergeOpsSymbol]?: Set<string>;
     _call?: AnyFn;
     prototype?: object;
@@ -217,7 +222,7 @@ function validateAuxFoldReferences(behaviorType: BehaviorTypeLike): void {
 export type BehaviorStructure<D> = BehaviorADTWithParams<D> & {
     ops<O extends Record<string, unknown>>(
         opsFn: (ctx: BehaviorOpsContext<D>) => O
-    ): BehaviorADTWithParams<D & O>;
+    ): BehaviorADTWithParams<D & O & ExpandAliases<O>>;
 };
 
 /**
@@ -517,6 +522,7 @@ export function behavior<D extends Record<string, unknown>>(
         const parentUnfoldOps = ptBT[UnfoldOpsSymbol] as Map<string, UnfoldOpEntry> | undefined;
         if (parentUnfoldOps) {
             const childUnfoldNames = new Set(declarations.unfold.map(d => d.name));
+            const parentAliasMap = ptBT[UnfoldAliasMapSymbol] as Map<string, readonly string[]> | undefined;
             for (const [opName, { spec: opSpec, handlers }] of parentUnfoldOps) {
                 if (childUnfoldNames.has(opName)) continue;
                 const allCovered =
@@ -529,6 +535,24 @@ export function behavior<D extends Record<string, unknown>>(
                         opSpec,
                         handlers
                     );
+                    // Also copy property descriptors for any aliases of this
+                    // canonical unfold so the child behavior exposes them too.
+                    const aliases = parentAliasMap?.get(opName);
+                    if (aliases?.length) {
+                        const canonDesc = Object.getOwnPropertyDescriptor(callableBehavior, opName);
+                        const bt = callableBehavior as unknown as Record<symbol, unknown>;
+                        let childAliasMap = bt[UnfoldAliasMapSymbol] as Map<string, readonly string[]> | undefined;
+                        if (!childAliasMap) { childAliasMap = new Map(); bt[UnfoldAliasMapSymbol] = childAliasMap; }
+                        childAliasMap.set(opName, aliases);
+                        for (const aliasName of aliases) {
+                            if (canonDesc)
+                                Object.defineProperty(callableBehavior, aliasName, canonDesc);
+                            else {
+                                (callableBehavior as Record<string, unknown>)[aliasName] =
+                                    (callableBehavior as Record<string, unknown>)[opName];
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -690,7 +714,7 @@ function attachBehaviorOpsMethod<D extends Record<string, unknown>>(
 ): void {
     (BehaviorType as BehaviorStructure<D>).ops = function behaviorOps<O extends Record<string, unknown>>(
         opsFn: (ctx: BehaviorOpsContext<D>) => O
-    ): BehaviorADTWithParams<D & O> {
+    ): BehaviorADTWithParams<D & O & ExpandAliases<O>> {
         const ctx = {
             fold: foldOp,
             unfold: unfoldOp as BehaviorUnfoldFn<D>,
@@ -743,6 +767,28 @@ function attachBehaviorOpsMethod<D extends Record<string, unknown>>(
                     mergedSpec, handlers as Record<string, AnyFn>,
                     protocols
                 );
+                // Install any aliases declared via .as(...)
+                const unfoldAliases = getAliases(entrySpec);
+                if (unfoldAliases?.length) {
+                    const descriptor = Object.getOwnPropertyDescriptor(BehaviorType, entryName);
+                    // Store canonical → aliases in a dedicated map so the
+                    // inheritance loop can copy descriptors without routing
+                    // alias names through addUnfoldOperation.
+                    const bt = BehaviorType as unknown as Record<symbol, unknown>;
+                    let aliasMap = bt[UnfoldAliasMapSymbol] as Map<string, readonly string[]> | undefined;
+                    if (!aliasMap) { aliasMap = new Map(); bt[UnfoldAliasMapSymbol] = aliasMap; }
+                    aliasMap.set(entryName, unfoldAliases);
+                    for (const aliasName of unfoldAliases) {
+                        assertPascalCase(aliasName, 'Unfold alias');
+                        if (getBehaviorOpNames(BehaviorType).has(aliasName) ||
+                            Object.prototype.hasOwnProperty.call(BehaviorType, aliasName))
+                            throw new Error(`Unfold alias '${aliasName}' conflicts with existing operation '${aliasName}'`);
+                        if (descriptor)
+                            Object.defineProperty(BehaviorType, aliasName, descriptor);
+                        else
+                            (BehaviorType as Record<string, unknown>)[aliasName] = (BehaviorType as Record<string, unknown>)[entryName];
+                    }
+                }
             } else if (opKind === 'fold') {
                 const {
                     [op as unknown as string]: _op,
@@ -783,7 +829,7 @@ function attachBehaviorOpsMethod<D extends Record<string, unknown>>(
             BehaviorType
         );
 
-        return BehaviorType as BehaviorADTWithParams<D & O>;
+        return BehaviorType as BehaviorADTWithParams<D & O & ExpandAliases<O>>;
     };
 }
 
