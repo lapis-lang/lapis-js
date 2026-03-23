@@ -11,7 +11,7 @@
 import { protocol } from '../../index.mjs';
 
 const Foldable = protocol(({ fold }) => ({
-    foldMap: fold({ in: Object, out: Object })
+    foldMap: fold({ in: { monoid: Object, f: Function }, out: Object })
 }));
 
 export { Foldable };

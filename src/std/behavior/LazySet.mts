@@ -10,8 +10,7 @@
 
 import { behavior, satisfies } from '../../index.mjs';
 import type { InstanceOf } from '../../index.mjs';
-import { Foldable } from '../protocols/index.mjs';
-import type { Monoid } from '../protocols/index.mjs';
+import { Foldable, type Monoid } from '../protocols/index.mjs';
 
 type LazySetSelf = { has: (e: unknown) => boolean; size: number };
 type FoldMapOpts = { monoid: InstanceOf<typeof Monoid>; f: (v: unknown) => unknown; elements: unknown[] };
@@ -43,7 +42,7 @@ const LazySet = behavior(({ T }) => ({
     }),
     // ── Foldable: foldMap ────────────────────────────────────────────────
     // Fold over all elements with a monoid (requires elements to be passed)
-    foldMap: fold({ in: Object, out: Object })({
+    foldMap: fold({ in: { monoid: Object, f: Function, elements: Array }, out: Object })({
         // @ts-expect-error — fold handler with typed opts param
         _: ({ has, size: _size }: LazySetSelf, opts: FoldMapOpts) =>
             opts.elements.reduce(

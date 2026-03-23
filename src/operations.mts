@@ -277,17 +277,50 @@ export function createSelf(): SelfRefCallable {
  * Unified type validation for spec checking.
  * Used by both input and return type validation.
  *
+ * Accepts either a single `TypeSpec` guard or a `Record<string, TypeSpec>` object-literal
+ * guard (same form used in ADT variant field declarations). When an object-literal guard
+ * is supplied, the runtime value must be a plain object and each declared field is
+ * validated recursively.
+ *
  * @param value - The value to validate
- * @param spec - The expected type specification
+ * @param spec - The expected type specification or structured object-literal guard
  * @param opName - Operation name for error messages
  * @param context - Context for error message ("input of type" or "to return")
  */
 export function validateTypeSpec(
     value: unknown,
-    spec: TypeSpec,
+    spec: TypeSpec | Record<string, TypeSpec>,
     opName: string,
     context: string
 ): void {
+    // TypeParam markers (e.g. T, U) are erased at runtime — skip validation.
+    if (isTypeParam(spec)) return;
+
+    // Handle structured object-literal guards: { key1: Guard1, key2: Guard2, ... }
+    // This is distinct from the ObjectConstructor guard (Object) which is a function.
+    if (isObjectLiteral(spec)) {
+        if (typeof value !== 'object' || value === null) {
+            throw new TypeError(
+                `Operation '${opName}' expected ${context} a plain object, but got ${typeof value}`
+            );
+        }
+        const structuredSpec = spec as Record<string, TypeSpec>;
+        for (const [fieldName, fieldGuard] of Object.entries(structuredSpec)) {
+            if (!(fieldName in (value as object))) {
+                throw new TypeError(
+                    `Operation '${opName}' expected ${context} to have field '${fieldName}'`
+                );
+            }
+            validateTypeSpec(
+                (value as Record<string, unknown>)[fieldName],
+                fieldGuard,
+                opName,
+                `${context} (field '${fieldName}')`
+            );
+        }
+        return;
+    }
+
     // Handle primitive constructors first - check both pass and fail cases
     if (spec === Number) {
         if (typeof value !== 'number') {

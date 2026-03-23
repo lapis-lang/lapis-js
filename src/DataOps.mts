@@ -38,7 +38,7 @@ export interface Transformer {
     /** Output type specification for validation */
     outSpec?: TypeSpec;
     /** Input type specification (for unfold and parameterized fold operations) */
-    inSpec?: TypeSpec;
+    inSpec?: TypeSpec | Record<string, TypeSpec>;
     /** Generator function for unfold operations */
     generator?: (seed: unknown) => unknown;
     /** Get constructor transform for fold operations */
@@ -66,7 +66,7 @@ export interface Transformer {
 export interface TransformerConfig {
     name: string;
     outSpec?: TypeSpec;
-    inSpec?: TypeSpec;
+    inSpec?: TypeSpec | Record<string, TypeSpec>;
     generator?: (seed: unknown) => unknown;
     getCtorTransform?: (ctor: VariantConstructorLike) => HandlerFn;
     getParamTransform?: (paramName: string) => HandlerFn | undefined;
@@ -203,7 +203,7 @@ export function createFoldTransformer(
     name: string,
     handlers: Record<string, HandlerFn>,
     outSpec?: TypeSpec,
-    inSpec?: TypeSpec
+    inSpec?: TypeSpec | Record<string, TypeSpec>
 ): Transformer {
     const transformer = createTransformer({
         name,

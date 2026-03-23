@@ -43,7 +43,7 @@ const Maybe = data(({ Family: _Family, T }) => ({
 
     // ── Foldable ─────────────────────────────────────────────────────────
     // Called as: instance.foldMap({ monoid, f })
-    foldMap: fold({ in: Object, out: Object })({
+    foldMap: fold({ in: { monoid: Object, f: Function }, out: Object })({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         Nothing(_ctx: unknown, opts: any)      { return opts.monoid.Identity; },
         // eslint-disable-next-line @typescript-eslint/no-explicit-any

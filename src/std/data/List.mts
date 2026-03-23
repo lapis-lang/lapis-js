@@ -113,7 +113,7 @@ const List = data(({ Family, T }) => ({
 
     // ── Foldable ─────────────────────────────────────────────────────────
     // Called as: list.foldMap({ monoid, f })
-    foldMap: fold({ in: Object, out: Object })({
+    foldMap: fold({ in: { monoid: Object, f: Function }, out: Object })({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         Nil(_ctx: unknown, opts: any)        { return opts.monoid.Identity; },
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -126,7 +126,7 @@ const List = data(({ Family, T }) => ({
     // Called as: list.traverse({ applicative, f })
     // Returns applicative.Pure(Nil) for Nil;
     // For Cons, traverses head and tail and lifts combination.
-    traverse: fold({ in: Object, out: Object })({
+    traverse: fold({ in: { applicative: Object, f: Function }, out: Object })({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         Nil(_ctx: unknown, opts: any) {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any

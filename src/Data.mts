@@ -1698,6 +1698,20 @@ function createFoldOperation(
         // histo caches all key on the original node identity.
         const self: object = (this as Record<symbol, unknown>)[FoldContextOriginSymbol] as object ?? this;
 
+        // Validate structured input spec at the outermost call only (contractDepth === 0
+        // means we have not yet entered any recursive fold for this operation).
+        // Only applies to the new structured object-literal form { key: Guard, ... };
+        // primitive/constructor specs (Number, Function, etc.) are type-level annotations
+        // and continue to be enforced via TypeScript alone, preserving contract ordering.
+        if (contractDepth === 0 && hasInput && args.length > 0 && isObjectLiteral(opSpecObj['in'])) {
+            validateTypeSpec(
+                args[0],
+                opSpecObj['in'] as Parameters<typeof validateTypeSpec>[1],
+                opName,
+                'input of type'
+            );
+        }
+
         if (canCache) {
             if (dagCacheDepth === 0)
                 dagCache = new WeakMap();

@@ -31,7 +31,7 @@ const Tree = data(({ T }) => ({
 
     // ── Foldable ─────────────────────────────────────────────────────────
     // foldMap({ monoid, f }): maps each node value to monoid, combines depth-first
-    foldMap: fold({ in: Object, out: Object })({
+    foldMap: fold({ in: { monoid: Object, f: Function }, out: Object })({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         Leaf({ value }: any, opts: any) {
             return opts.f(value);
