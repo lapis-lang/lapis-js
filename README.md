@@ -209,6 +209,15 @@ const p1 = Point.Point2D({ x: 10, y: 20 });  // Named arguments
 const p2 = Point.Point2D(10, 20);             // Positional arguments
 ```
 
+Both forms are fully type-checked by TypeScript. Passing arguments of the wrong type in either form is a compile-time error for variants whose fields are all primitive types (`Number`, `String`, `Boolean`, etc.):
+
+```ts
+Point.Point2D('a', 'b'); // TS error: string not assignable to number
+Point.Point2D(1, 2, 3);  // runtime error only: rest-param overload, no arity check
+```
+
+For variants that include **recursive** (`Family`) or **parameterized** (`T`, `U`, …) fields, the positional overload accepts `unknown` for those argument positions and type errors are only caught at runtime. This is a fundamental TypeScript limitation: recursive ADT types are approximated across multiple layers to avoid infinite instantiation, and the positional overload cannot thread that approximation into individual argument types without causing overload resolution failures. Use the named-argument form if you want compile-time checking on those field positions.
+
 If you attempt to construct a variant with missing or extra fields, or with fields of the wrong type, a `TypeError` is thrown at runtime.
 
 ```ts

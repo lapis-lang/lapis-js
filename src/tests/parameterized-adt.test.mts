@@ -78,6 +78,7 @@ describe('Parameterized ADTs', () => {
 
         // Runtime type safety: string not valid for Number Maybe
         assert.throws(
+            // @ts-expect-error intentionally wrong type to test runtime guard
             () => NumMaybe.Just({ value: 'bad' }),
             /Field 'value' must be a Number/
         );
@@ -291,6 +292,7 @@ describe('Parameterized ADTs', () => {
 
         // Runtime type safety for Number Maybe
         assert.throws(
+            // @ts-expect-error intentionally wrong type to test runtime guard
             () => NumMaybe.Just({ value: 'string' }),
             /Field 'value' must be a Number/
         );

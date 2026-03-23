@@ -142,6 +142,7 @@ describe('Type-parameter propagation at the type level (issue #126)', () => {
 
         // Runtime type safety
         assert.throws(
+            // @ts-expect-error intentionally wrong type to test runtime guard
             () => StrNumDict.Entry({ key: 42, value: 'bad' }),
             /Field 'key' must be a String/
         );

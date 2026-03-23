@@ -119,42 +119,49 @@ describe('IORequest', () => {
     describe('Guard validation', () => {
         it('should reject Read with non-string path', () => {
             assert.throws(() => {
+                // @ts-expect-error intentionally wrong type to test runtime guard
                 IORequest.Read({ path: 42 });
             }, TypeError);
         });
 
         it('should reject Write with non-string message', () => {
             assert.throws(() => {
+                // @ts-expect-error intentionally wrong type to test runtime guard
                 IORequest.Write({ message: true });
             }, TypeError);
         });
 
         it('should reject Done with non-number code', () => {
             assert.throws(() => {
+                // @ts-expect-error intentionally wrong type to test runtime guard
                 IORequest.Done({ code: 'zero' });
             }, TypeError);
         });
 
         it('should reject Timer with non-number ms', () => {
             assert.throws(() => {
+                // @ts-expect-error intentionally wrong type to test runtime guard
                 IORequest.Timer({ ms: '1000' });
             }, TypeError);
         });
 
         it('should reject OpenStream with non-string path', () => {
             assert.throws(() => {
+                // @ts-expect-error intentionally wrong type to test runtime guard
                 IORequest.OpenStream({ path: 123 });
             }, TypeError);
         });
 
         it('should reject ReadChunk with non-string handle', () => {
             assert.throws(() => {
+                // @ts-expect-error intentionally wrong type to test runtime guard
                 IORequest.ReadChunk({ handle: 42 });
             }, TypeError);
         });
 
         it('should reject CloseStream with non-string handle', () => {
             assert.throws(() => {
+                // @ts-expect-error intentionally wrong type to test runtime guard
                 IORequest.CloseStream({ handle: true });
             }, TypeError);
         });
@@ -247,24 +254,28 @@ describe('IOResponse', () => {
     describe('Guard validation', () => {
         it('should reject ReadResult with non-string content', () => {
             assert.throws(() => {
+                // @ts-expect-error intentionally wrong type to test runtime guard
                 IOResponse.ReadResult({ content: 42 });
             }, TypeError);
         });
 
         it('should reject HttpResult with non-number status', () => {
             assert.throws(() => {
+                // @ts-expect-error intentionally wrong type to test runtime guard
                 IOResponse.HttpResult({ status: 'ok', body: '' });
             }, TypeError);
         });
 
         it('should reject StreamOpened with non-string handle', () => {
             assert.throws(() => {
+                // @ts-expect-error intentionally wrong type to test runtime guard
                 IOResponse.StreamOpened({ handle: 123 });
             }, TypeError);
         });
 
         it('should reject StreamChunk with non-string data', () => {
             assert.throws(() => {
+                // @ts-expect-error intentionally wrong type to test runtime guard
                 IOResponse.StreamChunk({ data: 42 });
             }, TypeError);
         });

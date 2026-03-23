@@ -143,6 +143,16 @@ export type VariantSpec = Record<string, unknown>;
 /** True when a VariantSpec has no fields (i.e. the variant is a singleton). */
 type IsEmpty<T> = keyof T extends never ? true : false;
 
+/**
+ * The union of all primitive field value types for a given spec.
+ * Used to type the positional constructor overload.
+ *
+ * `Self` is fixed to `unknown` so that recursive (`FamilyRef`/`SelfRef`) fields
+ * collapse to `unknown` — keeping the positional overload permissive for
+ * recursive variants while still enforcing concrete types for primitive ones.
+ */
+type PositionalArgs<Spec extends VariantSpec> = FieldValues<Spec, unknown>[keyof Spec & string][];
+
 // ---- Variant constructor type -----------------------------------------------
 
 /**
@@ -163,8 +173,7 @@ export type VariantCtor<
     ? VariantInstance<Name> & Ops
     : {
         (fields: FieldValues<Spec, Self>): VariantInstance<Name, FieldValues<Spec, Self>> & Ops;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (...args: any[]): VariantInstance<Name, FieldValues<Spec, Self>> & Ops;
+        (...args: PositionalArgs<Spec>): VariantInstance<Name, FieldValues<Spec, Self>> & Ops;
         new(fields: FieldValues<Spec, Self>): VariantInstance<Name, FieldValues<Spec, Self>> & Ops;
         readonly variantName: Name;
         readonly spec: Spec;
