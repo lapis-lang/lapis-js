@@ -773,12 +773,16 @@ function attachBehaviorOpsMethod<D extends Record<string, unknown>>(
                     const descriptor = Object.getOwnPropertyDescriptor(BehaviorType, entryName);
                     // Store canonical → aliases in a dedicated map so the
                     // inheritance loop can copy descriptors without routing
-                    // camelCase alias names through addUnfoldOperation.
+                    // alias names through addUnfoldOperation.
                     const bt = BehaviorType as unknown as Record<symbol, unknown>;
                     let aliasMap = bt[UnfoldAliasMapSymbol] as Map<string, readonly string[]> | undefined;
                     if (!aliasMap) { aliasMap = new Map(); bt[UnfoldAliasMapSymbol] = aliasMap; }
                     aliasMap.set(entryName, unfoldAliases);
                     for (const aliasName of unfoldAliases) {
+                        assertPascalCase(aliasName, 'Unfold alias');
+                        if (getBehaviorOpNames(BehaviorType).has(aliasName) ||
+                            Object.prototype.hasOwnProperty.call(BehaviorType, aliasName))
+                            throw new Error(`Unfold alias '${aliasName}' conflicts with existing operation '${aliasName}'`);
                         if (descriptor)
                             Object.defineProperty(BehaviorType, aliasName, descriptor);
                         else

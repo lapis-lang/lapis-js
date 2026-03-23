@@ -2069,6 +2069,8 @@ function createFoldOperation(
         const isGetter = !hasInput && !hasExtraParams;
         for (const aliasName of foldAliases) {
             assertCamelCase(aliasName, 'Fold alias');
+            if (ADT._getTransformer(aliasName) !== undefined)
+                throw new Error(`Fold alias '${aliasName}' conflicts with existing operation '${aliasName}'`);
             ADT._registerTransformer(aliasName, transformer, false, variants);
             installOperation(ADT.prototype, aliasName, foldImpl, isGetter);
         }
@@ -2331,6 +2333,8 @@ function createUnfoldOperation(
         if (transformer) {
             for (const aliasName of unfoldAliases) {
                 assertPascalCase(aliasName, 'Unfold alias');
+                if (ADT._getTransformer(aliasName) !== undefined)
+                    throw new Error(`Unfold alias '${aliasName}' conflicts with existing operation '${aliasName}'`);
                 ADT._registerTransformer(aliasName, transformer, false, variants);
                 (ADT as Record<string, unknown>)[aliasName] = (ADT as Record<string, unknown>)[opName];
             }
@@ -2498,6 +2502,8 @@ function createMapOperation(
     if (mapAliases?.length) {
         for (const aliasName of mapAliases) {
             assertCamelCase(aliasName, 'Map alias');
+            if (ADT._getTransformer(aliasName) !== undefined)
+                throw new Error(`Map alias '${aliasName}' conflicts with existing operation '${aliasName}'`);
             ADT._registerTransformer(aliasName, transformer, false, variants);
             installOperation(ADT.prototype, aliasName, mapImpl, !hasExtraParams);
         }

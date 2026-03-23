@@ -8,7 +8,8 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { data, behavior, extend, fold, unfold, map, aliasesSymbol } from '../index.mjs';
+import { data, behavior, extend, fold, unfold, map } from '../index.mjs';
+import { aliasesSymbol } from '../ops.mjs';
 
 // ---------------------------------------------------------------------------
 // Data — fold aliases
@@ -141,7 +142,7 @@ describe('ops aliasing — behavior unfold .as()', () => {
         From: unfold({ in: Number, out: Self })({
             head: (n: number) => n,
             tail: (n: number) => n + 1
-        }).as('of')
+        }).as('Of')
     }));
 
     it('behavior canonical unfold is accessible', () => {
@@ -149,12 +150,12 @@ describe('ops aliasing — behavior unfold .as()', () => {
     });
 
     it('behavior unfold alias is accessible', () => {
-        assert.ok(typeof Stream.of === 'function', 'Stream.of should be a function');
+        assert.ok(typeof Stream.Of === 'function', 'Stream.Of should be a function');
     });
 
     it('behavior unfold alias produces same-shaped instance', () => {
         const s1 = Stream.From(0);
-        const s2 = Stream.of(0);
+        const s2 = Stream.Of(0);
         assert.ok(s1, 'From instance should exist');
         assert.ok(s2, 'of instance should exist');
         assert.strictEqual(s1.head, s2.head, 'head should match');
@@ -162,7 +163,7 @@ describe('ops aliasing — behavior unfold .as()', () => {
 
     it('alias property descriptor is identical to canonical', () => {
         const canonDesc = Object.getOwnPropertyDescriptor(Stream, 'From');
-        const aliasDesc  = Object.getOwnPropertyDescriptor(Stream, 'of');
+        const aliasDesc  = Object.getOwnPropertyDescriptor(Stream, 'Of');
         assert.ok(canonDesc, 'From descriptor should exist');
         assert.ok(aliasDesc,  'of descriptor should exist');
         assert.strictEqual(aliasDesc!.get ?? aliasDesc!.value,
@@ -172,16 +173,16 @@ describe('ops aliasing — behavior unfold .as()', () => {
         assert.strictEqual(aliasDesc!.configurable,  canonDesc!.configurable);
     });
 
-    it('alias is inherited by a sub-behavior (UnfoldOpsSymbol map entry copied)', () => {
-        // Verifies that the internal UnfoldOpsSymbol map carries the alias so
+    it('alias is inherited by a sub-behavior (UnfoldAliasMapSymbol entry copied)', () => {
+        // Verifies that the internal UnfoldAliasMapSymbol map carries the alias so
         // that behavior extension correctly re-installs it on the child type.
         const ChildStream = behavior(({ Self }) => ({
             [extend]: Stream
         }));
         assert.ok(typeof ChildStream.From === 'function', 'child should inherit canonical From');
-        assert.ok(typeof ChildStream.of   === 'function', 'child should inherit alias of');
+        assert.ok(typeof ChildStream.Of   === 'function', 'child should inherit alias Of');
         const s_canon = ChildStream.From(5);
-        const s_alias = ChildStream.of(5);
+        const s_alias = ChildStream.Of(5);
         assert.strictEqual(s_canon.head, s_alias.head, 'canonical and alias produce same head');
     });
 });
