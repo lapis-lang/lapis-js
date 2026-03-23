@@ -9,8 +9,8 @@ export { satisfies } from './operations.mjs';
 export type { ProtocolLike, ProtocolEntry, ConditionalConformance, ProtocolDeclContext, FoldSpecEntry, MethodFoldSpecEntry, GetterFoldSpecEntry, UnfoldSpecEntry, MapSpecEntry, ProtocolOps } from './Protocol.mjs';
 export { op, spec, operations, history, sort } from './operations.mjs';
 export { DeclBrand, isSort } from './types.mjs';
-export { unfold, fold, map, merge } from './ops.mjs';
-export type { UnfoldDef, FoldDef, MapDef, MergeDef } from './ops.mjs';
+export { unfold, fold, map, merge, aliasesSymbol } from './ops.mjs';
+export type { UnfoldDef, UnfoldDefBase, FoldDef, FoldDefBase, MapDef, MapDefBase, MergeDef, ExpandAliases, AliasesSymbol, HasAliases } from './ops.mjs';
 export { behavior } from './Behavior.mjs';
 
 // ---- InstanceOf -------------------------------------------------------------
