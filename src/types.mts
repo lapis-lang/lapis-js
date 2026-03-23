@@ -143,6 +143,22 @@ export type VariantSpec = Record<string, unknown>;
 /** True when a VariantSpec has no fields (i.e. the variant is a singleton). */
 type IsEmpty<T> = keyof T extends never ? true : false;
 
+/**
+ * Rest-parameter type for the positional variant constructor overload.
+ *
+ * Resolves to an array of the union of all field value types, with `Self`
+ * fixed to `unknown`. Builtin primitives (`Number`, `String`, etc.) resolve
+ * to their concrete types (`number`, `string`, etc.); all other field kinds —
+ * recursive (`Family`/`SelfRef`), type-parameter (`T`, `U`, …), and predicate
+ * functions — resolve to `unknown`.
+ *
+ * Because `unknown` absorbs any union (`unknown | string ≡ unknown`), a spec
+ * that contains even one non-primitive field produces `unknown[]`, making the
+ * entire positional overload permissive. Compile-time type checking therefore
+ * only takes effect when **every** field in the spec is a builtin primitive.
+ */
+type PositionalArgs<Spec extends VariantSpec> = FieldValues<Spec, unknown>[keyof Spec & string][];
+
 // ---- Variant constructor type -----------------------------------------------
 
 /**
@@ -163,8 +179,7 @@ export type VariantCtor<
     ? VariantInstance<Name> & Ops
     : {
         (fields: FieldValues<Spec, Self>): VariantInstance<Name, FieldValues<Spec, Self>> & Ops;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        (...args: any[]): VariantInstance<Name, FieldValues<Spec, Self>> & Ops;
+        (...args: PositionalArgs<Spec>): VariantInstance<Name, FieldValues<Spec, Self>> & Ops;
         new(fields: FieldValues<Spec, Self>): VariantInstance<Name, FieldValues<Spec, Self>> & Ops;
         readonly variantName: Name;
         readonly spec: Spec;

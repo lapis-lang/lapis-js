@@ -235,6 +235,7 @@ describe('Invariant Support', () => {
 
             // Field validation should fail first
             assert.throws(
+                // @ts-expect-error intentionally wrong type to test runtime guard
                 () => Point.Point2D({ x: 'not a number', y: 10 }),
                 {
                     name: 'TypeError',
@@ -259,6 +260,7 @@ describe('Invariant Support', () => {
 
             // Field validation fails, invariant never called
             try {
+                // @ts-expect-error intentionally wrong type to test runtime guard
                 Point.Point2D({ x: 'bad', y: 10 });
             } catch (e) {
                 // Expected field validation error

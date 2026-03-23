@@ -331,3 +331,54 @@ test('Positional arguments - different types', () => {
     assert.equal(m.bool, true);
     assert.equal(m.bigint, BigInt(999));
 });
+
+// ---- Compile-time regression: positional overload must not be `any[]` --------
+//
+// These @ts-expect-error assertions guard against the positional overload
+// regressing back to `(...args: any[])` (issue #154).  If the overload ever
+// widens to `any[]` again, TypeScript would stop reporting errors on the lines
+// below and the @ts-expect-error directives would themselves become errors,
+// causing the build to fail.
+//
+// The wrong-typed calls are also wrapped in assert.throws because they are
+// valid runtime errors (field guards reject the wrong types).
+
+test('Compile-time regression: positional overload is not any[] (issue #154)', () => {
+    const Point = data(() => ({
+        Point2D: { x: Number, y: Number }
+    }));
+
+    // Wrong primitive types: must be a TS compile-time error AND a runtime TypeError
+    assert.throws(() => {
+        // @ts-expect-error string is not assignable to number
+        Point.Point2D('a', 'b');
+    }, TypeError);
+
+    assert.throws(() => {
+        // @ts-expect-error string is not assignable to number
+        Point.Point2D('a', 2);
+    }, TypeError);
+
+    // Correct types: must NOT produce a TS error or throw at runtime
+    Point.Point2D(1, 2);
+    Point.Point2D({ x: 1, y: 2 });
+
+    const Mixed = data(() => ({
+        Item: { label: String, count: Number }
+    }));
+
+    // Mixed-primitive spec: (string|number)[] — transposed primitives are NOT a
+    // TS error (both values are in the union), but the runtime guard rejects them.
+    assert.throws(() => {
+        Mixed.Item(42, 'oops');
+    }, TypeError);
+
+    // A type entirely outside the union IS a TS compile-time error.
+    assert.throws(() => {
+        // @ts-expect-error boolean is not assignable to string | number
+        Mixed.Item(true, 1);
+    }, TypeError);
+
+    // Correct call: no TS error, no runtime throw
+    Mixed.Item('hello', 1);
+});
