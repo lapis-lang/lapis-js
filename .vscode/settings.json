@@ -10,5 +10,8 @@
         "*.mts": "${basename}.test.mts"
     },
     "typescript.tsdk": "node_modules\\typescript\\lib",
-    "js/ts.tsdk.path": "node_modules/typescript/lib"
+    "js/ts.tsdk.path": "node_modules/typescript/lib",
+    "chat.tools.terminal.autoApprove": {
+        "npm install": true
+    }
 }
