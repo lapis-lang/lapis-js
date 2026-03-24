@@ -93,6 +93,7 @@ there is an emphasis on the Bird-Meertens Formalism (BMF) (Squiggol) of making p
     - [Declaring Properties](#declaring-properties)
     - [Property Vocabulary](#property-vocabulary)
     - [Property Inheritance](#property-inheritance)
+    - [Automatic Law Checking](#automatic-law-checking)
   - [Protocols on Behavior Types](#protocols-on-behavior-types)
 - [Design by Contract](#design-by-contract)
   - [Assertions](#assertions)
@@ -3569,6 +3570,69 @@ const CommutativeMonoid = protocol(({ Family, fold, unfold }) => ({
 ```
 
 If the child does *not* redeclare the operation, the parent's spec (including its properties) is inherited wholesale.
+
+#### Automatic Law Checking
+
+When `properties` are declared on a **data** operation (via `data().ops()`), Lapis JS **automatically verifies** every declared law at `.ops()` call time against a small set of generated samples. No external test framework or manual property-test setup is required.
+
+```ts
+import { data } from '@lapis-lang/lapis-js';
+
+// ✔ Passes — addition is associative
+const Nat = data(({ Family }) => ({
+    Zero: {},
+    Succ: { pred: Family }
+})).ops(({ fold, Family }) => ({
+    add: fold({ in: Family, out: Family, properties: ['associative', 'commutative'] })({
+        Zero(_ctx, other) { return other; },
+        Succ({ pred }, other) { return Family.Succ({ pred: pred(other) }); }
+    })
+}));
+
+// ✘ Throws LawError at .ops() time — subtraction is not associative
+const Num = data(({ Family }) => ({ N: { v: Number } }))
+    .ops(({ fold, Family }) => ({
+        sub: fold({ in: Family, out: Family, properties: ['associative'] })({
+            N({ v }, b) { return Family.N({ v: v - b.v }); }
+        })
+    }));
+// LawError: Law 'associative' violated for operation 'sub' on ADT { N }.
+//   Counterexample: [{"v":0}, {"v":1}, {"v":2}]
+```
+
+**How it works:**
+
+1. After the transformer is registered, Lapis generates a small set of representative instances — singletons, primitive-field records (up to three value combinations per variant), and one shallow recursive sample per `Family`-field variant.
+2. Every declared law is tested against all relevant tuples of those samples.
+3. The first failing tuple causes a `LawError` to be thrown **before** `.ops()` returns, so a violating declaration never silently enters the module graph.
+
+**`LawError`** is a subclass of `Error` with three extra properties:
+
+| Property | Type | Description |
+|---|---|---|
+| `opName` | `string` | The operation whose law was violated |
+| `propertyName` | `string` | The property name that was falsified |
+| `counterexample` | `unknown[]` | The tuple of sample values that witness the violation |
+
+```ts
+import { LawError } from '@lapis-lang/lapis-js';
+
+try {
+    data(…).ops(…);
+} catch (e) {
+    if (e instanceof LawError) {
+        console.error(e.opName);        // 'sub'
+        console.error(e.propertyName); // 'associative'
+        console.error(e.counterexample); // [N(0), N(1), N(2)]
+    }
+}
+```
+
+**Skipped cases** — law checking is **not** performed for:
+- Behavior operations (`behavior().ops()`) — deferred to a future release.
+- Parametric ADTs where sample generation cannot produce concrete values (e.g. `Cons: { head: T, tail: Family }` where `T` is a type parameter). Only singletons that can be generated concretely are checked.
+- Operations without a `properties` array, or with an empty one.
+- Laws that require a companion element (`identity`, `absorbing`, `distributive`) or functor composition (`composition`) — these are deferred pending a dedicated companion-element API.
 
 ### Protocols on Behavior Types
 

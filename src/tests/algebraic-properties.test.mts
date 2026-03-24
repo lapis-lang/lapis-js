@@ -193,7 +193,7 @@ describe('properties on data() operations', () => {
             add: fold({ in: Family, out: Family, properties: ['associative', 'commutative'] })({
                 Zero(_ctx: any, other?: any): any { return other; },
                 Succ({ pred }: any, other?: any): any {
-                    return (Nat as unknown as Record<string, (...a: unknown[]) => unknown>).Succ({ pred: pred(other) });
+                    return Family.Succ({ pred: pred(other) });
                 }
             })
         }));

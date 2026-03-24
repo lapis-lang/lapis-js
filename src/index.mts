@@ -42,6 +42,9 @@ export { createObserver, composeObservers, composeMultipleObservers, createFoldO
 export { DemandsError, EnsuresError, InvariantError, AssertionError, assert, implies, iff } from './contracts.mjs';
 export type { ContractSpec } from './contracts.mjs';
 
+// Algebraic law enforcement exports
+export { LawError } from './laws.mjs';
+
 // Type exports
 export type { DataADT, DataADTWithParams, DataADTIsSort, DataADTDeclBrand, BehaviorADT, BehaviorADTWithParams, BehaviorADTDeclBrand, QueryADT, DataDeclParams, BehaviorDeclParams, Letter, SortLetter, CollectParams } from './types.mjs';
 export type { TypeSpec, FamilyRef, SelfRef, TypeParamRef, SortRef } from './types.mjs';
