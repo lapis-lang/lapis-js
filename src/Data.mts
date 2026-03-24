@@ -23,6 +23,8 @@ import {
     type TypeSpec
 } from './operations.mjs';
 
+import { generateSamples, checkOperationLaws } from './laws.mjs';
+
 import {
     checkDemands,
     checkEnsures,
@@ -288,13 +290,19 @@ type FoldInType<S> =
  * - For parametric folds (has `in`), receives an additional input argument.
  * - `this` is bound to the variant instance.
  *
- * `this` is typed as `DataInstance<D> & { [k: string | symbol]: any }`:
+ * `this` is typed as `DataInstance<D> & { constructor: ...; [k: string | symbol]: any }`:
  *  - Named variant fields (from CombinedVariantFieldAccess) are properly typed.
+ *  - `constructor` is typed as a callable returning `DataInstance<D>`, so
+ *    `this.constructor({ field: value })` compiles without a type cast.
  *  - Symbol-keyed access (e.g. `this[parent]`) and dynamic operation access resolve to `any`.
  *  - The intersection is assignable to `DataInstance<D>`, so `return this` compiles for `out: Family` folds.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type DataFoldHandlerThis<D> = DataInstance<D> & { [k: string | symbol]: any };
+
+type DataFoldHandlerThis<D> = DataInstance<D> & {
+    constructor: (...args: unknown[]) => DataInstance<D>;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    [k: string | symbol]: any;
+};
 
 type DataFoldHandlerForVariant<D, VariantSpec, S> =
     FoldInType<S> extends never
@@ -434,14 +442,27 @@ function attachOpsMethod<D extends Record<string, unknown>>(
         const opsDecl = parseDeclarationOps(opsObj);
         // Use the raw (un-proxied) ADT so parentADTMap / adtTransformers are keyed consistently.
         const rawADT = ((ADT as unknown as { _rawADT?: ADTLike })._rawADT ?? ADT) as unknown as ADTLike;
+        const ownVariants = getOwnVariantsFromADT(rawADT);
         createOperations(
             rawADT,
-            // Recover ownVariants from the ADT (they are enumerable properties that are variant-like)
-            getOwnVariantsFromADT(rawADT),
+            ownVariants,
             opsDecl,
             decl.typeParams,
             decl.protocols
         );
+
+        // Check algebraic laws for every operation that declares `properties`.
+        const registry = adtTransformers.get(rawADT as unknown as object);
+        if (registry) {
+            const allVariants = getAllVariantsFromADT(rawADT);
+            const samples = generateSamples(allVariants);
+            const variantNames = Object.keys(allVariants).join(', ');
+            const context = `ADT { ${variantNames} }`;
+            for (const [tOpName, transformer] of registry) {
+                if (transformer.properties && transformer.properties.size > 0)
+                    checkOperationLaws(tOpName, transformer, samples, context);
+            }
+        }
 
         // Validate protocol conformance and register unconditional conformances
         applyUnconditionalProtocols(
@@ -468,6 +489,43 @@ function getOwnVariantsFromADT(ADT: ADTLike): Record<string, unknown> {
         else if (typeof val === 'function' && (val as unknown as Record<symbol, unknown>)[IsVariantSymbol])
             variants[key] = val;
     }
+    return variants;
+}
+
+/**
+ * Collect all variants visible on `ADT` including those inherited from its
+ * `[extend]` parent chain (stored in `parentADTMap`).  Child variants take
+ * precedence over parent variants of the same name (consistent with how the
+ * delegation proxy resolves variant constructors at runtime).
+ *
+ * Inherited variants are re-wrapped as child-side instances (via
+ * {@link createChildVariant}) so that any operations installed on `ADT`'s
+ * prototype are reachable during law checking.
+ */
+function getAllVariantsFromADT(ADT: ADTLike): Record<string, unknown> {
+    const ownVars = getOwnVariantsFromADT(ADT);
+
+    // Collect parent-chain variant maps (root → nearest parent)
+    const parentChain: Record<string, unknown>[] = [];
+    let current: object | undefined = parentADTMap.get(ADT as unknown as object);
+    while (current) {
+        parentChain.push(getOwnVariantsFromADT(current as ADTLike));
+        current = parentADTMap.get(current) as object | undefined;
+    }
+
+    // Merge root-to-parent (earlier entries may be overwritten by nearer parents)
+    const inheritedParentVars: Record<string, unknown> = {};
+    for (const parentVars of parentChain.reverse())
+        Object.assign(inheritedParentVars, parentVars);
+
+    // Convert each inherited parent-side variant to a child-side variant so
+    // operations installed on ADT.prototype are in its prototype chain.
+    const variants: Record<string, unknown> = {};
+    for (const [name, parentVariant] of Object.entries(inheritedParentVars))
+        variants[name] = createChildVariant(ADT, name, parentVariant as VariantLike | SingletonInstance);
+
+    // Own variants are already child-side; they overwrite any inherited name
+    Object.assign(variants, ownVars);
     return variants;
 }
 
