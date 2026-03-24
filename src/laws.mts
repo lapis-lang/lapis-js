@@ -18,6 +18,7 @@
 import { isFamilyRefSpec } from './operations.mjs';
 import type { Transformer } from './DataOps.mjs';
 import { structuralEquals } from './utils.mjs';
+import { DemandsError } from './contracts.mjs';
 
 // ---- Error type -------------------------------------------------------------
 
@@ -195,6 +196,23 @@ function callUnary(a: unknown, opName: string): unknown {
     return (a as Record<string, unknown>)[opName];
 }
 
+/** Sentinel returned by {@link tryOp} when a {@link DemandsError} is thrown. */
+const SKIPPED: unique symbol = Symbol('skipped');
+
+/**
+ * Invoke `fn()` and return its result.
+ * - Returns {@link SKIPPED} when a {@link DemandsError} is thrown — the input
+ *   tuple is outside the operation's precondition domain and should be skipped.
+ * - Re-throws any other error so implementation bugs (TDZ `ReferenceError`,
+ *   missing handlers, etc.) are never silently swallowed.
+ */
+function tryOp(fn: () => unknown): unknown {
+    try { return fn(); } catch (e) {
+        if (e instanceof DemandsError) return SKIPPED;
+        throw e;
+    }
+}
+
 // ---- Law checking -----------------------------------------------------------
 
 function warnNoSamples(prop: string, opName: string): void {
@@ -207,10 +225,11 @@ function warnNoSamples(prop: string, opName: string): void {
  *
  * Throws {@link LawError} on the first counterexample found.
  *
- * **Error-tolerant:** If an operation call throws any error for a particular
- * tuple (precondition failure, TDZ reference, handler crash, etc.), that tuple
- * is silently skipped — an execution error is not a law violation. If *all*
- * tuples are filtered this way, a warning is emitted to `console.warn`.
+ * **Error-tolerant:** If a {@link DemandsError} (precondition not met) is thrown
+ * for a particular operation call, that tuple is skipped — the input is outside
+ * the operation's domain. All other errors are re-thrown so implementation bugs
+ * (e.g. TDZ `ReferenceError`, missing handlers) are never silently swallowed.
+ * If all tuples are skipped this way, a warning is emitted to `console.warn`.
  *
  * **Not checked here** (deferred to issue #168):
  * - `identity`, `absorbing`, `distributive` — inter-operation / companion-element laws.
@@ -246,11 +265,14 @@ export function checkOperationLaws(
                 for (const a of samples) {
                     for (const b of samples) {
                         for (const c of samples) {
-                            let ab: unknown, bc: unknown, abC: unknown, aBc: unknown;
-                            try { ab  = callBinary(a,  opName, b); } catch { continue; }
-                            try { bc  = callBinary(b,  opName, c); } catch { continue; }
-                            try { abC = callBinary(ab, opName, c); } catch { continue; }
-                            try { aBc = callBinary(a,  opName, bc); } catch { continue; }
+                            const ab = tryOp(() => callBinary(a, opName, b));
+                            if (ab === SKIPPED) continue;
+                            const bc = tryOp(() => callBinary(b, opName, c));
+                            if (bc === SKIPPED) continue;
+                            const abC = tryOp(() => callBinary(ab, opName, c));
+                            if (abC === SKIPPED) continue;
+                            const aBc = tryOp(() => callBinary(a, opName, bc));
+                            if (aBc === SKIPPED) continue;
                             checked++;
                             if (!structuralEquals(abC, aBc))
                                 throw new LawError(opName, 'associative', [a, b, c], context);
@@ -266,9 +288,10 @@ export function checkOperationLaws(
                 let checked = 0;
                 for (const a of samples) {
                     for (const b of samples) {
-                        let ab: unknown, ba: unknown;
-                        try { ab = callBinary(a, opName, b); } catch { continue; }
-                        try { ba = callBinary(b, opName, a); } catch { continue; }
+                        const ab = tryOp(() => callBinary(a, opName, b));
+                        if (ab === SKIPPED) continue;
+                        const ba = tryOp(() => callBinary(b, opName, a));
+                        if (ba === SKIPPED) continue;
                         checked++;
                         if (!structuralEquals(ab, ba))
                             throw new LawError(opName, 'commutative', [a, b], context);
@@ -282,8 +305,8 @@ export function checkOperationLaws(
                 if (!binaryFold) break;
                 let checked = 0;
                 for (const a of samples) {
-                    let aa: unknown;
-                    try { aa = callBinary(a, opName, a); } catch { continue; }
+                    const aa = tryOp(() => callBinary(a, opName, a));
+                    if (aa === SKIPPED) continue;
                     checked++;
                     if (!structuralEquals(aa, a))
                         throw new LawError(opName, 'idempotent', [a], context);
@@ -298,12 +321,13 @@ export function checkOperationLaws(
                 if (!unary) break;
                 let checked = 0;
                 for (const a of samples) {
-                    let b: unknown, bb: unknown;
-                    try { b = callUnary(a, opName); } catch { continue; }
+                    const b = tryOp(() => callUnary(a, opName));
+                    if (b === SKIPPED) continue;
                     // Skip if result is not an ADT instance that also supports this operation
                     if (typeof b !== 'object' || b === null) continue;
                     if (!(opName in (b as object))) continue;
-                    try { bb = callUnary(b, opName); } catch { continue; }
+                    const bb = tryOp(() => callUnary(b, opName));
+                    if (bb === SKIPPED) continue;
                     checked++;
                     if (!structuralEquals(bb, a))
                         throw new LawError(opName, 'involutory', [a], context);
@@ -318,8 +342,8 @@ export function checkOperationLaws(
                 if (!predicate) break;
                 let checked = 0;
                 for (const a of samples) {
-                    let result: unknown;
-                    try { result = callBinary(a, opName, a); } catch { continue; }
+                    const result = tryOp(() => callBinary(a, opName, a));
+                    if (result === SKIPPED) continue;
                     checked++;
                     if (result !== true)
                         throw new LawError(opName, 'reflexive', [a], context);
@@ -333,9 +357,10 @@ export function checkOperationLaws(
                 let checked = 0;
                 for (const a of samples) {
                     for (const b of samples) {
-                        let ab: unknown, ba: unknown;
-                        try { ab = callBinary(a, opName, b); } catch { continue; }
-                        try { ba = callBinary(b, opName, a); } catch { continue; }
+                        const ab = tryOp(() => callBinary(a, opName, b));
+                        if (ab === SKIPPED) continue;
+                        const ba = tryOp(() => callBinary(b, opName, a));
+                        if (ba === SKIPPED) continue;
                         checked++;
                         if (ab !== ba)
                             throw new LawError(opName, 'symmetric', [a, b], context);
@@ -350,9 +375,10 @@ export function checkOperationLaws(
                 let checked = 0;
                 for (const a of samples) {
                     for (const b of samples) {
-                        let ab: unknown, ba: unknown;
-                        try { ab = callBinary(a, opName, b); } catch { continue; }
-                        try { ba = callBinary(b, opName, a); } catch { continue; }
+                        const ab = tryOp(() => callBinary(a, opName, b));
+                        if (ab === SKIPPED) continue;
+                        const ba = tryOp(() => callBinary(b, opName, a));
+                        if (ba === SKIPPED) continue;
                         checked++;
                         // antisymmetric: R(a,b) ∧ R(b,a) → a ≡ b
                         if (ab && ba && !structuralEquals(a, b))
@@ -369,11 +395,13 @@ export function checkOperationLaws(
                 for (const a of samples) {
                     for (const b of samples) {
                         for (const c of samples) {
-                            let ab: unknown, bc: unknown, ac: unknown;
-                            try { ab = callBinary(a, opName, b); } catch { continue; }
-                            try { bc = callBinary(b, opName, c); } catch { continue; }
+                            const ab = tryOp(() => callBinary(a, opName, b));
+                            if (ab === SKIPPED) continue;
+                            const bc = tryOp(() => callBinary(b, opName, c));
+                            if (bc === SKIPPED) continue;
                             if (!ab || !bc) { checked++; continue; } // premise false → law holds vacuously
-                            try { ac = callBinary(a, opName, c); } catch { continue; }
+                            const ac = tryOp(() => callBinary(a, opName, c));
+                            if (ac === SKIPPED) continue;
                             checked++;
                             if (!ac)
                                 throw new LawError(opName, 'transitive', [a, b, c], context);
@@ -389,9 +417,10 @@ export function checkOperationLaws(
                 let checked = 0;
                 for (const a of samples) {
                     for (const b of samples) {
-                        let ab: unknown, ba: unknown;
-                        try { ab = callBinary(a, opName, b); } catch { continue; }
-                        try { ba = callBinary(b, opName, a); } catch { continue; }
+                        const ab = tryOp(() => callBinary(a, opName, b));
+                        if (ab === SKIPPED) continue;
+                        const ba = tryOp(() => callBinary(b, opName, a));
+                        if (ba === SKIPPED) continue;
                         checked++;
                         if (!ab && !ba)
                             throw new LawError(opName, 'total', [a, b], context);

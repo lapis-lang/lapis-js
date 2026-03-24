@@ -3585,15 +3585,15 @@ const Nat = data(({ Family }) => ({
 })).ops(({ fold, Family }) => ({
     add: fold({ in: Family, out: Family, properties: ['associative', 'commutative'] })({
         Zero(_ctx, other) { return other; },
-        Succ({ pred }, other) { return Nat.Succ({ pred: pred(other) }); }
+        Succ({ pred }, other) { return Family.Succ({ pred: pred(other) }); }
     })
 }));
 
 // ✘ Throws LawError at .ops() time — subtraction is not associative
-const Num = data(() => ({ N: { v: Number } }))
+const Num = data(({ Family }) => ({ N: { v: Number } }))
     .ops(({ fold, Family }) => ({
         sub: fold({ in: Family, out: Family, properties: ['associative'] })({
-            N({ v }, b) { return this.constructor({ v: v - b.v }); }
+            N({ v }, b) { return Family.N({ v: v - b.v }); }
         })
     }));
 // LawError: Law 'associative' violated for operation 'sub' on ADT { N }.
@@ -3605,28 +3605,6 @@ const Num = data(() => ({ N: { v: Number } }))
 1. After the transformer is registered, Lapis generates a small set of representative instances — singletons, primitive-field records (up to three value combinations per variant), and one shallow recursive sample per `Family`-field variant.
 2. Every declared law is tested against all relevant tuples of those samples.
 3. The first failing tuple causes a `LawError` to be thrown **before** `.ops()` returns, so a violating declaration never silently enters the module graph.
-
-**Constructing new instances inside fold handlers** — fold handlers sometimes need to produce a new variant instance of the same type (e.g. to implement a binary operation). `this` inside a handler is the current variant instance, and `this.constructor` is typed as a callable that returns the same ADT family:
-
-```ts
-// Pattern A — this.constructor (works for chained and anonymous data expressions)
-const Num = data(() => ({ N: { v: Number } }))
-    .ops(({ fold, Family }) => ({
-        add: fold({ in: Family, out: Family, properties: ['associative', 'commutative'] })({
-            N({ v }, b) { return this.constructor({ v: v + b.v }); }
-        })
-    }));
-
-// Pattern B — named ADT closure (requires two-step style to avoid temporal dead zone)
-const NumADT = data(() => ({ N: { v: Number } }));
-NumADT.ops(({ fold, Family }) => ({
-    add: fold({ in: Family, out: Family, properties: ['associative', 'commutative'] })({
-        N({ v }, b: { v: number }) { return NumADT.N({ v: v + b.v }); }
-    })
-}));
-```
-
-Pattern A (`this.constructor`) is always safe, including inside chained `data(...).ops(...)` declarations. Pattern B is more explicit about variant names but requires the two-step form — the chained form places the variable in the temporal dead zone during `.ops()`, making Pattern B unsound when used with chained declarations.
 
 **`LawError`** is a subclass of `Error` with three extra properties:
 

@@ -5,7 +5,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { data, LawError } from '../index.mjs';
+import { data, extend, LawError } from '../index.mjs';
 
 // ---- Helpers ----------------------------------------------------------------
 
@@ -27,18 +27,14 @@ function assertLawError(thunk: () => unknown, opName: string, property: string):
  * - Second arg = the raw binary argument.
  * - To return the receiver as-is:         `return this;`
  * - To return the binary arg as-is:       `return other;`
- * - To construct a NEW same-variant instance, two patterns are available:
- *
- *   Pattern A — use `this.constructor({...})` (typed, works even for anonymous `data()` expressions):
- *     `return this.constructor({ field: value });`
- *
- *   Pattern B — close over the named ADT in a separate declaration (requires two-step style):
- *     `const MyADT = data(...);`
- *     `MyADT.ops(..., N({ v }) { return MyADT.N({ field: value }); })`
- *   This pattern is more readable when the ADT name is available but requires separating
- *   the `data()` and `.ops()` calls so `MyADT` is initialised before the handler closes over it.
- *   The chained form `const X = data(...).ops(...)` puts `X` in the temporal dead zone
- *   during `.ops()`, so Pattern A is always safe for chained declarations.
+ * - To construct a NEW same-variant instance, prefer `Family.VariantName({...})` — `Family` is
+ *   provided by the `ops()` callback and is always safe, even in chained declarations.
+ *   For `Family.*` to resolve the variant constructors, `Family` must also be destructured in
+ *   the `data()` factory (it binds `Family._adt` to the ADT on creation):
+ *     `data(({ Family }) => ({ N: { v: Number } })).ops(({ fold, Family }) => ...)`
+ *     `return Family.N({ field: value });`
+ *   When the variant name is not statically known, `this.constructor({...})` is an alternative:
+ *   it is typed to return the same ADT family and is equally safe in both chained and two-step forms.
  *
  * **`@ts-expect-error -- arity` suppressions:**
  * The TypeScript type for a fold variant handler is typed for a single argument
@@ -74,11 +70,11 @@ describe('Law: associative', () => {
         // Subtraction: (a-b)-c ≠ a-(b-c) in general.
         assertLawError(
             () =>
-                data(() => ({ N: { v: Number } }))
+                data(({ Family }) => ({ N: { v: Number } }))
                     .ops(({ fold, Family }) => ({
                         sub: fold({ in: Family, out: Family, properties: ['associative'] })({
                             // @ts-expect-error -- arity
-                            N({ v }, b: { v: number }) { return this.constructor({ v: v - b.v }); }
+                            N({ v }, b: { v: number }) { return Family.N({ v: v - b.v }); }
                         })
                     })),
             'sub',
@@ -89,11 +85,11 @@ describe('Law: associative', () => {
     it('includes a 3-element counterexample in the LawError', () => {
         let caught: LawError | null = null;
         try {
-            data(() => ({ N: { v: Number } }))
+            data(({ Family }) => ({ N: { v: Number } }))
                 .ops(({ fold, Family }) => ({
                     sub: fold({ in: Family, out: Family, properties: ['associative'] })({
                         // @ts-expect-error -- arity
-                        N({ v }, b: { v: number }) { return this.constructor({ v: v - b.v }); }
+                        N({ v }, b: { v: number }) { return Family.N({ v: v - b.v }); }
                     })
                 }));
         } catch (e) {
@@ -142,11 +138,11 @@ describe('Law: commutative', () => {
     it('throws LawError for a non-commutative operation', () => {
         assertLawError(
             () =>
-                data(() => ({ N: { v: Number } }))
+                data(({ Family }) => ({ N: { v: Number } }))
                     .ops(({ fold, Family }) => ({
                         sub: fold({ in: Family, out: Family, properties: ['commutative'] })({
                             // @ts-expect-error -- arity
-                            N({ v }, b: { v: number }) { return this.constructor({ v: v - b.v }); }
+                            N({ v }, b: { v: number }) { return Family.N({ v: v - b.v }); }
                         })
                     })),
             'sub',
@@ -178,11 +174,11 @@ describe('Law: idempotent', () => {
         // Addition: N(v) + N(v) = N(2v) ≠ N(v) for v ≠ 0
         assertLawError(
             () =>
-                data(() => ({ N: { v: Number } }))
+                data(({ Family }) => ({ N: { v: Number } }))
                     .ops(({ fold, Family }) => ({
                         add: fold({ in: Family, out: Family, properties: ['idempotent'] })({
                             // @ts-expect-error -- arity
-                            N({ v }, b: { v: number }) { return this.constructor({ v: v + b.v }); }
+                            N({ v }, b: { v: number }) { return Family.N({ v: v + b.v }); }
                         })
                     })),
             'add',
@@ -426,7 +422,7 @@ describe('demands-aware filtering', () => {
                         demands: (_self: unknown, b: { v: number }) => b.v > 100
                     })({
                         // @ts-expect-error -- arity
-                        N({ v }, b: { v: number }) { return this.constructor({ v: v + b.v }); }
+                        N({ v }, b: { v: number }) { return Family.N({ v: v + b.v }); }
                     })
                 }))
         );
@@ -555,17 +551,78 @@ describe('Recursive ADTs', () => {
         // Easiest: use the numerical sub check but with the recursive variant included.
         assertLawError(
             () => {
-                const Num = data(() => ({ N: { v: Number } }));
+                const Num = data(({ Family }) => ({ N: { v: Number } }));
                 Num.ops(({ fold, Family }) => ({
                     sub: fold({ in: Family, out: Family, properties: ['associative'] })({
                         // @ts-expect-error -- arity
-                        N({ v }, b: { v: number }) { return this.constructor({ v: v - b.v }); }
+                        N({ v }, b: { v: number }) { return Family.N({ v: v - b.v }); }
                     })
                 }));
             },
             'sub',
             'associative'
         );
+    });
+
+});
+
+// ============================================================================
+// [extend] hierarchies — inherited variants are included in sample generation
+// ============================================================================
+
+describe('[extend] ADTs', () => {
+
+    it('passes a law checked over both own and inherited singleton variants', () => {
+        // "left-projection": a.op(b) = a — always return the receiver.
+        // Associativity: a.op(b.op(c)) = a.op(b) = a = a.op(c) = (a.op(b)).op(c) ✓
+        // The child adds C; inherited A, B (from Base) must also pass.
+        const Base = data(() => ({ A: {}, B: {} }));
+        assert.doesNotThrow(() => {
+            const Child = data(({ Family }) => ({ [extend]: Base, C: {} }));
+            Child.ops(({ fold, Family }) => ({
+                op: fold({ in: Family, out: Family, properties: ['associative'] })({
+                    _(_fields, _other) { return this; } // constant left-projection
+                })
+            }));
+        });
+    });
+
+    it('throws LawError when the law is violated by an inherited variant', () => {
+        // "left-projection" is NOT commutative: a.op(b)=a but b.op(a)=b, so a.op(b) ≠ b.op(a)
+        // for any two distinct instances — e.g. an inherited pair (A, B).
+        const Base = data(() => ({ A: {}, B: {} }));
+        assertLawError(
+            () => {
+                const Child = data(({ Family }) => ({ [extend]: Base, C: {} }));
+                Child.ops(({ fold, Family }) => ({
+                    op: fold({ in: Family, out: Family, properties: ['commutative'] })({
+                        _(_fields, _other) { return this; } // broken for commutativity
+                    })
+                }));
+            },
+            'op',
+            'commutative'
+        );
+    });
+
+    it('error context string includes inherited variant names', () => {
+        const Base = data(() => ({ A: {}, B: {} }));
+        let caught: LawError | null = null;
+        try {
+            const Child = data(({ Family }) => ({ [extend]: Base, C: {} }));
+            Child.ops(({ fold, Family }) => ({
+                op: fold({ in: Family, out: Family, properties: ['commutative'] })({
+                    _(_fields, _other) { return this; }
+                })
+            }));
+        } catch (e) {
+            if (e instanceof LawError) caught = e;
+        }
+        assert.ok(caught !== null, 'Expected LawError to be thrown');
+        // The context string must mention all three variants (inherited + own)
+        assert.ok(caught.message.includes('A'), 'context should include A');
+        assert.ok(caught.message.includes('B'), 'context should include B');
+        assert.ok(caught.message.includes('C'), 'context should include C');
     });
 
 });
