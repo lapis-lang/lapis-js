@@ -23,6 +23,8 @@ import {
     type TypeSpec
 } from './operations.mjs';
 
+import { generateSamples, checkOperationLaws } from './laws.mjs';
+
 import {
     checkDemands,
     checkEnsures,
@@ -288,13 +290,19 @@ type FoldInType<S> =
  * - For parametric folds (has `in`), receives an additional input argument.
  * - `this` is bound to the variant instance.
  *
- * `this` is typed as `DataInstance<D> & { [k: string | symbol]: any }`:
+ * `this` is typed as `DataInstance<D> & { constructor: ...; [k: string | symbol]: any }`:
  *  - Named variant fields (from CombinedVariantFieldAccess) are properly typed.
+ *  - `constructor` is typed as a callable returning `DataInstance<D>`, so
+ *    `this.constructor({ field: value })` compiles without a type cast.
  *  - Symbol-keyed access (e.g. `this[parent]`) and dynamic operation access resolve to `any`.
  *  - The intersection is assignable to `DataInstance<D>`, so `return this` compiles for `out: Family` folds.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type DataFoldHandlerThis<D> = DataInstance<D> & { [k: string | symbol]: any };
+ 
+type DataFoldHandlerThis<D> = DataInstance<D> & {
+    constructor: (...args: unknown[]) => DataInstance<D>;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    [k: string | symbol]: any;
+};
 
 type DataFoldHandlerForVariant<D, VariantSpec, S> =
     FoldInType<S> extends never
@@ -434,14 +442,26 @@ function attachOpsMethod<D extends Record<string, unknown>>(
         const opsDecl = parseDeclarationOps(opsObj);
         // Use the raw (un-proxied) ADT so parentADTMap / adtTransformers are keyed consistently.
         const rawADT = ((ADT as unknown as { _rawADT?: ADTLike })._rawADT ?? ADT) as unknown as ADTLike;
+        const ownVariants = getOwnVariantsFromADT(rawADT);
         createOperations(
             rawADT,
-            // Recover ownVariants from the ADT (they are enumerable properties that are variant-like)
-            getOwnVariantsFromADT(rawADT),
+            ownVariants,
             opsDecl,
             decl.typeParams,
             decl.protocols
         );
+
+        // Check algebraic laws for every operation that declares `properties`.
+        const registry = adtTransformers.get(rawADT as unknown as object);
+        if (registry) {
+            const samples = generateSamples(ownVariants);
+            const variantNames = Object.keys(ownVariants).join(', ');
+            const context = `ADT { ${variantNames} }`;
+            for (const [tOpName, transformer] of registry) {
+                if (transformer.properties && transformer.properties.size > 0)
+                    checkOperationLaws(tOpName, transformer, samples, context);
+            }
+        }
 
         // Validate protocol conformance and register unconditional conformances
         applyUnconditionalProtocols(
