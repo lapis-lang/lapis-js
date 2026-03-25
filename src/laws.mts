@@ -79,6 +79,25 @@ function isUnaryFoldOp(t: Transformer): boolean {
     return !!t.getCtorTransform && !t.inSpec && !t.getParamTransform;
 }
 
+/**
+ * True iff the transformer is a getter-map (no extra params, no fold ctor).
+ * Mirrors `isMapTransformer && isGetterOp` from Data.mts, but derived from the
+ * transformer and the prototype chain rather than closure-private helpers.
+ */
+function isGetterMapOp(t: Transformer, adt: unknown, opName: string): boolean {
+    // Must be a map transformer (no fold ctor, no unfold generator)
+    if (t.getCtorTransform || t.generator) return false;
+    if (!t.getParamTransform && !t.getAtomTransform) return false;
+    // Must be installed as a getter (no extra-params method form)
+    let proto: object | null = (adt as { prototype?: object }).prototype ?? null;
+    while (proto) {
+        const desc = Object.getOwnPropertyDescriptor(proto, opName);
+        if (desc) return 'get' in desc;
+        proto = Object.getPrototypeOf(proto) as object | null;
+    }
+    return false;
+}
+
 // ---- Sample generation ------------------------------------------------------
 
 /** Default value sets for primitive-boxing constructors, used for field generation. */
@@ -229,8 +248,11 @@ function warnNoSamples(prop: string, opName: string): void {
  * - If `adt[name]` is already a frozen object (singleton), it is used directly.
  * - If the name is not found, a `TypeError` is thrown — a missing companion is
  *   a declaration error (analogous to an unknown property name).
+ *
+ * Exported so that `optimizations.mts` can reuse the same lookup logic for
+ * runtime guards without duplicating the resolution rules.
  */
-function getCompanionElement(adt: unknown, name: string): unknown {
+export function getCompanionElement(adt: unknown, name: string): unknown {
     const value = (adt as Record<string, unknown>)[name];
     if (value === undefined) {
         throw new TypeError(
@@ -284,6 +306,7 @@ export function checkOperationLaws(
     const binaryFold = isBinaryFoldOp(transformer);
     const predicate  = isBinaryPredicateOp(transformer);
     const unary      = isUnaryFoldOp(transformer);
+    const getterMap  = isGetterMapOp(transformer, adt, opName);
 
     for (const prop of props) {
 
@@ -521,10 +544,10 @@ export function checkOperationLaws(
                 break;
             }
 
-            // ── Unary fold laws ─────────────────────────────────────────────
+            // ── Unary fold / getter-map laws ─────────────────────────────────
 
             case 'involutory': {
-                if (!unary) break;
+                if (!unary && !getterMap) break;
                 let checked = 0;
                 for (const a of samples) {
                     const b = tryOp(() => callUnary(a, opName));

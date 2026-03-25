@@ -94,6 +94,7 @@ there is an emphasis on the Bird-Meertens Formalism (BMF) (Squiggol) of making p
     - [Property Vocabulary](#property-vocabulary)
     - [Property Inheritance](#property-inheritance)
     - [Automatic Law Checking](#automatic-law-checking)
+    - [Runtime Optimization Exploitation](#runtime-optimization-exploitation)
   - [Protocols on Behavior Types](#protocols-on-behavior-types)
 - [Design by Contract](#design-by-contract)
   - [Assertions](#assertions)
@@ -1830,17 +1831,21 @@ The declaration is **one-sided**: only the inverse operation declares the relati
 
 #### Constructor-Time Fusion
 
-`merge` pipelines are automatically optimized at definition time through three fusion rules applied in sequence:
+`merge` pipelines are automatically optimized at definition time through four fusion rules applied in sequence:
 
 **1. Inverse pair elimination (f° ∘ f = id)**
 
-Consecutive inverse pairs are removed. This is applied repeatedly so nested pairs (e.g., `['a', 'b', 'b_inv', 'a_inv']`) are fully eliminated.
+Consecutive explicit inverse pairs are removed. This is applied repeatedly so nested pairs (e.g., `['a', 'b', 'b_inv', 'a_inv']`) are fully eliminated.
 
-**2. Map-map fusion (g ∘ f in a single traversal)**
+**2. Involutory self-cancellation (f ∘ f = id)**
+
+Consecutive pairs of the *same* operation annotated `properties: ['involutory']` are removed. This rule is also applied repeatedly: `['f', 'f', 'f', 'f']` → `[]`, `['f', 'f', 'f']` → `['f']`. Applies to both map and fold operations. See [Involutory self-cancellation in merge pipelines](#involutory-self-cancellation-in-merge-pipelines) for a full example.
+
+**3. Map-map fusion (g ∘ f in a single traversal)**
 
 Consecutive getter-map operations are composed into a single map whose per-parameter transform is the pipeline composition of each individual transform. This eliminates intermediate structures between adjacent maps.
 
-**3. Map-fold fusion (fold with f pre-applied)**
+**4. Map-fold fusion (fold with f pre-applied)**
 
 A map getter immediately before a fold is fused: the fold pre-applies the map transforms to type-parameter fields, eliminating the intermediate mapped structure entirely.
 
@@ -1988,11 +1993,12 @@ const zipped = nums.zip(strs);
 
 Merge operations compose multiple operations (fold, map, unfold) into a single fused operation, eliminating intermediate allocations. Since unfold is the universal way to generate structure and fold is the universal way to consume it, their composition represents the general pattern of "generate then consume" without materializing the intermediate data structure. (This fused unfold+fold is called a *hylomorphism* in the recursion-schemes literature.) They are defined in the `.ops()` phase using `merge(...operationNames)`.
 
-At definition time, three fusion rules are applied automatically to the pipeline:
+At definition time, four fusion rules are applied automatically to the pipeline:
 
-1. **Inverse pair elimination**: consecutive inverse pairs are removed (f° ∘ f = id)
-2. **Map-map fusion**: consecutive map getters are composed into a single traversal (g ∘ f)
-3. **Map-fold fusion**: a map getter before a fold is fused into the fold's field access
+1. **Inverse pair elimination**: consecutive explicit inverse pairs are removed (f° ∘ f = id)
+2. **Involutory self-cancellation**: consecutive pairs of the same operation annotated `involutory` are removed (f ∘ f = id; repeated until stable)
+3. **Map-map fusion**: consecutive map getters are composed into a single traversal (g ∘ f)
+4. **Map-fold fusion**: a map getter before a fold is fused into the fold's field access
 
 See [Invertible Maps (Allegories)](#invertible-maps-allegories) for details on inverse declaration and the complete fusion rules.
 
@@ -3694,6 +3700,127 @@ const Z2 = data(() => ({
 - Behavior operations (`behavior().ops()`) — deferred to a future release.
 - Parametric ADTs where sample generation cannot produce concrete values (e.g. `Cons: { head: T, tail: Family }` where `T` is a type parameter). Only singletons that can be generated concretely are checked.
 - Operations without a `properties` array, or with an empty one.
+
+#### Runtime Optimization Exploitation
+
+After law verification passes, Lapis JS **automatically installs runtime guards** on binary Family→Family fold operations based on their declared `properties`. When a guard matches, it short-circuits the full recursive traversal and any intermediate allocation; when no guard matches, the call falls through to the original fold after a small number of equality checks.
+
+| Property | Guard behaviour |
+|---|---|
+| `identity:E` | `op(E, x)` returns `x`; `op(x, E)` returns `x` |
+| `absorbing:Z` | `op(Z, x)` returns `Z`; `op(x, Z)` returns `Z` |
+| `idempotent` | `op(x, x)` returns `x` |
+
+All three guards can be active on the same operation simultaneously. They are checked in the order shown, with the first matching guard winning.
+
+Companion elements (`identity:E`, `absorbing:Z`) are resolved lazily on the first call, so it is safe to name an unfold or singleton that is declared in the same `.ops()` block.
+
+```ts
+import { data } from '@lapis-lang/lapis-js';
+
+// Peano addition — identity:Zero guard installed automatically
+const Nat = data(({ Family }) => ({
+    Zero: {},
+    Succ: { pred: Family }
+})).ops(({ fold, Family }) => ({
+    add: fold({
+        in: Family,
+        out: Family,
+        properties: ['associative', 'commutative', 'identity:Zero']
+    })({
+        Zero(_ctx, other) { return other; },
+        Succ({ pred }, other) { return Family.Succ({ pred: pred(other) }); }
+    })
+}));
+
+const zero = Nat.Zero;
+const three = Nat.Succ({ pred: Nat.Succ({ pred: Nat.Succ({ pred: zero }) }) });
+
+// Identity guard fires — the fold traversal is never entered:
+console.log(three.add(zero) === three); // true  (same JS reference, no reconstruction)
+console.log(zero.add(three) === three); // true
+```
+
+```ts
+// Boolean AND — absorbing:False guard
+const Bool = data(() => ({ False: {}, True: {} }))
+    .ops(({ fold, Family }) => ({
+        and: fold({
+            in: Family,
+            out: Family,
+            properties: ['absorbing:False']
+        })({
+            False(_ctx, _other) { return Family.False; },
+            True(_ctx, other)   { return other; }
+        })
+    }));
+
+// Absorbing guard fires — no traversal:
+console.log(Bool.False.and(Bool.True) === Bool.False); // true
+console.log(Bool.True.and(Bool.False) === Bool.False); // true
+```
+
+```ts
+// Idempotent set-union
+const IntSet = data(({ Family }) => ({
+    Empty: {},
+    Insert: { value: Number, rest: Family }
+})).ops(({ fold, Family }) => ({
+    union: fold({
+        in: Family,
+        out: Family,
+        properties: ['associative', 'commutative', 'idempotent']
+    })({
+        Empty(_ctx, other) { return other; },
+        Insert({ value, rest }, other) {
+            return Family.Insert({ value, rest: rest.union(other) });
+        }
+    })
+}));
+
+// Idempotent guard fires — no traversal for identical arguments:
+const s = IntSet.Insert({ value: 1, rest: IntSet.Empty });
+console.log(s.union(s) === s); // true
+```
+
+**Important:** Guards are applied *after* law verification, so the automatic law checker always sees the raw fold implementation. A fold whose declared properties are wrong will still throw a `LawError` — the guard only activates once legality is confirmed.
+
+Guards apply to **binary Family→Family folds** only (those declared with `in: Family, out: Family`). Unary folds, folds returning non-Family types, and behavior folds are not affected.
+
+#### Involutory self-cancellation in merge pipelines
+
+The `involutory` property also feeds into the merge fusion pass (rule 2 above). Any operation — fold or map — annotated `properties: ['involutory']` has the `f ∘ f = id` identity, so consecutive pairs are eliminated from a merge pipeline at definition time. The elimination is applied repeatedly until no more adjacent pairs remain.
+
+> **Checked vs trusted:** for unary *fold* operations, `involutory` is automatically verified at `.ops()` time using the auto-generated sample set. For *map* operations, the transform function is only applied to `TypeParam`-typed fields (`T`, `U`, …); because variants that contain type-parameter fields are excluded from the sample set (the type parameter is unresolved at declaration time), the involutory identity `f(f(a)) ≡ a` cannot be checked automatically for maps. Declaring `properties: ['involutory']` on a map is therefore **trusted on your word** — the merge fusion optimisation acts on it, but no runtime counter-example check guards it.
+
+```ts
+const List = data(({ Family, T }) => ({
+    Nil: {},
+    Cons: { head: T, tail: Family(T) }
+})).ops(({ fold, map, merge, Family, T }) => ({
+    // `negate` is involutory because applying it twice returns the original
+    // value: -(-x) = x.  Declare `properties: ['involutory']` on any operation
+    // that satisfies f(f(a)) ≡ a — common examples include bitwise NOT,
+    // matrix transpose, list reversal, and boolean negation.
+    negate: map({ out: Family, properties: ['involutory'] })({
+        T: (x) => -(x as number)
+    }),
+    sum: fold({ out: Number })({
+        Nil() { return 0; },
+        Cons({ head, tail }: { head: number; tail: number }) { return head + tail; }
+    }),
+    // negate,negate cancel → pipeline collapses to ['sum'] at definition time
+    doubleNegateSum: merge('negate', 'negate', 'sum')
+}));
+
+const NumList = List({ T: Number });
+const xs = NumList.Cons({ head: 1, tail: NumList.Cons({ head: 2, tail: NumList.Nil }) });
+
+// negate is never called — the pair was eliminated at definition time:
+console.log(xs.doubleNegateSum); // 3  (same as xs.sum)
+```
+
+An odd-count run leaves one operation in the pipeline — so `merge('negate', 'negate', 'negate', 'sum')` collapses to `['negate', 'sum']` (one cancellation pair removed, one `negate` remaining).
 
 ### Protocols on Behavior Types
 

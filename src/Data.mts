@@ -25,6 +25,7 @@ import {
 } from './operations.mjs';
 
 import { generateSamples, checkOperationLaws } from './laws.mjs';
+import { applyFoldOptimizations } from './optimizations.mjs';
 
 import {
     checkDemands,
@@ -106,6 +107,11 @@ const sortDeclMap = new WeakMap<object, { sortParams: SpecRecord; sortVariants: 
 // recorded so the system can detect inverse pairs in merge pipelines
 // and fuse them to identity.
 const inverseRegistry = new WeakMap<object, Map<string, string>>();
+
+// Phase 3: stores the raw (un-guarded) fold implementation for each transformer so
+// that fold optimization guards can be applied AFTER law verification completes.
+// Keyed by Transformer object; shared between a fold op and all its aliases.
+const rawFoldImpls = new WeakMap<Transformer, (...args: unknown[]) => unknown>();
 
 /** Guard flag to prevent re-entrant round-trip verification. */
 let _inRoundTripCheck = false;
@@ -462,6 +468,26 @@ function attachOpsMethod<D extends Record<string, unknown>>(
             for (const [tOpName, transformer] of registry) {
                 if (transformer.properties && transformer.properties.size > 0)
                     checkOperationLaws(tOpName, transformer, samples, rawADT, context);
+            }
+        }
+
+        // apply fold optimization guards AFTER law verification.
+        // Guards must not be active during law checking — they would mask intentional
+        // violations in tests and corrupt the verification process.
+        if (registry) {
+            const proto = rawADT.prototype as object;
+            // Cache per-transformer so the main op and all its aliases share one wrapper.
+            const guarded = new Map<Transformer, (...args: unknown[]) => unknown>();
+            for (const [tOpName, transformer] of registry) {
+                const rawImpl = rawFoldImpls.get(transformer);
+                if (!rawImpl) continue;
+                if (!guarded.has(transformer))
+                    guarded.set(transformer, applyFoldOptimizations(rawImpl, rawADT, transformer));
+                const optimizedImpl = guarded.get(transformer)!;
+                if (optimizedImpl === rawImpl) continue;
+                const desc = Object.getOwnPropertyDescriptor(proto, tOpName);
+                if (!desc) continue;
+                installOperation(proto, tOpName, optimizedImpl, desc.get !== undefined);
             }
         }
 
@@ -2143,6 +2169,10 @@ function createFoldOperation(
         }
     };
 
+    // Store the raw fold implementation so guards can be applied AFTER
+    // law verification (see the post-law-check block in data().ops()).
+    rawFoldImpls.set(transformer, foldImpl);
+
     installOperation(ADT.prototype, opName, foldImpl, !hasInput && !hasExtraParams);
 
     // Install any aliases declared via .as(...)
@@ -2605,6 +2635,16 @@ function createMapOperation(
  * declared inverse of `double` → fused to `['increment']`.
  */
 function fuseInversePairs(ADT: ADTLike, opList: string[]): string[] {
+    // Cache transformer lookups once up-front — _getTransformer traverses the
+    // prototype chain on every call, so a local Map avoids O(n²) lookups for
+    // pipelines with repeated op names.
+    const transformerCache = new Map<string, Transformer | undefined>();
+    const getTransformerCached = (name: string): Transformer | undefined => {
+        if (!transformerCache.has(name))
+            transformerCache.set(name, ADT._getTransformer(name));
+        return transformerCache.get(name);
+    };
+
     let result = opList;
     let changed = true;
 
@@ -2617,10 +2657,24 @@ function fuseInversePairs(ADT: ADTLike, opList: string[]): string[] {
             if (i + 1 < result.length) {
                 const a = result[i], b = result[i + 1];
                 if (getInverse(ADT, a) === b) {
-                    // a and b are inverses — eliminate both
+                    // Explicit inverse pair (registered via inverse: 'opName') — eliminate both.
                     i += 2;
                     changed = true;
                     continue;
+                }
+                // Involutory self-cancellation: f∘f = id when 'involutory' is declared.
+                // Adjacent identical ops with the involutory property cancel each other.
+                // Restricted to getter operations (no extra params): f∘f = id only
+                // makes sense for unary args-free operations.  Method-style ops
+                // (maps with extra params, binary folds with `in:`) are excluded —
+                // cancelling them would be unsound and could silently change semantics.
+                if (a === b && isGetterOp(ADT, a)) {
+                    const t = getTransformerCached(a);
+                    if (t?.properties?.has('involutory')) {
+                        i += 2;
+                        changed = true;
+                        continue;
+                    }
                 }
             }
             next.push(result[i]);
