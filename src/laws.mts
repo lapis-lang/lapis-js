@@ -229,8 +229,11 @@ function warnNoSamples(prop: string, opName: string): void {
  * - If `adt[name]` is already a frozen object (singleton), it is used directly.
  * - If the name is not found, a `TypeError` is thrown — a missing companion is
  *   a declaration error (analogous to an unknown property name).
+ *
+ * Exported so that `optimizations.mts` can reuse the same lookup logic for
+ * runtime guards without duplicating the resolution rules.
  */
-function getCompanionElement(adt: unknown, name: string): unknown {
+export function getCompanionElement(adt: unknown, name: string): unknown {
     const value = (adt as Record<string, unknown>)[name];
     if (value === undefined) {
         throw new TypeError(
