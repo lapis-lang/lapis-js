@@ -240,6 +240,54 @@ describe('Law: involutory', () => {
 });
 
 // ============================================================================
+// Law: involutory (getter-map)
+// ============================================================================
+
+describe('Law: involutory (getter-map)', () => {
+
+    it('passes for a correct involutory getter-map', () => {
+        assert.doesNotThrow(() => {
+            data(() => ({ Pos: {}, Neg: {} })).ops(({ map, Family }) => ({
+                flip: map({ out: Family, properties: ['involutory'] })({
+                    Family: (x: unknown) => x === Family.Pos ? Family.Neg : Family.Pos
+                })
+            }));
+        });
+    });
+
+    it('silently passes even for a broken involutory getter-map (known limitation)', () => {
+        // The involutory law check for getter-maps can only run against the samples
+        // that the auto-generator produces.  Map transforms are only applied to
+        // TypeParam-typed fields (T, U, …); pure Family-ref fields recurse directly
+        // (no explicit transform), and primitive fields are copied as-is.
+        //
+        // Auto-generated samples never include TypeParam-containing variants
+        // (because T is unresolved), so the `T: fn` transform in an involutory map
+        // is never exercised by the checker.  Singletons trivially satisfy the law
+        // (the map returns the same variant), so `checked > 0` and no LawError is
+        // thrown, even if the transform itself would violate f(f(a)) ≡ a.
+        //
+        // Consequence: involutory on getter-map is TRUSTED when declared on a
+        // parametric ADT.  The merge fusion optimisation in `fuseInversePairs`
+        // relies on this declaration; callers must ensure correctness manually.
+        assert.doesNotThrow(() => {
+            // Declares `flip` as involutory, but its T-transform is broken
+            // (Neg → Other instead of Neg → Pos).  No LawError is thrown because
+            // no sample with a T-typed field is generated.
+            data(({ Family, T }) => ({
+                Nil:  {},
+                Val:  { data: T }
+            })).ops(({ map, Family, T }) => ({
+                flip: map({ out: Family, properties: ['involutory'] })({
+                    T: (x: unknown) => -(x as number) * 99 // clearly non-involutory
+                })
+            }));
+        }, 'broken involutory T-transform passes unchecked — TypeParam variants not sampled');
+    });
+
+});
+
+// ============================================================================
 // Relation / predicate laws
 // ============================================================================
 

@@ -2664,7 +2664,11 @@ function fuseInversePairs(ADT: ADTLike, opList: string[]): string[] {
                 }
                 // Involutory self-cancellation: f∘f = id when 'involutory' is declared.
                 // Adjacent identical ops with the involutory property cancel each other.
-                if (a === b) {
+                // Restricted to getter operations (no extra params): f∘f = id only
+                // makes sense for unary args-free operations.  Method-style ops
+                // (maps with extra params, binary folds with `in:`) are excluded —
+                // cancelling them would be unsound and could silently change semantics.
+                if (a === b && isGetterOp(ADT, a)) {
                     const t = getTransformerCached(a);
                     if (t?.properties?.has('involutory')) {
                         i += 2;

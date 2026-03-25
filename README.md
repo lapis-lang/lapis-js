@@ -3703,7 +3703,7 @@ const Z2 = data(() => ({
 
 #### Runtime Optimization Exploitation
 
-After law verification passes, Lapis JS **automatically installs runtime guards** on binary Family→Family fold operations based on their declared `properties`. These guards short-circuit the full recursive traversal before it starts, adding zero overhead for calls that do not match a guard.
+After law verification passes, Lapis JS **automatically installs runtime guards** on binary Family→Family fold operations based on their declared `properties`. When a guard matches, it short-circuits the full recursive traversal and any intermediate allocation; when no guard matches, the call falls through to the original fold after a small number of equality checks.
 
 | Property | Guard behaviour |
 |---|---|
@@ -3790,6 +3790,8 @@ Guards apply to **binary Family→Family folds** only (those declared with `in: 
 #### Involutory self-cancellation in merge pipelines
 
 The `involutory` property also feeds into the merge fusion pass (rule 2 above). Any operation — fold or map — annotated `properties: ['involutory']` has the `f ∘ f = id` identity, so consecutive pairs are eliminated from a merge pipeline at definition time. The elimination is applied repeatedly until no more adjacent pairs remain.
+
+> **Checked vs trusted:** for unary *fold* operations, `involutory` is automatically verified at `.ops()` time using the auto-generated sample set. For *map* operations, the transform function is only applied to `TypeParam`-typed fields (`T`, `U`, …); because variants that contain type-parameter fields are excluded from the sample set (the type parameter is unresolved at declaration time), the involutory identity `f(f(a)) ≡ a` cannot be checked automatically for maps. Declaring `properties: ['involutory']` on a map is therefore **trusted on your word** — the merge fusion optimisation acts on it, but no runtime counter-example check guards it.
 
 ```ts
 const List = data(({ Family, T }) => ({
