@@ -3517,23 +3517,45 @@ Properties compose with existing contracts: a protocol that declares both `prope
 
 The vocabulary is a closed, curated set. Properties are organized by what they describe:
 
-**Binary operation properties** (apply to fold specs with `in: Family, out: Family`):
+**Intra-operation properties** (self-contained laws within one operation):
 
 | Property | Law |
 |---|---|
 | `associative` | `f(f(a,b), c) ≡ f(a, f(b,c))` |
 | `commutative` | `f(a, b) ≡ f(b, a)` |
-| `idempotent` | `f(a, a) ≡ a` |
-| `identity` | `f(a, e) ≡ a ∧ f(e, a) ≡ a` |
-| `absorbing` | `f(a, z) ≡ z ∧ f(z, a) ≡ z` |
-| `distributive` | `f(a, g(b,c)) ≡ g(f(a,b), f(a,c))` |
-
-**Unary operation properties** (apply to map specs or unary folds):
-
-| Property | Law |
-|---|---|
+| `idempotent` | `f(a, a) ≡ a` (binary) or `f(f(a)) ≡ f(a)` (unary) |
 | `involutory` | `f(f(a)) ≡ a` |
-| `idempotent` | `f(f(a)) ≡ f(a)` |
+
+**Inter-operation properties** (laws that involve a companion element or a second operation):
+
+These use a **namespaced string** syntax `'prefix:arg'` or `'prefix:arg1:arg2'` where the arguments name operations or variants on the same ADT:
+
+| Namespaced property | Law |
+|---|---|
+| `identity:E` | `f(a, E) ≡ a ∧ f(E, a) ≡ a` — `E` is the identity element (an unfold/singleton name) |
+| `absorbing:Z` | `f(a, Z) ≡ Z ∧ f(Z, a) ≡ Z` — `Z` is the absorbing/zero element |
+| `distributive:g` | `f(a, g(b,c)) ≡ g(f(a,b), f(a,c))` — `f` distributes over operation `g` |
+| `absorption:g` | `f(a, g(a, b)) ≡ a` — lattice absorption (satisfies both left and right) |
+| `inverse:via:E` | `via(a).f(a) ≡ E ∧ a.f(via(a)) ≡ E` — `via` computes the inverse, `E` is the identity |
+
+**Named predicate functions** — arbitrary laws can be expressed as named functions:
+
+```ts
+// The function name becomes the law name in LawError messages.
+function myLaw(sample: unknown, adt: unknown): boolean {
+    // return true if the law holds for this sample, false to signal a violation
+    return ...;
+}
+
+const ADT = data(() => ({ ... })).ops(({ fold, Family }) => ({
+    op: fold({ in: Family, out: Family, properties: [myLaw] })({ ... })
+}));
+```
+
+- The function **must be named** (anonymous arrow functions throw `TypeError`).
+- Receives the current sample (`unknown`) and the raw ADT (`unknown`) as arguments.
+- Returning `false` causes a `LawError` with `propertyName` set to the function's name.
+- Useful for laws that cannot be expressed as a closed-form string (e.g. `Pure(id).apply(v) ≡ v`).
 
 **Relation properties** (apply to binary predicates / comparison operations):
 
@@ -3550,6 +3572,8 @@ The vocabulary is a closed, curated set. Properties are organized by what they d
 | Property | Law |
 |---|---|
 | `composition` | `fmap(g ∘ f) ≡ fmap(g) ∘ fmap(f)` |
+
+The full set of known plain-string property names is exported as `KNOWN_PROPERTIES: ReadonlySet<string>`, and the set of inter-op prefixes (those that require a namespaced argument) is exported as `INTER_OP_PREFIXES: ReadonlySet<string>`.
 
 #### Property Inheritance
 
@@ -3628,11 +3652,48 @@ try {
 }
 ```
 
+**Inter-operation law examples:**
+
+```ts
+import { data } from '@lapis-lang/lapis-js';
+
+// Z/2Z two-element field: XOR + AND
+const Z2 = data(() => ({
+    Zero: {},
+    One:  {}
+})).ops(({ fold, map, Family }) => ({
+    // Every element is its own additive inverse in Z/2Z
+    negate: map({ out: Family, properties: ['involutory'] })({
+        Zero: (_) => (Family as any).Zero,
+        One:  (_) => (Family as any).One
+    }),
+    // XOR: commutative group with additive identity Zero
+    add: fold({
+        in: Family, out: Family,
+        properties: ['associative', 'commutative', 'identity:Zero', 'inverse:negate:Zero']
+    })({
+        Zero({}, other) { return other; },
+        One({}, other) {
+            const F = Family as any;
+            if (other === F.One) return F.Zero;
+            return F.One;
+        }
+    }),
+    // AND: commutative monoid, Zero is absorbing, distributes over XOR
+    multiply: fold({
+        in: Family, out: Family,
+        properties: ['associative', 'commutative', 'identity:One', 'absorbing:Zero', 'distributive:add']
+    })({
+        Zero({}, _) { return (Family as any).Zero; },
+        One({}, other) { return other; }
+    })
+}));
+```
+
 **Skipped cases** — law checking is **not** performed for:
 - Behavior operations (`behavior().ops()`) — deferred to a future release.
 - Parametric ADTs where sample generation cannot produce concrete values (e.g. `Cons: { head: T, tail: Family }` where `T` is a type parameter). Only singletons that can be generated concretely are checked.
 - Operations without a `properties` array, or with an empty one.
-- Laws that require a companion element (`identity`, `absorbing`, `distributive`) or functor composition (`composition`) — these are deferred pending a dedicated companion-element API.
 
 ### Protocols on Behavior Types
 

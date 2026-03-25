@@ -22,7 +22,8 @@ import {
     isFamilyRefSpec,
     validateTypeSpec,
     type FamilyRefCallable,
-    type TypeSpec
+    type TypeSpec,
+    type PropertyEntry
 } from './operations.mjs';
 
 import { TypeParamSymbol, installOperation, extractParamNames } from './utils.mjs';
@@ -81,8 +82,10 @@ export interface ProtocolOpSpec {
      * Algebraic property annotations declared via `properties: [...]` on the
      * operation spec. Validated against {@link KNOWN_PROPERTIES}. Inherited
      * properties from parent protocols are unioned in (never removed).
+     * Entries may be plain strings, namespaced inter-op strings, or named
+     * predicate functions — see {@link PropertyEntry}.
      */
-    properties: ReadonlySet<string>;
+    properties: ReadonlySet<PropertyEntry>;
     /**
      * Default implementation provided via the `_` wildcard handler in a
      * two-phase protocol spec declaration:
@@ -315,10 +318,10 @@ function extractSpecParts(
     entry: Record<string | symbol, unknown>,
     name: string,
     requiredOps: Map<string, ProtocolOpSpec>
-): { rawSpec: Record<string | symbol, unknown>; childProps: ReadonlySet<string>; parentProps: ReadonlySet<string> } {
+): { rawSpec: Record<string | symbol, unknown>; childProps: ReadonlySet<PropertyEntry>; parentProps: ReadonlySet<PropertyEntry> } {
     const rawSpec = (entry[specSym] ?? {}) as Record<string | symbol, unknown>;
     const childProps = parseProperties((rawSpec as Record<string, unknown>).properties, name);
-    const parentProps = requiredOps.get(name)?.properties ?? new Set<string>();
+    const parentProps = requiredOps.get(name)?.properties ?? new Set<PropertyEntry>();
     return { rawSpec, childProps, parentProps };
 }
 
@@ -484,7 +487,7 @@ export function protocol(callback: (ctx: ProtocolDeclContext) => Record<string |
             });
             childDeclaredOps.add(name);
         } else if (kind === 'merge') {
-            const parentProps = requiredOps.get(name)?.properties ?? new Set<string>();
+            const parentProps = requiredOps.get(name)?.properties ?? new Set<PropertyEntry>();
             requiredOps.set(name, {
                 kind: 'merge',
                 spec: {},

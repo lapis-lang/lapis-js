@@ -5,9 +5,6 @@
  *   a.join(b.meet(c)) ≡ a.join(b).meet(a.join(c))
  *   a.meet(b.join(c)) ≡ a.meet(b).join(a.meet(c))
  *
- * Note: join and meet are re-declared with the `distributive` property added
- * to the property set (strengthened postcondition).
- *
  * @module
  */
 
@@ -19,12 +16,12 @@ const DistributiveLattice = protocol(({ Family, fold }) => ({
     join: fold({
         in: Family,
         out: Family,
-        properties: ['associative', 'commutative', 'idempotent', 'distributive']
+        properties: ['distributive:meet']
     }),
     meet: fold({
         in: Family,
         out: Family,
-        properties: ['associative', 'commutative', 'idempotent', 'distributive']
+        properties: ['distributive:join']
     })
 }));
 

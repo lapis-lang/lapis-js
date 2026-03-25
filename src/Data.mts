@@ -20,7 +20,8 @@ import {
     invariant,
     satisfies,
     parseProperties,
-    type TypeSpec
+    type TypeSpec,
+    type PropertyEntry
 } from './operations.mjs';
 
 import { generateSamples, checkOperationLaws } from './laws.mjs';
@@ -460,7 +461,7 @@ function attachOpsMethod<D extends Record<string, unknown>>(
             const context = `ADT { ${variantNames} }`;
             for (const [tOpName, transformer] of registry) {
                 if (transformer.properties && transformer.properties.size > 0)
-                    checkOperationLaws(tOpName, transformer, samples, context);
+                    checkOperationLaws(tOpName, transformer, samples, rawADT, context);
             }
         }
 
@@ -928,6 +929,14 @@ function createFamilyMarker(): FamilyMarker {
 
             // Otherwise return from the marker itself
             return Reflect.get(target, prop, receiver);
+        },
+        set(target, prop, value) {
+            // Forward _adt assignment to the underlying target function
+            if (prop === '_adt') {
+                (target as unknown as { _adt: unknown })._adt = value;
+                return true;
+            }
+            return Reflect.set(target, prop, value);
         }
     });
 }
@@ -1022,8 +1031,9 @@ function createADT(decl: ParsedDecl): ADTLike {
         });
     }
 
-    if (decl.Family)
-        decl.Family._adt = ProxiedADT as unknown as ADTLike;
+    if (decl.Family == null)
+        decl.Family = createFamilyMarker();
+    decl.Family._adt = ProxiedADT as unknown as ADTLike;
 
     // Register raw → proxied mapping so fold handlers can recover the
     // proxied ADT from the prototype chain.
@@ -1515,7 +1525,7 @@ function resolvePropertiesWithFallback(
     spec: Record<string, unknown>,
     protocols: ProtocolEntry[],
     opName: string
-): ReadonlySet<string> {
+): ReadonlySet<PropertyEntry> {
     const protoSpec = gatherProtocolSpec(protocols, opName);
     const source = spec.properties ?? protoSpec?.properties;
     return parseProperties(source, opName);

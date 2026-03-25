@@ -9,7 +9,7 @@
  */
 
 import { composeOptionalTransform, validateMergeComposition, HandlerMapSymbol } from './utils.mjs';
-import type { TypeSpec } from './operations.mjs';
+import type { TypeSpec, PropertyEntry } from './operations.mjs';
 import type { ContractSpec } from './contracts.mjs';
 
 export { HandlerMapSymbol };
@@ -52,7 +52,7 @@ export interface Transformer {
     /** Contract spec for design by contract (demands, ensures, rescue) */
     contracts?: ContractSpec;
     /** Algebraic property annotations from `[properties]` on the operation spec. */
-    properties?: ReadonlySet<string>;
+    properties?: ReadonlySet<PropertyEntry>;
     /** Unfold case map (set by unfold operations) */
     unfoldCases?: Record<string, (seed: unknown) => unknown | null>;
     /** Unfold spec (set by unfold operations) */

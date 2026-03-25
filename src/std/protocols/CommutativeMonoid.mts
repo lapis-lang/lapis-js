@@ -15,7 +15,7 @@ const CommutativeMonoid = protocol(({ Family, fold, unfold: _unfold }) => ({
     combine: fold({
         in: Family,
         out: Family,
-        properties: ['associative', 'commutative', 'identity']
+        properties: ['commutative']
     })
 }));
 

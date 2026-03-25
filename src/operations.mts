@@ -526,40 +526,148 @@ export const KNOWN_PROPERTIES: ReadonlySet<string> = new Set([
     'transitive',
     'total',
     // Functor
-    'composition'
+    'composition',
+    // Inter-operation (bare names — metadata only; companion info required for enforcement)
+    'absorption',
+    'inverse'
+]);
+
+// ---- Inter-operation property types -----------------------------------------
+
+/**
+ * The set of prefix strings that introduce a namespaced inter-operation property.
+ * Format: `'<prefix>:<arg1>[:<arg2>]'`
+ *
+ * | Prefix | Arity | Meaning |
+ * |---|---|---|
+ * | `identity` | 1 | companion identity element |
+ * | `absorbing` | 1 | companion zero/absorbing element |
+ * | `distributive` | 1 | distributes over second operation |
+ * | `absorption` | 1 | Lattice absorption (inner operation) |
+ * | `inverse` | 2 | via-operation + identity element |
+ */
+export const INTER_OP_PREFIXES: ReadonlySet<string> = new Set([
+    'identity', 'absorbing', 'distributive', 'absorption', 'inverse'
 ]);
 
 /**
- * Parse and validate a `[properties]` value from an operation spec.
- *
- * Accepts a `string[]` of property names drawn from {@link KNOWN_PROPERTIES}.
- * Throws a `TypeError` if an unknown property name is encountered.
- *
- * @param raw     - The raw value stored under `[properties]` in the spec.
- * @param opName  - Operation name, used in error messages.
- * @returns A `ReadonlySet<string>` of validated property names.
+ * A plain intra-operation algebraic property name from {@link KNOWN_PROPERTIES}.
+ * Alias used to distinguish it from {@link NamespacedProperty} and {@link PredicateFn}.
  */
-export function parseProperties(raw: unknown, opName: string): ReadonlySet<string> {
-    if (raw === undefined || raw === null) return new Set<string>();
+export type OperationProperty = string;
+
+/**
+ * Namespaced inter-operation property strings recognised by the law engine.
+ * Using TypeScript template literals provides autocomplete and type-level documentation.
+ */
+export type NamespacedProperty =
+    | `identity:${string}`
+    | `absorbing:${string}`
+    | `distributive:${string}`
+    | `absorption:${string}`
+    | `inverse:${string}:${string}`;
+
+/**
+ * A named predicate function used as an executable law entry in `properties`.
+ *
+ * - `instance` — the ADT instance being tested.
+ * - `adt`      — the ADT constructor (provides access to companion unfolds, etc.).
+ * - Returns `true` if the law holds for this instance, `false` if it is violated.
+ *
+ * **Must be a named function** (i.e. `fn.name !== ''`). The function name is used
+ * as the `propertyName` in any thrown {@link LawError}, so anonymous/arrow
+ * functions assigned inline are rejected at parse time.
+ */
+export type PredicateFn = (instance: unknown, adt: unknown) => boolean;
+
+/**
+ * Every permitted entry in a `properties` array on an operation spec.
+ *
+ * - Plain `string`: an intra-operation property name from {@link KNOWN_PROPERTIES}.
+ * - Namespaced `string`: an inter-operation law in `'<prefix>:<arg…>'` format.
+ * - `PredicateFn`: an executable predicate for laws that cannot be expressed as
+ *   a string (e.g. Applicative homomorphism). Must be a named function.
+ */
+export type PropertyEntry = string | NamespacedProperty | PredicateFn;
+
+/**
+ * Parse and validate a `properties` value from an operation spec.
+ *
+ * Accepts an `Array<PropertyEntry>` where each entry is one of:
+ * - A plain string from {@link KNOWN_PROPERTIES} (intra-operation property).
+ * - A namespaced string of the form `'<prefix>:<arg>[:<arg2>]'` from
+ *   {@link INTER_OP_PREFIXES} (inter-operation structured law).
+ * - A named function `(instance, adt) => boolean` (executable predicate law).
+ *
+ * Throws a `TypeError` on unknown/malformed entries.
+ *
+ * @param raw     - The raw value stored under `properties` in the spec.
+ * @param opName  - Operation name, used in error messages.
+ * @returns A `ReadonlySet<PropertyEntry>` of validated entries.
+ */
+export function parseProperties(raw: unknown, opName: string): ReadonlySet<PropertyEntry> {
+    if (raw === undefined || raw === null) return new Set<PropertyEntry>();
     if (!Array.isArray(raw)) {
         throw new TypeError(
-            `[properties] on operation '${opName}' must be an array of strings, got ${typeof raw}`
+            `[properties] on operation '${opName}' must be an array, got ${typeof raw}`
         );
     }
-    const result = new Set<string>();
+    const result = new Set<PropertyEntry>();
     for (const item of raw) {
-        if (typeof item !== 'string') {
+        if (typeof item === 'function') {
+            if (!item.name) {
+                throw new TypeError(
+                    `[properties] on operation '${opName}' contains an anonymous function. ` +
+                    `Predicate law functions must be named (the name is used in LawError messages).`
+                );
+            }
+            result.add(item as PredicateFn);
+        } else if (typeof item === 'string') {
+            if (item.includes(':')) {
+                // Namespaced inter-op property: '<prefix>:<arg1>[:<arg2>]'
+                const parts = item.split(':');
+                const prefix = parts[0];
+                if (!INTER_OP_PREFIXES.has(prefix)) {
+                    throw new TypeError(
+                        `[properties] on operation '${opName}' contains unknown inter-op prefix '${prefix}'. ` +
+                        `Known prefixes: ${[...INTER_OP_PREFIXES].join(', ')}`
+                    );
+                }
+                const expectedArity: Record<string, number> = {
+                    identity: 2, absorbing: 2, distributive: 2, absorption: 2, inverse: 3
+                };
+                if (parts.length !== expectedArity[prefix]) {
+                    throw new TypeError(
+                        `[properties] on operation '${opName}': '${prefix}' requires ` +
+                        `${expectedArity[prefix] - 1} argument(s) after the colon, ` +
+                        `got ${parts.length - 1} in '${item}'`
+                    );
+                }
+                // Reject empty argument segments (e.g. 'identity:' or 'inverse:via:')
+                for (let i = 1; i < parts.length; i++) {
+                    if (!parts[i]) {
+                        throw new TypeError(
+                            `[properties] on operation '${opName}': inter-op string '${item}' ` +
+                            `has an empty argument at position ${i}. All argument segments must be non-empty identifiers.`
+                        );
+                    }
+                }
+                result.add(item as NamespacedProperty);
+            } else {
+                if (!KNOWN_PROPERTIES.has(item)) {
+                    throw new TypeError(
+                        `[properties] on operation '${opName}' contains unknown property '${item}'. ` +
+                        `Known properties: ${[...KNOWN_PROPERTIES].join(', ')}`
+                    );
+                }
+                result.add(item);
+            }
+        } else {
             throw new TypeError(
-                `[properties] on operation '${opName}' must contain strings, got ${typeof item}`
+                `[properties] on operation '${opName}' entries must be strings or named functions, ` +
+                `got ${typeof item}`
             );
         }
-        if (!KNOWN_PROPERTIES.has(item)) {
-            throw new TypeError(
-                `[properties] on operation '${opName}' contains unknown property '${item}'. ` +
-                `Known properties: ${[...KNOWN_PROPERTIES].join(', ')}`
-            );
-        }
-        result.add(item);
     }
     return result;
 }

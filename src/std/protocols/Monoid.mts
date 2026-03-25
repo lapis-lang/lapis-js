@@ -1,9 +1,9 @@
 /**
- * Monoid — Semigroup with identity element.
+ * Monoid — Semigroup with an identity element.
  *
- * Laws: combine is associative; Identity is a left and right identity for combine.
- *   a.combine(Identity) ≡ a
- *   Identity.combine(a) ≡ a
+ * Laws: all Semigroup laws plus:
+ *   left identity  — Identity.combine(a) ≡ a
+ *   right identity — a.combine(Identity) ≡ a
  *
  * @module
  */
@@ -17,7 +17,7 @@ const Monoid = protocol(({ Family, fold, unfold }) => ({
     combine: fold({
         in: Family,
         out: Family,
-        properties: ['associative', 'identity']
+        properties: ['identity', 'identity:Identity']
     })
 }));
 
