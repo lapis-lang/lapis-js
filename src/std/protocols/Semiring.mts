@@ -3,7 +3,7 @@
  *
  * Laws:
  *   (add, Zero)  form a commutative monoid
- *   (mult, One)  form a monoid
+ *   (multiply, One)  form a monoid
  *   left distributivity  — a.multiply(b.add(c)) ≡ a.multiply(b).add(a.multiply(c))
  *   right distributivity — (a.add(b)).multiply(c) ≡ a.multiply(c).add(b.multiply(c))
  *   left annihilation    — Zero.multiply(a) ≡ Zero

@@ -643,6 +643,15 @@ export function parseProperties(raw: unknown, opName: string): ReadonlySet<Prope
                         `got ${parts.length - 1} in '${item}'`
                     );
                 }
+                // Reject empty argument segments (e.g. 'identity:' or 'inverse:via:')
+                for (let i = 1; i < parts.length; i++) {
+                    if (!parts[i]) {
+                        throw new TypeError(
+                            `[properties] on operation '${opName}': inter-op string '${item}' ` +
+                            `has an empty argument at position ${i}. All argument segments must be non-empty identifiers.`
+                        );
+                    }
+                }
                 result.add(item as NamespacedProperty);
             } else {
                 if (!KNOWN_PROPERTIES.has(item)) {

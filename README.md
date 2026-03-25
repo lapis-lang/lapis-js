@@ -3694,7 +3694,6 @@ const Z2 = data(() => ({
 - Behavior operations (`behavior().ops()`) — deferred to a future release.
 - Parametric ADTs where sample generation cannot produce concrete values (e.g. `Cons: { head: T, tail: Family }` where `T` is a type parameter). Only singletons that can be generated concretely are checked.
 - Operations without a `properties` array, or with an empty one.
-- Inter-op laws where the named companion element or operation cannot be found on the ADT — the check is silently skipped with a `console.warn`.
 
 ### Protocols on Behavior Types
 

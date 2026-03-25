@@ -487,7 +487,7 @@ export function protocol(callback: (ctx: ProtocolDeclContext) => Record<string |
             });
             childDeclaredOps.add(name);
         } else if (kind === 'merge') {
-            const parentProps = requiredOps.get(name)?.properties ?? new Set<string>();
+            const parentProps = requiredOps.get(name)?.properties ?? new Set<PropertyEntry>();
             requiredOps.set(name, {
                 kind: 'merge',
                 spec: {},

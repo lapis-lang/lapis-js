@@ -480,15 +480,15 @@ describe('Law violations — LawError thrown at .ops() time', () => {
 });
 
 // =============================================================================
-// 7. Graceful skip when companion element absent
+// 7. TypeError when companion element or operation is absent
 // =============================================================================
 
-describe('Graceful skip when companion element is not found on ADT', () => {
-    it('does not throw when referenced companion element is absent', () => {
+describe('TypeError when companion element or operation is not found on ADT', () => {
+    it('throws TypeError when referenced companion element is absent', () => {
         // 'identity:Missing' references a companion 'Missing' that does not exist.
-        // The law check should emit a console.warn and skip, not throw.
-        assert.doesNotThrow(() =>
-            data(() => ({ A: {} })).ops(({ fold, Family }) => ({
+        // A missing companion is a declaration error and must throw TypeError.
+        assert.throws(
+            () => data(() => ({ A: {} })).ops(({ fold, Family }) => ({
                 op: fold({
                     in: Family,
                     out: Family,
@@ -497,7 +497,50 @@ describe('Graceful skip when companion element is not found on ADT', () => {
                     // @ts-expect-error -- binary fold handler receives 2nd arg at runtime; TS fold signature only models single-arg
                     A({}: Record<string, never>, other: unknown): unknown { return other; }
                 })
-            }))
+            })),
+            TypeError
+        );
+    });
+});
+
+// =============================================================================
+// 8. parseProperties rejects empty argument segments
+// =============================================================================
+
+describe('parseProperties rejects empty inter-op argument segments', () => {
+    it('throws TypeError for identity with empty companion name (identity:)', () => {
+        assert.throws(
+            () => data(() => ({ A: {} })).ops(({ fold, Family }) => ({
+                op: fold({ in: Family, out: Family, properties: ['identity:'] })({
+                    // @ts-expect-error -- binary fold handler receives 2nd arg at runtime
+                    A({}: Record<string, never>, other: unknown): unknown { return other; }
+                })
+            })),
+            TypeError
+        );
+    });
+
+    it('throws TypeError for inverse with empty via segment (inverse::Zero)', () => {
+        assert.throws(
+            () => data(() => ({ A: {} })).ops(({ fold, Family }) => ({
+                op: fold({ in: Family, out: Family, properties: ['inverse::Zero'] })({
+                    // @ts-expect-error -- binary fold handler receives 2nd arg at runtime
+                    A({}: Record<string, never>, other: unknown): unknown { return other; }
+                })
+            })),
+            TypeError
+        );
+    });
+
+    it('throws TypeError for inverse with empty element segment (inverse:negate:)', () => {
+        assert.throws(
+            () => data(() => ({ A: {} })).ops(({ fold, Family }) => ({
+                op: fold({ in: Family, out: Family, properties: ['inverse:negate:'] })({
+                    // @ts-expect-error -- binary fold handler receives 2nd arg at runtime
+                    A({}: Record<string, never>, other: unknown): unknown { return other; }
+                })
+            })),
+            TypeError
         );
     });
 });

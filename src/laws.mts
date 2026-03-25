@@ -227,24 +227,23 @@ function warnNoSamples(prop: string, opName: string): void {
  * - If `adt[name]` is a callable (zero-argument unfold constructor), it is
  *   invoked to obtain the element instance.
  * - If `adt[name]` is already a frozen object (singleton), it is used directly.
- * - If the name is not found, a warning is emitted and `undefined` is returned;
- *   the calling law check is then skipped gracefully.
+ * - If the name is not found, a `TypeError` is thrown — a missing companion is
+ *   a declaration error (analogous to an unknown property name).
  */
-function getCompanionElement(adt: unknown, name: string): unknown | undefined {
+function getCompanionElement(adt: unknown, name: string): unknown {
     const value = (adt as Record<string, unknown>)[name];
     if (value === undefined) {
-        console.warn(
-            `[lapis] Inter-op law: companion '${name}' not found on ADT — skipping law check`
+        throw new TypeError(
+            `[lapis] Inter-op law: companion '${name}' not found on ADT`
         );
-        return undefined;
     }
     // Unfold constructors are callable; call with no args to produce the element.
     if (typeof value === 'function') {
-        try { return (value as () => unknown)(); } catch {
-            console.warn(
-                `[lapis] Inter-op law: calling companion '${name}()' threw — skipping law check`
+        try { return (value as () => unknown)(); } catch (cause) {
+            throw new TypeError(
+                `[lapis] Inter-op law: calling companion '${name}()' threw`,
+                { cause }
             );
-            return undefined;
         }
     }
     return value;
@@ -313,7 +312,6 @@ export function checkOperationLaws(
                 case 'identity': {
                     if (!binaryFold) break;
                     const e = getCompanionElement(adt, parts[1]);
-                    if (e === undefined) break;
                     let checked = 0;
                     for (const a of samples) {
                         const ae = tryOp(() => callBinary(a, opName, e));
@@ -333,7 +331,6 @@ export function checkOperationLaws(
                 case 'absorbing': {
                     if (!binaryFold) break;
                     const z = getCompanionElement(adt, parts[1]);
-                    if (z === undefined) break;
                     let checked = 0;
                     for (const a of samples) {
                         const az = tryOp(() => callBinary(a, opName, z));
@@ -356,6 +353,12 @@ export function checkOperationLaws(
                     //   right: op(over(a,b), c) ≡ over(op(a,c), op(b,c))
                     if (!binaryFold) break;
                     const over = parts[1];
+                    if (samples.length > 0 &&
+                        typeof (samples[0] as Record<string, unknown>)[over] !== 'function') {
+                        throw new TypeError(
+                            `[lapis] Inter-op law: companion operation '${over}' not found on ADT`
+                        );
+                    }
                     let checked = 0;
                     for (const a of samples) {
                         for (const b of samples) {
@@ -398,6 +401,12 @@ export function checkOperationLaws(
                     // Lattice: op(a, inner(a,b)) ≡ a  (and dual side checked on inner's spec)
                     if (!binaryFold) break;
                     const inner = parts[1];
+                    if (samples.length > 0 &&
+                        typeof (samples[0] as Record<string, unknown>)[inner] !== 'function') {
+                        throw new TypeError(
+                            `[lapis] Inter-op law: companion operation '${inner}' not found on ADT`
+                        );
+                    }
                     let checked = 0;
                     for (const a of samples) {
                         for (const b of samples) {
@@ -419,7 +428,12 @@ export function checkOperationLaws(
                     if (!binaryFold) break;
                     const via = parts[1];
                     const e   = getCompanionElement(adt, parts[2]);
-                    if (e === undefined) break;
+                    if (samples.length > 0 &&
+                        (samples[0] as Record<string, unknown>)[via] === undefined) {
+                        throw new TypeError(
+                            `[lapis] Inter-op law: companion operation '${via}' not found on ADT`
+                        );
+                    }
                     let checked = 0;
                     for (const a of samples) {
                         const va = tryOp(() => callUnary(a, via));

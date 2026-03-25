@@ -1332,7 +1332,7 @@ function addMapOperation(
 
     const protoMapSpec = gatherProtocolSpec(protocols, name);
     const mapPropsSource = opSpec.properties ?? protoMapSpec?.properties;
-    const mapProps = mapPropsSource ? parseProperties(mapPropsSource, name) : new Set<string>();
+    const mapProps = mapPropsSource ? parseProperties(mapPropsSource, name) : new Set<PropertyEntry>();
 
     ensureOwnMap<string, MapOpEntry>(
         BehaviorType as unknown as Record<symbol, unknown>,
