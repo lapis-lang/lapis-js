@@ -1031,7 +1031,7 @@ function createADT(decl: ParsedDecl): ADTLike {
         });
     }
 
-    if (decl.Family === undefined)
+    if (decl.Family == null)
         decl.Family = createFamilyMarker();
     decl.Family._adt = ProxiedADT as unknown as ADTLike;
 
