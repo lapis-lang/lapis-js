@@ -8,6 +8,8 @@ export { protocol } from './Protocol.mjs';
 export { satisfies } from './operations.mjs';
 export type { ProtocolLike, ProtocolEntry, ConditionalConformance, ProtocolDeclContext, FoldSpecEntry, MethodFoldSpecEntry, GetterFoldSpecEntry, UnfoldSpecEntry, MapSpecEntry, ProtocolOps } from './Protocol.mjs';
 export { op, spec, operations, history, sort } from './operations.mjs';
+export type { OperationProperty, NamespacedProperty, PredicateFn, PropertyEntry } from './operations.mjs';
+export { KNOWN_PROPERTIES, INTER_OP_PREFIXES } from './operations.mjs';
 export { DeclBrand, isSort } from './types.mjs';
 export { unfold, fold, map, merge } from './ops.mjs';
 export type { UnfoldDef, UnfoldDefBase, FoldDef, FoldDefBase, MapDef, MapDefBase, MergeDef, ExpandAliases, HasAliases } from './ops.mjs';

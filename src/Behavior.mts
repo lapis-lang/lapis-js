@@ -31,7 +31,8 @@ import {
     assertPascalCase,
     LapisTypeSymbol,
     satisfies,
-    parseProperties
+    parseProperties,
+    type PropertyEntry
 } from './operations.mjs';
 
 import { aux } from './Data.mjs';
@@ -106,21 +107,21 @@ interface FoldOpEntry {
     auxIsArray: boolean;
     preMapTransforms?: MapTransformEntry[];
     contracts?: ContractSpec;
-    properties?: ReadonlySet<string>;
+    properties?: ReadonlySet<PropertyEntry>;
 }
 
 interface MapOpEntry {
     typeParam: string;
     transformFn: AnyFn;
     isGetter: boolean;
-    properties?: ReadonlySet<string>;
+    properties?: ReadonlySet<PropertyEntry>;
 }
 
 interface UnfoldOpEntry {
     spec: Record<string, unknown>;
     handlers: Record<string, AnyFn>;
     contracts?: ContractSpec;
-    properties?: ReadonlySet<string>;
+    properties?: ReadonlySet<PropertyEntry>;
 }
 
 interface BehaviorInstanceState {
