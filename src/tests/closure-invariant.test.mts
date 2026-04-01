@@ -4,7 +4,7 @@ import { relation, data, invariant } from '../index.mjs';
 
 describe('Closure — Invariant Enforcement', () => {
     test('invariant rejects invalid compositions during closure', () => {
-        const Ancestor = relation(({ family }) => ({
+        const Ancestor = relation(family => ({
             Direct: { from: String, to: String },
             Transitive: { hop: family, rest: family }
         })).ops(({ fold, unfold, map, merge, origin, destination, family }) => ({
@@ -51,7 +51,7 @@ describe('Closure — Invariant Enforcement', () => {
     });
 
     test('closure with mixed valid/invalid compositions', () => {
-        const Reach = relation(({ family }) => ({
+        const Reach = relation(family => ({
             Step: { from: String, to: String },
             Chain: { first: family, rest: family }
         })).ops(({ fold, unfold, map, merge, origin, destination, family }) => ({

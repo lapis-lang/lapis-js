@@ -23,12 +23,12 @@ describe('Comb Inheritance — variant instanceof across extend', () => {
 
     // ── Shared ADT hierarchy ──────────────────────────────────────────────
 
-    const Expr = data(({ family }) => ({
+    const Expr = data(family => ({
         Lit: { value: Number },
         Add: { left: family, right: family }
     }));
 
-    const RichExpr = data(({ family }) => ({
+    const RichExpr = data(family => ({
         [extend]: Expr,
         Mul: { left: family, right: family }
     }));
@@ -77,16 +77,16 @@ describe('Comb Inheritance — variant instanceof across extend', () => {
     });
 
     test('three-level extend: grandchild instanceof grandparent variant', () => {
-        const Expr2 = data(({ family }) => ({
+        const Expr2 = data(family => ({
             Lit: { value: Number }
         }));
 
-        const Expr3 = data(({ family }) => ({
+        const Expr3 = data(family => ({
             [extend]: Expr2,
             Add: { left: family, right: family }
         }));
 
-        const Expr4 = data(({ family }) => ({
+        const Expr4 = data(family => ({
             [extend]: Expr3,
             Mul: { left: family, right: family }
         }));
@@ -112,7 +112,7 @@ describe('Comb Inheritance — variant instanceof across extend', () => {
     });
 
     test('fold across extend works on inherited variants (regression)', () => {
-        const EvalExpr = data(({ family }) => ({
+        const EvalExpr = data(family => ({
             Lit: { value: Number },
             Add: { left: family, right: family }
         })).ops(({ fold }) => ({
@@ -123,7 +123,7 @@ describe('Comb Inheritance — variant instanceof across extend', () => {
             })
         }));
 
-        const ExtExpr = data(({ family }) => ({
+        const ExtExpr = data(family => ({
             [extend]: EvalExpr,
             Mul: { left: family, right: family }
         })).ops(({ fold }) => ({

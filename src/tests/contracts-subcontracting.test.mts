@@ -164,7 +164,7 @@ describe('Contracts: Subcontracting (LSP)', () => {
 
     describe('Unfold demands OR (weaken)', () => {
         it('should accept seed if either parent or child unfold demands pass', () => {
-            const Base = data(({ family }) => ({
+            const Base = data(family => ({
                 Nil: {},
                 Cons: { head: Number, tail: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -177,7 +177,7 @@ describe('Contracts: Subcontracting (LSP)', () => {
                 })
             }));
 
-            const Extended = data(({ family }) => ({
+            const Extended = data(family => ({
                 [extend]: Base
             })).ops(({ fold, unfold, map, merge, family }) => ({
                 Range: unfold({
@@ -207,7 +207,7 @@ describe('Contracts: Subcontracting (LSP)', () => {
 
     describe('Unfold ensures AND (strengthen)', () => {
         it('should require both parent and child unfold ensures to pass', () => {
-            const Base = data(({ family }) => ({
+            const Base = data(family => ({
                 Nil: {},
                 Cons: { head: Number, tail: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -221,7 +221,7 @@ describe('Contracts: Subcontracting (LSP)', () => {
                 })
             }));
 
-            const Extended = data(({ family }) => ({
+            const Extended = data(family => ({
                 [extend]: Base
             })).ops(({ fold, unfold, map, merge, family }) => ({
                 Range: unfold({
@@ -250,7 +250,7 @@ describe('Contracts: Subcontracting (LSP)', () => {
         it('should inherit parent rescue when child does not define one', () => {
             let parentRescueCalled = false;
 
-            const Base = data(({ family }) => ({
+            const Base = data(family => ({
                 Nil: {},
                 Cons: { head: Number, tail: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -266,7 +266,7 @@ describe('Contracts: Subcontracting (LSP)', () => {
                 })
             }));
 
-            const Extended = data(({ family }) => ({
+            const Extended = data(family => ({
                 [extend]: Base
             })).ops(({ fold, unfold, map, merge, family }) => ({
                 Build: unfold({
@@ -286,7 +286,7 @@ describe('Contracts: Subcontracting (LSP)', () => {
             let parentRescueCalled = false;
             let childRescueCalled = false;
 
-            const Base = data(({ family }) => ({
+            const Base = data(family => ({
                 Nil: {},
                 Cons: { head: Number, tail: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -302,7 +302,7 @@ describe('Contracts: Subcontracting (LSP)', () => {
                 })
             }));
 
-            const Extended = data(({ family }) => ({
+            const Extended = data(family => ({
                 [extend]: Base
             })).ops(({ fold, unfold, map, merge, family }) => ({
                 Build: unfold({
@@ -326,7 +326,7 @@ describe('Contracts: Subcontracting (LSP)', () => {
 
     describe('Unfold inherits contracts without override', () => {
         it('should enforce parent demands on inherited unfold', () => {
-            const Base = data(({ family }) => ({
+            const Base = data(family => ({
                 Nil: {},
                 Cons: { head: Number, tail: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({

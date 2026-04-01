@@ -16,7 +16,7 @@ import { query, behavior } from '../index.mjs';
 
 /** Simple counter behavior for testing exploration. */
 function makeCounter() {
-    return query(({ self }) => ({
+    return query(self => ({
         value: Number,
         isDone: Boolean,
         isActive: Boolean,
@@ -41,7 +41,7 @@ function makeReachability() {
         0: [1], 1: [2], 2: [3], 3: [4], 4: []
     };
 
-    return query(({ self }) => ({
+    return query(self => ({
         current: Number,
         isExhausted: Boolean,
         isAccepted: Boolean,
@@ -73,7 +73,7 @@ describe('query()', () => {
 
         it('should throw if output is not a string field reference', () => {
             assert.throws(() => {
-                query(({ self }) => ({
+                query(self => ({
                     value: Number,
                     next: self
                 })).ops(({ fold, unfold, map, merge, output, done, accept, Self }) => ({
@@ -90,7 +90,7 @@ describe('query()', () => {
 
         it('should throw if done is not a string field reference', () => {
             assert.throws(() => {
-                query(({ self }) => ({
+                query(self => ({
                     value: Number,
                     next: self
                 })).ops(({ fold, unfold, map, merge, output, done, accept, Self }) => ({
@@ -107,7 +107,7 @@ describe('query()', () => {
 
         it('should throw if accept is not a string field reference', () => {
             assert.throws(() => {
-                query(({ self }) => ({
+                query(self => ({
                     value: Number,
                     next: self
                 })).ops(({ fold, unfold, map, merge, output, done, accept, Self }) => ({
@@ -195,7 +195,7 @@ describe('query()', () => {
         });
 
         it('should throw when no unfold is available', () => {
-            const NoUnfold = query(({ self }) => ({
+            const NoUnfold = query(self => ({
                 value: Number,
                 isDone: Boolean,
                 isAccepted: Boolean,
@@ -214,7 +214,7 @@ describe('query()', () => {
 
     describe('explore() with output projection', () => {
         it('should apply output function to transform results', () => {
-            const Doubler = query(({ self }) => ({
+            const Doubler = query(self => ({
                 value: Number,
                 doubled: Number,
                 isFinished: Boolean,
@@ -242,7 +242,7 @@ describe('query()', () => {
     describe('explore() with accept/done separation', () => {
         it('should only collect accepted states', () => {
             // Only accept even numbers
-            const EvenFilter = query(({ self }) => ({
+            const EvenFilter = query(self => ({
                 value: Number,
                 isExhausted: Boolean,
                 isEven: Boolean,
@@ -266,7 +266,7 @@ describe('query()', () => {
 
         it('should accept the final done state if accept returns true', () => {
             // Accept ALL values including the done state
-            const AllStates = query(({ self }) => ({
+            const AllStates = query(self => ({
                 value: Number,
                 isFinished: Boolean,
                 isAccepted: Boolean,
@@ -319,7 +319,7 @@ describe('query()', () => {
 
     describe('behavior compatibility', () => {
         it('query() returns a behavior with all standard operations', () => {
-            const B = query(({ self }) => ({
+            const B = query(self => ({
                 value: Number,
                 isDone: Boolean,
                 isAccepted: Boolean,
@@ -351,7 +351,7 @@ describe('query()', () => {
         });
 
         it('plain behavior() should NOT have explore()', () => {
-            const B = behavior(({ self }) => ({
+            const B = behavior(self => ({
                 value: Number,
                 next: self
             })).ops(({ fold, unfold, map, merge, self }) => ({
@@ -368,7 +368,7 @@ describe('query()', () => {
     describe('reserved name validation', () => {
         it("rejects 'explore' as a user-defined key", () => {
             assert.throws(
-                () => query(({ self }) => ({
+                () => query(self => ({
                     value: Number,
                     isDone: Boolean,
                     isAccepted: Boolean,
@@ -392,7 +392,7 @@ describe('query()', () => {
 
     describe('string field references for cospan projections', () => {
         it('string references auto-generate fold from field', () => {
-            const Counter = query(({ self }) => ({
+            const Counter = query(self => ({
                 value: Number,
                 isDone: Boolean,
                 isAccepted: Boolean,
@@ -415,7 +415,7 @@ describe('query()', () => {
         });
 
         it('all three cospan keys reference distinct fields', () => {
-            const Counter = query(({ self }) => ({
+            const Counter = query(self => ({
                 value: Number,
                 isDone: Boolean,
                 isAccepted: Boolean,
@@ -439,7 +439,7 @@ describe('query()', () => {
 
         it('string reference throws for unknown field', () => {
             assert.throws(
-                () => query(({ self }) => ({
+                () => query(self => ({
                     value: Number,
                     isDone: Boolean,
                     isAccepted: Boolean,
@@ -461,7 +461,7 @@ describe('query()', () => {
 
         it('rejects explicit fold defs for cospan projections', () => {
             assert.throws(
-                () => query(({ self }) => ({
+                () => query(self => ({
                     value: Number,
                     isDone: Boolean,
                     next: self

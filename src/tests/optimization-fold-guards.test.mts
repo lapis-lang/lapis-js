@@ -23,7 +23,7 @@ import { data } from '../index.mjs';
 
 
 function makeNat() {
-    const adt = data(({ family }) => ({
+    const adt = data(family => ({
         Zero: {},
         Succ: { pred: family }
     })).ops(({ fold, family }) => ({

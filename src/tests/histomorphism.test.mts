@@ -21,7 +21,7 @@ import { data, behavior, history, extend } from '../index.mjs';
 // Base ADTs — variants + unfold defined once, inherited by all children
 // ---------------------------------------------------------------------------
 
-const BaseNat = data(({ family }) => ({
+const BaseNat = data(family => ({
     Zero: {},
     Succ: { pred: family }
 })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -38,7 +38,7 @@ const BaseNat = data(({ family }) => ({
     })
 }));
 
-const BaseList = data(({ family }) => ({
+const BaseList = data(family => ({
     Nil: {},
     Cons: { head: Number, tail: family }
 })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -150,7 +150,7 @@ describe('Histomorphism (Data)', () => {
 
     describe('Multi-field recursive variant', () => {
         test('binary tree with history on both children', () => {
-            const Tree = data(({ family }) => ({
+            const Tree = data(family => ({
                 Leaf: { value: Number },
                 Node: { left: family, right: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -183,7 +183,7 @@ describe('Histomorphism (Data)', () => {
         });
 
         test('tree history gives access to grandchild fold results', () => {
-            const Tree = data(({ family }) => ({
+            const Tree = data(family => ({
                 Leaf: { value: Number },
                 Node: { left: family, right: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -326,7 +326,7 @@ describe('Histomorphism (Data)', () => {
 describe('Histomorphism (Behavior)', () => {
     describe('Stream with history', () => {
         test('fold with history can look ahead into stream observations', () => {
-            const Stream = behavior(({ self }) => ({
+            const Stream = behavior(self => ({
                 head: Number,
                 tail: self
             })).ops(({ fold, unfold, map, merge, self }) => ({
@@ -358,7 +358,7 @@ describe('Histomorphism (Behavior)', () => {
         });
 
         test('fold without history on behavior works unchanged', () => {
-            const Stream = behavior(({ self }) => ({
+            const Stream = behavior(self => ({
                 head: Number,
                 tail: self
             })).ops(({ fold, unfold, map, merge, self }) => ({
@@ -376,7 +376,7 @@ describe('Histomorphism (Behavior)', () => {
         });
 
         test('behavior history has [history] for recursive sub-observations', () => {
-            const Stream = behavior(({ self }) => ({
+            const Stream = behavior(self => ({
                 head: Number,
                 tail: self
             })).ops(({ fold, unfold, map, merge, self }) => ({

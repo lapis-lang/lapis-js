@@ -266,7 +266,7 @@ describe('protocol [invariant] enforcement', () => {
         }));
 
         assert.throws(() => {
-            behavior(({ self }) => ({
+            behavior(self => ({
                 [satisfies]: [NeedsStatic],
                 value: Number
             })).ops(({ fold, unfold, self }) => ({
@@ -518,7 +518,7 @@ describe('behavior() [satisfies]', () => {
             step: fold({ out: Number })
         }));
 
-        const Counter = behavior(({ self }) => ({
+        const Counter = behavior(self => ({
             [satisfies]: [Steppable],
             value: Number
         })).ops(({ fold, unfold, self }) => ({
@@ -541,7 +541,7 @@ describe('behavior() [satisfies]', () => {
 
         assert.throws(
             () => {
-                behavior(({ self }) => ({
+                behavior(self => ({
                     [satisfies]: [Steppable],
                     value: Number
                 })).ops(({ unfold, self }) => ({
@@ -718,7 +718,7 @@ describe('protocol contract composition — behavior() fold', () => {
             })
         }));
 
-        const Counter = behavior(({ self }) => ({
+        const Counter = behavior(self => ({
             [satisfies]: [ValidStep],
             value: Number,
             next: self
@@ -748,7 +748,7 @@ describe('protocol contract composition — behavior() unfold', () => {
             })
         }));
 
-        const Counter = behavior(({ self }) => ({
+        const Counter = behavior(self => ({
             [satisfies]: [PositiveSeed],
             value: Number,
             next: self
@@ -907,7 +907,7 @@ describe('protocol conformance — behavior merge ops are recognized', () => {
             TakeFrom: merge('From', 'take')
         }));
 
-        const Stream = behavior(({ self }) => ({
+        const Stream = behavior(self => ({
             [satisfies]: [Summable],
             head: Number,
             tail: self

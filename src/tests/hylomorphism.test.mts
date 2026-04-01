@@ -13,7 +13,7 @@ describe('Merge pipeline (unfold + fold)', () => {
             let unfoldCaseCalls = 0;
             let foldHandlerCalls = 0;
 
-            const List = data(({ family }) => ({
+            const List = data(family => ({
                 Nil: {},
                 Cons: { head: Number, tail: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -53,7 +53,7 @@ describe('Merge pipeline (unfold + fold)', () => {
         });
 
         test('merge matches manual unfold → fold at moderate depth', () => {
-            const List = data(({ family }) => ({
+            const List = data(family => ({
                 Nil: {},
                 Cons: { head: Number, tail: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -163,7 +163,7 @@ describe('Merge pipeline (unfold + fold)', () => {
 
     describe('Correctness across patterns', () => {
         test('merge factorial matches sequential factorial', () => {
-            const List = data(({ family }) => ({
+            const List = data(family => ({
                 Nil: {},
                 Cons: { head: Number, tail: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -187,7 +187,7 @@ describe('Merge pipeline (unfold + fold)', () => {
         });
 
         test('wildcard fold handler works in merge', () => {
-            const List = data(({ family }) => ({
+            const List = data(family => ({
                 Nil: {},
                 Cons: { head: Number, tail: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -207,7 +207,7 @@ describe('Merge pipeline (unfold + fold)', () => {
         });
 
         test('merge validates unfold input types', () => {
-            const List = data(({ family }) => ({
+            const List = data(family => ({
                 Nil: {},
                 Cons: { head: Number, tail: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -230,7 +230,7 @@ describe('Merge pipeline (unfold + fold)', () => {
         });
 
         test('merge on binary tree structure', () => {
-            const Tree = data(({ family }) => ({
+            const Tree = data(family => ({
                 Leaf: { value: Number },
                 Node: { left: family, right: family, value: Number }
             })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -276,7 +276,7 @@ describe('Merge pipeline (unfold + fold)', () => {
         });
 
         test('fold handler can access other operations via this in merge', () => {
-            const List = data(({ family }) => ({
+            const List = data(family => ({
                 Nil: {},
                 Cons: { head: Number, tail: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -307,7 +307,7 @@ describe('Merge pipeline (unfold + fold)', () => {
             // Store in a container to break the TS7022 circular reference
             // while the fold handlers capture `ref` by closure.
             const ref: { List: unknown } = { List: null };
-            const List = data(({ family }) => ({
+            const List = data(family => ({
                 Nil: {},
                 Cons: { head: Number, tail: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -332,7 +332,7 @@ describe('Merge pipeline (unfold + fold)', () => {
 
     describe('Correctness at scale', () => {
         test('merge produces correct results for large inputs', () => {
-            const List = data(({ family }) => ({
+            const List = data(family => ({
                 Nil: {},
                 Cons: { head: Number, tail: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({

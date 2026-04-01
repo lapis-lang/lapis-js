@@ -35,12 +35,12 @@ describe('ADT Extension', () => {
     });
 
     test('recursive extension - structure verification', () => {
-        const IntAlgebra = data(({ family }) => ({
+        const IntAlgebra = data(family => ({
             Lit: { value: Number },
             Add: { left: family, right: family }
         }));
 
-        const IntBoolAlgebra = data(({ family }) => ({
+        const IntBoolAlgebra = data(family => ({
             [extend]: IntAlgebra,
             BoolLit: { value: Boolean },
             Iff: { cond: family, thenBranch: family, elseBranch: family }
@@ -65,12 +65,12 @@ describe('ADT Extension', () => {
     });
 
     test('recursive extension - instanceof hierarchy', () => {
-        const IntAlgebra = data(({ family }) => ({
+        const IntAlgebra = data(family => ({
             Lit: { value: Number },
             Add: { left: family, right: family }
         }));
 
-        const IntBoolAlgebra = data(({ family }) => ({
+        const IntBoolAlgebra = data(family => ({
             [extend]: IntAlgebra,
             BoolLit: { value: Boolean },
             Iff: { cond: family, thenBranch: family, elseBranch: family }
@@ -99,12 +99,12 @@ describe('ADT Extension', () => {
     });
 
     test('family references in extended ADT resolve to extended type', () => {
-        const Base = data(({ family }) => ({
+        const Base = data(family => ({
             Base1: { value: Number },
             Base2: { ref: family }
         }));
 
-        const Extended = data(({ family }) => ({
+        const Extended = data(family => ({
             [extend]: Base,
             Extended1: { value: String },
             Extended2: { ref: family }
@@ -306,20 +306,20 @@ describe('ADT Extension', () => {
     });
 
     test('expression language extension - structure verification', () => {
-        const IntExpr = data(({ family }) => ({
+        const IntExpr = data(family => ({
             IntLit: { value: Number },
             Add: { left: family, right: family },
             Mul: { left: family, right: family }
         }));
 
-        const IntBoolExpr = data(({ family }) => ({
+        const IntBoolExpr = data(family => ({
             [extend]: IntExpr,
             BoolLit: { value: Boolean },
             LessThan: { left: family, right: family },
             And: { left: family, right: family }
         }));
 
-        const FullExpr = data(({ family }) => ({
+        const FullExpr = data(family => ({
             [extend]: IntBoolExpr,
             Var: { name: String },
             Let: { name: String, value: family, body: family }
@@ -344,20 +344,20 @@ describe('ADT Extension', () => {
     });
 
     test('expression language extension - instanceof hierarchy', () => {
-        const IntExpr = data(({ family }) => ({
+        const IntExpr = data(family => ({
             IntLit: { value: Number },
             Add: { left: family, right: family },
             Mul: { left: family, right: family }
         }));
 
-        const IntBoolExpr = data(({ family }) => ({
+        const IntBoolExpr = data(family => ({
             [extend]: IntExpr,
             BoolLit: { value: Boolean },
             LessThan: { left: family, right: family },
             And: { left: family, right: family }
         }));
 
-        const FullExpr = data(({ family }) => ({
+        const FullExpr = data(family => ({
             [extend]: IntBoolExpr,
             Var: { name: String },
             Let: { name: String, value: family, body: family }

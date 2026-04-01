@@ -12,7 +12,7 @@ describe('Variance Investigation', () => {
                 speak() { return 'woof'; }
             }
 
-            const AnimalList = data(({ family }) => ({
+            const AnimalList = data(family => ({
                 Nil: {},
                 Cons: { head: Animal, tail: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -118,7 +118,7 @@ describe('Variance Investigation', () => {
                 }
             }
 
-            const Option = data(({ family }) => ({
+            const Option = data(family => ({
                 Nil: {},
                 Cons: { head: Dog, tail: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -144,7 +144,7 @@ describe('Variance Investigation', () => {
 
     describe('Type Inference with Primitive Constructors', () => {
         test('spec.out: Number infers number (primitive), not Number (wrapper)', () => {
-            const List = data(({ family }) => ({
+            const List = data(family => ({
                 Nil: {},
                 Cons: { head: Number, tail: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -168,7 +168,7 @@ describe('Variance Investigation', () => {
         });
 
         test('handlers returning primitives work with primitive constructors', () => {
-            const List = data(({ family }) => ({
+            const List = data(family => ({
                 Nil: {},
                 Cons: { head: String, tail: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -217,7 +217,7 @@ describe('Variance Investigation', () => {
             class Animal { type = 'animal'; }
             class Dog extends Animal { type = 'dog'; }
 
-            const List = data(({ family }) => ({
+            const List = data(family => ({
                 Nil: {},
                 Cons: { head: Dog, tail: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -360,7 +360,7 @@ describe('Variance Investigation', () => {
 
     describe('Actual Variance in Type System', () => {
         test('assigning to wider type variable', () => {
-            const List = data(({ family }) => ({
+            const List = data(family => ({
                 Nil: {},
                 Cons: { head: Number, tail: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({

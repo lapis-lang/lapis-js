@@ -5,7 +5,7 @@ import { data } from '../index.mjs';
 describe('Merge Operation (Deforestation)', () => {
     describe('Hylomorphism (unfold + fold)', () => {
         test('should merge unfold and fold into factorial without intermediate list', () => {
-            const List = data(({ family }) => ({
+            const List = data(family => ({
                 Nil: {},
                 Cons: { head: Number, tail: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -29,7 +29,7 @@ describe('Merge Operation (Deforestation)', () => {
 
         test('should validate PascalCase name for merged unfold operations', () => {
             assert.throws(
-                () => data(({ family }) => ({
+                () => data(family => ({
                     Nil: {},
                     Cons: { head: Number, tail: family }
                 })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -48,7 +48,7 @@ describe('Merge Operation (Deforestation)', () => {
         });
 
         test('should compute sum using hylomorphism', () => {
-            const List = data(({ family }) => ({
+            const List = data(family => ({
                 Nil: {},
                 Cons: { head: Number, tail: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -212,7 +212,7 @@ describe('Merge Operation (Deforestation)', () => {
     describe('Validation', () => {
         test('should reject merging multiple unfolds', () => {
             assert.throws(
-                () => data(({ family }) => ({
+                () => data(family => ({
                     Nil: {},
                     Cons: { head: Number, tail: family }
                 })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -232,7 +232,7 @@ describe('Merge Operation (Deforestation)', () => {
 
         test('should reject merging multiple folds', () => {
             assert.throws(
-                () => data(({ family }) => ({
+                () => data(family => ({
                     Nil: {},
                     Cons: { head: Number, tail: family }
                 })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -252,7 +252,7 @@ describe('Merge Operation (Deforestation)', () => {
 
         test('should reject unknown operation names', () => {
             assert.throws(
-                () => data(({ family }) => ({
+                () => data(family => ({
                     Nil: {},
                     Cons: { head: Number, tail: family }
                 })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -268,7 +268,7 @@ describe('Merge Operation (Deforestation)', () => {
 
         test('should reject empty operation names array', () => {
             assert.throws(
-                () => data(({ family }) => ({
+                () => data(family => ({
                     Nil: {},
                     Cons: { head: Number, tail: family }
                 })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -280,7 +280,7 @@ describe('Merge Operation (Deforestation)', () => {
 
         test('should reject single operation merge', () => {
             assert.throws(
-                () => data(({ family }) => ({
+                () => data(family => ({
                     Nil: {},
                     Cons: { head: Number, tail: family }
                 })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -297,7 +297,7 @@ describe('Merge Operation (Deforestation)', () => {
 
     describe('Performance (Deforestation)', () => {
         test('merged operation should be faster than sequential calls', () => {
-            const List = data(({ family }) => ({
+            const List = data(family => ({
                 Nil: {},
                 Cons: { head: Number, tail: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -344,7 +344,7 @@ describe('Merge Operation (Deforestation)', () => {
             // This test demonstrates deforestation conceptually
             // In a real-world scenario, we'd measure heap allocation
 
-            const List = data(({ family }) => ({
+            const List = data(family => ({
                 Nil: {},
                 Cons: { head: Number, tail: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -377,7 +377,7 @@ describe('Merge Operation (Deforestation)', () => {
 
     describe('Fluent API', () => {
         test('should return ADT for chaining after merge', () => {
-            const List = data(({ family }) => ({
+            const List = data(family => ({
                 Nil: {},
                 Cons: { head: Number, tail: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({

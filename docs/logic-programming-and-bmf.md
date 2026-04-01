@@ -169,12 +169,12 @@ In Lapis terms, temporal Datalog doesn't require a special extension. Time-varyi
 
 ```js
 // Static Datalog: data (μ) — parent is a fixed set of facts
-const Parent = data(({ Self }) => ({
+const Parent = data(family => ({
     Direct: { parent: Person, child: Person }
 }))
 
 // Temporal Datalog: behavior (ν) — parent is an observation indexed by time
-const Parent = behavior(({ Self }) => ({
+const Parent = behavior(self => ({
     query: { at: Time, out: Set }
 }))
 
@@ -260,7 +260,7 @@ The correspondence is direct:
 
 | Combinator Datalog | Lapis `data()` |
 | --- | --- |
-| `μ a . F(a)` (least fixpoint) | `data(({ Self }) => F(Self))` |
+| `μ a . F(a)` (least fixpoint) | `data(family => F(Self))` |
 | Union of clauses | Union of constructors |
 | Recursive reference `a` | `Self` |
 | Relational composition (join) | Shared field types + invariant |
@@ -277,7 +277,7 @@ The ancestor example maps directly:
 
 ```js
 // ancestor = μ a . parent ∪ (parent ∘ a)
-const Ancestor = data(({ Self }) => ({
+const Ancestor = data(family => ({
     // parent — base facts (leaf constructor)
     Direct: { from: String, to: String },
 
@@ -300,7 +300,7 @@ The constructors encode **proofs** (derivation trees). A `Direct('Tom', 'Bob')` 
 Since derivations are data, queries are folds:
 
 ```js
-const Ancestor = data(({ Self }) => ({
+const Ancestor = data(family => ({
     Direct: { from: String, to: String },
     Transitive: { hop: Parent, rest: Self },
 
@@ -433,7 +433,7 @@ ancestor = ν a . alt parent (seq parent a)
 
 ```js
 // ancestor = ν a . alt parent (seq parent a)
-const AncestorSearch = behavior(({ Self }) => ({
+const AncestorSearch = behavior(self => ({
     // Observers: what you can ask about a search state
     from: String,              // the "X" endpoint
     to: String,                // the "Y" endpoint
@@ -485,7 +485,7 @@ The intermediate `B` is consumed by composition, exactly as `Z` is consumed by u
 
 ```js
 // grandparent = seq parent parent
-const GrandparentSearch = behavior(({ Self }) => ({
+const GrandparentSearch = behavior(self => ({
     from: String,           // A
     to: String,             // C
     intermediate: String,   // B (the "wired" variable, now a named observer)
@@ -575,8 +575,8 @@ In Lapis, these map to:
 | `seq` | Chained observers / shared field types between operations |
 | `alt` | Multiple constructors (`data`) or alternative unfold branches (`behavior`) |
 | `id` | Identity map |
-| `fix` (μ) | `data(({ Self }) => ...)` |
-| `fix` (ν) | `behavior(({ Self }) => ...)` |
+| `fix` (μ) | `data(family => ...)` |
+| `fix` (ν) | `behavior(self => ...)` |
 | `dup` | Multiple uses of the same field in a handler |
 | `swap` | Field reordering in `map` |
 
@@ -635,7 +635,7 @@ A Prolog query unfolds into a lazy search tree, consumed by fold. This approach 
 
 ```js
 // Speculative syntax
-const Solver = behavior(({ Self }) => ({
+const Solver = behavior(self => ({
     // Observers: current search state
     goal: Object,           // current goal
     substitution: Object,   // current variable bindings
@@ -792,7 +792,7 @@ In Lapis terms:
 
 ```js
 // amb(a, b, c) as behavior:
-const Choice = behavior(({ Self, T }) => ({
+const Choice = behavior(self => ({
     value: T,           // current choice
     remaining: Self(T), // other options (lazy)
 
@@ -1182,7 +1182,7 @@ This is the same insight as ECMAScript 2025 alignment — the host language alre
 
     ```js
     // Speculative: Term ADT with generator-based unification
-    const Term = data(({ Family, Self }) => ({
+    const Term = data(family => ({
         Var: { ref: LogicVar },       // $.X, $.Y — logic variables via $ Proxy
         Const: { value: Object },
         Compound: { functor: String, args: Array },

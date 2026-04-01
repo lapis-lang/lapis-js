@@ -12,7 +12,7 @@ import { isPrime, smallestFactor } from '../src/lib/primes.mjs';
 // Example 1: Basic Rose Tree with Lazy Children
 // =============================================================================
 
-const RoseTree = behavior(({ self }) => ({
+const RoseTree = behavior(self => ({
     value: Number,
     children: Array
 })).ops(({ unfold, self }) => ({
@@ -53,7 +53,7 @@ console.log('leaf.children.length:', leaf.children.length);    // 0
 // Example 2: N-ary Tree (Variable Number of Children)
 // =============================================================================
 
-const NaryTree = behavior(({ self }) => ({
+const NaryTree = behavior(self => ({
     value: Number,
     children: Array
 })).ops(({ unfold, self }) => ({
@@ -77,7 +77,7 @@ console.log('Grandchildren of first child:',
 // Example 3: Directory Tree (File System)
 // =============================================================================
 
-const FileTree = behavior(({ self }) => ({
+const FileTree = behavior(self => ({
     name: String,
     isDirectory: Boolean,
     children: Array,
@@ -130,7 +130,7 @@ root.children.forEach((child: any) => {
 // Example 4: Game Tree (Tic-Tac-Toe Moves)
 // =============================================================================
 
-const GameTree = behavior(({ self }) => ({
+const GameTree = behavior(self => ({
     state: String,
     isTerminal: Boolean,
     moves: Array
@@ -173,7 +173,7 @@ console.log('Possible moves from 5:', gameState.moves.map((m: any) => m.state));
 // Example 5: Factor Tree (Prime Factorization)
 // =============================================================================
 
-const FactorTree = behavior(({ self }) => ({
+const FactorTree = behavior(self => ({
     value: Number,
     isPrime: Boolean,
     factors: Array
@@ -204,7 +204,7 @@ console.log('17 factors:', factor17.factors);                  // []
 // Example 6: Expression Tree with Lazy Evaluation
 // =============================================================================
 
-const ExprTree = behavior(({ self }) => ({
+const ExprTree = behavior(self => ({
     type: String,
     value: Number,
     children: Array

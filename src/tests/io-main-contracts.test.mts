@@ -18,7 +18,7 @@ import { IOResponse } from '../lib/io/response.mjs';
 describe('Contracts on Main behavior', () => {
     describe('demands on unfold constructor', () => {
 
-        const App: any = behavior(({ self }) => ({
+        const App: any = behavior(self => ({
             request: IORequest,
             respond: { in: IOResponse, out: self }
         })).ops(({ fold, unfold, map, merge, self }) => ({
@@ -50,7 +50,7 @@ describe('Contracts on Main behavior', () => {
 
     describe('request observer returns valid IORequest', () => {
 
-        const App: any = behavior(({ self }) => ({
+        const App: any = behavior(self => ({
             request: IORequest,
             respond: { in: IOResponse, out: self }
         })).ops(({ fold, unfold, map, merge, self }) => ({
@@ -80,7 +80,7 @@ describe('Contracts on Main behavior', () => {
 
     describe('respond continuation validates through usage', () => {
 
-        const App: any = behavior(({ self }) => ({
+        const App: any = behavior(self => ({
             request: IORequest,
             respond: { in: IOResponse, out: self }
         })).ops(({ fold, unfold, map, merge, self }) => ({

@@ -283,7 +283,7 @@ describe('Involutory: non-involutory ops are not cancelled', () => {
 describe('Involutory: ordinary inverse pair is still eliminated by existing mechanism', () => {
 
     it('merge(inc, dec) — explicit inverse pair collapses to identity', () => {
-        const Counter = data(({ family }) => ({
+        const Counter = data(family => ({
             Zero: {},
             Succ: { pred: family }
         })).ops(({ fold, map, merge, family }) => ({

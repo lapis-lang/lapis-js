@@ -16,7 +16,7 @@ import { IOResponse } from '../lib/io/response.mjs';
 
 type StructuredCtorCase = {
     name: string;
-    ctor: (arg: Record<string, unknown>) => any;
+    ctor: (arg: any) => any;
     variantCtor: abstract new (...args: any[]) => any;
     validArg: Record<string, unknown>;
     field: string;
@@ -27,7 +27,7 @@ type SingletonCtorCase = {
     name: string;
     value: any;
     sourceValue: () => any;
-    familyCtor: abstract new (...args: any[]) => any;
+    familyCtor: { [Symbol.hasInstance](value: unknown): boolean };
 };
 
 type GuardCase = {

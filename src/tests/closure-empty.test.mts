@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { relation, data } from '../index.mjs';
 
 describe('Closure — Empty and Single Fact Edge Cases', () => {
-    const Ancestor = relation(({ family }) => ({
+    const Ancestor = relation(family => ({
         Direct: { from: String, to: String },
         Transitive: { hop: family, rest: family }
     })).ops(({ fold, unfold, map, merge, origin, destination, family }) => ({
@@ -45,7 +45,7 @@ describe('Closure — Singleton Variants', () => {
     test('singleton variants in closure (data type, not relation)', () => {
         // BoolList is not a relation — it has no relational structure.
         // This test verifies that closure is NOT available on plain data types.
-        const BoolList = data(({ family }) => ({
+        const BoolList = data(family => ({
             Empty: {},
             Entry: { value: Boolean, rest: family }
         }));

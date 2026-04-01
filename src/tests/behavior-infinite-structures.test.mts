@@ -309,7 +309,7 @@ describe('Behavior - Infinite Structures', () => {
 
     describe('Test 4: Behavior Set', () => {
         it('should represent infinite sets via interface', () => {
-            const BehaviorSet = behavior(({ self }) => ({
+            const BehaviorSet = behavior(self => ({
                 isEmpty: Boolean,
                 lookup: { in: Number, out: Boolean },
                 insert: { in: Number, out: self },
@@ -345,7 +345,7 @@ describe('Behavior - Infinite Structures', () => {
         });
 
         it('should support multiple infinite set types', () => {
-            const BehaviorSet = behavior(({ self }) => ({
+            const BehaviorSet = behavior(self => ({
                 isEmpty: Boolean,
                 lookup: { in: Number, out: Boolean }
             })).ops(({ fold, unfold, map, merge, self }) => ({
@@ -385,7 +385,7 @@ describe('Behavior - Infinite Structures', () => {
         });
 
         it('should memoize parametric observer functions', () => {
-            const BehaviorSet = behavior(({ self }) => ({
+            const BehaviorSet = behavior(self => ({
                 isEmpty: Boolean,
                 lookup: { in: Number, out: Boolean }
             })).ops(({ fold, unfold, map, merge, self }) => ({
@@ -503,7 +503,7 @@ describe('Behavior - Infinite Structures', () => {
 
     describe('Complex Infinite Structures', () => {
         it('should support Fibonacci sequence as infinite stream', () => {
-            const Stream = behavior(({ self }) => ({
+            const Stream = behavior(self => ({
                 current: Number,
                 next: self
             })).ops(({ fold, unfold, map, merge, self }) => ({
@@ -527,7 +527,7 @@ describe('Behavior - Infinite Structures', () => {
         });
 
         it('should support prime number stream', () => {
-            const Stream = behavior(({ self }) => ({
+            const Stream = behavior(self => ({
                 head: Number,
                 tail: self
             })).ops(({ fold, unfold, map, merge, self }) => ({
@@ -551,7 +551,7 @@ describe('Behavior - Infinite Structures', () => {
         });
 
         it('should support infinite binary tree', () => {
-            const Tree = behavior(({ self }) => ({
+            const Tree = behavior(self => ({
                 value: Number,
                 left: self,
                 right: self,
@@ -595,7 +595,7 @@ describe('Behavior - Infinite Structures', () => {
 
     describe('Performance and Deep Structures', () => {
         it('should handle deep continuation chains without stack overflow', () => {
-            const Stream = behavior(({ self }) => ({
+            const Stream = behavior(self => ({
                 head: Number,
                 tail: self
             })).ops(({ fold, unfold, map, merge, self }) => ({
@@ -621,7 +621,7 @@ describe('Behavior - Infinite Structures', () => {
         it('should efficiently memoize repeated accesses', () => {
             let tailCallCount = 0;
 
-            const Stream = behavior(({ self }) => ({
+            const Stream = behavior(self => ({
                 head: Number,
                 tail: self
             })).ops(({ fold, unfold, map, merge, self }) => ({
@@ -646,7 +646,7 @@ describe('Behavior - Infinite Structures', () => {
         });
 
         it('should support wide tree structures', () => {
-            const Tree = behavior(({ self }) => ({
+            const Tree = behavior(self => ({
                 value: Number,
                 children: Array
             })).ops(({ fold, unfold, map, merge, self }) => ({

@@ -12,7 +12,7 @@ import { data, behavior, extend } from '../index.mjs';
 
 describe('ops helpers — data() unfold', () => {
     test('handler input param is inferred from spec.in', () => {
-        const List = data(({ family }) => ({
+        const List = data(family => ({
             Nil: {},
             Cons: { head: Number, tail: family }
         })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -28,7 +28,7 @@ describe('ops helpers — data() unfold', () => {
     });
 
     test('parameterless unfold: handlers receive no argument', () => {
-        const Singleton = data(({ family }) => ({
+        const Singleton = data(family => ({
             Only: {}
         })).ops(({ fold, unfold, map, merge, family }) => ({
             Once: unfold({ out: family })({
@@ -41,7 +41,7 @@ describe('ops helpers — data() unfold', () => {
     });
 
     test('multiple unfold operations on same ADT: each n is typed', () => {
-        const List = data(({ family }) => ({
+        const List = data(family => ({
             Nil: {},
             Cons: { head: Number, tail: family }
         })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -66,7 +66,7 @@ describe('ops helpers — data() unfold', () => {
 
 describe('ops helpers — data() fold', () => {
     test('parameterless fold: return type inferred from spec.out', () => {
-        const List = data(({ family }) => ({
+        const List = data(family => ({
             Nil: {},
             Cons: { head: Number, tail: family }
         })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -81,7 +81,7 @@ describe('ops helpers — data() fold', () => {
     });
 
     test('parametric fold: input param n is inferred from spec.in', () => {
-        const List = data(({ family }) => ({
+        const List = data(family => ({
             Nil: {},
             Cons: { head: Number, tail: family }
         })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -158,7 +158,7 @@ describe('ops helpers — data() map + merge', () => {
     });
 
     test('merge composes two operations', () => {
-        const List = data(({ family }) => ({
+        const List = data(family => ({
             Nil: {},
             Cons: { head: Number, tail: family }
         })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -182,7 +182,7 @@ describe('ops helpers — data() map + merge', () => {
 
 describe('ops helpers — behavior() unfold', () => {
     test('handler input param is inferred from spec.in', () => {
-        const Stream = behavior(({ self }) => ({
+        const Stream = behavior(self => ({
             head: Number,
             tail: self
         })).ops(({ fold, unfold, map, merge, self }) => ({
@@ -199,7 +199,7 @@ describe('ops helpers — behavior() unfold', () => {
     });
 
     test('parameterless behavior unfold', () => {
-        const Ones = behavior(({ self }) => ({
+        const Ones = behavior(self => ({
             value: Number
         })).ops(({ fold, unfold, map, merge, self }) => ({
             Create: unfold({ out: self })({
@@ -233,7 +233,7 @@ describe('ops helpers — behavior() unfold', () => {
 
 describe('ops helpers — behavior() fold', () => {
     test('parametric behavior fold: n inferred from spec.in', () => {
-        const Stream = behavior(({ self }) => ({
+        const Stream = behavior(self => ({
             head: Number,
             tail: self
         })).ops(({ fold, unfold, map, merge, self }) => ({
@@ -258,7 +258,7 @@ describe('ops helpers — behavior() fold', () => {
 
 describe('ops helpers — behavior [extend]', () => {
     test('child behavior uses helpers and inherits parent', () => {
-        const Base = behavior(({ self }) => ({
+        const Base = behavior(self => ({
             value: Number
         })).ops(({ fold, unfold, map, merge, self }) => ({
             Create: unfold({ in: Number, out: self })({
@@ -266,7 +266,7 @@ describe('ops helpers — behavior [extend]', () => {
             })
         }));
 
-        const Child = behavior(({ self }) => ({
+        const Child = behavior(self => ({
             [extend]: Base
         })).ops(({ fold, unfold, map, merge, self }) => ({
             Double: unfold({ in: Number, out: self })({

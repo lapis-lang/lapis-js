@@ -26,7 +26,7 @@ class Cat extends Animal { meow = true; }
 describe('Field narrowing — valid covariant specs', () => {
 
     test('Object → Number: list with narrowed head type', () => {
-        const List = data(({ family }) => ({
+        const List = data(family => ({
             Nil:  {},
             Cons: { head: Object, tail: family }
         })).ops(({ fold }) => ({
@@ -36,7 +36,7 @@ describe('Field narrowing — valid covariant specs', () => {
             })
         }));
 
-        const NumList = data(({ family }) => ({
+        const NumList = data(family => ({
             [extend]: List,
             Cons: { head: Number, tail: family }
         })).ops(({ fold }) => ({
@@ -56,12 +56,12 @@ describe('Field narrowing — valid covariant specs', () => {
     });
 
     test('Animal → Dog: fold dispatches to narrowed variant constructor', () => {
-        const Box = data(({ family }) => ({
+        const Box = data(family => ({
             Empty: {},
             Full:  { item: Animal, next: family }
         }));
 
-        const DogBox = data(({ family }) => ({
+        const DogBox = data(family => ({
             [extend]: Box,
             Full: { item: Dog, next: family }
         }));
@@ -72,13 +72,13 @@ describe('Field narrowing — valid covariant specs', () => {
     });
 
     test('partial re-spec: only narrowed field + inherited fields still accessible', () => {
-        const List = data(({ family }) => ({
+        const List = data(family => ({
             Nil:  {},
             Cons: { head: Object, tail: family }
         }));
 
         // Child re-specifies only `head`; `tail` is inherited from parent spec
-        const NumList = data(({ family }) => ({
+        const NumList = data(family => ({
             [extend]: List,
             Cons: { head: Number, tail: family }
         }));
@@ -88,13 +88,13 @@ describe('Field narrowing — valid covariant specs', () => {
     });
 
     test('identical field type is always covariant (no-op narrowing)', () => {
-        const Box = data(({ family }) => ({
+        const Box = data(family => ({
             Full: { item: Number }
         }));
 
         // Re-specifying with the identical type should be silently allowed
         assert.doesNotThrow(() =>
-            data(({ family }) => ({
+            data(family => ({
                 [extend]: Box,
                 Full: { item: Number }
             }))
@@ -102,14 +102,14 @@ describe('Field narrowing — valid covariant specs', () => {
     });
 
     test('FamilyRef is covariant with FamilyRef across different markers', () => {
-        const Tree = data(({ family }) => ({
+        const Tree = data(family => ({
             Leaf:  { value: Object },
             Node:  { left: family, right: family }
         }));
 
         // Re-specifying value: Object → Number; left/right: family → family (ok)
         assert.doesNotThrow(() =>
-            data(({ family }) => ({
+            data(family => ({
                 [extend]: Tree,
                 Leaf: { value: Number }
             }))
@@ -121,18 +121,18 @@ describe('Field narrowing — valid covariant specs', () => {
 
 describe('Field narrowing — comb instanceof', () => {
 
-    const List = data(({ family }) => ({
+    const List = data(family => ({
         Nil:  {},
         Cons: { head: Object, tail: family }
     }));
 
-    const NumList = data(({ family }) => ({
+    const NumList = data(family => ({
         [extend]: List,
         Cons: { head: Number, tail: family }
     }));
 
     test('narrowed instance does NOT satisfy a different Cons from an unrelated ADT', () => {
-        const OtherList = data(({ family }) => ({
+        const OtherList = data(family => ({
             Cons: { head: Object, tail: family }
         }));
         const e = NumList.Cons({ head: 1, tail: NumList.Nil });
@@ -153,12 +153,12 @@ describe('Field narrowing — comb instanceof', () => {
 
 describe('Field narrowing — runtime field validation', () => {
 
-    const List = data(({ family }) => ({
+    const List = data(family => ({
         Nil:  {},
         Cons: { head: Object, tail: family }
     }));
 
-    const NumList = data(({ family }) => ({
+    const NumList = data(family => ({
         [extend]: List,
         Cons: { head: Number, tail: family }
     }));
@@ -202,12 +202,12 @@ describe('Field narrowing — error cases', () => {
     });
 
     test('unrelated type throw at declaration time', () => {
-        const List = data(({ family }) => ({
+        const List = data(family => ({
             Cons: { head: Number, tail: family }
         }));
 
         assert.throws(
-            () => data(({ family }) => ({
+            () => data(family => ({
                 [extend]: List,
                 Cons: { head: String, tail: family }  // String is not a subtype of Number
             })).ops(() => ({})),

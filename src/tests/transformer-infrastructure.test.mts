@@ -262,7 +262,7 @@ describe('Transformer Infrastructure', () => {
 
     describe('Transformer with Recursive ADTs', () => {
         test('can register transformer on recursive ADT', () => {
-            const Peano = data(({ family }) => ({
+            const Peano = data(family => ({
                 Zero: {},
                 Succ: { pred: family }
             }));

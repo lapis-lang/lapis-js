@@ -81,7 +81,7 @@ describe('Behavior Fold - Basic', () => {
 
 describe('Behavior Fold - Parameterless (Getter)', () => {
     it('should install a parameterless fold as a getter', () => {
-        const Countdown = behavior(({ self }) => ({
+        const Countdown = behavior(self => ({
             value: Number,
             next: self,
             done: Boolean
@@ -102,7 +102,7 @@ describe('Behavior Fold - Parameterless (Getter)', () => {
     });
 
     it('collects an empty countdown', () => {
-        const Countdown = behavior(({ self }) => ({
+        const Countdown = behavior(self => ({
             value: Number,
             next: self,
             done: Boolean
@@ -234,7 +234,7 @@ describe('Behavior Fold - Tail-call accumulator style', () => {
 describe('Behavior Fold - Validation', () => {
     it('should throw if fold handler is not a function', () => {
         assert.throws(() => {
-            behavior(({ self }) => ({
+            behavior(self => ({
                 head: Number,
                 tail: self
             })).ops(({ fold, unfold, map, merge, self }) => ({
@@ -245,7 +245,7 @@ describe('Behavior Fold - Validation', () => {
 
     it('should throw if fold name is not camelCase', () => {
         assert.throws(() => {
-            behavior(({ self }) => ({
+            behavior(self => ({
                 head: Number,
                 tail: self
             })).ops(({ fold, unfold, map, merge, self }) => ({

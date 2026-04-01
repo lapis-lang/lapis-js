@@ -11,7 +11,7 @@ import { behavior } from '../src/index.mjs';
 // Example 1: Stream with Random Access (nth)
 // =============================================================================
 
-const Stream = behavior(({ self }) => ({
+const Stream = behavior(self => ({
         head: Object,
         tail: self,
         nth: { in: Number, out: Object },
@@ -51,7 +51,7 @@ console.log('nums.drop(10).take(3):', dropped.take(3));     // [10, 11, 12]
 // Example 2: Infinite Grid/Matrix
 // =============================================================================
 
-const Grid = behavior(({ self }) => ({
+const Grid = behavior(self => ({
     at: { in: { x: Number, y: Number }, out: Number },
     row: { in: Number, out: Array },
     col: { in: Number, out: Array }
@@ -85,7 +85,7 @@ console.log('\naddTable.at({x:10, y:20}):', addTable.at({ x: 10, y: 20 })); // 3
 // Example 3: Lazy Sequence with Window/Sliding Operations
 // =============================================================================
 
-const Sequence = behavior(({ self }) => ({
+const Sequence = behavior(self => ({
     current: Number,
     next: self,
     window: { in: Number, out: Array },
@@ -112,7 +112,7 @@ console.log('seq.skip(10).current:', seq.skip(10).current); // 11
 // Example 4: Dictionary/Map as Behavior
 // =============================================================================
 
-const Dictionary = behavior(({ self }) => ({
+const Dictionary = behavior(self => ({
     get: { in: String, out: String },
     has: { in: String, out: Boolean },
     keys: Array,
@@ -145,7 +145,7 @@ console.log('dict.size:', dict.size);                      // 3
 // Example 5: Time Series with Interpolation
 // =============================================================================
 
-const TimeSeries = behavior(({ self }) => ({
+const TimeSeries = behavior(self => ({
     valueAt: { in: Number, out: Number },
     range: { in: { from: Number, to: Number, step: Number }, out: Array },
     derivative: self
@@ -184,7 +184,7 @@ console.log('quadratic.range({from:0, to:3, step:1}):',
 // Example 6: Graph as Behavior
 // =============================================================================
 
-const Graph = behavior(({ self }) => ({
+const Graph = behavior(self => ({
     neighbors: { in: Number, out: Array },
     hasEdge: { in: { from: Number, to: Number }, out: Boolean },
     degree: { in: Number, out: Number }
@@ -222,7 +222,7 @@ console.log('\n=== Parametric Observer Memoization ===');
 
 let nthCallCount = 0;
 
-const MemoStream = behavior(({ self }) => ({
+const MemoStream = behavior(self => ({
         head: Number,
         tail: self,
         nth: { in: Number, out: Number }

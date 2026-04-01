@@ -26,7 +26,7 @@ import { relation, origin, destination } from '@lapis-lang/lapis-js';
 
 // ---- Relation Definition ----
 
-const Ancestor = relation(({ family }) => ({
+const Ancestor = relation(family => ({
     Direct: { from: String, to: String },
     Transitive: { hop: family, rest: family }
 })).ops(({ fold, origin, destination }) => ({

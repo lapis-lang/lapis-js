@@ -5,7 +5,7 @@ import { data } from '../index.mjs';
 describe('Stack Safety Investigation', () => {
     describe('Current Implementation - Stack Overflow Risk', () => {
         test('small list should work fine', () => {
-            const List = data(({ family }) => ({
+            const List = data(family => ({
                 Nil: {},
                 Cons: { head: Number, tail: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -26,7 +26,7 @@ describe('Stack Safety Investigation', () => {
         });
 
         test('medium list to check stack depth', () => {
-            const List = data(({ family }) => ({
+            const List = data(family => ({
                 Nil: {},
                 Cons: { head: Number, tail: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -47,7 +47,7 @@ describe('Stack Safety Investigation', () => {
         });
 
         test('large list - likely to cause stack overflow', () => {
-            const List = data(({ family }) => ({
+            const List = data(family => ({
                 Nil: {},
                 Cons: { head: Number, tail: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -79,7 +79,7 @@ describe('Stack Safety Investigation', () => {
         });
 
         test('very large list - definitely should overflow without optimization', () => {
-            const List = data(({ family }) => ({
+            const List = data(family => ({
                 Nil: {},
                 Cons: { head: Number, tail: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -111,7 +111,7 @@ describe('Stack Safety Investigation', () => {
 
     describe('Stack Safety with Trees', () => {
         test('deep tree should not overflow with stack-safe implementation', () => {
-            const Tree = data(({ family }) => ({
+            const Tree = data(family => ({
                 Leaf: { value: Number },
                 Node: { left: family, right: family, value: Number }
             })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -147,7 +147,7 @@ describe('Stack Safety Investigation', () => {
 
     describe('Performance Comparison', () => {
         test('measure recursion depth and performance', () => {
-            const List = data(({ family }) => ({
+            const List = data(family => ({
                 Nil: {},
                 Cons: { head: Number, tail: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({

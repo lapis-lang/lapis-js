@@ -108,7 +108,7 @@ describe('Contracts: Ensures (Postconditions)', () => {
 
     describe('Unfold ensures', () => {
         it('should check ensures on unfold result', () => {
-            const List = data(({ family }) => ({
+            const List = data(family => ({
                 Nil: {},
                 Cons: { head: Number, tail: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -151,7 +151,7 @@ describe('Contracts: Ensures (Postconditions)', () => {
 
     describe('Old-state access with size tracking', () => {
         it('should verify size via old-state reference', () => {
-            const Stack = data(({ family }) => ({
+            const Stack = data(family => ({
                 Empty: {},
                 Push: { value: Number, rest: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -179,7 +179,7 @@ describe('Contracts: Ensures (Postconditions)', () => {
         });
 
         it('should throw EnsuresError when size invariant is violated', () => {
-            const Stack = data(({ family }) => ({
+            const Stack = data(family => ({
                 Empty: {},
                 Push: { value: Number, rest: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({

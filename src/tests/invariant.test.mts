@@ -168,7 +168,7 @@ describe('Invariant Support', () => {
         });
 
         it('should work with recursive ADTs', () => {
-            const BoundedList = data(({ family }) => ({
+            const BoundedList = data(family => ({
                 Nil: {},
                 Cons: {
                     [invariant]: ({ head }) => head >= 0 && head <= 100,

@@ -5,7 +5,7 @@ import * as assert from 'node:assert/strict';
 describe('Unfold Operations', () => {
     describe('Basic unfold', () => {
         it('should create a countdown list from a number', () => {
-            const List = data(({ family }) => ({
+            const List = data(family => ({
                 Nil: {},
                 Cons: { head: Number, tail: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -29,7 +29,7 @@ describe('Unfold Operations', () => {
         });
 
         it('should create an empty list when seed is 0', () => {
-            const List = data(({ family }) => ({
+            const List = data(family => ({
                 Nil: {},
                 Cons: { head: Number, tail: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -47,7 +47,7 @@ describe('Unfold Operations', () => {
 
     describe('Multiple unfolds', () => {
         it('should support defining multiple unfold constructors', () => {
-            const List = data(({ family }) => ({
+            const List = data(family => ({
                 Nil: {},
                 Cons: { head: Number, tail: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -77,7 +77,7 @@ describe('Unfold Operations', () => {
         it('should reject lowercase unfold names', () => {
             assert.throws(
                 () => {
-                    data(({ family }) => ({
+                    data(family => ({
                         Nil: {},
                         Cons: { head: Number, tail: family }
                     })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -95,7 +95,7 @@ describe('Unfold Operations', () => {
 
     describe('Case evaluation order', () => {
         it('should evaluate cases in declaration order and use first non-null', () => {
-            const Num = data(({ family }) => ({
+            const Num = data(family => ({
                 Zero: {},
                 Positive: { value: Number },
                 Negative: { value: Number }

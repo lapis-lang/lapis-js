@@ -182,7 +182,7 @@ describe('properties inheritance via [extend]', () => {
 
 describe('properties on data() operations', () => {
     it('stores properties on a fold operation via transformer', () => {
-        const Nat = data(({ family }) => ({
+        const Nat = data(family => ({
             Zero: {},
             Succ: { pred: family }
         })).ops(({ fold, unfold, family }) => ({
@@ -275,7 +275,7 @@ describe('properties on data() operations', () => {
 
 describe('properties on behavior() operations', () => {
     it('stores properties on a behavior fold operation', () => {
-        const Counter = behavior(({ self }) => ({
+        const Counter = behavior(self => ({
             value: Number
         })).ops(({ fold, unfold, self }) => ({
             Start: unfold({ in: Number, out: self })({
@@ -300,7 +300,7 @@ describe('properties on behavior() operations', () => {
     });
 
     it('stores properties on a behavior unfold operation', () => {
-        const Counter = behavior(({ self }) => ({
+        const Counter = behavior(self => ({
             value: Number
         })).ops(({ fold, unfold, self }) => ({
             Start: unfold({ in: Number, out: self, properties: ['reflexive'] })({
@@ -324,7 +324,7 @@ describe('properties on behavior() operations', () => {
     });
 
     it('no properties when [properties] is absent on behavior ops', () => {
-        const Counter = behavior(({ self }) => ({
+        const Counter = behavior(self => ({
             value: Number
         })).ops(({ fold, unfold, self }) => ({
             Start: unfold({ in: Number, out: self })({

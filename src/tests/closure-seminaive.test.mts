@@ -16,7 +16,7 @@ import assert from 'node:assert/strict';
 import { relation, origin, destination } from '../index.mjs';
 
 describe('Closure — Semi-Naive Evaluation', () => {
-    const Ancestor = relation(({ family }) => ({
+    const Ancestor = relation(family => ({
         Direct: { from: String, to: String },
         Transitive: { hop: family, rest: family }
     })).ops(({ fold, unfold, map, merge, origin, destination, family }) => ({

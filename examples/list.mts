@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
-import { data } from '@lapis-lang/lapis-js';
+import { data, extend } from '@lapis-lang/lapis-js';
 
 // Pair ADT for Zip operation - commented out as not currently used
-// const Pair = data(({ T, U }) => ({
-//     MakePair: { first: T, second: U }
+// const Pair = data(_ => ({
+//     MakePair: { first: Object, second: Object }
 // }));
 
 // Recursive list ADT with operations defined inline
@@ -47,10 +47,8 @@ const List = data(family => ({
         Factorial: merge('Range', 'product'),
         sumOfSquares: merge('square', 'sum'),
         Zip: unfold({ in: Object, out: family })({
-            // @ts-expect-error -- intentional type violation for test
-            Nil: ({ xs, ys }) => (!xs || !('head' in xs) || !ys || !('head' in ys) ? {} : null),
-            // @ts-expect-error -- intentional type violation for test
-            Cons: ({ xs, ys }) => {
+            Nil: ({ xs, ys }: any) => (!xs || !('head' in xs) || !ys || !('head' in ys) ? {} : null),
+            Cons: ({ xs, ys }: any) => {
                 if (xs && 'head' in xs && ys && 'head' in ys) {
                     return {
                         head: { first: xs.head, second: ys.head },
@@ -62,8 +60,19 @@ const List = data(family => ({
         })
     })),
 
-    // Use directly
-    NumList = List;
+    // NumList is a proper subtype of List narrowing Cons.head: Object → Number.
+    // This replaces the old `List({ T: Number })` parameterized-type form from
+    // Issue #141; see Issue #189 (type parameters as subtypes via comb inheritance).
+    NumList = data(family => ({
+        [extend]: List,
+        Cons: { head: Number, tail: family }   // narrows Object → Number (covariant)
+    })),
+
+    // StrList narrows Cons.head: Object → String
+    StrList = data(family => ({
+        [extend]: List,
+        Cons: { head: String, tail: family }
+    }));
 
 console.log('=== List ADT Example ===\n');
 
@@ -101,7 +110,7 @@ const range5 = NumList.Range(5),
 
 console.log(`Range(5) = ${range5.show}`);
 console.log(`Range(10) = ${range10.show}`);
-console.log(`Range(5) instanceof NumList: ${range5 instanceof NumList}`);  // true — unfold respects parameterization
+console.log(`Range(5) instanceof List:    ${range5 instanceof List}`);     // true
 
 // Merged operations (deforestation)
 console.log('\nMerged operations (deforestation):');
@@ -133,8 +142,19 @@ console.log('Zipped short result:', zippedShort);
 
 // Type checking
 console.log('\nType checking:');
-console.log(`list1 instanceof List: ${list1 instanceof NumList}`);
-console.log(`Nil instanceof List: ${Nil instanceof NumList}`);
+console.log(`list1 instanceof NumList: ${list1 instanceof NumList}`);     // true — NumList.Cons instance
+console.log(`list1 instanceof List:    ${list1 instanceof List}`);        // true — extends chain
+console.log(`Nil instanceof NumList:   ${Nil instanceof NumList}`);       // true — inherited singleton
+console.log(`Nil instanceof List:      ${Nil instanceof List}`);          // true
+
+// NumList enforces Number on head
+console.log('\nType enforcement (NumList rejects non-Number):');
+try {
+    NumList.Cons({ head: 'bad' as any, tail: Nil });
+    console.log('  ERROR: should have thrown');
+} catch (e: any) {
+    console.log(`  Correctly rejected: ${e.message}`);
+}
 
 // Field access
 console.log('\nField access:');
@@ -150,9 +170,7 @@ console.log(`Range(1000).sum = ${largeRange.sum}`);
 
 // Using with strings
 console.log('\n=== String List ===');
-// Note: length and show operations already defined in base List
-const StrList = List,
-    { Cons: SCons, Nil: SNil } = StrList,
+const { Cons: SCons, Nil: SNil } = StrList,
     words = SCons({ head: 'hello', tail: SCons({ head: 'world', tail: SNil }) });
 console.log(`words = ${words.show}`);
 console.log(`words.length = ${words.length}`);

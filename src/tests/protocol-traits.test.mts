@@ -379,7 +379,7 @@ describe('conformance and instanceof with multi-parent protocols', () => {
         [extend]: [Group, CommutativeMonoid]
     }));
 
-    const MyNum = data(({ family }) => ({
+    const MyNum = data(family => ({
         [satisfies]: AbelianGroup,
         Num: { value: Number }
     })).ops(({ fold: f, unfold: u, family }) => ({
@@ -444,7 +444,7 @@ describe('missing ops from multi-parent protocol', () => {
         }));
 
         assert.throws(
-            () => data(({ family }) => ({
+            () => data(family => ({
                 [satisfies]: AB,
                 X: {}
             })).ops(({ fold: f }) => ({
@@ -474,7 +474,7 @@ describe('behavior() with multi-parent protocol', () => {
     }));
 
     it('behavior satisfying multi-parent protocol passes instanceof checks', () => {
-        const Counter = behavior(({ self }) => ({
+        const Counter = behavior(self => ({
             [satisfies]: PrintableObservable,
             value: Number
         })).ops(({ fold: f, unfold: u, self }) => ({
@@ -517,7 +517,7 @@ describe('[invariant] with multi-parent protocols', () => {
         }));
 
         assert.throws(
-            () => data(({ family }) => ({
+            () => data(family => ({
                 [satisfies]: AB,
                 X: {}
             })).ops(({ fold: f }) => ({
@@ -544,7 +544,7 @@ describe('[invariant] with multi-parent protocols', () => {
         }));
 
         assert.doesNotThrow(
-            () => data(({ family }) => ({
+            () => data(family => ({
                 [satisfies]: AB,
                 X: {}
             })).ops(({ fold: f }) => ({

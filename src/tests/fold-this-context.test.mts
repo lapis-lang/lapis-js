@@ -4,7 +4,7 @@ import { data } from '../index.mjs';
 
 describe('Fold Operation - `this` Context and Open Recursion', () => {
     test('destructured parameters receive folded values', () => {
-        const List = data(({ family }) => ({
+        const List = data(family => ({
             Nil: {},
             Cons: { head: Number, tail: family }
         })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -52,7 +52,7 @@ describe('Fold Operation - `this` Context and Open Recursion', () => {
     });
 
     test('`this` allows composition with other operations', () => {
-        const List = data(({ family }) => ({
+        const List = data(family => ({
             Nil: {},
             Cons: { head: Number, tail: family }
         })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -74,7 +74,7 @@ describe('Fold Operation - `this` Context and Open Recursion', () => {
     });
 
     test('parameterized fold: destructured params include input parameter', () => {
-        const List = data(({ family }) => ({
+        const List = data(family => ({
             Nil: {},
             Cons: { head: Number, tail: family }
         })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -95,7 +95,7 @@ describe('Fold Operation - `this` Context and Open Recursion', () => {
     });
 
     test('`this` in parameterized fold provides instance access', () => {
-        const Tree = data(({ family }) => ({
+        const Tree = data(family => ({
             Leaf: { value: Number },
             Node: { value: Number, left: family, right: family }
         })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -187,7 +187,7 @@ describe('Fold Operation - `this` Context and Open Recursion', () => {
     });
 
     test('`this.sameOp` on same node throws circular fold error (parameterless)', () => {
-        const List = data(({ family }) => ({
+        const List = data(family => ({
             Nil: {},
             Cons: { head: Number, tail: family }
         })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -211,7 +211,7 @@ describe('Fold Operation - `this` Context and Open Recursion', () => {
     });
 
     test('`this.sameOp(arg)` on same node throws circular fold error (parameterized)', () => {
-        const List = data(({ family }) => ({
+        const List = data(family => ({
             Nil: {},
             Cons: { head: Number, tail: family }
         })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -235,7 +235,7 @@ describe('Fold Operation - `this` Context and Open Recursion', () => {
     });
 
     test('mutual recursion between operations on same node throws', () => {
-        const List = data(({ family }) => ({
+        const List = data(family => ({
             Nil: {},
             Cons: { head: Number, tail: family }
         })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -264,7 +264,7 @@ describe('Fold Operation - `this` Context and Open Recursion', () => {
     });
 
     test('`this.differentOp` on same node still works (no false positive)', () => {
-        const List = data(({ family }) => ({
+        const List = data(family => ({
             Nil: {},
             Cons: { head: Number, tail: family }
         })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -286,7 +286,7 @@ describe('Fold Operation - `this` Context and Open Recursion', () => {
     });
 
     test('`this.subField.sameOp` on child node still works (no false positive)', () => {
-        const List = data(({ family }) => ({
+        const List = data(family => ({
             Nil: {},
             Cons: { head: Number, tail: family }
         })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -324,7 +324,7 @@ describe('Fold Operation - `this` Context and Open Recursion', () => {
     });
 
     test('true data cycle (bypassing freeze) reports cycle-specific error', () => {
-        const List = data(({ family }) => ({
+        const List = data(family => ({
             Nil: {},
             Cons: { head: Number, tail: family }
         })).ops(({ fold, unfold, map, merge, family }) => ({

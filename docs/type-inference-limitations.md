@@ -114,8 +114,8 @@ equivalently **F-bounded quantification** from type theory:
 ```ts
 class Derived : Base<Derived>       // C++ CRTP
 class Derived extends Base[Derived] // Scala F-bounded
-data(({ Family }) => ({ ... }))     // Lapis: Family ≈ Self type
-behavior(({ Self }) => ({ ... }))   // Lapis: Self for coalgebras
+data(family => ({ ... }))     // Lapis: Family ≈ Self type
+behavior(self => ({ ... }))   // Lapis: Self for coalgebras
 ```
 
 The key insight: `Family` and `Self` are typed **independently** of the

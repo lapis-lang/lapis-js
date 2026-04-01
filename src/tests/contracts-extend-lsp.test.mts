@@ -294,7 +294,7 @@ describe('Contracts: Extend + LSP', () => {
     describe('Integrated Stack with demands + ensures', () => {
         // From decorator-contracts Stack.test.mts
         it('should enforce demands on pop (non-empty) and ensures on append (size+1)', () => {
-            const Stack = data(({ family }) => ({
+            const Stack = data(family => ({
                 Empty: {},
                 Push: { value: Number, rest: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({

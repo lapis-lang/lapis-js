@@ -12,7 +12,7 @@ describe('Closure — Basic Ancestor Example', () => {
     //   Transitive = composition rule (both fields are family)
     //   Join invariant auto-generated: hop[destination] === rest[origin]
 
-    const Ancestor = relation(({ family }) => ({
+    const Ancestor = relation(family => ({
         Direct: { from: String, to: String },
         Transitive: { hop: family, rest: family }
     })).ops(({ fold, unfold, map, merge, origin, destination, family }) => ({
@@ -74,7 +74,7 @@ describe('Closure — Basic Ancestor Example', () => {
     });
 
     test('depth fold works on closure results', () => {
-        const AncestorD = relation(({ family }) => ({
+        const AncestorD = relation(family => ({
             Direct: { from: String, to: String },
             Transitive: { hop: family, rest: family }
         })).ops(({ fold, unfold, map, merge, origin, destination, family }) => ({

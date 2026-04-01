@@ -32,7 +32,7 @@ describe('LSP Enforcement', () => {
     });
 
     test('should prevent changing parameterized to parameterless', () => {
-        const List = data(({ family }) => ({
+        const List = data(family => ({
             Nil: {},
             Cons: { head: Number, tail: family }
         })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -45,7 +45,7 @@ describe('LSP Enforcement', () => {
         // Try to override ALL handlers with parameterless versions
         assert.throws(
             () => {
-                data(({ family }) => ({
+                data(family => ({
                     [extend]: List
                 })).ops(({ fold, unfold, map, merge, family }) => ({
                     append: fold({ out: family })({
@@ -88,7 +88,7 @@ describe('LSP Enforcement', () => {
     });
 
     test('should allow extending with same parameterization (parameterized)', () => {
-        const List = data(({ family }) => ({
+        const List = data(family => ({
             Nil: {},
             Cons: { head: Number, tail: family }
         })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -99,7 +99,7 @@ describe('LSP Enforcement', () => {
         }));
 
         // This should work - same parameterization (all handlers take 2 params)
-        const ExtendedList = data(({ family }) => ({
+        const ExtendedList = data(family => ({
             [extend]: List,
             Special: { value: Number }
         })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -122,7 +122,7 @@ describe('LSP Enforcement', () => {
     });
 
     test('should prevent changing input spec when extending', () => {
-        const List = data(({ family }) => ({
+        const List = data(family => ({
             Nil: {},
             Cons: { head: Number, tail: family }
         })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -135,7 +135,7 @@ describe('LSP Enforcement', () => {
         // Try to change the input spec
         assert.throws(
             () => {
-                data(({ family }) => ({
+                data(family => ({
                     [extend]: List,
                     Special: { value: Number }
                 })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -186,7 +186,7 @@ describe('LSP Enforcement', () => {
     });
 
     test('should allow extending without changing specs', () => {
-        const List = data(({ family }) => ({
+        const List = data(family => ({
             Nil: {},
             Cons: { head: Number, tail: family }
         })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -197,7 +197,7 @@ describe('LSP Enforcement', () => {
         }));
 
         // This should work - same output spec
-        const ExtendedList = data(({ family }) => ({
+        const ExtendedList = data(family => ({
             [extend]: List,
             Special: { value: Number }
         })).ops(({ fold, unfold, map, merge, family }) => ({

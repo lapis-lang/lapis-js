@@ -15,7 +15,7 @@ describe('Contracts: Fault-Tolerant Fold', () => {
         it('should recover per-node during list traversal', () => {
             const rescueLog: string[] = [];
 
-            const List = data(({ family }) => ({
+            const List = data(family => ({
                 Nil: {},
                 Cons: { head: Number, tail: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -59,7 +59,7 @@ describe('Contracts: Fault-Tolerant Fold', () => {
         it('should recover from errors in tree sub-nodes', () => {
             let rescueCount = 0;
 
-            const Expr = data(({ family }) => ({
+            const Expr = data(family => ({
                 Lit: { value: Number },
                 Add: { left: family, right: family },
                 Div: { left: family, right: family }
@@ -97,7 +97,7 @@ describe('Contracts: Fault-Tolerant Fold', () => {
         it('should handle nested rescue in a complex tree', () => {
             let rescueCount = 0;
 
-            const Expr = data(({ family }) => ({
+            const Expr = data(family => ({
                 Lit: { value: Number },
                 Add: { left: family, right: family },
                 Div: { left: family, right: family }
@@ -135,7 +135,7 @@ describe('Contracts: Fault-Tolerant Fold', () => {
 
     describe('Rescue with partial results', () => {
         it('should produce partial result when some nodes fail', () => {
-            const List = data(({ family }) => ({
+            const List = data(family => ({
                 Nil: {},
                 Cons: { head: Number, tail: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({

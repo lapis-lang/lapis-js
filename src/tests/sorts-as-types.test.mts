@@ -16,7 +16,7 @@ describe('Spike: sorts as separate data() declarations', () => {
 
     // ── Declare Stmt first (no forward reference to Expr) ──────────────────
 
-    const Stmt = data(({ family }) => ({
+    const Stmt = data(family => ({
         Assign: { name: String, value: Number },
         Seq:    { first: family, second: family }
     })).ops(({ fold }) => ({
@@ -29,7 +29,7 @@ describe('Spike: sorts as separate data() declarations', () => {
 
     // ── Declare Expr after Stmt (can reference Stmt in field specs safely) ──
 
-    const Expr = data(({ family }) => ({
+    const Expr = data(family => ({
         Lit:    { value: Number },
         Add:    { left: family, right: family },
         // Cross-sort field: Stmt is already declared above — no TDZ here
@@ -99,7 +99,7 @@ describe('Spike: sorts as separate data() declarations', () => {
     // ── Separate folds per sort ───────────────────────────────────────────
 
     test('RichExpr (extend Expr) inherits fold from Expr', () => {
-        const RichExpr = data(({ family }) => ({
+        const RichExpr = data(family => ({
             [extend]: Expr,
             Mul: { left: family, right: family }
         })).ops(({ fold }) => ({

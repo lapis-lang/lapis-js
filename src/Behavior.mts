@@ -294,8 +294,19 @@ export type BehaviorStructure<D> = BehaviorADTWithParams<D> & {
 };
 
 /**
- * Defines a new behavior type with the given observers.
- * Behavior is defined by how it can be observed (destructors), not how it's constructed.
+ * Define a new behavior type with the given observers.
+ * Behavior is defined by how it is observed, not how it is constructed.
+ *
+ * Preferred form — direct parameter (Issue #189):
+ * ```ts
+ * const Counter = behavior(self => ({
+ *     count: Number,
+ *     next:  self          // self-reference for corecursion
+ * }));
+ * ```
+ *
+ * The callback receives `self` directly as the corecursive self-reference sentinel.
+ *
  */
 export function behavior<D extends Record<string, unknown>>(
     declFn: (params: BehaviorDeclParams) => D
@@ -319,35 +330,9 @@ export function behavior<D extends Record<string, unknown>>(
             merge: { name: string; spec: Record<string, unknown> }[];
         };
     } {
-        const Self = createSelf(),
+        const Self = createSelf();
 
-            // Build a proxy over the SelfRef that unifies two calling conventions:
-            //
-            //   behavior(self => ({ tail: self }))
-            //     `self` receives the whole proxy argument and IS a SelfRef —
-            //     the `get` trap is never invoked.
-            //
-            //   behavior(({ self }) => ({ head: Object, tail: self }))
-            //     The argument is destructured. The `'self'` trap returns the raw
-            //     Self SelfRef (not the proxy), which is sufficient.
-            //
-            // Property access rules applied by the trap (in priority order):
-            //   1. 'self'        → the raw Self SelfRef object
-            //   2. everything else → forwarded to Self (covers the callable
-            //                        interface, Symbol.toPrimitive, etc.)
-            selfProxy = new Proxy(Self, {
-                get(target, prop, receiver) {
-                    if (prop === 'self') return Self;
-                    return Reflect.get(target as unknown as object, prop, receiver);
-                }
-            });
-
-        // selfProxy is passed directly to the user callback as the `self`
-        // argument.  Register it so isSelfRef(selfProxy) returns true when a
-        // user stores the whole argument instead of destructuring.
-        registerSelfRef(selfProxy as unknown as object);
-
-        const observerDecl = declFn(selfProxy as unknown as BehaviorDeclParams) as unknown as Record<string, unknown>;
+        const observerDecl = declFn(Self as unknown as BehaviorDeclParams) as unknown as Record<string, unknown>;
 
         if (!observerDecl || typeof observerDecl !== 'object') {
             throw new TypeError(

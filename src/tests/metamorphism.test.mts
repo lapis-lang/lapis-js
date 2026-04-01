@@ -5,7 +5,7 @@ import { data } from '../index.mjs';
 describe('Metamorphism (fold + unfold)', () => {
     describe('Basic fold → unfold merge', () => {
         test('fold + unfold produces correct result (base conversion)', () => {
-            const DigitList = data(({ family }) => ({
+            const DigitList = data(family => ({
                 Nil: {},
                 Cons: { digit: Number, rest: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -31,7 +31,7 @@ describe('Metamorphism (fold + unfold)', () => {
         });
 
         test('fold + unfold produces correct result (sorting)', () => {
-            const List = data(({ family }) => ({
+            const List = data(family => ({
                 Nil: {},
                 Cons: { head: Number, tail: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -60,7 +60,7 @@ describe('Metamorphism (fold + unfold)', () => {
         });
 
         test('metamorphism matches manual fold then unfold', () => {
-            const List = data(({ family }) => ({
+            const List = data(family => ({
                 Nil: {},
                 Cons: { head: Number, tail: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -91,7 +91,7 @@ describe('Metamorphism (fold + unfold)', () => {
         });
 
         test('fold + unfold on empty structure', () => {
-            const List = data(({ family }) => ({
+            const List = data(family => ({
                 Nil: {},
                 Cons: { head: Number, tail: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -173,7 +173,7 @@ describe('Metamorphism (fold + unfold)', () => {
 
     describe('Naming conventions', () => {
         test('metamorphism must be camelCase (instance method)', () => {
-            const List = data(({ family }) => ({
+            const List = data(family => ({
                 Nil: {},
                 Cons: { head: Number, tail: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -198,7 +198,7 @@ describe('Metamorphism (fold + unfold)', () => {
 
         test('metamorphism rejects PascalCase names', () => {
             assert.throws(
-                () => data(({ family }) => ({
+                () => data(family => ({
                     Nil: {},
                     Cons: { head: Number, tail: family }
                 })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -218,7 +218,7 @@ describe('Metamorphism (fold + unfold)', () => {
 
         test('hylomorphism still requires PascalCase', () => {
             assert.throws(
-                () => data(({ family }) => ({
+                () => data(family => ({
                     Nil: {},
                     Cons: { head: Number, tail: family }
                 })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -240,7 +240,7 @@ describe('Metamorphism (fold + unfold)', () => {
     describe('Validation', () => {
         test('should still reject multiple folds', () => {
             assert.throws(
-                () => data(({ family }) => ({
+                () => data(family => ({
                     Nil: {},
                     Cons: { head: Number, tail: family }
                 })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -264,7 +264,7 @@ describe('Metamorphism (fold + unfold)', () => {
 
         test('should still reject multiple unfolds', () => {
             assert.throws(
-                () => data(({ family }) => ({
+                () => data(family => ({
                     Nil: {},
                     Cons: { head: Number, tail: family }
                 })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -347,7 +347,7 @@ describe('Metamorphism (fold + unfold)', () => {
 
     describe('Existing hylomorphism still works', () => {
         test('unfold + fold hylomorphism is unaffected', () => {
-            const List = data(({ family }) => ({
+            const List = data(family => ({
                 Nil: {},
                 Cons: { head: Number, tail: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -370,7 +370,7 @@ describe('Metamorphism (fold + unfold)', () => {
 
     describe('Tree rebalancing (structural transformation)', () => {
         test('fold tree to array, unfold to new tree', () => {
-            const BST = data(({ family }) => ({
+            const BST = data(family => ({
                 Leaf: {},
                 Node: { left: family, value: Number, right: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({

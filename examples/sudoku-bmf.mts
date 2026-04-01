@@ -51,7 +51,7 @@ const Region = data(() => ({
 
 // Board ::= Board(cells, size)
 
-const Board = data(({ family }) => ({
+const Board = data(family => ({
     Board: { cells: Array, size: Number }
 })).ops(({ fold, unfold, family }) => ({
     FromGrid: unfold({ in: Array, out: family })({
@@ -258,7 +258,7 @@ type SearchStateInstance = {
     [k: string]: unknown;
 };
 
-const SolverStream = behavior(({ self }) => ({
+const SolverStream = behavior(self => ({
     board: Object,
     isSolved: Boolean,
     isExhausted: Boolean,

@@ -29,7 +29,7 @@ const Set = behavior(() => ({
     // The parent unfold Empty is inherited automatically.
     // =============================================================================
 
-    NumericSet = behavior(({ self }) => ({
+    NumericSet = behavior(self => ({
         [extend]: Set
     })).ops(({ unfold, self }) => ({
         Empty: unfold({})({
@@ -110,7 +110,7 @@ for (let i = 0; i < 10; i++)
 // Example 3: Range Set (extends Set, adds min and max observers)
 // =============================================================================
 
-const RangeSet = behavior(({ self }) => ({
+const RangeSet = behavior(self => ({
     [extend]: Set,
     min: Number,
     max: Number

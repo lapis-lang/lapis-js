@@ -2,11 +2,11 @@
  * Spike: Type Parameters as Subtypes (Issue #189 — Step 5)
  *
  * Validates that parameterized algebraic data types can be expressed through
- * subtype-with-field-narrowing instead of `data(({ T }) => ...)` +
+ * subtype-with-field-narrowing instead of threaded type-parameter declarations +
  * `Name({ T: SomeType })` invocation.
  *
  * Replace:
- *   const List   = data(({ family, T }) => ({ Nil: {}, Cons: { head: T, tail: family(T) } }))
+ *   const List   = data(family => ({ Nil: {}, Cons: { head: Object, tail: family } }))
  *   const NumList = List({ T: Number })
  *
  * With:

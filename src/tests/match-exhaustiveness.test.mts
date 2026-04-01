@@ -94,7 +94,7 @@ describe('Match Exhaustiveness Checking', () => {
         });
 
         test('should work with recursive ADTs', () => {
-            const List = data(({ family }) => ({
+            const List = data(family => ({
                 Nil: {},
                 Cons: { head: Number, tail: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({

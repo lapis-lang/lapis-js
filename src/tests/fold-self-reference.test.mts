@@ -88,7 +88,7 @@ describe('family in data fold handlers', () => {
     test('non-parameterized ADT fold handlers use family variable in operation bodies', () => {
         // For non-parameterized ADTs, handlers reference the family variable
         // from the ops context to construct instances — same as parameterized ADTs.
-        const List = data(({ family }) => ({
+        const List = data(family => ({
             Nil: {},
             Cons: { head: Number, tail: family }
         })).ops(({ fold, unfold, map, merge, family }) => ({

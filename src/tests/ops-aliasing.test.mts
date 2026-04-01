@@ -135,7 +135,7 @@ describe('ops aliasing — data map .as()', () => {
 // ---------------------------------------------------------------------------
 
 describe('ops aliasing — behavior unfold .as()', () => {
-    const Stream = behavior(({ self }) => ({
+    const Stream = behavior(self => ({
         head: Number,
         tail: self
     })).ops(({ unfold, self }) => ({
@@ -176,7 +176,7 @@ describe('ops aliasing — behavior unfold .as()', () => {
     it('alias is inherited by a sub-behavior (UnfoldAliasMapSymbol entry copied)', () => {
         // Verifies that the internal UnfoldAliasMapSymbol map carries the alias so
         // that behavior extension correctly re-installs it on the child type.
-        const ChildStream = behavior(({ self }) => ({
+        const ChildStream = behavior(self => ({
             [extend]: Stream
         }));
         assert.ok(typeof ChildStream.From === 'function', 'child should inherit canonical From');

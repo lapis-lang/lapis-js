@@ -21,7 +21,7 @@ import { data, behavior, aux, extend, history } from '../index.mjs';
 // Shared base ADTs
 // ---------------------------------------------------------------------------
 
-const BaseTree = data(({ family }) => ({
+const BaseTree = data(family => ({
     Leaf: { value: Number },
     Node: { left: family, right: family }
 })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -35,7 +35,7 @@ const BaseTree = data(({ family }) => ({
     })
 }));
 
-const BaseList = data(({ family }) => ({
+const BaseList = data(family => ({
     Nil: {},
     Cons: { head: Number, tail: family }
 })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -53,7 +53,7 @@ const BaseList = data(({ family }) => ({
     })
 }));
 
-const BaseNat = data(({ family }) => ({
+const BaseNat = data(family => ({
     Zero: {},
     Succ: { pred: family }
 })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -366,7 +366,7 @@ describe('Zygomorphism (Data) — string form', () => {
 
         test('behavior throws when aux names a fold that does not exist', () => {
             assert.throws(() => {
-                behavior(({ self }) => ({
+                behavior(self => ({
                     head: Number,
                     tail: self
                 })).ops(({ fold, unfold, map, merge, self }) => ({
@@ -422,7 +422,7 @@ describe('Zygomorphism (Data) — string form', () => {
 
         test('throws when aux references an unfold operation', () => {
             assert.throws(() => {
-                data(({ family }) => ({
+                data(family => ({
                     Nil: {},
                     Cons: { head: Number, tail: family }
                 })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -565,7 +565,7 @@ describe('Zygomorphism (Data) — string form', () => {
 
     describe('Zygo where aux fold is defined in same ADT', () => {
         test('both depth and isBalanced defined together', () => {
-            const Tree = data(({ family }) => ({
+            const Tree = data(family => ({
                 Leaf: { value: Number },
                 Node: { left: family, right: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -593,7 +593,7 @@ describe('Zygomorphism (Data) — string form', () => {
             // isBalanced references depth via aux, but depth is declared
             // *after* isBalanced in source order.  The topo sort must
             // resolve this dependency and register depth first.
-            const Tree = data(({ family }) => ({
+            const Tree = data(family => ({
                 Leaf: { value: Number },
                 Node: { left: family, right: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -751,7 +751,7 @@ describe('Zygomorphism (Data) — array form', () => {
 describe('Zygomorphism (Behavior)', () => {
     describe('Stream with aux', () => {
         test('behavior fold with parameterized aux', () => {
-            const Stream = behavior(({ self }) => ({
+            const Stream = behavior(self => ({
                 head: Number,
                 tail: self
             })).ops(({ fold, unfold, map, merge, self }) => ({
@@ -789,7 +789,7 @@ describe('Zygomorphism (Behavior)', () => {
         });
 
         test('behavior fold without aux still works', () => {
-            const Stream = behavior(({ self }) => ({
+            const Stream = behavior(self => ({
                 head: Number,
                 tail: self
             })).ops(({ fold, unfold, map, merge, self }) => ({
@@ -809,7 +809,7 @@ describe('Zygomorphism (Behavior)', () => {
 
     describe('Behavior array form', () => {
         test('aux: [sum, double] on behavior stream', () => {
-            const Stream = behavior(({ self }) => ({
+            const Stream = behavior(self => ({
                 head: Number,
                 tail: self
             })).ops(({ fold, unfold, map, merge, self }) => ({

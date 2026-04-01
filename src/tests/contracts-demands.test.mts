@@ -5,7 +5,7 @@ import { data, invariant, DemandsError } from '../index.mjs';
 describe('Contracts: Demands (Preconditions)', () => {
     describe('Fold demands', () => {
         it('should pass when demand is satisfied', () => {
-            const List = data(({ family }) => ({
+            const List = data(family => ({
                 Nil: {},
                 Cons: { head: Number, tail: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -23,7 +23,7 @@ describe('Contracts: Demands (Preconditions)', () => {
         });
 
         it('should throw DemandsError when demand fails', () => {
-            const Stack = data(({ family }) => ({
+            const Stack = data(family => ({
                 Empty: {},
                 Push: { value: Number, rest: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({
@@ -90,7 +90,7 @@ describe('Contracts: Demands (Preconditions)', () => {
 
     describe('Unfold demands', () => {
         it('should check demands on unfold seed', () => {
-            const List = data(({ family }) => ({
+            const List = data(family => ({
                 Nil: {},
                 Cons: { head: Number, tail: family }
             })).ops(({ fold, unfold, map, merge, family }) => ({

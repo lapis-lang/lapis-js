@@ -71,7 +71,7 @@ describe('ProtocolOpSpec defaultBody storage', () => {
 
 describe('default auto-installation', () => {
     it('equals is installed from default when not declared in .ops()', () => {
-        const Point = data(({ family }) => ({
+        const Point = data(family => ({
             [satisfies]: Orderable,
             Point2D: { x: Number, y: Number }
         })).ops(({ fold: f, family }) => ({
@@ -102,7 +102,7 @@ describe('default auto-installation', () => {
             })
         }));
 
-        const MyData = data(({ family }) => ({
+        const MyData = data(family => ({
             [satisfies]: P,
             Val: { n: Number }
         })).ops(({ fold: f }) => ({
@@ -128,7 +128,7 @@ describe('user implementation shadows default', () => {
             })
         }));
 
-        const MyData = data(({ family }) => ({
+        const MyData = data(family => ({
             [satisfies]: Eq,
             Item: { id: Number }
         })).ops(({ fold: f, family }) => ({
@@ -163,7 +163,7 @@ describe('getter default', () => {
             })
         }));
 
-        const Tag = data(({ family }) => ({
+        const Tag = data(family => ({
             [satisfies]: Describable,
             Tag: { name: String }
         })).ops(({ fold: f }) => ({
@@ -216,7 +216,7 @@ describe('default inherited through protocol extension', () => {
             extra: f({ out: Boolean })
         }));
 
-        const MyData = data(({ family }) => ({
+        const MyData = data(family => ({
             [satisfies]: Mid,
             X: { v: Number }
         })).ops(({ fold: f }) => ({
@@ -244,7 +244,7 @@ describe('map default', () => {
             })
         }));
 
-        const Box = data(({ family }) => ({
+        const Box = data(family => ({
             [satisfies]: Scalable,
             Box: { n: Number }
         })).ops(({ fold: f }) => ({
@@ -273,7 +273,7 @@ describe('multiple defaults on a single protocol', () => {
             })
         }));
 
-        const Num = data(({ family }) => ({
+        const Num = data(family => ({
             [satisfies]: MultiDefault,
             Num: { n: Number }
         })).ops(({ fold: f }) => ({
@@ -307,7 +307,7 @@ describe('default via multi-parent protocol', () => {
             [extend]: [PA, PB]
         }));
 
-        const MyData = data(({ family }) => ({
+        const MyData = data(family => ({
             [satisfies]: PAB,
             X: { v: Number }
         })).ops(({ fold: f }) => ({
@@ -338,7 +338,7 @@ describe('contract enforcement on protocol defaults', () => {
             })
         }));
 
-        const T = data(({ family }) => ({
+        const T = data(family => ({
             [satisfies]: P,
             Box: { n: Number }
         })).ops(({ fold: f }) => ({
@@ -363,7 +363,7 @@ describe('contract enforcement on protocol defaults', () => {
             })
         }));
 
-        const T = data(({ family }) => ({
+        const T = data(family => ({
             [satisfies]: P,
             Box: { n: Number }
         })).ops(({ fold: f }) => ({
@@ -382,7 +382,7 @@ describe('contract enforcement on protocol defaults', () => {
             })
         }));
 
-        const T = data(({ family }) => ({
+        const T = data(family => ({
             [satisfies]: P,
             Box: { n: Number }
         })).ops(({ fold: f }) => ({}));
@@ -428,7 +428,7 @@ describe('inherited operations satisfy protocol conformance', () => {
             size: f({ out: Number })  // required, no default
         }));
 
-        const Parent = data(({ family }) => ({
+        const Parent = data(family => ({
             [satisfies]: P,
             Lit: { value: Number }
         })).ops(({ fold: f }) => ({
@@ -439,7 +439,7 @@ describe('inherited operations satisfy protocol conformance', () => {
         // Child re-declares eval for new variants but NOT size.
         // size is inherited from Parent — should satisfy protocol without throwing.
         assert.doesNotThrow(() =>
-            data(({ family }) => ({
+            data(family => ({
                 [extend]: Parent,
                 [satisfies]: P,
                 Add: { left: family, right: family }
@@ -460,7 +460,7 @@ describe('inherited operations satisfy protocol conformance', () => {
             size: f({ out: Number })({ _: () => -1 })  // default: -1
         }));
 
-        const Parent = data(({ family }) => ({
+        const Parent = data(family => ({
             [satisfies]: P,
             Lit: { value: Number }
         })).ops(({ fold: f }) => ({
@@ -468,7 +468,7 @@ describe('inherited operations satisfy protocol conformance', () => {
             size: f({ out: Number })({ Lit: () => 99 })  // real impl: 99
         }));
 
-        const Child = data(({ family }) => ({
+        const Child = data(family => ({
             [extend]: Parent,
             [satisfies]: P,
             Add: { left: family, right: family }

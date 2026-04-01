@@ -468,17 +468,30 @@ function createLazyADT<D extends Record<string, unknown>>(
 }
 
 /**
- * Main entry point: data(family => { variants })
- *    .ops(({ fold, unfold, map, merge, Family, T }) => ({ operations }))
+ * Define a new algebraic data type.
  *
- * Returns a lazy proxy ADT. The declaration callback is deferred until the
- * first variant property access, so `data()` calls can freely reference
- * `const` bindings declared later in the same scope without temporal-dead-zone
- * errors — mutual recursion between `data()` declarations works naturally.
+ * Preferred form — direct parameter (Issue #189):
+ * ```ts
+ * const List = data(family => ({
+ *     Nil:  {},
+ *     Cons: { head: Object, tail: family }
+ * }));
+ * ```
  *
- * When the declaration uses type parameters (single uppercase letters A–Z),
- * the returned ADT is callable with a type-arg record for compile-time
- * substitution: `List({ T: Number })` yields fields typed as `number`.
+ * The callback receives `family` directly as the self-reference sentinel.
+ * Type parameters as subtypes — use `[extend]` with field narrowing instead of
+ * threading a `T` parameter:
+ * ```ts
+ * const NumList = data(family => ({
+ *     [extend]: List,
+ *     Cons: { head: Number, tail: family }   // narrows Object → Number
+ * }));
+ * ```
+ *
+ * The declaration callback is deferred until the first variant access, so
+ * `data()` calls may freely capture `const` bindings declared later in the same
+ * scope — mutual recursion between declarations works without TDZ errors.
+ *
  */
 export function data<D extends Record<string, unknown>>(
     declFn: (params: DataDeclParams) => D
@@ -1044,10 +1057,6 @@ function createFamilyMarker(): FamilyMarker {
     // Wrap marker in a Proxy to delegate variant constructor access to _adt
     const proxy = new Proxy(marker as unknown as FamilyMarker, {
         get(target, prop, receiver) {
-            // Allow destructuring form: data(({ family }) => ...) ≡ data(family => ...)
-            if (prop === 'family')
-                return proxy;
-
             // Return properties from the marker itself (like _adt)
             if (prop === '_adt' || typeof prop === 'symbol')
                 return Reflect.get(target, prop, receiver);

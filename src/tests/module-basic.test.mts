@@ -59,7 +59,7 @@ describe('module() — core definition and instantiation', () => {
 
     test('module body can export a behavior type', () => {
         const M = module({}, () => ({
-            Stream: behavior(({ self }) => ({
+            Stream: behavior(self => ({
                 head: Number,
                 tail: self
             }))

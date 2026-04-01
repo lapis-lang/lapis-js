@@ -36,7 +36,7 @@ import {
 // Ground facts live in the initial algebra; the relation provides
 // origin/destination/weight projections and transitive-closure machinery.
 
-const WEdge = relation(({ family }) => ({
+const WEdge = relation(family => ({
     Direct: { from: String, to: String, weight: Number },
     Path:   { first: family, second: family }
 })).ops(({ fold, origin, destination }) => ({
@@ -176,7 +176,7 @@ const Query = data(() => ({
 //   - demands on unfold: state must be a SearchState instance
 //   - rescue on unfold:  if unfold fails, return Exhausted-like state
 
-const PathFinder = query(({ self }) => ({
+const PathFinder = query(self => ({
     path: Array,
     cost: Number,
     found: Boolean,

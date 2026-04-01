@@ -28,7 +28,7 @@ describe('Contracts x LP: Demands on Unfold (Early Pruning)', () => {
     it('demands reject invalid seeds (mode declaration)', () => {
         // A query that requires the seed to be a valid starting state.
         // In LP terms: the demand is a mode declaration — the query must be ground.
-        const Counter = query(({ self }) => ({
+        const Counter = query(self => ({
             value: Number,
             isDone: Boolean,
             isAccepted: Boolean,
@@ -67,7 +67,7 @@ describe('Contracts x LP: Demands on Unfold (Early Pruning)', () => {
         // This models constraint propagation: a demand at each step that
         // rejects partial solutions violating constraints.
 
-        const Searcher = query(({ self }) => ({
+        const Searcher = query(self => ({
             value: Number,
             isDone: Boolean,
             isValid: Boolean,
@@ -108,7 +108,7 @@ describe('Contracts x LP: Ensures on Closure Results (Integrity Constraints)', (
     it('ensures on fold verify properties of derivation results', () => {
         // Relation with a fold that has an ensures postcondition:
         // the depth of any derived fact must be positive.
-        const Ancestor = relation(({ family }) => ({
+        const Ancestor = relation(family => ({
             Direct: { from: String, to: String },
             Transitive: { hop: family, rest: family }
         })).ops(({ fold, unfold, map, merge, origin, destination, family }) => ({
@@ -155,7 +155,7 @@ describe('Contracts x LP: Rescue as Backtracking', () => {
 
         let rescueCount = 0;
 
-        const Stream = query(({ self }) => ({
+        const Stream = query(self => ({
             value: Number,
             isDone: Boolean,
             isAccepted: Boolean,
@@ -194,7 +194,7 @@ describe('Contracts x LP: Rescue as Backtracking', () => {
     it('rescue with retry models Prolog retry semantics', () => {
         let retryCount = 0;
 
-        const Solver = query(({ self }) => ({
+        const Solver = query(self => ({
             value: Number,
             isDone: Boolean,
             isValid: Boolean,
@@ -232,7 +232,7 @@ describe('Contracts x LP: Rescue as Backtracking', () => {
 
         let stepCount = 0;
 
-        const Risky = query(({ self }) => ({
+        const Risky = query(self => ({
             value: Number,
             isDone: Boolean,
             isAccepted: Boolean,
@@ -269,7 +269,7 @@ describe('Contracts x LP: Rescue as Backtracking', () => {
 describe('Contracts x LP: Tabling (Cycle Detection in Explore)', () => {
     it('auto-derived tabling detects cycles and terminates exploration', () => {
         // Cyclic state space: 0 → 1 → 2 → 0 → 1 → ...
-        const Cyclic = query(({ self }) => ({
+        const Cyclic = query(self => ({
             value: Number,
             isDone: Boolean,
             isAccepted: Boolean,
@@ -294,7 +294,7 @@ describe('Contracts x LP: Tabling (Cycle Detection in Explore)', () => {
 
     it('tabling prevents infinite loops on self-referential states', () => {
         // State that always transitions to itself
-        const Loop = query(({ self }) => ({
+        const Loop = query(self => ({
             value: Number,
             isDone: Boolean,
             isAccepted: Boolean,
@@ -325,7 +325,7 @@ describe('Contracts x LP: Tabling (Cycle Detection in Explore)', () => {
 
 describe('Contracts x LP: Invariant as Consistency During Derivation', () => {
     it('join invariant rejects inconsistent compositions during closure', () => {
-        const Edge = relation(({ family }) => ({
+        const Edge = relation(family => ({
             Direct: { from: String, to: String },
             Path: { first: family, second: family }
         })).ops(({ fold, unfold, map, merge, origin, destination, family }) => ({
@@ -357,7 +357,7 @@ describe('Contracts x LP: Invariant as Consistency During Derivation', () => {
 
     it('user-defined invariant on leaf constructor enforced during closure', () => {
         // Relation where base facts have a user invariant (no self-loops)
-        const Edge = relation(({ family }) => ({
+        const Edge = relation(family => ({
             Direct: {
                 [invariant]: ({ from, to }: { from: string; to: string }) => from !== to,
                 from: String,

@@ -16,7 +16,7 @@
 import { data, satisfies } from '../../index.mjs';
 import { Eq, Ord, BoundedLattice } from '../protocols/index.mjs';
 
-const Bool = data(({ family: _Family }) => ({
+const Bool = data(_Family => ({
     [satisfies]: [Eq, Ord, BoundedLattice],
     False: {},
     True:  {}

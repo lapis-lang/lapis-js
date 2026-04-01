@@ -4,7 +4,7 @@ import { relation, origin, destination } from '../index.mjs';
 
 // ---- Shared Ancestor relation for most tests ----
 
-const Ancestor = relation(({ family }) => ({
+const Ancestor = relation(family => ({
     Direct: { from: String, to: String },
     Transitive: { hop: family, rest: family }
 })).ops(({ fold, unfold, map, merge, origin, destination, family }) => ({
@@ -204,7 +204,7 @@ describe('Relation — direct construction of leaf instances', () => {
 
 describe('Relation — multiple leaf variant construction', () => {
     // Relation with two leaf variants (e.g. different edge types)
-    const Graph = relation(({ family }) => ({
+    const Graph = relation(family => ({
         Edge: { src: String, dst: String },
         BiEdge: { a: String, b: String },
         Path: { first: family, second: family }
@@ -321,7 +321,7 @@ describe('Relation — runtime type validation', () => {
     test('relation() rejects redefinition of reserved operation names', () => {
         for (const name of ['closure', 'reachableFrom', 'reachingTo']) {
             assert.throws(
-                () => relation(({ family }) => ({
+                () => relation(family => ({
                     Direct: { from: String, to: String },
                     Transitive: { hop: family, rest: family }
                 })).ops(({ fold, unfold, map, merge, origin, destination, family }) => ({

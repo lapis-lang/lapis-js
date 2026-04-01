@@ -7,7 +7,7 @@
  */
 import { data, invariant } from '@lapis-lang/lapis-js';
 
-const Stack = data(({ family }) => ({
+const Stack = data(family => ({
     Empty: {},
     Push: {
         [invariant]: (self: { size: number }) => self.size >= 0,

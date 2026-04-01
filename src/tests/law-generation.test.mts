@@ -31,7 +31,7 @@ function assertLawError(thunk: () => unknown, opName: string, property: string):
  *   provided by the `ops()` callback and is always safe, even in chained declarations.
  *   For `family.*` to resolve the variant constructors, `family` must also be destructured in
  *   the `data()` factory (it binds `family._adt` to the ADT on creation):
- *     `data(({ family }) => ({ N: { v: Number } })).ops(({ fold, family }) => ...)`
+ *     `data(family => ({ N: { v: Number } })).ops(({ fold, family }) => ...)`
  *     `return family.N({ field: value });`
  *   When the variant name is not statically known, `this.constructor({...})` is an alternative:
  *   it is typed to return the same ADT family and is equally safe in both chained and two-step forms.
@@ -70,7 +70,7 @@ describe('Law: associative', () => {
         // Subtraction: (a-b)-c ≠ a-(b-c) in general.
         assertLawError(
             () =>
-                data(({ family }) => ({ N: { v: Number } }))
+                data(family => ({ N: { v: Number } }))
                     .ops(({ fold, family }) => ({
                         sub: fold({ in: family, out: family, properties: ['associative'] })({
                             // @ts-expect-error -- arity
@@ -85,7 +85,7 @@ describe('Law: associative', () => {
     it('includes a 3-element counterexample in the LawError', () => {
         let caught: LawError | null = null;
         try {
-            data(({ family }) => ({ N: { v: Number } }))
+            data(family => ({ N: { v: Number } }))
                 .ops(({ fold, family }) => ({
                     sub: fold({ in: family, out: family, properties: ['associative'] })({
                         // @ts-expect-error -- arity
@@ -138,7 +138,7 @@ describe('Law: commutative', () => {
     it('throws LawError for a non-commutative operation', () => {
         assertLawError(
             () =>
-                data(({ family }) => ({ N: { v: Number } }))
+                data(family => ({ N: { v: Number } }))
                     .ops(({ fold, family }) => ({
                         sub: fold({ in: family, out: family, properties: ['commutative'] })({
                             // @ts-expect-error -- arity
@@ -174,7 +174,7 @@ describe('Law: idempotent', () => {
         // Addition: N(v) + N(v) = N(2v) ≠ N(v) for v ≠ 0
         assertLawError(
             () =>
-                data(({ family }) => ({ N: { v: Number } }))
+                data(family => ({ N: { v: Number } }))
                     .ops(({ fold, family }) => ({
                         add: fold({ in: family, out: family, properties: ['idempotent'] })({
                             // @ts-expect-error -- arity
@@ -566,7 +566,7 @@ describe('Recursive ADTs', () => {
     it('generates shallow recursive samples and verifies the law', () => {
         // List of Numbers: Nil and Cons({head:0, tail:Nil}) are both sampled.
         assert.doesNotThrow(() => {
-            const List = data(({ family }) => ({
+            const List = data(family => ({
                 Nil:  {},
                 Cons: { head: Number, tail: family }
             }));
@@ -599,7 +599,7 @@ describe('Recursive ADTs', () => {
         // Easiest: use the numerical sub check but with the recursive variant included.
         assertLawError(
             () => {
-                const Num = data(({ family }) => ({ N: { v: Number } }));
+                const Num = data(family => ({ N: { v: Number } }));
                 Num.ops(({ fold, family }) => ({
                     sub: fold({ in: family, out: family, properties: ['associative'] })({
                         // @ts-expect-error -- arity
@@ -626,7 +626,7 @@ describe('[extend] ADTs', () => {
         // The child adds C; inherited A, B (from Base) must also pass.
         const Base = data(() => ({ A: {}, B: {} }));
         assert.doesNotThrow(() => {
-            const Child = data(({ family }) => ({ [extend]: Base, C: {} }));
+            const Child = data(family => ({ [extend]: Base, C: {} }));
             Child.ops(({ fold, family }) => ({
                 op: fold({ in: family, out: family, properties: ['associative'] })({
                     _(_fields, _other) { return this; } // constant left-projection
@@ -641,7 +641,7 @@ describe('[extend] ADTs', () => {
         const Base = data(() => ({ A: {}, B: {} }));
         assertLawError(
             () => {
-                const Child = data(({ family }) => ({ [extend]: Base, C: {} }));
+                const Child = data(family => ({ [extend]: Base, C: {} }));
                 Child.ops(({ fold, family }) => ({
                     op: fold({ in: family, out: family, properties: ['commutative'] })({
                         _(_fields, _other) { return this; } // broken for commutativity
@@ -657,7 +657,7 @@ describe('[extend] ADTs', () => {
         const Base = data(() => ({ A: {}, B: {} }));
         let caught: LawError | null = null;
         try {
-            const Child = data(({ family }) => ({ [extend]: Base, C: {} }));
+            const Child = data(family => ({ [extend]: Base, C: {} }));
             Child.ops(({ fold, family }) => ({
                 op: fold({ in: family, out: family, properties: ['commutative'] })({
                     _(_fields, _other) { return this; }

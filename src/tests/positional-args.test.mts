@@ -64,7 +64,7 @@ test('Positional arguments - single field with ADT instance', () => {
 });
 
 test('Positional arguments - recursive ADT (Peano)', () => {
-    const Peano = data(({ family }) => ({
+    const Peano = data(family => ({
         Zero: {},
         Succ: { pred: family }
     }));
@@ -88,7 +88,7 @@ test('Positional arguments - recursive ADT (Peano)', () => {
 });
 
 test('Positional arguments - recursive List', () => {
-    const List = data(({ family }) => ({
+    const List = data(family => ({
         Nil: {},
         Cons: { head: Number, tail: family }
     }));
@@ -112,7 +112,7 @@ test('Positional arguments - recursive List', () => {
 });
 
 test('Positional arguments - binary tree', () => {
-    const Tree = data(({ family }) => ({
+    const Tree = data(family => ({
         Leaf: { value: Number },
         Node: { left: family, right: family, value: Number }
     }));
@@ -285,12 +285,12 @@ test('Positional arguments - with extend', () => {
 });
 
 test('Positional arguments - recursive extend', () => {
-    const IntExpr = data(({ family }) => ({
+    const IntExpr = data(family => ({
         IntLit: { value: Number },
         Add: { left: family, right: family }
     }));
 
-    const IntBoolExpr = data(({ family }) => ({
+    const IntBoolExpr = data(family => ({
         [extend]: IntExpr,
         BoolLit: { value: Boolean },
         LessThan: { left: family, right: family }

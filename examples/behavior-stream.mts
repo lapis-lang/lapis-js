@@ -80,7 +80,7 @@ console.log('numsWithNth.nth(100):', numsWithNth.nth(100)); // 100
 // Example 3: Fibonacci Stream
 // =============================================================================
 
-const FibStream = behavior(({ self }) => ({
+const FibStream = behavior(self => ({
     head: Number,
     tail: self
 })).ops(({ unfold, self }) => ({
@@ -103,7 +103,7 @@ console.log('fib[4]:', fib.tail.tail.tail.tail.head); // 3
 // Example 4: Infinite Binary Tree
 // =============================================================================
 
-const Tree = behavior(({ self }) => ({
+const Tree = behavior(self => ({
     value: Number,
     left: self,
     right: self
@@ -132,7 +132,7 @@ console.log('tree.right.right.value:', tree.right.right.value); // 7
 
 console.log('\n=== Lazy Evaluation and Memoization ===');
 
-const LazyStream = behavior(({ self }) => ({
+const LazyStream = behavior(self => ({
         head: Number,
         tail: self
     })).ops(({ unfold, self }) => ({
@@ -191,7 +191,7 @@ console.log(`  [Console.read] Got: "${input}"`);
 // Example 7: Multiple Seed Transformations
 // =============================================================================
 
-const PowerStream = behavior(({ self }) => ({
+const PowerStream = behavior(self => ({
     head: Number,
     tail: self
 })).ops(({ unfold, self }) => ({

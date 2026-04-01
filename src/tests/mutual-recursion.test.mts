@@ -21,12 +21,12 @@ describe('Mutual recursion between data() declarations', () => {
         // materialization is triggered (by .ops() or first variant access).
         // For TDZ-safe mutual recursion, declare all ADTs first and then attach
         // .ops() after every const binding is initialised.
-        const Expr = data(({ family }) => ({
+        const Expr = data(family => ({
             Lit:   { value: Number },
             Block: { stmt: Stmt, body: family }   // ← reads Stmt; evaluated lazily
         }));
 
-        const Stmt = data(({ family }) => ({
+        const Stmt = data(family => ({
             Assign: { name: String, value: Number },
             Seq:    { first: family, second: family }
         }));
@@ -58,7 +58,7 @@ describe('Mutual recursion between data() declarations', () => {
     });
 
     test('instanceof works after lazy materialisation', () => {
-        const A = data(({ family }) => ({
+        const A = data(family => ({
             Leaf: { value: Number },
             Node: { left: family, right: family }
         }));
@@ -71,12 +71,12 @@ describe('Mutual recursion between data() declarations', () => {
     test('second ADT can reference first (lazy proxy) without TDZ', () => {
         // First is lazy (reads Second which is TDZ at declaration time).
         // Second reads First — First is the lazy proxy at that point, not TDZ.
-        const First = data(({ family }) => ({
+        const First = data(family => ({
             Leaf: { value: Number },
             Pair: { left: family, right: Second }  // reads Second (TDZ)
         }));
 
-        const Second = data(({ family }) => ({
+        const Second = data(family => ({
             Leaf: { tag: String },
             Wrap: { inner: First, next: family }   // reads First (lazy proxy — ok)
         }));
@@ -97,13 +97,13 @@ describe('Mutual recursion between data() declarations', () => {
     test('complete mutual-recursion sorts spike: Expr ↔ Stmt', () => {
         // Expr references Stmt (declared after); Stmt references Expr (now a
         // lazy proxy — no TDZ).  Declare both first, then attach ops.
-        const Expr = data(({ family }) => ({
+        const Expr = data(family => ({
             Lit:    { value: Number },
             Add:    { left: family, right: family },
             IfExpr: { cond: family, then: Stmt, else: Stmt }  // evaluated lazily
         }));
 
-        const Stmt = data(({ family }) => ({
+        const Stmt = data(family => ({
             Assign: { name: String, value: Number },
             Seq:    { first: family, second: family }
         }));
@@ -145,11 +145,11 @@ describe('Mutual recursion between data() declarations', () => {
     // ── Lazy materialisation does NOT affect extend chains ───────────────────
 
     test('lazy ADT can still be extended after materialisation', () => {
-        const Base = data(({ family }) => ({
+        const Base = data(family => ({
             Item: { value: Number }
         }));
 
-        const Child = data(({ family }) => ({
+        const Child = data(family => ({
             [extend]: Base,
             Extra:    { label: String }
         }));

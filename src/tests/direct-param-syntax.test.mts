@@ -1,18 +1,14 @@
 /**
- * Direct-parameter syntax tests (Issue #189 — Phase 4)
+ * Direct-parameter syntax tests (Issue #189)
  *
  * Validates that the `data(family => ...)` form (using the parameter directly
- * as a field-type sentinel) produces identical runtime behaviour to the
- * existing `data(({ family }) => ...)` destructuring form.
- *
- * Both forms are fully supported simultaneously; Phase 4 does not break any
- * existing code.
+ * as a field-type sentinel) produces correct runtime behaviour.
  */
 import { data, extend } from '../index.mjs';
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
-describe('Phase 4 — data(family => ...) direct-parameter syntax', () => {
+describe('data(family => ...) direct-parameter syntax', () => {
 
     // ── Direct use as recursive field spec ────────────────────────────────────
 
@@ -51,10 +47,10 @@ describe('Phase 4 — data(family => ...) direct-parameter syntax', () => {
         assert.strictEqual(t.sum, 7);
     });
 
-    // ── Backward-compat destructuring still works ─────────────────────────────
+    // ── Direct parameter named 'family' works as a sentinel ─────────────────────
 
-    test('({ family }) destructuring still works unchanged', () => {
-        const List = data(({ family }) => ({
+    test('family parameter works as sentinel when named "family"', () => {
+        const List = data(family => ({
             Nil:  {},
             Cons: { head: Number, tail: family }
         })).ops(({ fold }) => ({

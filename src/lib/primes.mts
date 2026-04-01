@@ -10,7 +10,7 @@ import { data } from '../index.mjs';
 //   hasFactor fold   → true if any element divides n
 //   firstFactor fold → smallest divisor found, or 0 if none
 
-const Divisors = data(({ family }) => ({
+const Divisors = data(family => ({
         Nil: {},
         Cons: { head: Number, tail: family }
     })).ops(({ fold, unfold, family }) => ({
@@ -52,7 +52,7 @@ const Divisors = data(({ family }) => ({
 
     // nthPrime search: anamorphism over { candidate, count }
     // Done fires when candidate is prime and the countdown reaches 0
-    NthPrimeFinder = data(({ family }) => ({
+    NthPrimeFinder = data(family => ({
         Done: { value: Number },
         Step: { next: family }
     })).ops(({ fold, unfold, family }) => ({

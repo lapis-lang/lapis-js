@@ -10,7 +10,7 @@ import { behavior } from '../index.mjs';
 
 describe('Behavior - Unfold Chaining', () => {
     it('should support chaining multiple unfold operations', () => {
-        const Stream = behavior(({ self }) => ({
+        const Stream = behavior(self => ({
             head: Object,
             tail: self
         })).ops(({ fold, unfold, map, merge, self }) => ({
@@ -48,7 +48,7 @@ describe('Behavior - Unfold Chaining', () => {
     });
 
     it('should support parametric observers in unfold', () => {
-        const Stream = behavior(({ self }) => ({
+        const Stream = behavior(self => ({
             head: Object,
             nth: { in: Number, out: Object },
             tail: self
@@ -79,7 +79,7 @@ describe('Behavior - Unfold Chaining', () => {
 
     it('should support multiple parametric observers', () => {
         // Sensor: a getter + two parametric observers with different input shapes
-        const Sensor = behavior(({ self }) => ({
+        const Sensor = behavior(self => ({
             value: Number,
             scale: { in: Number, out: Number },
             inRange: { in: { lo: Number, hi: Number }, out: Boolean }
@@ -109,7 +109,7 @@ describe('Behavior - Unfold Chaining', () => {
     });
 
     it('should maintain separate instances for different unfold operations', () => {
-        const Stream = behavior(({ self }) => ({
+        const Stream = behavior(self => ({
             head: Number,
             tail: self
         })).ops(({ fold, unfold, map, merge, self }) => ({
@@ -138,7 +138,7 @@ describe('Behavior - Unfold Chaining', () => {
     });
 
     it('should support unfold with complex seed transformations', () => {
-        const Fibonacci = behavior(({ self }) => ({
+        const Fibonacci = behavior(self => ({
             current: Number,
             next: self
         })).ops(({ fold, unfold, map, merge, self }) => ({
@@ -159,7 +159,7 @@ describe('Behavior - Unfold Chaining', () => {
     });
 
     it('should return behavior type for chaining after unfold', () => {
-        const Stream = behavior(({ self }) => ({
+        const Stream = behavior(self => ({
             head: Number,
             tail: self
         })).ops(({ fold, unfold, map, merge, self }) => ({

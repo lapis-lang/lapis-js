@@ -21,6 +21,7 @@ import type {
     FamilyRef,
     FamilyRefCallable,
     SelfRef,
+
     SelfRefCallable,
     TypeSpec
 } from './operations.mjs';
@@ -749,19 +750,14 @@ export type QueryADT<D = Record<string, unknown>> =
 /**
  * Context passed to the `data()` declaration callback.
  */
-export type DataDeclParams = {
-    readonly family: FamilyRefCallable;
-};
+export type DataDeclParams = FamilyRefCallable;
 
 /**
  * Context passed to the `behavior()` declaration callback.
  *
  * `self` is the reserved continuation reference (for corecursion).
  */
-export type BehaviorDeclParams = {
-    /** Callable as `self` (continuation). */
-    readonly self: SelfRefCallable;
-};
+export type BehaviorDeclParams = SelfRefCallable;
 
 /**
  * Interface holding the [DeclBrand] phantom symbol, carrying the declaration

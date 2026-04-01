@@ -81,7 +81,7 @@ const Query = data(() => ({
 
 // PathFinder — query (cospan: Query →input— PathFinder ←output— Path[])
 
-const PathFinder = query(({ self }) => ({
+const PathFinder = query(self => ({
     path: Array,
     found: Boolean,
     exhausted: Boolean,

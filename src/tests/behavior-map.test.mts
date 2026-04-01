@@ -152,7 +152,7 @@ describe('Behavior Map - Lazy (transformed only on access)', () => {
     it('map creation is O(1) — no observation happens at map time', () => {
         let accessCount = 0;
 
-        const Stream = behavior(({ self }) => ({
+        const Stream = behavior(self => ({
             head: Number,
             tail: self
         })).ops(({ fold, unfold, map, merge, self }) => ({
