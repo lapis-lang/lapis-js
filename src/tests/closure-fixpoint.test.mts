@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import { relation, origin, destination } from '../index.mjs';
 
 describe('Closure — Fixpoint Properties', () => {
-    const Ancestor = relation(({ Family }) => ({
+    const Ancestor = relation(({ family }) => ({
         Direct: { from: String, to: String },
-        Transitive: { hop: Family, rest: Family }
-    })).ops(({ fold, unfold, map, merge, origin, destination, Family }) => ({
+        Transitive: { hop: family, rest: family }
+    })).ops(({ fold, unfold, map, merge, origin, destination, family }) => ({
         [origin]: fold({ out: String })({
             Direct: ({ from }) => from,
             Transitive: ({ hop }) => hop

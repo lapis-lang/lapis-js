@@ -1,10 +1,9 @@
 /**
- * List(T) — a parameterized linked-list ADT.
+ * List — a singly-linked list ADT.
  *
- *   List(T) ::= Nil | Cons(head: T, tail: List(T))
+ *   List ::= Nil | Cons(head: Object, tail: List)
  *
- * Satisfies: Functor, Foldable, Traversable, Monoid (append),
- * Eq({ T: Eq }), Ord({ T: Ord })
+ * Satisfies: Functor, Foldable, Traversable, Monoid (append)
  *
  * Traversable extends both Foldable and Functor, so registering [satisfies]: [Traversable]
  * automatically satisfies `instanceof Functor` and `instanceof Foldable` transitively.
@@ -29,21 +28,19 @@
 
 import { data, satisfies } from '../../index.mjs';
 
-import { Traversable, Monoid, Eq, Ord } from '../protocols/index.mjs';
+import { Traversable, Monoid } from '../protocols/index.mjs';
 
-const List = data(({ Family, T }) => ({
+const List = data(family => ({
     [satisfies]: [
         Traversable,    // extends Foldable + Functor → instanceof Functor/Foldable works transitively
-        Monoid,
-        Eq({ T: Eq }),
-        Ord({ T: Ord })
+        Monoid
     ],
     Nil:  {},
-    Cons: { head: T, tail: Family(T) }
-})).ops(({ fold, unfold, merge, map, Family, T }) => ({
+    Cons: { head: Object, tail: family }
+})).ops(({ fold, unfold, merge, map, family }) => ({
 
     // ── Original operations (from src/lib/list.mts) ───────────────────────
-    FromArray: unfold({ in: Array, out: Family(T) })({
+    FromArray: unfold({ in: Array, out: family })({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         Nil:  (arr: any) => arr.length === 0 ? {} : null,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -53,13 +50,15 @@ const List = data(({ Family, T }) => ({
     }),
     toArray: fold({ out: Array })({
         Nil()  { return []; },
-        Cons({ head, tail }: { head: unknown; tail: unknown[] }) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        Cons({ head, tail }: any) {
             return [head, ...(tail as unknown[])];
         }
     }),
     length: fold({ out: Number })({
         Nil()  { return 0; },
-        Cons({ tail }: { tail: number }) { return 1 + tail; }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        Cons({ tail }: any) { return 1 + tail; }
     }),
     isEmpty: fold({ out: Boolean })({
         Nil()  { return true; },
@@ -72,33 +71,33 @@ const List = data(({ Family, T }) => ({
             return head === value || tail(value);
         }
     }),
-    filter: fold({ in: Function, out: Family })({
+    filter: fold({ in: Function, out: family })({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        Nil() { return (Family(T) as any).Nil; },
+        Nil() { return (family as any).Nil; },
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         Cons({ head, tail }: any, predicate: any) {
             const rest = tail(predicate);
             return predicate(head)
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                ? (Family(T) as any).Cons({ head, tail: rest })
+                ? (family as any).Cons({ head, tail: rest })
                 : rest;
         }
     }),
     RoundTrip: merge('FromArray', 'toArray'),
 
     // ── Functor ──────────────────────────────────────────────────────────
-    fmap: map({ out: Family })({
-        T: (x: unknown, f: (a: unknown) => unknown) => f(x)
+    fmap: map({ out: family })({
+        head: (x: unknown, f: (a: unknown) => unknown) => f(x)
     }),
 
     // ── Monoid (append) ───────────────────────────────────────────────────
-    Identity: unfold({ out: Family })({
+    Identity: unfold({ out: family })({
         Nil:  () => ({}),
         Cons: () => null
     }),
     combine: fold({
-        in: Family,
-        out: Family
+        in: family,
+        out: family
     })({
         // @ts-expect-error — binary fold handler
 
@@ -107,7 +106,7 @@ const List = data(({ Family, T }) => ({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         Cons({ head, tail }: any, other: unknown) {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            return (Family(T) as any).Cons({ head, tail: tail(other) });
+            return (family as any).Cons({ head, tail: tail(other) });
         }
     }),
 
@@ -130,7 +129,7 @@ const List = data(({ Family, T }) => ({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         Nil(_ctx: unknown, opts: any) {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            return opts.applicative.Pure((Family(T) as any).Nil);
+            return opts.applicative.Pure((family as any).Nil);
         },
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         Cons({ head, tail }: any, opts: any) {
@@ -140,13 +139,13 @@ const List = data(({ Family, T }) => ({
             // fHead.fmap(h => t => Cons(h, t)).apply(fTail)
             return fHead
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                .fmap((h: any) => (t: any) => (Family(T) as any).Cons({ head: h, tail: t }))
+                .fmap((h: any) => (t: any) => (family as any).Cons({ head: h, tail: t }))
                 .apply(fTail);
         }
     }),
 
     // ── Eq (conditional: T must satisfy Eq) ──────────────────────────────
-    equals: fold({ in: Family, out: Boolean })({
+    equals: fold({ in: family, out: Boolean })({
         // @ts-expect-error — binary fold handler
         Nil(_ctx: unknown, other: unknown) {
             return other !== null && other !== undefined &&
@@ -166,7 +165,7 @@ const List = data(({ Family, T }) => ({
 
     // ── Ord (conditional: T must satisfy Ord) ─────────────────────────────
     // Lexicographic: element-by-element, then Nil < Cons
-    compare: fold({ in: Family, out: Number })({
+    compare: fold({ in: family, out: Number })({
         // @ts-expect-error — binary fold handler
         Nil(_ctx: unknown, other: unknown) {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any

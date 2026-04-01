@@ -90,14 +90,14 @@ console.log('Facts holding at 2023:', queryAt(facts, 2023));
  *
  * The unfold generates a stream of snapshots indexed by time.
  */
-const Timeline = behavior(({ Self }) => ({
+const Timeline = behavior(({ self }) => ({
     time: Number,
     activeFacts: Array,
-    next: Self
-})).ops(({ fold, unfold, map, merge, Self }) => ({
+    next: self
+})).ops(({ fold, unfold, map, merge, self }) => ({
     Stepper: unfold({
         in: { time: Number, facts: Array },
-        out: Self
+        out: self
     })({
         time:        (state: { time: number }) => state.time,
          

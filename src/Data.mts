@@ -1,8 +1,5 @@
 import {
     FamilyRefSymbol,
-    TypeParamSymbol,
-    SortRefSymbol,
-    sort,
     isOperationDef,
     extend,
     op,
@@ -13,7 +10,7 @@ import {
     validateTypeSpec,
     validateReturnType,
     isFamilyRefSpec,
-    isSortRefSpec,
+    registerFamilyRef,
     assertCamelCase,
     assertPascalCase,
     LapisTypeSymbol,
@@ -48,7 +45,6 @@ import {
 import {
     isObjectLiteral,
     HandlerMapSymbol,
-    SortNameSymbol,
     hasInputSpec,
     omitSymbol,
     builtInTypeChecks,
@@ -57,19 +53,14 @@ import {
     installOperation
 } from './utils.mjs';
 
-import type { DataADTWithParams, DataInstance, DataDeclParams, VariantKeys, SpecValue, FamilyRef, SelfRef, SortRef, TypeParamRef, DeclBrand } from './types.mjs';
-import { isSort } from './types.mjs';
+import type { DataADTWithParams, DataInstance, DataDeclParams, VariantKeys, SpecValue, FamilyRef, SelfRef, DeclBrand } from './types.mjs';
 import type { FoldDef, InstanceOf, ContractCallbacks, ExpandAliases } from './ops.mjs';
 import { fold as foldOp, unfold as unfoldOp, map as mapOp, merge as mergeOp, getAliases } from './ops.mjs';
 
 import {
     type ProtocolEntry,
-    registerConformance,
     applyUnconditionalProtocols,
-    validateProtocolInvariant,
-    validateProtocolConformance,
     parseProtocolEntries,
-    conformanceRegistry,
     resolveOperationContracts,
     gatherProtocolSpec
 } from './Protocol.mjs';
@@ -89,18 +80,12 @@ export type IsSingleton = typeof IsSingleton;
 // counterparts so that `foldImpl` can recover the public, proxied ADT
 // from the prototype chain of a variant instance.
 //
-// Entries are added in two places:
-//   • createADT        – for the base ADT constructor
-//   • createParameterized – for each parameterized specialization
+// Entries are added in createADT for each ADT constructor.
 //
 // Using a WeakMap ensures that entries are automatically eligible for
 // garbage collection once the raw constructor (key) is no longer
 // reachable — no manual cleanup is needed.
 const rawToProxiedMap = new WeakMap<object, object>();
-
-// Per-ADT sort declaration info: stores sort params and sort→variant mappings.
-// Entries are set during createADT for multi-sorted ADTs.
-const sortDeclMap = new WeakMap<object, { sortParams: SpecRecord; sortVariants: Map<string, string[]> }>();
 
 // Per-ADT inverse map registry: bidirectional opName ↔ inverseOpName.
 // When map `halve` declares `inverse: 'double'`, both directions are
@@ -112,6 +97,11 @@ const inverseRegistry = new WeakMap<object, Map<string, string>>();
 // that fold optimization guards can be applied AFTER law verification completes.
 // Keyed by Transformer object; shared between a fold op and all its aliases.
 const rawFoldImpls = new WeakMap<Transformer, (...args: unknown[]) => unknown>();
+
+// Tracks the set of operation names explicitly registered via .ops() calls
+// (as opposed to those inherited/copied into the child registry during
+// materialisation). Used to enforce the "no silent overwrite" invariant.
+const explicitOpsRegistry = new WeakMap<object, Set<string>>();
 
 /** Guard flag to prevent re-entrant round-trip verification. */
 let _inRoundTripCheck = false;
@@ -155,20 +145,13 @@ function isGetterOp(ADT: ADTLike, opName: string): boolean {
     return false;
 }
 
-// Module-level fold-execution context: holds the current parameterized
-// (proxied) ADT during fold handler invocation so that Family(T) can
-// resolve type-param markers to the correct parameterized ADT without
-// requiring the user to hardcode concrete type arguments.
-let _currentFoldParameterizedADT: object | null = null;
-
 // Module-level context: when set, fold operations pre-apply this map
 // transformer to non-recursive (type-parameter) fields before passing
 // them to the fold handler.  Used by merge pipelines to fuse adjacent
 // map → fold operations into a single traversal.
 let _currentMapFoldPreTransform: Transformer | null = null;
 
-const TypeArgsSymbol: unique symbol = Symbol('TypeArgs'),
-    VariantNameSymbol: unique symbol = Symbol('VariantName'),
+const VariantNameSymbol: unique symbol = Symbol('VariantName'),
     // Brands variant constructors and singleton instances so the delegation
     // proxy (`createDelegationProxy`) can distinguish them from operations
     // with a single `IsVariantSymbol in obj` check.  Without this brand
@@ -182,11 +165,19 @@ const TypeArgsSymbol: unique symbol = Symbol('TypeArgs'),
     // WeakMap to store parent ADT references (for Comb Inheritance parent chain)
     parentADTMap = new WeakMap<object, object>();
 
+// WeakMap from a child variant constructor's `.prototype` to the parent
+// variant constructor.  Populated in createChildVariant for non-singleton
+// variants; consulted by Symbol.hasInstance to implement the comb parent
+// chain so that `childInstance instanceof ParentADT.Variant` returns true.
+//
+// Keyed on the prototype OBJECT (not the constructor), because dynamically
+// created child variant constructors are distinct objects for each proxy
+// access. Keying on the prototype gives stable identity across accesses.
+const variantProtoParentMap = new WeakMap<object, VariantLike>();
+
 /** Provides access to auxiliary fold results in zygomorphism folds */
 export const aux: unique symbol = Symbol('aux');
 export type aux = typeof aux;
-
-export { TypeArgsSymbol, FamilyRefSymbol };
 
 // ---- Internal types ---------------------------------------------------------
 
@@ -211,15 +202,11 @@ type ADTLike = {
     _getTransformer: (name: string) => Transformer | undefined;
     _getTransformerNames: () => string[];
     _rawADT?: unknown;
-    [TypeArgsSymbol]?: SpecRecord;
     [key: string]: unknown;
     [sym: symbol]: unknown;
 } & (new (...args: unknown[]) => unknown);
 
 type ParsedDecl = {
-    typeParams: SpecRecord;
-    sortParams: SpecRecord;
-    sortVariants: Map<string, string[]>;
     variants: SpecRecord;
     operations: SpecRecord;
     parentADT: ADTLike | null;
@@ -266,13 +253,11 @@ type DataFoldOutType<D, S> =
  * `never`.
  */
 type DataFoldFieldType<D, FieldSpec, S> =
-    FieldSpec extends FamilyRef | SelfRef | SortRef
+    FieldSpec extends FamilyRef | SelfRef
         ? (FoldInType<S> extends never
             ? DataFoldOutType<D, S>
             : (n: FoldInType<S>) => DataFoldOutType<D, S>)
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        : FieldSpec extends TypeParamRef ? any
-            : SpecValue<FieldSpec, DataFoldOutType<D, S>>;
+        : SpecValue<FieldSpec, DataFoldOutType<D, S>>;
 
 /**
  * D-aware fold handler context: like FoldCtx but resolves Family/Self fields
@@ -364,7 +349,7 @@ type DataOpsContext<D> = {
     unfold: typeof unfoldOp;
     map: typeof mapOp;
     merge: typeof mergeOp;
-    Family: FamilyMarker & DataADTWithParams<D>;
+    family: FamilyMarker & DataADTWithParams<D>;
     [key: string]: unknown;
 };
 
@@ -379,37 +364,126 @@ export type DataStructure<D> = DataADTWithParams<D> & {
 // ---- Main entry point -------------------------------------------------------
 
 /**
- * Main entry point: data(() => { variants })
+ * Returns a lazy proxy ADT that defers declaration parsing until the first
+ * variant property is accessed.  Handles the mutual-recursion case where the
+ * `declFn` closure captures a `const` binding that is still in the temporal
+ * dead zone (TDZ) at the time `data()` is called.
+ *
+ * A pre-allocated prototype (`preAllocProto`) is used as the real ADT's
+ * `.prototype` after materialization, ensuring `instanceof lazyProxy` resolves
+ * correctly throughout the proxy's lifetime.
+ */
+function createLazyADT<D extends Record<string, unknown>>(
+    declFn: (params: object) => Record<string, unknown>
+): DataStructure<D> {
+    const preAllocProto: object = Object.create(Object.prototype);
+    let materializedADT: ADTLike | null = null;
+    // The real .ops() method installed by attachOpsMethod.  Captured immediately
+    // after materialisation so that even if an external caller replaces ADT.ops
+    // on the proxy (e.g. relation()'s relationOps override), the deferred ops
+    // wrapper stored by that caller can still invoke the underlying ops logic
+    // without recursing back through the replacement.
+    let originalOps: ((opsFn: unknown) => unknown) | null = null;
+
+    function materialize(): ADTLike {
+        if (materializedADT) return materializedADT;
+        const decl = parseDeclaration(declFn);
+        const adt = createADT(decl, preAllocProto);
+        (adt as Record<symbol, boolean>)[LapisTypeSymbol] = true;
+        attachOpsMethod<D>(adt as unknown as Record<string, unknown>, decl);
+        // Capture the original ops BEFORE setting materializedADT so that the
+        // set trap (triggered by an external ops replacement) cannot race.
+        originalOps = (adt as unknown as Record<string, unknown>)['ops'] as (opsFn: unknown) => unknown;
+        materializedADT = adt;
+        return adt;
+    }
+
+    // Shell function — its .prototype is the pre-allocated prototype so that
+    // `instanceof lazyProxy` resolves correctly before materialization.
+    function Shell(this: object, ...args: unknown[]): unknown {
+        if (!new.target)
+            return (materialize() as unknown as (...a: unknown[]) => unknown).apply(this, args);
+    }
+    (Shell as unknown as { prototype: object }).prototype = preAllocProto;
+
+    const lazyProxy = new Proxy(Shell as unknown as DataStructure<D>, {
+        get(_target, prop: string | symbol) {
+            if (prop === 'ops') {
+                // Post-materialisation: the outer .ops property may have been
+                // replaced by a caller (e.g. relation()'s augmented wrapper that
+                // injects origin/destination into the context).  Return it directly
+                // so external code goes through that wrapper correctly.
+                if (materializedADT)
+                    return Reflect.get(materializedADT as object, 'ops', materializedADT as object);
+
+                // Pre-materialisation: this deferred wrapper is what relation()
+                // captures as `baseOps`.  When invoked it materialises immediately
+                // (making .ops() eager so law/validation errors surface at call time)
+                // and then calls originalOps — bypassing any external replacement —
+                // so that if relation() later replaces ADT.ops with its own wrapper,
+                // calling the captured `baseOps` does NOT re-enter that wrapper.
+                return function <O extends Record<string, unknown>>(
+                    opsFn: (ctx: DataOpsContext<D>) => O
+                ): DataADTWithParams<D & O & ExpandAliases<O>> {
+                    materialize();   // idempotent; sets originalOps if first call
+                    return originalOps!(opsFn as unknown) as unknown as DataADTWithParams<D & O & ExpandAliases<O>>;
+                };
+            }
+            // Return the pre-allocated prototype directly so that `instanceof`
+            // checks resolve correctly even before the first variant is created.
+            if (prop === 'prototype') return preAllocProto;
+            // All other accesses trigger materialisation and forward to the real ADT.
+            const real = materialize();
+            return Reflect.get(real as object, prop, real as object);
+        },
+        set(_target, prop: string | symbol, value: unknown): boolean {
+            // Always forward through the materialised ADT so that non-writable
+            // property restrictions (e.g. variant constructors) are enforced.
+            return Reflect.set(materialize() as object, prop, value);
+        },
+        has(_target, prop: string | symbol): boolean {
+            return Reflect.has(materialize() as object, prop);
+        },
+        defineProperty(_target, prop: string | symbol, descriptor: PropertyDescriptor): boolean {
+            // Post-data() callers (e.g. relation()) attach extra properties via
+            // Object.defineProperty; forward to the materialised ADT so the property
+            // lands in the right place and is reachable via normal prototype lookup.
+            return Reflect.defineProperty(materialize() as object, prop, descriptor);
+        },
+        getOwnPropertyDescriptor(_target, prop: string | symbol): PropertyDescriptor | undefined {
+            // The Proxy invariant requires that a non-configurable property
+            // descriptor returned by the trap agrees with the actual descriptor on
+            // the target.  For `prototype` on a function the actual descriptor has
+            // writable:true, so we must not report writable:false here.
+            if (prop === 'prototype')
+                return Object.getOwnPropertyDescriptor(Shell, 'prototype');
+            return Reflect.getOwnPropertyDescriptor(materialize() as object, prop);
+        },
+        ownKeys(_target): ArrayLike<string | symbol> {
+            return Reflect.ownKeys(materialize() as object);
+        }
+    });
+
+    return lazyProxy;
+}
+
+/**
+ * Main entry point: data(family => { variants })
  *    .ops(({ fold, unfold, map, merge, Family, T }) => ({ operations }))
+ *
+ * Returns a lazy proxy ADT. The declaration callback is deferred until the
+ * first variant property access, so `data()` calls can freely reference
+ * `const` bindings declared later in the same scope without temporal-dead-zone
+ * errors — mutual recursion between `data()` declarations works naturally.
  *
  * When the declaration uses type parameters (single uppercase letters A–Z),
  * the returned ADT is callable with a type-arg record for compile-time
  * substitution: `List({ T: Number })` yields fields typed as `number`.
- *
- * The legacy single-phase form (variants + operations in one declaration) is
- * also supported for internal use.
  */
 export function data<D extends Record<string, unknown>>(
     declFn: (params: DataDeclParams) => D
 ): DataStructure<D> {
-    const decl = parseDeclaration(declFn as unknown as (params: object) => Record<string, unknown>);
-
-    // If the declaration already contains operations (legacy / internal form),
-    // create the ADT immediately.
-    const hasOps = Object.keys(decl.operations).length > 0;
-    if (hasOps) {
-        const ADT = createADT(decl);
-        (ADT as unknown as Record<symbol, boolean>)[LapisTypeSymbol] = true;
-        attachOpsMethod<D>(ADT as unknown as Record<string, unknown>, decl);
-        return ADT as unknown as DataStructure<D>;
-    }
-
-    // Pure structure declaration: create a partial ADT (variants only),
-    // and attach .ops() for phase 2.
-    const ADT = createADT(decl);
-    (ADT as unknown as Record<symbol, boolean>)[LapisTypeSymbol] = true;
-    attachOpsMethod<D>(ADT as unknown as Record<string, unknown>, decl);
-    return ADT as unknown as DataStructure<D>;
+    return createLazyADT<D>(declFn as unknown as (params: object) => Record<string, unknown>);
 }
 
 /**
@@ -426,22 +500,14 @@ function attachOpsMethod<D extends Record<string, unknown>>(
     (ADT as DataStructure<D>).ops = function ops<O extends Record<string, unknown>>(
         opsFn: (ctx: DataOpsContext<D>) => O
     ): DataADTWithParams<D & O & ExpandAliases<O>> {
-        // Build the context: type params + Family + operations
+        // Build the context: type params + family + operations
         const ctx = {
             fold: foldOp as DataFoldFn<D>,
             unfold: unfoldOp,
             map: mapOp,
             merge: mergeOp,
-            Family: decl.Family ?? createFamilyMarker()
+            family: decl.Family ?? createFamilyMarker()
         } as DataOpsContext<D>;
-
-        // Forward all type param markers (T, A, B, …)
-        for (const [name, param] of Object.entries(decl.typeParams))
-            (ctx as Record<string, unknown>)[name] = param;
-
-        // Forward all sort param markers ($A, $B, …)
-        for (const [name, param] of Object.entries(decl.sortParams))
-            (ctx as Record<string, unknown>)[name] = param;
 
         const opsObj = opsFn(ctx);
 
@@ -449,14 +515,38 @@ function attachOpsMethod<D extends Record<string, unknown>>(
         const opsDecl = parseDeclarationOps(opsObj);
         // Use the raw (un-proxied) ADT so parentADTMap / adtTransformers are keyed consistently.
         const rawADT = ((ADT as unknown as { _rawADT?: ADTLike })._rawADT ?? ADT) as unknown as ADTLike;
+
+        // Guard against silent overwrites: check only against operations that were
+        // explicitly registered via a previous .ops() call (not those inherited
+        // automatically during extension/materialisation).
+        let ownOps = explicitOpsRegistry.get(rawADT as unknown as object);
+        if (ownOps) {
+            for (const opName of Object.keys(opsDecl)) {
+                if (ownOps.has(opName)) {
+                    throw new TypeError(
+                        `Operation '${opName}' is already defined on this ADT. ` +
+                        `Use .ops() only once per ADT, or consolidate all operations into a single call.`
+                    );
+                }
+            }
+        }
+
         const ownVariants = getOwnVariantsFromADT(rawADT);
         createOperations(
             rawADT,
             ownVariants,
             opsDecl,
-            decl.typeParams,
             decl.protocols
         );
+
+        // Record these op names as explicitly registered so future .ops() calls
+        // can detect duplicate registrations.
+        if (!ownOps) {
+            ownOps = new Set<string>();
+            explicitOpsRegistry.set(rawADT as unknown as object, ownOps);
+        }
+        for (const opName of Object.keys(opsDecl))
+            ownOps.add(opName);
 
         // Check algebraic laws for every operation that declares `properties`.
         const registry = adtTransformers.get(rawADT as unknown as object);
@@ -573,45 +663,42 @@ function parseDeclarationOps(
 
 // ---- Declaration parsing ----------------------------------------------------
 
+/**
+ * Returns true when `childFieldSpec` is a covariant match for `parentFieldSpec`
+ * for the purposes of field narrowing in an `[extend]` declaration:
+ *  - Identical spec references: always ok.
+ *  - Both FamilyRef markers: ok (recursive self-reference).
+ *  - Constructor subtyping: every instance of `childFieldSpec` is also an
+ *    instance of `parentFieldSpec` (parentSpec.prototype in child's chain).
+ */
+function isFieldCovariant(childFieldSpec: unknown, parentFieldSpec: unknown): boolean {
+    if (childFieldSpec === parentFieldSpec) return true;
+    if (isFamilyRefSpec(childFieldSpec) && isFamilyRefSpec(parentFieldSpec)) return true;
+    if (
+        typeof childFieldSpec === 'function' &&
+        typeof parentFieldSpec === 'function'
+    ) {
+        const pProto = (parentFieldSpec as { prototype?: object }).prototype;
+        const cProto = (childFieldSpec as { prototype?: object }).prototype;
+        // Exclude arrow functions (no .prototype); note Object.prototype instanceof Object
+        // is false (Object.prototype is the chain root), so we cannot use instanceof here.
+        if (pProto != null && cProto != null) {
+            return pProto === cProto ||
+                Object.prototype.isPrototypeOf.call(pProto, cProto);
+        }
+    }
+    return false;
+}
+
 function parseDeclaration(
     declFn: (params: object) => Record<string, unknown>
 ): ParsedDecl {
-    const typeParams: SpecRecord = {},
-        sortParams: SpecRecord = {},
-        variantsObj: SpecRecord = {},
+    const variantsObj: SpecRecord = {},
         operationsObj: SpecRecord = {};
-    let parentADT: ADTLike | null = null,
-        Family: FamilyMarker | null = null;
+    let parentADT: ADTLike | null = null;
 
-    const context = {
-            get Family() {
-                if (!Family)
-                    Family = createFamilyMarker();
-
-                return Family;
-            }
-        },
-
-        typeParamProxy = new Proxy({} as Record<string, unknown>, {
-            get(_target, prop: string | symbol) {
-                if (prop === 'Family') return context.Family;
-                if (typeof prop === 'string' && /^\$[A-Z]$/.test(prop)) {
-                    if (!sortParams[prop])
-                        sortParams[prop] = createSortParam(prop);
-
-                    return sortParams[prop];
-                }
-                if (typeof prop === 'string' && /^[A-Z]$/.test(prop)) {
-                    if (!typeParams[prop])
-                        typeParams[prop] = createTypeParam(prop);
-
-                    return typeParams[prop];
-                }
-                return undefined;
-            }
-        }),
-
-        declObj = declFn(typeParamProxy);
+    const Family: FamilyMarker = createFamilyMarker();
+    const declObj = declFn(Family);
 
     if (extend in declObj)
         parentADT = declObj[extend as unknown as string] as ADTLike;
@@ -629,55 +716,58 @@ function parseDeclaration(
 
     if (parentADT) {
         for (const variantName of Object.keys(variantsObj)) {
-            if (variantName in (parentADT as object))
-                throw new Error(`Variant name collision: '${variantName}' already exists in base ADT`);
+            if (!(variantName in (parentADT as object))) continue;
 
+            // ── Field narrowing: validate covariance and merge ──────────────
+            // The child re-declares a variant that already exists in the parent.
+            // Allowed only if every re-specified field is covariant (child type
+            // <: parent type).  Fields not mentioned in the child spec are
+            // silently inherited from the parent unchanged.
+            const parentVariant = (parentADT as Record<string, unknown>)[variantName];
+            const parentSpec = (parentVariant as VariantLike).spec ?? {};
+
+            // Strip symbol metadata before comparing field types
+            let rawChild: unknown = variantsObj[variantName];
+            if (rawChild && typeof rawChild === 'object') {
+                const obj = rawChild as Record<string | symbol, unknown>;
+                if (invariant in obj)
+                    rawChild = omitSymbol(obj, invariant as unknown as symbol);
+            }
+            const childSpec = (rawChild ?? {}) as SpecRecord;
+
+            // Child cannot introduce fields absent from the parent spec
+            for (const fieldName of Object.keys(childSpec)) {
+                if (!(fieldName in parentSpec)) {
+                    throw new Error(
+                        `Field narrowing error: variant '${variantName}' introduces new field '${fieldName}' ` +
+                        `not present in the parent ADT. Child variants may only narrow existing fields.`
+                    );
+                }
+            }
+
+            // Each re-specified field must be covariant (child type <: parent type)
+            for (const [fieldName, childFieldSpec] of Object.entries(childSpec)) {
+                if (!isFieldCovariant(childFieldSpec, parentSpec[fieldName])) {
+                    throw new Error(
+                        `Cannot narrow field '${fieldName}' of variant '${variantName}': ` +
+                        `child type is not a subtype of the parent type. ` +
+                        `Field narrowing requires a covariant (or equal) type.`
+                    );
+                }
+            }
+
+            // Merge: parent spec provides defaults; child fields override.
+            // Re-apply any symbol annotations (e.g. [invariant]) from the
+            // original child declaration.
+            const origRaw = variantsObj[variantName] as Record<string | symbol, unknown>;
+            const merged: Record<string | symbol, unknown> = { ...parentSpec, ...childSpec };
+            for (const sym of Object.getOwnPropertySymbols(origRaw))
+                merged[sym] = origRaw[sym];
+            variantsObj[variantName] = merged;
         }
     }
 
-    // ---- Sort scanning ----
-    // Collect [sort] annotations from variant specs and build the
-    // sort → variants mapping.
-    const hasSorts = Object.keys(sortParams).length > 0;
-    const sortVariants = new Map<string, string[]>();
-
-    if (hasSorts) {
-        for (const [variantName, rawSpec] of Object.entries(variantsObj)) {
-            if (!rawSpec || typeof rawSpec !== 'object') continue;
-            const rawObj = rawSpec as Record<string | symbol, unknown>;
-            const sortAnnotation = rawObj[sort as unknown as string];
-
-            if (sortAnnotation && isSortRefSpec(sortAnnotation)) {
-                const sortName = (sortAnnotation as Record<symbol, string>)[SortRefSymbol];
-                if (!sortVariants.has(sortName))
-                    sortVariants.set(sortName, []);
-                sortVariants.get(sortName)!.push(variantName);
-            } else if (Object.keys(sortParams).length > 1) {
-                throw new Error(
-                    `Multi-sorted ADT requires [sort] annotation on every variant, ` +
-                    `but variant '${variantName}' is missing one`
-                );
-            }
-        }
-
-        // Single-sort inference: if only one sort param, default any
-        // unannotated variants to that single sort.
-        if (Object.keys(sortParams).length === 1) {
-            const singleSortName = Object.keys(sortParams)[0];
-            const annotated = new Set(
-                Array.from(sortVariants.values()).flat()
-            );
-            if (!sortVariants.has(singleSortName))
-                sortVariants.set(singleSortName, []);
-            const list = sortVariants.get(singleSortName)!;
-            for (const vn of Object.keys(variantsObj)) {
-                if (!annotated.has(vn))
-                    list.push(vn);
-            }
-        }
-    }
-
-    return { typeParams, sortParams, sortVariants, variants: variantsObj, operations: operationsObj, parentADT, Family, protocols };
+    return { variants: variantsObj, operations: operationsObj, parentADT, Family, protocols };
 }
 
 // ---- Variant constructor factories ------------------------------------------
@@ -715,16 +805,42 @@ function createVariantConstructor({
     (Variant as unknown as Record<symbol, unknown>)[IsSingleton] = false;
     (Variant as unknown as Record<symbol, unknown>)[IsVariantSymbol] = true;
 
+    // Comb inheritance: override Symbol.hasInstance to also walk the variant
+    // parent chain stored in variantProtoParentMap, enabling
+    // `childInstance instanceof ParentADT.SomeVariant` to return true even
+    // though ParentADT.SomeVariant.prototype is on a different prototype
+    // branch from the child's variant prototype.
+    Object.defineProperty(Variant, Symbol.hasInstance, {
+
+        value(this: unknown, instance: unknown): boolean {
+            const ctor = this as { prototype: object };
+            if (!instance || typeof instance !== 'object') return false;
+            // 1. Standard prototype-chain check (handles direct + extend-chain cases)
+            if (Object.prototype.isPrototypeOf.call(ctor.prototype, instance as object)) return true;
+            // 2. Comb parent-chain walk: follow variantProtoParentMap links
+            //    starting from instance's own prototype object.
+            let proto: object | null = Object.getPrototypeOf(instance as object);
+            while (proto !== null) {
+                const parentVariant = variantProtoParentMap.get(proto);
+                if (parentVariant === undefined) break;
+                if ((parentVariant as unknown) === (this as unknown)) return true;
+                // Advance: next level is the parent variant's own .prototype
+                proto = (parentVariant as unknown as { prototype?: object }).prototype ?? null;
+            }
+            return false;
+        },
+        configurable: true,
+        writable: false
+    });
+
     return Variant as unknown as VariantLike;
 }
 
-function createSingletonVariant(name: string, ADT: ADTLike, sortName?: string | null): SingletonInstance {
+function createSingletonVariant(name: string, ADT: ADTLike): SingletonInstance {
     function Variant(this: object) {
         if (!new.target) return new (Variant as unknown as new () => unknown)();
         (this as Record<symbol, unknown>)[VariantNameSymbol] = name;
         (this as Record<symbol, unknown>)[IsVariantSymbol] = true;
-        if (sortName)
-            (this as Record<symbol, unknown>)[SortNameSymbol] = sortName;
         Object.freeze(this);
     }
 
@@ -801,9 +917,21 @@ function createDelegationProxy(
                     // continue to use the transformer registry of the ADT that
                     // defined them.  Wrapping an operation would incorrectly
                     // re-parent its prototype to the child, breaking lookup.
-                    if (IsVariantSymbol in (delegatedValue as object))
-                        return createChildVariant(target, prop as string, delegatedValue as VariantLike | SingletonInstance);
-
+                    if (IsVariantSymbol in (delegatedValue as object)) {
+                        // Lazily create the child variant and cache it in ownVariants
+                        // so that repeated accesses return the *same* constructor
+                        // object.  Stable identity is required for:
+                        //   (a) `instance instanceof ChildADT.InheritedVariant` to work,
+                        //   (b) the comb-inheritance parent-chain walk to follow a
+                        //       consistent prototype → parent mapping.
+                        const childPropName = prop as string;
+                        if (!(childPropName in ownVariants)) {
+                            ownVariants[childPropName] = createChildVariant(
+                                target, childPropName, delegatedValue as VariantLike | SingletonInstance
+                            );
+                        }
+                        return ownVariants[childPropName];
+                    }
                 }
 
                 return delegatedValue;
@@ -879,7 +1007,7 @@ function createTransformerMethods(ADT: ADTLike): TransformerMethods {
     };
 }
 
-// ---- Family / TypeParam markers ---------------------------------------------
+// ---- Family markers -------------------------------------------------------
 
 /**
  * Walks a variant constructor's prototype chain to find the proxied
@@ -890,62 +1018,38 @@ function createTransformerMethods(ADT: ADTLike): TransformerMethods {
  * own (non-recursive) frame rather than bloating the hot recursive
  * `foldImpl` frame.
  */
-function resolveFoldParameterizedADT(variantCtor: VariantLike): object | null {
-    const proto = Object.getPrototypeOf(
-        (variantCtor as unknown as { prototype: object }).prototype
-    );
-    return resolveProxiedADT(proto);
-}
-
 /**
  * Given a prototype object whose `constructor` points at a (possibly raw)
- * ADT constructor, return the proxied parameterized ADT — or `null` when
- * the ADT is not parameterized.
+ * ADT constructor, return the proxied ADT stored in rawToProxiedMap —
+ * or `null` when no entry is found.
  *
- * Shared by `resolveFoldParameterizedADT` (starting from a variant
- * constructor's prototype chain) and the metamorphism runtime (starting
- * from an instance's prototype chain).
+ * Used by the metamorphism runtime (merge) to resolve the proxied ADT
+ * from an instance's prototype chain.
  */
 function resolveProxiedADT(proto: object | null): object | null {
     const adtCtor = proto?.constructor ?? null;
     const proxied = adtCtor ? rawToProxiedMap.get(adtCtor as object) : null;
-    return proxied && TypeArgsSymbol in (proxied as Record<symbol, unknown>)
-        ? proxied
-        : null;
+    return proxied ?? null;
 }
 
 function createFamilyMarker(): FamilyMarker {
-    const marker = function (typeParam?: unknown): FamilyMarker {
-        // During fold execution on a parameterized ADT, resolve type-param
-        // markers (e.g. `T`) to the current parameterized ADT.  This allows
-        // fold handlers to write `Family(T).Push(...)` instead of hardcoding
-        // `Stack(Number).Push(...)`.
-        // We also verify that the param name is actually declared in the
-        // current fold-context ADT's TypeArgs, so a stray type param from
-        // a *different* ADT won't silently resolve to the wrong ADT.
-        if (_currentFoldParameterizedADT !== null &&
-            typeParam && typeof typeParam === 'object' &&
-            TypeParamSymbol in (typeParam as object)
-        ) {
-            const paramName = (typeParam as Record<symbol, string>)[TypeParamSymbol],
-                typeArgs = (_currentFoldParameterizedADT as Record<symbol, unknown>)[TypeArgsSymbol] as Record<string, unknown> | undefined;
-            if (typeArgs && paramName in typeArgs)
-                return _currentFoldParameterizedADT as unknown as FamilyMarker;
-        }
-
+    const marker = function (_typeParam?: unknown): FamilyMarker {
         if ((marker as FamilyMarker)._adt)
-            return ((marker as FamilyMarker)._adt as (typeParam?: unknown) => FamilyMarker)(typeParam);
+            return ((marker as FamilyMarker)._adt as (_typeParam?: unknown) => FamilyMarker)(_typeParam);
 
         return marker as unknown as FamilyMarker;
     };
-    (marker as unknown as Record<symbol, unknown>)[FamilyRefSymbol] = true;
     (marker as unknown as { _adt: null })._adt = null;
 
     // Wrap marker in a Proxy to delegate variant constructor access to _adt
-    return new Proxy(marker as unknown as FamilyMarker, {
+    const proxy = new Proxy(marker as unknown as FamilyMarker, {
         get(target, prop, receiver) {
-            // Return properties from the marker itself (like _adt, FamilyRefSymbol)
-            if (prop === '_adt' || prop === FamilyRefSymbol || typeof prop === 'symbol')
+            // Allow destructuring form: data(({ family }) => ...) ≡ data(family => ...)
+            if (prop === 'family')
+                return proxy;
+
+            // Return properties from the marker itself (like _adt)
+            if (prop === '_adt' || typeof prop === 'symbol')
                 return Reflect.get(target, prop, receiver);
 
             // Delegate variant constructor access to _adt if it exists
@@ -965,75 +1069,73 @@ function createFamilyMarker(): FamilyMarker {
             return Reflect.set(target, prop, value);
         }
     });
-}
 
-function createTypeParam(name: string): object {
-    const marker: Record<symbol, unknown> = {};
-    marker[TypeParamSymbol] = name;
-    return marker;
-}
+    // Register both the raw marker and the proxy so isFamilyRefSpec() works
+    // on whichever reference ends up stored in a field spec.
+    registerFamilyRef(marker);
+    registerFamilyRef(proxy as unknown as object);
 
-function createSortParam(name: string): object {
-    const marker: Record<symbol, unknown> = {};
-    marker[SortRefSymbol] = name;
-    return marker;
+    return proxy;
 }
 
 // ---- ADT creation -----------------------------------------------------------
 
-function createADT(decl: ParsedDecl): ADTLike {
-    const hasTypeParams = Object.keys(decl.typeParams).length > 0,
-        parentADT = decl.parentADT;
+function createADT(decl: ParsedDecl, preAllocProto?: object): ADTLike {
+    const parentADT = decl.parentADT;
 
-    function ADT(this: object, ...args: unknown[]) {
-        if (!new.target && hasTypeParams && args.length > 0) {
-            const firstArg = args[0];
-
-            if (isObjectLiteral(firstArg))
-                return createParameterized(ADT as unknown as ADTLike, firstArg as SpecRecord, decl);
-
-            throw new TypeError(
-                'Parameterized ADTs must be instantiated with an object: ' +
-                `e.g. MyADT({ ${Object.keys(decl.typeParams).map(k => `${k}: Number`).join(', ')} })`
-            );
-        }
-
+    function ADT(this: object) {
         if (new.target)
             return;
 
-        throw new Error('Use ADT variants or parameterize with type arguments');
+        throw new Error('Use ADT variants to construct instances');
     }
 
     if (parentADT) {
-        (ADT as unknown as { prototype: object }).prototype = Object.create(parentADT.prototype);
-        (ADT as unknown as { prototype: { constructor: unknown } }).prototype.constructor = ADT;
+        const proto = preAllocProto ?? Object.create(parentADT.prototype);
+        if (preAllocProto)
+            // Wire the pre-allocated prototype into the parent chain now that
+            // the parent is fully materialised (accessing parentADT.prototype
+            // already triggered the parent's lazy initialisation if needed).
+            Object.setPrototypeOf(preAllocProto, parentADT.prototype);
+        (ADT as unknown as { prototype: object }).prototype = proto;
+        (proto as Record<string, unknown>).constructor = ADT;
         const rawParentADT = (parentADT as { _rawADT?: ADTLike })._rawADT || parentADT;
         parentADTMap.set(ADT as unknown as object, rawParentADT as object);
+    } else if (preAllocProto) {
+        // Base ADT with pre-allocated prototype (lazy-init path): wire it in.
+        (ADT as unknown as { prototype: object }).prototype = preAllocProto;
+        (preAllocProto as Record<string, unknown>).constructor = ADT;
     }
 
     Object.assign(ADT, createTransformerMethods(ADT as unknown as ADTLike));
 
-    // Store sort info on the ADT for fold/unfold/map to access
-    if (decl.sortVariants.size > 0) {
-        sortDeclMap.set(ADT as unknown as object, {
-            sortParams: decl.sortParams,
-            sortVariants: decl.sortVariants
-        });
+    const ownVariants = createVariants(ADT as unknown as ADTLike, decl.variants);
 
-        // Sort reflection: ADT[isSort](instance, '$E') → boolean
-        Object.defineProperty(ADT, isSort, {
-            value: (instance: unknown, sortName: string): boolean =>
-                instance !== null && instance !== undefined &&
-                (instance as Record<symbol, unknown>)[SortNameSymbol] === sortName,
-            writable: false,
-            enumerable: false,
-            configurable: true
-        });
+    // Register comb parent links for own variants that narrow (re-specify) an
+    // inherited variant.  Purely-inherited variants get their link from
+    // createChildVariant; narrowed variants bypass that path (they are created
+    // directly via createVariantConstructor in createVariants), so we register
+    // their parent link here.
+    if (parentADT) {
+        for (const variantName of Object.keys(decl.variants)) {
+            const childVariant = ownVariants[variantName];
+            const parentVariant = (parentADT as Record<string, unknown>)[variantName];
+            if (
+                parentVariant &&
+                typeof parentVariant === 'function' &&
+                IsVariantSymbol in (parentVariant as object) &&
+                childVariant &&
+                (childVariant as unknown as { prototype?: object }).prototype
+            ) {
+                variantProtoParentMap.set(
+                    (childVariant as unknown as { prototype: object }).prototype,
+                    parentVariant as unknown as VariantLike
+                );
+            }
+        }
     }
 
-    const ownVariants = createVariants(ADT as unknown as ADTLike, decl.variants, decl.typeParams, decl.sortVariants);
-
-    createOperations(ADT as unknown as ADTLike, ownVariants, decl.operations, decl.typeParams, decl.protocols);
+    createOperations(ADT as unknown as ADTLike, ownVariants, decl.operations, decl.protocols);
 
     // Inherit unfold operations from parent, rebound to child variants
     if (parentADT)
@@ -1070,23 +1172,6 @@ function createADT(decl: ParsedDecl): ADTLike {
 
 // ---- Child variant -----------------------------------------------------------
 
-/** Resolve the sort name for a variant by walking the ADT's ancestry chain. */
-function resolveInheritedSortName(
-    adt: ADTLike,
-    variantName: string
-): string | null {
-    let current: object | undefined = adt as unknown as object;
-    while (current) {
-        const info = sortDeclMap.get(current);
-        if (info) {
-            const sortName = resolveSortName(variantName, info.sortVariants);
-            if (sortName !== null) return sortName;
-        }
-        current = parentADTMap.get(current) as object | undefined;
-    }
-    return null;
-}
-
 function createChildVariant(
     ChildADT: ADTLike,
     variantName: string,
@@ -1095,13 +1180,10 @@ function createChildVariant(
     const parentSpec = (ParentVariant as VariantLike).spec || {},
         parentInvariantFn = (ParentVariant as VariantLike)._invariant || null;
 
-    // Resolve sort name for inherited variant from the ancestry chain
-    const childSortName = resolveInheritedSortName(ChildADT, variantName);
-
     if (Object.keys(parentSpec).length === 0)
-        return createSingletonVariant(variantName, ChildADT, childSortName);
+        return createSingletonVariant(variantName, ChildADT);
     else {
-        return createVariantConstructor({
+        const child = createVariantConstructor({
             name: variantName,
             spec: parentSpec,
             invariantFn: parentInvariantFn,
@@ -1111,41 +1193,29 @@ function createChildVariant(
                 validateAndAssignFields(this, fields, parentSpec, ChildADT);
                 checkConstructorInvariant(this, parentInvariantFn, variantName);
                 (this as Record<symbol, unknown>)[VariantNameSymbol] = variantName;
-                if (childSortName !== null)
-                    (this as Record<symbol, unknown>)[SortNameSymbol] = childSortName;
                 Object.freeze(this);
             }
         });
+        // Register comb inheritance parent link: maps child's prototype →
+        // parent variant constructor so Symbol.hasInstance can walk the chain.
+        variantProtoParentMap.set(
+            (child as unknown as { prototype: object }).prototype,
+            ParentVariant as VariantLike
+        );
+        return child;
     }
 }
 
 // ---- Variant creation -------------------------------------------------------
 
-/** Resolve the sort name for a variant, given the sort→variants mapping. */
-function resolveSortName(
-    variantName: string,
-    sortVariants: Map<string, string[]>
-): string | null {
-    for (const [sortName, variants] of sortVariants)
-        if (variants.includes(variantName))  return sortName;
-
-
-    return null;
-}
-
 function createVariants(
     ADT: ADTLike,
-    variantSpecs: SpecRecord,
-    _typeParams: SpecRecord,
-    sortVariants?: Map<string, string[]>
+    variantSpecs: SpecRecord
 ): Record<string, VariantLike | SingletonInstance> {
-    const variants: Record<string, VariantLike | SingletonInstance> = {},
-        hasSorts = sortVariants !== undefined && sortVariants.size > 0;
+    const variants: Record<string, VariantLike | SingletonInstance> = {};
 
     for (const [name, rawSpec] of Object.entries(variantSpecs)) {
         assertPascalCase(name, 'Variant');
-
-        const variantSortName = hasSorts ? resolveSortName(name, sortVariants!) : null;
 
         let invariantFn: ((instance: object) => boolean) | null = null,
             fieldSpec = rawSpec as SpecRecord;
@@ -1156,9 +1226,6 @@ function createVariants(
                 invariantFn = rawObj[invariant as unknown as string] as (instance: object) => boolean;
                 fieldSpec = omitSymbol(rawObj, invariant as unknown as symbol) as SpecRecord;
             }
-            // Strip [sort] annotation from variant spec — it's metadata, not a field
-            if (sort in rawObj)
-                fieldSpec = omitSymbol(fieldSpec as Record<string | symbol, unknown>, sort as unknown as symbol) as SpecRecord;
 
             for (const fieldName of Object.keys(fieldSpec))
                 assertCamelCase(fieldName, 'Field');
@@ -1173,7 +1240,7 @@ function createVariants(
                     `Invariant on singleton variant '${name}' is meaningless: singletons have no state to evaluate`
                 );
             }
-            variants[name] = createSingletonVariant(name, ADT, variantSortName);
+            variants[name] = createSingletonVariant(name, ADT);
         } else {
             variants[name] = createVariantConstructor({
                 name,
@@ -1185,8 +1252,6 @@ function createVariants(
                     validateAndAssignFields(this, fields, fieldSpec, ADT);
                     checkConstructorInvariant(this, invariantFn, name);
                     (this as Record<symbol, unknown>)[VariantNameSymbol] = name;
-                    if (variantSortName !== null)
-                        (this as Record<symbol, unknown>)[SortNameSymbol] = variantSortName;
                     Object.freeze(this);
                 }
             });
@@ -1274,20 +1339,6 @@ function describeADT(adt: ADTLike): string {
         : 'ADT';
 
     // If the ADT carries type arguments, format them
-    const typeArgs = (adt as Record<symbol, unknown>)[TypeArgsSymbol] as SpecRecord | undefined;
-    if (typeArgs) {
-        const argDescs = Object.values(typeArgs).map(arg => {
-            // Primitive constructors
-            if (typeof arg === 'function' && (arg as { name?: string }).name)
-                return (arg as { name: string }).name;
-            // Nested ADT
-            if (typeof arg === 'function' && typeof (arg as unknown as ADTLike)._getTransformer === 'function')
-                return describeADT(arg as unknown as ADTLike);
-            return String(arg);
-        });
-        return `${baseName}(${argDescs.join(', ')})`;
-    }
-
     return baseName;
 }
 
@@ -1297,18 +1348,6 @@ function validateField(
     fieldName: string,
     ADT: ADTLike
 ): void {
-    // Type parameter
-    if (fieldSpec && typeof fieldSpec === 'object' && TypeParamSymbol in (fieldSpec as object)) {
-        const paramName = (fieldSpec as Record<symbol, unknown>)[TypeParamSymbol] as string,
-            typeArgs = (ADT as Record<symbol, unknown>)[TypeArgsSymbol] as SpecRecord | undefined;
-        if (typeArgs && typeArgs[paramName]) {
-            const instantiatedType = typeArgs[paramName];
-            validateField(value, instantiatedType, fieldName, ADT);
-            return;
-        }
-        return;
-    }
-
     // Family reference - check against root base
     if (isFamilyRefSpec(fieldSpec)) {
         let rootBase: object = ADT as object;
@@ -1318,27 +1357,6 @@ function validateField(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         if (!(value instanceof (rootBase as unknown as abstract new (...args: any[]) => unknown)))
             throw new TypeError(`Field '${fieldName}' must be an instance of the same ADT family`);
-
-        return;
-    }
-
-    // Sort reference — check instanceof ADT family AND sort name match
-    if (isSortRefSpec(fieldSpec)) {
-        let rootBase: object = ADT as object;
-        while (parentADTMap.has(rootBase))
-            rootBase = parentADTMap.get(rootBase)!;
-
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        if (!(value instanceof (rootBase as unknown as abstract new (...args: any[]) => unknown)))
-            throw new TypeError(`Field '${fieldName}' must be an instance of the same ADT family`);
-
-        const expectedSort = (fieldSpec as Record<symbol, string>)[SortRefSymbol];
-        const actualSort = (value as Record<symbol, unknown>)[SortNameSymbol];
-        if (actualSort !== expectedSort) {
-            throw new TypeError(
-                `Field '${fieldName}' expected a variant of sort '${expectedSort}', but got sort '${String(actualSort ?? 'none')}'`
-            );
-        }
 
         return;
     }
@@ -1504,7 +1522,6 @@ function createOperations(
     ADT: ADTLike,
     variants: Record<string, unknown>,
     operationSpecs: SpecRecord,
-    _typeParams: SpecRecord,
     protocols: ProtocolEntry[] = []
 ): void {
     const localParentADT = parentADTMap.get(ADT as unknown as object) as ADTLike | null ?? null,
@@ -1638,35 +1655,6 @@ function createFoldOperation(
     );
 
     assertCamelCase(opName, 'Fold operation');
-
-    // Detect per-sort carrier out specification (e.g. out: { $E: Number, $S: undefined })
-    let perSortOut: Record<string, unknown> | null = null;
-    const resolvedOut = finalSpec['out'];
-    if (resolvedOut !== null && resolvedOut !== undefined && typeof resolvedOut === 'object' && typeof resolvedOut !== 'function') {
-        const sortInfo = sortDeclMap.get(ADT as unknown as object);
-        if (!sortInfo || sortInfo.sortVariants.size === 0) {
-            throw new Error(
-                `Operation '${opName}': object-valued 'out' requires a multi-sorted ADT with declared sorts`
-            );
-        }
-        const outObj = resolvedOut as Record<string, unknown>,
-            outKeys = Object.keys(outObj),
-            sortNames = [...sortInfo.sortVariants.keys()],
-            missing = sortNames.filter(s => !(s in outObj)),
-            extra = outKeys.filter(k => !sortNames.includes(k));
-
-        if (missing.length > 0) {
-            throw new Error(
-                `Operation '${opName}': per-sort 'out' is missing sort(s): ${missing.join(', ')}`
-            );
-        }
-        if (extra.length > 0) {
-            throw new Error(
-                `Operation '${opName}': per-sort 'out' has unknown sort(s): ${extra.join(', ')}`
-            );
-        }
-        perSortOut = outObj;
-    }
 
     const transformer = createFoldTransformer(
         opName,
@@ -1911,7 +1899,7 @@ function createFoldOperation(
 
             const foldedFields: Record<string | symbol, unknown> = {};
             for (const [fieldName, fieldSpec] of specEntries) {
-                if (isFamilyRefSpec(fieldSpec) || isSortRefSpec(fieldSpec)) {
+                if (isFamilyRefSpec(fieldSpec)) {
                     const fieldValue = (self as Record<string, unknown>)[fieldName];
                     if (hasInput || hasExtraParams) {
                         foldedFields[fieldName] = (...params: unknown[]) =>
@@ -1921,14 +1909,11 @@ function createFoldOperation(
 
                 } else {
                     let val = (self as Record<string, unknown>)[fieldName];
-                    // Map-fold fusion: pre-apply map transform to T-typed fields
+                    // Map-fold fusion: pre-apply atom transform to plain fields
                     // so the fold handler sees mapped values without an
                     // intermediate structure being created.
-                    if (_currentMapFoldPreTransform &&
-                        fieldSpec && typeof fieldSpec === 'object' && TypeParamSymbol in fieldSpec) {
-                        const paramName = (fieldSpec as Record<symbol, string>)[TypeParamSymbol],
-                            fn = _currentMapFoldPreTransform.getParamTransform?.(paramName) ??
-                                _currentMapFoldPreTransform.getAtomTransform?.(fieldName);
+                    if (_currentMapFoldPreTransform) {
+                        const fn = _currentMapFoldPreTransform.getAtomTransform?.(fieldName);
                         if (fn)  val = fn(val);
                     }
                     foldedFields[fieldName] = val;
@@ -1948,7 +1933,7 @@ function createFoldOperation(
                     // after the child thunk has been invoked.
                     const historyObj: Record<string | symbol, unknown> = {};
                     for (const [fieldName, fieldSpec] of specEntries) {
-                        if (isFamilyRefSpec(fieldSpec) || isSortRefSpec(fieldSpec)) {
+                        if (isFamilyRefSpec(fieldSpec)) {
                             const fieldValue = (self as Record<string, unknown>)[fieldName];
                             Object.defineProperty(historyObj, fieldName, {
                                 get: () => histoFieldsCache?.get(fieldValue as object),
@@ -1963,7 +1948,7 @@ function createFoldOperation(
                     // (bottom-up), so their foldedFields are in the cache.
                     const historyObj: Record<string | symbol, unknown> = {};
                     for (const [fieldName, fieldSpec] of specEntries) {
-                        if (isFamilyRefSpec(fieldSpec) || isSortRefSpec(fieldSpec)) {
+                        if (isFamilyRefSpec(fieldSpec)) {
                             const fieldValue = (self as Record<string, unknown>)[fieldName];
                             const childFields = histoFieldsCache.get(fieldValue as object);
                             if (childFields)
@@ -1988,7 +1973,7 @@ function createFoldOperation(
                 // mode cannot accidentally overwrite keys.
                 const singleAuxName = auxIsArray ? null : auxNames[0];
                 for (const [fieldName, fieldSpec] of specEntries) {
-                    if (isFamilyRefSpec(fieldSpec) || isSortRefSpec(fieldSpec)) {
+                    if (isFamilyRefSpec(fieldSpec)) {
                         const fieldValue = (self as Record<string, unknown>)[fieldName];
                         if (singleAuxName !== null) {
                             // Flat shape: auxObj[fieldName]
@@ -2041,117 +2026,102 @@ function createFoldOperation(
                 }
             }
 
-            // ---- Parameterized ADT context for Family(T) ----
-            // Set the module-level _currentFoldParameterizedADT just before
-            // the handler runs (not during recursive field evaluation) so
-            // that Family(T) in the handler closure resolves correctly.
-            // Resolved via a helper to keep its locals off this hot frame.
-            const prevFoldADT = _currentFoldParameterizedADT;
-            _currentFoldParameterizedADT = resolveFoldParameterizedADT(variantCtor);
-            try {
-                // Resolve per-sort carrier: if the out spec is per-sort,
-                // pick the carrier matching this variant's sort.
-                const effectiveOut: TypeSpec = (perSortOut !== null
-                    ? perSortOut[(self as Record<symbol, unknown>)[SortNameSymbol] as string]
-                    : opSpecObj['out']) as TypeSpec;
+            const effectiveOut: TypeSpec = opSpecObj['out'] as TypeSpec;
 
-                // ---- Contract enforcement (Design by Contract) ----
-                // Demands/ensures/invariants only enforce at the top-level call
-                // (contractDepth === 1), not during recursive traversal of child
-                // nodes.  Since data instances are frozen, invariants and demands
-                // on a node are deterministic — checking once at the entry point
-                // is sufficient.  Rescue, however, is an error-recovery mechanism
-                // and must remain active at every recursion level.
+            // ---- Contract enforcement (Design by Contract) ----
+            // Demands/ensures/invariants only enforce at the top-level call
+            // (contractDepth === 1), not during recursive traversal of child
+            // nodes.  Since data instances are frozen, invariants and demands
+            // on a node are deterministic — checking once at the entry point
+            // is sufficient.  Rescue, however, is an error-recovery mechanism
+            // and must remain active at every recursion level.
 
-                // Get the invariant function for this instance's variant
-                const variantInvariantFn: ((instance: object) => boolean) | null =
-                    variantCtor
-                        ? (variantCtor as VariantLike)._invariant ?? null
-                        : null;
+            // Get the invariant function for this instance's variant
+            const variantInvariantFn: ((instance: object) => boolean) | null =
+                variantCtor
+                    ? (variantCtor as VariantLike)._invariant ?? null
+                    : null;
 
-                const checked = contractDepth === 1
+            const checked = contractDepth === 1
                 && (hasAnyContracts || variantInvariantFn !== null);
-                let result: unknown;
+            let result: unknown;
 
-                if (checked) {
-                    const variantCtx = variantName || 'unknown';
+            if (checked) {
+                const variantCtx = variantName || 'unknown';
 
-                    // 1. Invariant pre-check on self
-                    if (variantInvariantFn)
-                        checkInvariant(variantInvariantFn as (i: unknown) => boolean, opName, variantCtx, 'pre', self);
+                // 1. Invariant pre-check on self
+                if (variantInvariantFn)
+                    checkInvariant(variantInvariantFn as (i: unknown) => boolean, opName, variantCtx, 'pre', self);
 
-                    // 2. Demands check (precondition)
-                    if (foldContracts?.demands)
-                        checkDemands(foldContracts.demands, opName, variantCtx, self, args);
+                // 2. Demands check (precondition)
+                if (foldContracts?.demands)
+                    checkDemands(foldContracts.demands, opName, variantCtx, self, args);
 
-                    // 3. Capture old state for ensures (reference to self since data is frozen/immutable)
-                    const old = self;
+                // 3. Capture old state for ensures (reference to self since data is frozen/immutable)
+                const old = self;
 
-                    // Helper to execute the handler body + ensures
-                    const executeBody = (...bodyArgs: unknown[]): unknown => {
-                        const bodyResult = (handler as HandlerFn).call(context, foldedFields, ...bodyArgs);
-                        if (hasOutput)
-                            validateReturnType(bodyResult, effectiveOut, opName);
+                // Helper to execute the handler body + ensures
+                const executeBody = (...bodyArgs: unknown[]): unknown => {
+                    const bodyResult = (handler as HandlerFn).call(context, foldedFields, ...bodyArgs);
+                    if (hasOutput)
+                        validateReturnType(bodyResult, effectiveOut, opName);
 
-                        // 4. Ensures check (postcondition)
-                        if (foldContracts?.ensures)
-                            checkEnsures(foldContracts.ensures, opName, variantCtx, self, old, bodyResult, bodyArgs);
+                    // 4. Ensures check (postcondition)
+                    if (foldContracts?.ensures)
+                        checkEnsures(foldContracts.ensures, opName, variantCtx, self, old, bodyResult, bodyArgs);
 
-                        return bodyResult;
-                    };
+                    return bodyResult;
+                };
 
-                    try {
-                        result = executeBody(...args);
-                    } catch (error) {
+                try {
+                    result = executeBody(...args);
+                } catch (error) {
                     // 5. Rescue handler for body/ensures errors
-                        const rescued = tryRescue(foldContracts, error, self, args, executeBody, opName, variantCtx);
-                        if (rescued !== null) {
-                            // 6. Invariant post-check on result (if it's a variant with an invariant)
-                            checkResultInvariant(rescued.result, opName);
-                            if (canCache) dagCache!.set(self, rescued.result);
-                            return rescued.result;
-                        }
-                        throw error;
+                    const rescued = tryRescue(foldContracts, error, self, args, executeBody, opName, variantCtx);
+                    if (rescued !== null) {
+                        // 6. Invariant post-check on result (if it's a variant with an invariant)
+                        checkResultInvariant(rescued.result, opName);
+                        if (canCache) dagCache!.set(self, rescued.result);
+                        return rescued.result;
                     }
+                    throw error;
+                }
 
-                    // 6. Invariant post-check on result (if it's a variant with an invariant)
-                    checkResultInvariant(result, opName);
-                } else if (foldContracts?.rescue) {
+                // 6. Invariant post-check on result (if it's a variant with an invariant)
+                checkResultInvariant(result, opName);
+            } else if (foldContracts?.rescue) {
                 // Inner recursion level with rescue active:
                 // Skip demands/ensures/invariant but still wrap in rescue
                 // so handler errors can be recovered at every level.
-                    try {
-                        result = (handler as HandlerFn).call(context, foldedFields, ...args);
-                        if (hasOutput)
-                            validateReturnType(result, effectiveOut, opName);
-                    } catch (error) {
-                        const innerBody = (...newArgs: unknown[]): unknown => {
-                            const r = (handler as HandlerFn).call(context, foldedFields, ...newArgs);
-                            if (hasOutput)
-                                validateReturnType(r, effectiveOut, opName);
-                            return r;
-                        };
-                        const rescued = tryRescue(foldContracts, error, self, args, innerBody, opName, variantName || 'unknown');
-                        if (rescued !== null) {
-                            if (canCache) dagCache!.set(self, rescued.result);
-                            return rescued.result;
-                        }
-                        throw error;
-                    }
-                } else {
-                // Fast path: no active contracts — call handler directly,
-                // skipping closure allocation for executeBody and rescue machinery.
+                try {
                     result = (handler as HandlerFn).call(context, foldedFields, ...args);
                     if (hasOutput)
                         validateReturnType(result, effectiveOut, opName);
+                } catch (error) {
+                    const innerBody = (...newArgs: unknown[]): unknown => {
+                        const r = (handler as HandlerFn).call(context, foldedFields, ...newArgs);
+                        if (hasOutput)
+                            validateReturnType(r, effectiveOut, opName);
+                        return r;
+                    };
+                    const rescued = tryRescue(foldContracts, error, self, args, innerBody, opName, variantName || 'unknown');
+                    if (rescued !== null) {
+                        if (canCache) dagCache!.set(self, rescued.result);
+                        return rescued.result;
+                    }
+                    throw error;
                 }
-
-                if (canCache) dagCache!.set(self, result);
-
-                return result;
-            } finally {
-                _currentFoldParameterizedADT = prevFoldADT;
+            } else {
+                // Fast path: no active contracts — call handler directly,
+                // skipping closure allocation for executeBody and rescue machinery.
+                result = (handler as HandlerFn).call(context, foldedFields, ...args);
+                if (hasOutput)
+                    validateReturnType(result, effectiveOut, opName);
             }
+
+            if (canCache) dagCache!.set(self, result);
+
+            return result;
         } finally {
             contractDepth--;
             if (entered) {
@@ -2299,7 +2269,7 @@ function installUnfoldImpl(
                     if (Variant.spec) {
                         const transformedResult = { ...(result as Record<string, unknown>) };
                         for (const [fieldName, fieldSpec] of Object.entries(Variant.spec)) {
-                            if (isFamilyRefSpec(fieldSpec) || isSortRefSpec(fieldSpec)) {
+                            if (isFamilyRefSpec(fieldSpec)) {
                                 if (fieldName in (result as object)) {
                                     transformedResult[fieldName] =
                                         (ADT as Record<string, unknown>)[opName] as ((s: unknown) => unknown);
@@ -2486,23 +2456,20 @@ function buildMapImpl(
         for (const [fieldName, fieldSpec] of Object.entries(variantSpec)) {
             const value = (this as Record<string, unknown>)[fieldName];
 
-            if (isFamilyRefSpec(fieldSpec) || isSortRefSpec(fieldSpec)) {
+            if (isFamilyRefSpec(fieldSpec)) {
                 if (hasExtraParams && args.length > 0) {
                     mappedFields[fieldName] =
                         (value as Record<string, (...a: unknown[]) => unknown>)[opName](...args);
                 } else
                     mappedFields[fieldName] = (value as Record<string, unknown>)[opName];
 
-            } else if (fieldSpec && typeof fieldSpec === 'object' && TypeParamSymbol in fieldSpec) {
-                const paramName = (fieldSpec as Record<symbol, string>)[TypeParamSymbol],
-                    transformFn = getTransform(paramName, fieldName);
-                if (transformFn)
-                    mappedFields[fieldName] = transformFn(value, ...args);
-                else
-                    mappedFields[fieldName] = value;
-
-            } else
-                mappedFields[fieldName] = value;
+            } else {
+                // Plain field (not a family ref, not T-param branded).
+                // Still check for a field-name-based atom transform so that
+                // fields typed as Object/etc. can be transformed by name.
+                const atomTransform = getTransform(fieldName, fieldName);
+                mappedFields[fieldName] = atomTransform ? atomTransform(value, ...args) : value;
+            }
 
         }
 
@@ -2515,8 +2482,9 @@ function buildMapImpl(
                 _inRoundTripCheck = true;
                 try {
                     const roundTripped = (result as Record<string, unknown>)[inverseName] as Record<string, unknown>;
-                    for (const [fn, fs] of Object.entries(variantSpec)) {
-                        if (fs && typeof fs === 'object' && TypeParamSymbol in fs) {
+                    for (const [fn, _fs] of Object.entries(variantSpec)) {
+                        const hasTransform = !!getTransform(fn, fn);
+                        if (hasTransform) {
                             if (roundTripped[fn] !== (this as Record<string, unknown>)[fn]) {
                                 throw new EnsuresError(
                                     opName,
@@ -3024,260 +2992,4 @@ function createMergeOperation(
 
         installGetter(ADT.prototype, opName, mergeImpl);
     }
-}
-
-// ---- Parameterized instance -------------------------------------------------
-
-function createParameterized(
-    Base: ADTLike,
-    typeArgs: SpecRecord,
-    decl: ParsedDecl
-): ADTLike {
-    function ParameterizedADT(this: object, ...args: unknown[]) {
-        return (Base as unknown as (...a: unknown[]) => unknown).call(this, ...args);
-    }
-
-    (ParameterizedADT as unknown as { prototype: object }).prototype = Object.create(Base.prototype);
-    (ParameterizedADT as unknown as { prototype: { constructor: unknown } }).prototype.constructor =
-        ParameterizedADT;
-    (ParameterizedADT as unknown as Record<symbol, unknown>)[TypeArgsSymbol] = typeArgs;
-    parentADTMap.set(ParameterizedADT as unknown as object, Base as unknown as object);
-
-    // Propagate sort info from the base ADT to the parameterized specialization
-    if (decl.sortVariants.size > 0) {
-        sortDeclMap.set(ParameterizedADT as unknown as object, {
-            sortParams: decl.sortParams,
-            sortVariants: decl.sortVariants
-        });
-    }
-
-    Object.assign(ParameterizedADT, createTransformerMethods(ParameterizedADT as unknown as ADTLike));
-
-    const paramVariants = createVariants(
-        ParameterizedADT as unknown as ADTLike,
-        decl.variants,
-        decl.typeParams,
-        decl.sortVariants
-    );
-
-    // Reinstall unfold operations from the base ADT, rebound to the
-    // parameterized variants so that constructed instances carry the
-    // parameterized ADT in their prototype chain.
-    inheritUnfoldOperations(
-        ParameterizedADT as unknown as ADTLike,
-        paramVariants,
-        Base,
-        {}
-    );
-
-    const ProxiedParameterized = createDelegationProxy(
-        ParameterizedADT as unknown as ADTLike,
-        paramVariants,
-        Base,
-        false
-    );
-
-    // Store raw ADT reference on the proxied parameterized ADT so that
-    // describeADT can unwrap proxies before walking parentADTMap.
-    (ProxiedParameterized as { _rawADT: ADTLike })._rawADT = ParameterizedADT as unknown as ADTLike;
-
-    // Register raw → proxied mapping for fold-context resolution.
-    rawToProxiedMap.set(ParameterizedADT as unknown as object, ProxiedParameterized as unknown as object);
-
-    // Register conditional protocol conformances based on satisfied type arg constraints.
-    // Ops from unconditional protocols are always available; collect them first so that
-    // any op shared with a failed conditional protocol is not unnecessarily stubbed out.
-    const satisfiedOpNames = new Set<string>();
-    for (const entry of decl.protocols) {
-        if (!entry.conditional) {
-            for (const opName of entry.protocol.requiredOps.keys())
-                satisfiedOpNames.add(opName);
-        }
-    }
-
-    type FailedEntry = { ownOps: string[]; failedParams: Array<{ param: string; argName: string }> };
-    const failedEntries: FailedEntry[] = [];
-
-    // Hoist paramProto so contract wrappers inside the satisfaction loop can use it.
-    const paramProto = (ParameterizedADT as unknown as { prototype: object }).prototype;
-
-    for (const entry of decl.protocols) {
-        if (!entry.conditional) continue;
-        let allSatisfied = true;
-        const failedParams: Array<{ param: string; argName: string }> = [];
-        for (const [paramName, requiredProto] of Object.entries(entry.constraints)) {
-            const typeArgValue = typeArgs[paramName];
-            if (!typeArgValue) {
-                allSatisfied = false;
-                failedParams.push({ param: paramName, argName: 'undefined' });
-                continue;
-            }
-            // Walk the prototype chain of the type arg to find conformance
-            const typeArgProto =
-                typeof typeArgValue === 'function'
-                    ? (typeArgValue as { prototype?: object }).prototype ?? null
-                    : typeof typeArgValue === 'object' && typeArgValue !== null
-                        ? typeArgValue as object
-                        : null;
-            if (!typeArgProto) {
-                allSatisfied = false;
-                failedParams.push({ param: paramName, argName: String(typeArgValue) });
-                continue;
-            }
-            let found = false;
-            let proto: object | null = typeArgProto;
-            while (proto !== null) {
-                if (conformanceRegistry.get(proto)?.has(requiredProto)) { found = true; break; }
-                proto = Object.getPrototypeOf(proto) as object | null;
-            }
-            if (!found) {
-                allSatisfied = false;
-                const argName =
-                    typeof typeArgValue === 'function' &&
-                    typeof (typeArgValue as { name?: unknown }).name === 'string'
-                        ? (typeArgValue as { name: string }).name
-                        : String(typeArgValue);
-                failedParams.push({ param: paramName, argName });
-            }
-        }
-        if (allSatisfied) {
-            registerConformance((ParameterizedADT as unknown as { prototype: object }).prototype, entry.protocol);
-            validateProtocolInvariant(entry.protocol, ParameterizedADT, 'Parameterized ADT');
-
-            // Apply conditional protocol contracts onto the parameterized type.
-            //
-            // Composition rules (LSP subcontracting):
-            //   demands : OR  — if the fold already has baked-in demands (from unconditional
-            //                   protocols + parent + own), those are broader by LSP, so we only
-            //                   add a demands check when there are no existing baked demands
-            //                   (the conditional protocol is the sole demands source).
-            //   ensures : AND — always wrap; the additional ensures check fires after the inner
-            //                   result is produced, giving AND(bakedEnsures, protocolEnsures).
-            //   rescue  : skip — the operation's own rescue (baked in) takes precedence.
-            //
-            // Note: ops with missing implementations are handled after this loop by
-            // validateProtocolConformance, which installs defaults (with contracts baked
-            // in) for ops with a defaultBody, and throws for genuinely-absent ops.
-            for (const [opName, opSpec] of entry.protocol.requiredOps) {
-                if (!opSpec.contracts) continue;
-                const c = opSpec.contracts;
-
-                if (opSpec.kind === 'fold') {
-                    // Folds are instance-level getters or methods on the prototype chain.
-                    let desc: PropertyDescriptor | undefined;
-                    let searchProto: object | null = Base.prototype as object;
-                    while (searchProto !== null) {
-                        const d = Object.getOwnPropertyDescriptor(searchProto, opName);
-                        if (d) { desc = d; break; }
-                        searchProto = Object.getPrototypeOf(searchProto) as object | null;
-                    }
-                    if (!desc) continue;
-
-                    // Only add a demands wrapper when the fold has no baked-in demands.
-                    // If baked demands exist, LSP guarantees they are at least as broad as
-                    // the protocol's demands — OR-composition is already satisfied.
-                    const bakedContracts = adtTransformers.get(Base as unknown as object)?.get(opName)?.contracts ?? null;
-                    const mustAddDemands = !!c.demands && !bakedContracts?.demands;
-
-                    if ('get' in desc) {
-                        const origGetter = desc.get!;
-                        Object.defineProperty(paramProto, opName, {
-                            get(this: unknown) {
-                                if (mustAddDemands)
-                                    checkDemands(c.demands!, opName, 'conditional protocol', this, []);
-                                const result = origGetter.call(this);
-                                if (c.ensures)
-                                    checkEnsures(c.ensures, opName, 'conditional protocol', this, this, result, []);
-                                return result;
-                            },
-                            configurable: desc.configurable ?? true,
-                            enumerable: desc.enumerable ?? true
-                        });
-                    } else {
-                        const origMethod = desc.value as (...a: unknown[]) => unknown;
-                        Object.defineProperty(paramProto, opName, {
-                            value(this: unknown, ...args: unknown[]) {
-                                if (mustAddDemands)
-                                    checkDemands(c.demands!, opName, 'conditional protocol', this, args);
-                                const result = origMethod.apply(this, args);
-                                if (c.ensures)
-                                    checkEnsures(c.ensures, opName, 'conditional protocol', this, this, result, args);
-                                return result;
-                            },
-                            writable: desc.writable ?? true,
-                            configurable: desc.configurable ?? true,
-                            enumerable: desc.enumerable ?? true
-                        });
-                    }
-                } else if (opSpec.kind === 'unfold') {
-                    // Unfolds are static methods on the ADT constructor.
-                    const origUnfold = (ParameterizedADT as unknown as Record<string, unknown>)[opName] as
-                        ((seed: unknown) => unknown) | undefined;
-                    if (!origUnfold) continue;
-
-                    const bakedContracts = adtTransformers.get(ParameterizedADT as unknown as object)?.get(opName)?.contracts ?? null;
-                    const mustAddDemands = !!c.demands && !bakedContracts?.demands;
-
-                    (ParameterizedADT as unknown as Record<string, unknown>)[opName] = function wrappedUnfold(seed: unknown): unknown {
-                        if (mustAddDemands)
-                            checkDemands(c.demands!, opName, 'conditional protocol', null, [seed]);
-                        const result = origUnfold(seed);
-                        if (c.ensures)
-                            checkEnsures(c.ensures, opName, 'conditional protocol', null, seed, result, [seed]);
-                        return result;
-                    };
-                }
-                // map / merge kinds: no demands/ensures in the protocol spec, nothing to wrap.
-            }
-
-            // Verify all required ops are now reachable on the parameterized prototype chain
-            // (either inherited, contract-wrapped above, or default-installable). For ops
-            // whose defaultBody is non-null and that are genuinely absent, installDefaultOp
-            // is called here so defaults are auto-installed — the same behaviour as
-            // applyUnconditionalProtocols provides for unconditional protocols.
-            //
-            // Unfold ops are constructor-level static methods, not instance-level. They
-            // can't be probed with `opName in prototype`, so mark them satisfied upfront;
-            // the contract-wrapping loop above already handles their absence gracefully.
-            //
-            // Pass undefined for `type` — protocol invariant was already checked above.
-            for (const [opName, opSpec] of entry.protocol.requiredOps)
-                if (opSpec.kind === 'unfold') satisfiedOpNames.add(opName);
-            validateProtocolConformance(satisfiedOpNames, entry.protocol, 'Parameterized ADT', undefined, paramProto);
-        } else
-            failedEntries.push({ ownOps: [...entry.protocol.requiredOps.keys()], failedParams });
-
-    }
-
-    // For each op from an unsatisfied conditional protocol that is not covered by any
-    // satisfied protocol, install an error-throwing stub on ParameterizedADT.prototype.
-    // This ensures callers get a clear TypeError at the call site rather than a cryptic
-    // failure deep inside the handler.
-    for (const { ownOps, failedParams } of failedEntries) {
-        const failDesc = failedParams.length > 0
-            ? failedParams.map(({ param, argName }) => `'${param}' is '${argName}'`).join(', ')
-            : 'type argument constraints were not satisfied';
-        for (const opName of ownOps) {
-            if (satisfiedOpNames.has(opName)) continue;
-            const msg = `'${opName}' is not available: this type was not instantiated with ` +
-                `compatible type arguments (${failDesc} — does not satisfy the required constraint). ` +
-                `Provide a type argument that satisfies the required protocol.`;
-            const throwFn = (): never => { throw new TypeError(msg); };
-            // Detect getter vs method from the descriptor on the base prototype chain
-            let desc: PropertyDescriptor | undefined;
-            let searchProto: object | null = Base.prototype as object;
-            while (searchProto !== null) {
-                const d = Object.getOwnPropertyDescriptor(searchProto, opName);
-                if (d) { desc = d; break; }
-                searchProto = Object.getPrototypeOf(searchProto) as object | null;
-            }
-            if (desc && 'get' in desc)
-                Object.defineProperty(paramProto, opName, { get: throwFn, configurable: desc.configurable ?? true, enumerable: desc.enumerable ?? true });
-            else
-                Object.defineProperty(paramProto, opName, { value: throwFn, writable: desc?.writable ?? true, configurable: desc?.configurable ?? true, enumerable: desc?.enumerable ?? true });
-
-        }
-    }
-
-    return Object.assign(ProxiedParameterized, paramVariants) as unknown as ADTLike;
 }

@@ -7,19 +7,19 @@
  */
 
 import { data, satisfies } from '../../index.mjs';
-import { Bifunctor, Eq } from '../protocols/index.mjs';
+import { Bifunctor } from '../protocols/index.mjs';
 
-const Pair = data(({ T, U }) => ({
-    [satisfies]: [Bifunctor, Eq({ T: Eq, U: Eq })],
-    MakePair: { first: T, second: U }
-})).ops(({ map, fold, Family }) => ({
+const Pair = data(_ => ({
+    [satisfies]: [Bifunctor],
+    MakePair: { first: Object, second: Object }
+})).ops(({ map, fold, family }) => ({
     // Bifunctor: bimap(f, g) applies f to first and g to second
-    bimap: map({ out: Family })({
-        T: (x: unknown, f: (a: unknown) => unknown, _g: unknown) => f(x),
-        U: (x: unknown, _f: unknown, g: (a: unknown) => unknown) => g(x)
+    bimap: map({ out: family })({
+        first:  (x: unknown, f: (a: unknown) => unknown, _g: unknown) => f(x),
+        second: (x: unknown, _f: unknown, g: (a: unknown) => unknown) => g(x)
     }),
     // Eq: structural equality on both fields
-    equals: fold({ in: Family, out: Boolean })({
+    equals: fold({ in: family, out: Boolean })({
         // @ts-expect-error — binary fold handler
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         MakePair({ first, second }: any, other: any) {

@@ -9,13 +9,13 @@
 import { behavior } from '@lapis-lang/lapis-js';
 
 // Stream behavior with contracts on operations
-const Stream = behavior(({ Self, T }) => ({
-    head: T,
-    tail: Self(T)
-})).ops(({ fold, unfold, Self, T }) => ({
+const Stream = behavior(self => ({
+    head: Object,
+    tail: self
+})).ops(({ fold, unfold, self }) => ({
     From: unfold({
         in: Number,
-        out: Self,
+        out: self,
         demands: (_self: unknown, seed: number) => typeof seed === 'number' && seed >= 0
     })({
         head: (n) => n,
@@ -23,7 +23,7 @@ const Stream = behavior(({ Self, T }) => ({
     }),
     Countdown: unfold({
         in: Number,
-        out: Self,
+        out: self,
         demands: (_self: unknown, n: number) => n > 0
     })({
         head: (n) => n,
@@ -54,13 +54,13 @@ const Stream = behavior(({ Self, T }) => ({
     })
 }));
 
-const NumStream = Stream({ T: Number });
+const NumStream = Stream;
 
 console.log('=== Contracts: Stream Example ===\n');
 
 // --- Unfold demands ---
 console.log('1. Unfold demands:');
-const nats = NumStream.From(0);
+const nats: any = NumStream.From(0);
 console.log(`   From(0).head = ${nats.head}`);
 console.log(`   From(0).tail.head = ${nats.tail.head}`);
 

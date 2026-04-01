@@ -12,11 +12,11 @@ import { Eq, Ord, Monoid } from '../protocols/index.mjs';
 const Str = data(() => ({
     [satisfies]: [Eq, Ord, Monoid],
     S: { value: String }
-})).ops(({ fold, unfold, Family }) => ({
+})).ops(({ fold, unfold, family }) => ({
 
     // ── Eq ───────────────────────────────────────────────────────────────
     equals: fold({
-        in: Family,
+        in: family,
         out: Boolean
     })({
         // @ts-expect-error — binary fold handler
@@ -28,7 +28,7 @@ const Str = data(() => ({
 
     // ── Ord ──────────────────────────────────────────────────────────────
     compare: fold({
-        in: Family,
+        in: family,
         out: Number
     })({
         // @ts-expect-error — binary fold handler
@@ -39,12 +39,12 @@ const Str = data(() => ({
     }),
 
     // ── Monoid (concatenation) ───────────────────────────────────────────
-    Identity: unfold({ out: Family })({
+    Identity: unfold({ out: family })({
         S: () => ({ value: '' })
     }),
     combine: fold({
-        in: Family,
-        out: Family
+        in: family,
+        out: family
     })({
         // @ts-expect-error — binary fold handler
         // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -2,18 +2,12 @@ import { behaviorObservers } from './BehaviorOps.mjs';
 import type { Observer } from './BehaviorOps.mjs';
 
 import {
-    IsParameterizedInstance,
-    ParentADTSymbol,
-    TypeArgsSymbol,
     VariantDeclSymbol,
-    TypeParamSymbol,
     callable,
     isObjectLiteral,
-    isConstructable,
     hasInputSpec,
     ensureOwnMap,
-    installGetter,
-    extractParamNames
+    installGetter
 } from './utils.mjs';
 
 import {
@@ -21,6 +15,7 @@ import {
     validateSpecGuard,
     isSelfRef,
     SelfRefSymbol,
+    registerSelfRef,
     op,
     spec,
     operations,
@@ -152,32 +147,41 @@ type BehaviorTypeLike = {
  */
 const behaviorInstanceState = new WeakMap<object, BehaviorInstanceState>();
 
+// Tracks the set of operation names explicitly registered via .ops() calls
+// (as opposed to those inherited automatically). Used to enforce the
+// "no silent overwrite" invariant.
+const explicitBehaviorOpsRegistry = new WeakMap<object, Set<string>>();
+
 // ---- Self reference ---------------------------------------------------------
 
 function createSelf(behaviorType?: BehaviorTypeLike): { [SelfRefSymbol]: true; (typeParam?: unknown): unknown } {
     const fn = function (_typeParam?: unknown): unknown {
         return fn;
     };
-    (fn as unknown as Record<symbol, boolean>)[SelfRefSymbol] = true;
+    // Register via identity (replaces symbol-brand stamping)
+    registerSelfRef(fn);
 
     if (!behaviorType) return fn as unknown as { [SelfRefSymbol]: true; (typeParam?: unknown): unknown };
 
     // Return a Proxy that delegates property access to the BehaviorType.
     // Handlers capture Self in closures during .ops(), but aren't called until
     // the behavior instance is observed — by which time constructors are registered.
-    return new Proxy(fn, {
+    const proxy = new Proxy(fn, {
         get(target, prop, receiver) {
-            if (prop === SelfRefSymbol) return true;
             if (prop in (behaviorType as Record<string | symbol, unknown>))
                 return (behaviorType as Record<string | symbol, unknown>)[prop];
             return Reflect.get(target, prop, receiver);
         },
         has(target, prop) {
-            if (prop === SelfRefSymbol) return true;
             if (prop in (behaviorType as Record<string | symbol, unknown>)) return true;
             return Reflect.has(target, prop);
         }
     }) as unknown as { [SelfRefSymbol]: true; (typeParam?: unknown): unknown };
+
+    // Register proxy so isSelfRef(proxy) hits the WeakSet
+    registerSelfRef(proxy as unknown as object);
+
+    return proxy;
 }
 
 // ---- Observer spec predicates -----------------------------------------------
@@ -194,6 +198,69 @@ function isParametricObserver(obsSpec: unknown): boolean {
 function specsCompatible(a: unknown, b: unknown): boolean {
     if (isSelfRef(a) && isSelfRef(b)) return true;
     return a === b;
+}
+
+/** True when `child` is the same type as or a subtype of `parent` (prototype-chain check). */
+function isTypeSubtype(child: unknown, parent: unknown): boolean {
+    if (child === parent) return true;
+    if (isSelfRef(child) && isSelfRef(parent)) return true;
+    if (typeof child === 'function' && typeof parent === 'function') {
+        const pProto = (parent as { prototype?: object }).prototype;
+        const cProto = (child as { prototype?: object }).prototype;
+        if (pProto != null && cProto != null)
+            return pProto === cProto || Object.prototype.isPrototypeOf.call(pProto, cProto);
+    }
+    return false;
+}
+
+/**
+ * LSP variance check for an observer re-declared in a child behavior.
+ *  - Simple observers (just a type): covariant — child type ≤ parent type.
+ *  - Parametric observers { in, out }:
+ *      out: covariant  — childOut  ≤ parentOut
+ *      in:  contravariant — parentIn ≤ childIn
+ */
+function validateObserverVariance(name: string, childSpec: unknown, parentSpec: unknown): void {
+    if (isSelfRef(childSpec) && isSelfRef(parentSpec)) return;
+
+    const childIsParametric = isParametricObserver(childSpec);
+    const parentIsParametric = isParametricObserver(parentSpec);
+
+    if (childIsParametric !== parentIsParametric) {
+        throw new TypeError(
+            `Cannot change observer '${name}' between simple and parametric forms when overriding`
+        );
+    }
+
+    if (!childIsParametric) {
+        // Simple observer — covariant position
+        if (!isTypeSubtype(childSpec, parentSpec)) {
+            throw new TypeError(
+                `Cannot narrow observer '${name}': ` +
+                `${String(childSpec)} is not a subtype of ${String(parentSpec)}`
+            );
+        }
+        return;
+    }
+
+    const cs = childSpec as Record<string, unknown>;
+    const ps = parentSpec as Record<string, unknown>;
+
+    // out: covariant — child out must be ≤ parent out
+    if ('out' in ps && 'out' in cs && !isTypeSubtype(cs['out'], ps['out'])) {
+        throw new TypeError(
+            `Cannot narrow 'out' of observer '${name}': ` +
+            `${String(cs['out'])} is not a subtype of ${String(ps['out'])}`
+        );
+    }
+
+    // in: contravariant — parent in must be ≤ child in
+    if ('in' in ps && 'in' in cs && !isTypeSubtype(ps['in'], cs['in'])) {
+        throw new TypeError(
+            `Cannot narrow 'in' of observer '${name}': ` +
+            `child type ${String(cs['in'])} is not a supertype of parent type ${String(ps['in'])}`
+        );
+    }
 }
 
 function validateAuxFoldReferences(behaviorType: BehaviorTypeLike): void {
@@ -235,19 +302,11 @@ export function behavior<D extends Record<string, unknown>>(
 ): BehaviorStructure<D> {
     if (typeof declFn !== 'function') {
         throw new TypeError(
-            'behavior() requires a callback function: behavior(({ Self, T }) => ({ observers }))'
+            'behavior() requires a callback function: behavior(self => ({ observers }))'
         );
     }
 
-    // Extract type parameter names from callback function
-    // ts-runtime-only: cannot be typed statically — reads function source
-    const typeParamNames = extractParamNames(
-        declFn as (...args: unknown[]) => unknown, p => p !== 'Self'
-    );
-
     function createBehavior(
-        typeArgs?: Record<string, unknown> | null,
-        paramParent?: BehaviorTypeLike | null
     ): {
         class: BehaviorTypeLike;
         observers: Map<string, ObserverEntry>;
@@ -262,15 +321,33 @@ export function behavior<D extends Record<string, unknown>>(
     } {
         const Self = createSelf(),
 
-            typeParamObjects: Record<string, { [TypeParamSymbol]: string }> = {};
-        for (const paramName of typeParamNames)
-            typeParamObjects[paramName] = { [TypeParamSymbol]: paramName };
+            // Build a proxy over the SelfRef that unifies two calling conventions:
+            //
+            //   behavior(self => ({ tail: self }))
+            //     `self` receives the whole proxy argument and IS a SelfRef —
+            //     the `get` trap is never invoked.
+            //
+            //   behavior(({ self }) => ({ head: Object, tail: self }))
+            //     The argument is destructured. The `'self'` trap returns the raw
+            //     Self SelfRef (not the proxy), which is sufficient.
+            //
+            // Property access rules applied by the trap (in priority order):
+            //   1. 'self'        → the raw Self SelfRef object
+            //   2. everything else → forwarded to Self (covers the callable
+            //                        interface, Symbol.toPrimitive, etc.)
+            selfProxy = new Proxy(Self, {
+                get(target, prop, receiver) {
+                    if (prop === 'self') return Self;
+                    return Reflect.get(target as unknown as object, prop, receiver);
+                }
+            });
 
+        // selfProxy is passed directly to the user callback as the `self`
+        // argument.  Register it so isSelfRef(selfProxy) returns true when a
+        // user stores the whole argument instead of destructuring.
+        registerSelfRef(selfProxy as unknown as object);
 
-        const observerDecl = declFn({
-            Self: Self as unknown as BehaviorDeclParams['Self'],
-            ...typeParamObjects
-        } as unknown as BehaviorDeclParams) as unknown as Record<string, unknown>;
+        const observerDecl = declFn(selfProxy as unknown as BehaviorDeclParams) as unknown as Record<string, unknown>;
 
         if (!observerDecl || typeof observerDecl !== 'object') {
             throw new TypeError(
@@ -291,12 +368,7 @@ export function behavior<D extends Record<string, unknown>>(
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         let BaseClass: new (...args: any[]) => object;
-        if (typeArgs && paramParent) {
-            BaseClass = class extends (paramParent as unknown as new () => object) { };
-            (BaseClass as unknown as Record<symbol, unknown>)[IsParameterizedInstance] = true;
-            (BaseClass as unknown as Record<symbol, unknown>)[ParentADTSymbol] = paramParent;
-            (BaseClass as unknown as Record<symbol, unknown>)[TypeArgsSymbol] = typeArgs;
-        } else if (parentBehaviorType)
+        if (parentBehaviorType)
             BaseClass = class extends (parentBehaviorType as unknown as new () => object) { };
         else
             BaseClass = class Behavior { };
@@ -333,6 +405,10 @@ export function behavior<D extends Record<string, unknown>>(
                 declarations.merge.push({ name: entryName, spec: entrySpec as Record<string, unknown> });
             else {
                 assertCamelCase(entryName, 'Observer');
+                if (parentBehaviorType !== null && observerMap.has(entryName)) {
+                    const parentObs = observerMap.get(entryName)!;
+                    validateObserverVariance(entryName, entrySpec, parentObs.spec);
+                }
                 observerMap.set(entryName, {
                     name: entryName,
                     spec: entrySpec,
@@ -367,28 +443,10 @@ export function behavior<D extends Record<string, unknown>>(
         (behaviorObserverDecl as Record<string | symbol, unknown>)[satisfies]
     );
 
-    behaviorClass._call = function (...typeArgsList: unknown[]): unknown {
-        if (typeArgsList.length === 0)
-            return callableBehavior;
-
-
-        let typeArgsObj: Record<string, unknown>;
-        if (typeArgsList.length === 1 &&
-            typeof typeArgsList[0] === 'object' &&
-            typeArgsList[0] !== null &&
-            !isConstructable(typeArgsList[0]))
-            typeArgsObj = typeArgsList[0] as Record<string, unknown>;
-        else {
-            throw new TypeError(
-                'Parameterized behaviors must be instantiated with an object: ' +
-                `e.g. MyBehavior({ ${typeParamNames.map(k => `${k}: Number`).join(', ')} })`
-            );
-        }
-
-        const { class: parameterizedBehavior } =
-            createBehavior(typeArgsObj, callableBehavior as unknown as BehaviorTypeLike);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        return callable(parameterizedBehavior as unknown as abstract new (...args: any[]) => any);
+    behaviorClass._call = function (..._args: unknown[]): unknown {
+        // Behavior types are no longer parameterized with T-type arguments.
+        // Calling behavior({ T: Number }) simply returns the same behavior.
+        return callableBehavior;
     };
 
     const callableBehavior = callable(
@@ -577,10 +635,7 @@ export function behavior<D extends Record<string, unknown>>(
     (callableBehavior as unknown as Record<symbol, boolean>)[LapisTypeSymbol] = true;
 
     // Attach .ops() method for two-phase declarations
-    const opsTypeParamObjects: Record<string, { [TypeParamSymbol]: string }> = {};
-    for (const paramName of typeParamNames)
-        opsTypeParamObjects[paramName] = { [TypeParamSymbol]: paramName };
-    attachBehaviorOpsMethod<D>(callableBehavior, observerMap, opsTypeParamObjects, behaviorProtocols);
+    attachBehaviorOpsMethod<D>(callableBehavior, observerMap, behaviorProtocols);
 
     return callableBehavior as unknown as BehaviorStructure<D>;
 }
@@ -658,7 +713,7 @@ type BehaviorOpsContext<D> = {
     unfold: BehaviorUnfoldFn<D>;
     map: typeof mapOp;
     merge: typeof mergeOp;
-    Self: SelfRefCallable & { [key: string]: (...args: unknown[]) => unknown };
+    self: SelfRefCallable & { [key: string]: (...args: unknown[]) => unknown };
     [key: string]: unknown;
 };
 
@@ -698,10 +753,6 @@ function getBehaviorOpNames(BehaviorType: BehaviorTypeLike): Set<string> {
  * @param observerMap      - The map of observer name → `ObserverEntry` built
  *                           during phase 1; used to wire unfold handlers to
  *                           their corresponding observer fields.
- * @param typeParamObjects - Optional map of type-parameter name → marker
- *                           object (e.g. `{ T: { [TypeParamSymbol]: 'T' } }`).
- *                           These are forwarded into the ops context so that
- *                           parameterized behaviors can reference `T` etc.
  * @param protocols        - Normalized `ProtocolEntry[]` parsed from the
  *                           phase-1 `[satisfies]` declaration. Unconditional
  *                           entries are validated and registered after all
@@ -710,7 +761,6 @@ function getBehaviorOpNames(BehaviorType: BehaviorTypeLike): Set<string> {
 function attachBehaviorOpsMethod<D extends Record<string, unknown>>(
     BehaviorType: BehaviorTypeLike,
     observerMap: Map<string, ObserverEntry>,
-    typeParamObjects: Record<string, { [TypeParamSymbol]: string }> = {},
     protocols: ProtocolEntry[] = []
 ): void {
     (BehaviorType as BehaviorStructure<D>).ops = function behaviorOps<O extends Record<string, unknown>>(
@@ -721,17 +771,27 @@ function attachBehaviorOpsMethod<D extends Record<string, unknown>>(
             unfold: unfoldOp as BehaviorUnfoldFn<D>,
             map: mapOp,
             merge: mergeOp,
-            Self: createSelf(BehaviorType)
+            self: createSelf(BehaviorType)
         } as BehaviorOpsContext<D>;
-
-        // Forward type param markers passed explicitly from the behavior() closure
-        for (const [key, value] of Object.entries(typeParamObjects))
-            (ctx as Record<string, unknown>)[key] = value;
 
         const opsObj = opsFn(ctx);
         const parentBT = (BehaviorType as Record<symbol, unknown>)[
             Symbol.for('__lapisParentBehavior__')
         ] as BehaviorTypeLike | undefined ?? null;
+
+        // Guard against silent overwrites: check only against operations that were
+        // explicitly registered via a previous .ops() call (not inherited ones).
+        let ownOps = explicitBehaviorOpsRegistry.get(BehaviorType as unknown as object);
+        if (ownOps) {
+            for (const entryName of Object.keys(opsObj)) {
+                if (ownOps.has(entryName)) {
+                    throw new TypeError(
+                        `Operation '${entryName}' is already defined on this behavior type. ` +
+                        `Use .ops() only once per behavior, or consolidate all operations into a single call.`
+                    );
+                }
+            }
+        }
 
         // Register operations from the ops callback
         for (const [entryName, entrySpec] of Object.entries(opsObj)) {
@@ -819,6 +879,15 @@ function attachBehaviorOpsMethod<D extends Record<string, unknown>>(
 
         // Validate aux references after all ops from .ops() are registered
         validateAuxFoldReferences(BehaviorType);
+
+        // Record these op names as explicitly registered so future .ops() calls
+        // can detect duplicate registrations.
+        if (!ownOps) {
+            ownOps = new Set<string>();
+            explicitBehaviorOpsRegistry.set(BehaviorType as unknown as object, ownOps);
+        }
+        for (const entryName of Object.keys(opsObj))
+            ownOps.add(entryName);
 
         // Validate protocol conformance and register unconditional conformances
         const registeredOpNames = getBehaviorOpNames(BehaviorType);
@@ -1204,12 +1273,11 @@ function createMappedHandlers(
         if (obs.isContinuation)
             mappedHandlers[name] = origHandler;
 
-        else if (obs.isSimple &&
-            (obs.spec as Record<symbol, unknown>)?.[TypeParamSymbol] === typeParam)
+        else if (obs.isSimple && name === typeParam)
             mappedHandlers[name] = (seed: unknown) => transformFn(origHandler(seed));
 
         else if (obs.isParametric &&
-            (obs.spec as { out?: Record<symbol, unknown> })?.out?.[TypeParamSymbol] === typeParam &&
+            name === typeParam &&
             !isSelfRef((obs.spec as { out?: unknown })?.out)) {
             mappedHandlers[name] = (seed: unknown) => {
                 const fn = origHandler(seed);

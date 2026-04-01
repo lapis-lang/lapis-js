@@ -47,8 +47,8 @@ describe('KNOWN_PROPERTIES', () => {
 
 describe('properties metadata in protocol specs', () => {
     it('stores properties on fold spec', () => {
-        const Semigroup = protocol(({ Family, fold }) => ({
-            combine: fold({ in: Family, out: Family, properties: ['associative'] })
+        const Semigroup = protocol(({ family, fold }) => ({
+            combine: fold({ in: family, out: family, properties: ['associative'] })
         }));
 
         const opSpec = Semigroup.requiredOps.get('combine');
@@ -58,8 +58,8 @@ describe('properties metadata in protocol specs', () => {
     });
 
     it('stores multiple properties on a single op', () => {
-        const CommutativeMonoid = protocol(({ Family, fold }) => ({
-            combine: fold({ in: Family, out: Family, properties: ['associative', 'commutative'] })
+        const CommutativeMonoid = protocol(({ family, fold }) => ({
+            combine: fold({ in: family, out: family, properties: ['associative', 'commutative'] })
         }));
 
         const props = CommutativeMonoid.requiredOps.get('combine')!.properties;
@@ -68,8 +68,8 @@ describe('properties metadata in protocol specs', () => {
     });
 
     it('stores properties on unfold spec', () => {
-        const P = protocol(({ Family, unfold }) => ({
-            Build: unfold({ out: Family, properties: ['reflexive'] })
+        const P = protocol(({ family, unfold }) => ({
+            Build: unfold({ out: family, properties: ['reflexive'] })
         }));
 
         const props = P.requiredOps.get('Build')!.properties;
@@ -77,8 +77,8 @@ describe('properties metadata in protocol specs', () => {
     });
 
     it('stores properties on map spec', () => {
-        const Functor = protocol(({ Family, T, map }) => ({
-            fmap: map({ out: Family, properties: ['composition'] })
+        const Functor = protocol(({ family, T, map }) => ({
+            fmap: map({ out: family, properties: ['composition'] })
         }));
 
         const props = Functor.requiredOps.get('fmap')!.properties;
@@ -86,7 +86,7 @@ describe('properties metadata in protocol specs', () => {
     });
 
     it('properties set is empty when properties is absent', () => {
-        const P = protocol(({ Family, fold }) => ({
+        const P = protocol(({ family, fold }) => ({
             size: fold({ out: Number })
         }));
 
@@ -97,8 +97,8 @@ describe('properties metadata in protocol specs', () => {
 
     it('throws TypeError on unknown property name', () => {
         assert.throws(
-            () => protocol(({ Family, fold }) => ({
-                combine: fold({ in: Family, out: Family, properties: ['unknownProp' as never] })
+            () => protocol(({ family, fold }) => ({
+                combine: fold({ in: family, out: family, properties: ['unknownProp' as never] })
             })),
             TypeError
         );
@@ -106,8 +106,8 @@ describe('properties metadata in protocol specs', () => {
 
     it('throws TypeError when properties is not an array', () => {
         assert.throws(
-            () => protocol(({ Family, fold }) => ({
-                combine: fold({ in: Family, out: Family, properties: 'associative' as never })
+            () => protocol(({ family, fold }) => ({
+                combine: fold({ in: family, out: family, properties: 'associative' as never })
             })),
             TypeError
         );
@@ -115,8 +115,8 @@ describe('properties metadata in protocol specs', () => {
 
     it('throws TypeError when properties contains a non-string', () => {
         assert.throws(
-            () => protocol(({ Family, fold }) => ({
-                combine: fold({ in: Family, out: Family, properties: [42 as never] })
+            () => protocol(({ family, fold }) => ({
+                combine: fold({ in: family, out: family, properties: [42 as never] })
             })),
             TypeError
         );
@@ -129,13 +129,13 @@ describe('properties metadata in protocol specs', () => {
 
 describe('properties inheritance via [extend]', () => {
     it('child inherits parent op properties when not overriding', () => {
-        const Semigroup = protocol(({ Family, fold }) => ({
-            combine: fold({ in: Family, out: Family, properties: ['associative'] })
+        const Semigroup = protocol(({ family, fold }) => ({
+            combine: fold({ in: family, out: family, properties: ['associative'] })
         }));
 
-        const CommutativeMonoid = protocol(({ Family, fold, unfold }) => ({
+        const CommutativeMonoid = protocol(({ family, fold, unfold }) => ({
             [extend]: Semigroup,
-            Identity: unfold({ out: Family })
+            Identity: unfold({ out: family })
             // combine is inherited — NOT redeclared here
         }));
 
@@ -144,14 +144,14 @@ describe('properties inheritance via [extend]', () => {
     });
 
     it('child gets union of parent and child properties when overriding', () => {
-        const Semigroup = protocol(({ Family, fold }) => ({
-            combine: fold({ in: Family, out: Family, properties: ['associative'] })
+        const Semigroup = protocol(({ family, fold }) => ({
+            combine: fold({ in: family, out: family, properties: ['associative'] })
         }));
 
-        const CommutativeMonoid = protocol(({ Family, fold, unfold }) => ({
+        const CommutativeMonoid = protocol(({ family, fold, unfold }) => ({
             [extend]: Semigroup,
             // Override combine, adding commutative
-            combine: fold({ in: Family, out: Family, properties: ['commutative'] })
+            combine: fold({ in: family, out: family, properties: ['commutative'] })
         }));
 
         const props = CommutativeMonoid.requiredOps.get('combine')!.properties;
@@ -160,13 +160,13 @@ describe('properties inheritance via [extend]', () => {
     });
 
     it('parent protocol itself has correct properties unchanged', () => {
-        const Parent = protocol(({ Family, fold }) => ({
-            combine: fold({ in: Family, out: Family, properties: ['associative'] })
+        const Parent = protocol(({ family, fold }) => ({
+            combine: fold({ in: family, out: family, properties: ['associative'] })
         }));
 
-        protocol(({ Family, fold }) => ({
+        protocol(({ family, fold }) => ({
             [extend]: Parent,
-            combine: fold({ in: Family, out: Family, properties: ['commutative'] })
+            combine: fold({ in: family, out: family, properties: ['commutative'] })
         }));
 
         // Parent's properties must not be mutated
@@ -182,18 +182,18 @@ describe('properties inheritance via [extend]', () => {
 
 describe('properties on data() operations', () => {
     it('stores properties on a fold operation via transformer', () => {
-        const Nat = data(({ Family }) => ({
+        const Nat = data(({ family }) => ({
             Zero: {},
-            Succ: { pred: Family }
-        })).ops(({ fold, unfold, Family }) => ({
-            Add: unfold({ in: Family, out: Family })({
+            Succ: { pred: family }
+        })).ops(({ fold, unfold, family }) => ({
+            Add: unfold({ in: family, out: family })({
                 Zero: (other: unknown) => other,
                 Succ: (other: unknown) => ({ pred: other })
             }),
-            add: fold({ in: Family, out: Family, properties: ['associative', 'commutative'] })({
+            add: fold({ in: family, out: family, properties: ['associative', 'commutative'] })({
                 Zero(_ctx: any, other?: any): any { return other; },
                 Succ({ pred }: any, other?: any): any {
-                    return Family.Succ({ pred: pred(other) });
+                    return family.Succ({ pred: pred(other) });
                 }
             })
         }));
@@ -223,11 +223,11 @@ describe('properties on data() operations', () => {
     });
 
     it('stores properties on a map operation via transformer', () => {
-        const Box = data(({ Family, T }) => ({
-            Box: { value: T }
-        })).ops(({ map, Family }) => ({
-            fmap: map({ out: Family, properties: ['composition'] })({
-                T: (x: unknown) => x
+        const Box = data(family => ({
+            Box: { value: Object }
+        })).ops(({ map, family }) => ({
+            fmap: map({ out: family, properties: ['composition'] })({
+                value: (x: unknown) => x
             })
         }));
 
@@ -275,10 +275,10 @@ describe('properties on data() operations', () => {
 
 describe('properties on behavior() operations', () => {
     it('stores properties on a behavior fold operation', () => {
-        const Counter = behavior(({ Self }) => ({
+        const Counter = behavior(({ self }) => ({
             value: Number
-        })).ops(({ fold, unfold, Self }) => ({
-            Start: unfold({ in: Number, out: Self })({
+        })).ops(({ fold, unfold, self }) => ({
+            Start: unfold({ in: Number, out: self })({
                 value: (n: number) => n
             }),
             step: fold({ out: Number, properties: ['idempotent'] })({
@@ -300,10 +300,10 @@ describe('properties on behavior() operations', () => {
     });
 
     it('stores properties on a behavior unfold operation', () => {
-        const Counter = behavior(({ Self }) => ({
+        const Counter = behavior(({ self }) => ({
             value: Number
-        })).ops(({ fold, unfold, Self }) => ({
-            Start: unfold({ in: Number, out: Self, properties: ['reflexive'] })({
+        })).ops(({ fold, unfold, self }) => ({
+            Start: unfold({ in: Number, out: self, properties: ['reflexive'] })({
                 value: (n: number) => n
             }),
             step: fold({ out: Number })({
@@ -324,10 +324,10 @@ describe('properties on behavior() operations', () => {
     });
 
     it('no properties when [properties] is absent on behavior ops', () => {
-        const Counter = behavior(({ Self }) => ({
+        const Counter = behavior(({ self }) => ({
             value: Number
-        })).ops(({ fold, unfold, Self }) => ({
-            Start: unfold({ in: Number, out: Self })({
+        })).ops(({ fold, unfold, self }) => ({
+            Start: unfold({ in: Number, out: self })({
                 value: (n: number) => n
             }),
             step: fold({ out: Number })({

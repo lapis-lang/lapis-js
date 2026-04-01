@@ -36,9 +36,9 @@ import {
 // Ground facts live in the initial algebra; the relation provides
 // origin/destination/weight projections and transitive-closure machinery.
 
-const WEdge = relation(({ Family }) => ({
+const WEdge = relation(({ family }) => ({
     Direct: { from: String, to: String, weight: Number },
-    Path:   { first: Family, second: Family }
+    Path:   { first: family, second: family }
 })).ops(({ fold, origin, destination }) => ({
     [origin]: fold({ out: String })({
         Direct({ from }) { return from; },
@@ -77,7 +77,7 @@ const SearchState = data(() => ({
         foundPath: Array, foundCost: Number, workList: Array
     },
     Exhausted: {}
-})).ops(({ fold, Family }) => ({
+})).ops(({ fold, family }) => ({
     path: fold({ out: Array })({
         Active() { return []; },
         Found({ foundPath }) { return foundPath as string[]; },
@@ -99,7 +99,7 @@ const SearchState = data(() => ({
         Exhausted() { return true; }
     }),
     step: fold({ out: Object })({
-        Exhausted() { return Family.Exhausted; },
+        Exhausted() { return family.Exhausted; },
         _({ target, edges, maxCost, workList }: {
             target: string; edges: any[];
             maxCost: number; workList: SearchItem[]
@@ -108,7 +108,7 @@ const SearchState = data(() => ({
             while (wl.length > 0) {
                 const item = wl.pop()!;
                 if (item.node === target) {
-                    return Family.Found({
+                    return family.Found({
                         target, edges, maxCost,
                         foundPath: item.path,
                         foundCost: item.cost,
@@ -132,7 +132,7 @@ const SearchState = data(() => ({
                     });
                 }
             }
-            return Family.Exhausted;
+            return family.Exhausted;
         }
     })
 }));
@@ -176,12 +176,12 @@ const Query = data(() => ({
 //   - demands on unfold: state must be a SearchState instance
 //   - rescue on unfold:  if unfold fails, return Exhausted-like state
 
-const PathFinder = query(({ Self }) => ({
+const PathFinder = query(({ self }) => ({
     path: Array,
     cost: Number,
     found: Boolean,
     exhausted: Boolean,
-    next: Self
+    next: self
 })).ops(({ unfold, output, done, accept, Self }) => ({
     [output]: 'path',
     [done]: 'exhausted',
@@ -286,7 +286,7 @@ const cyclicPaths = PathFinder.explore(
 console.log(`  Paths from X to W: ${cyclicPaths.length} found`);
 cyclicPaths.forEach((p: string[]) => console.log(`    ${p.join(' → ')}`));
 
-// ---- Self-target (trivial) ----
+// ---- self-target (trivial) ----
 
 console.log('\n━━━ Query: A to A (start = target) ━━━');
 

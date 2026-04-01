@@ -11,16 +11,16 @@
 import { protocol, extend } from '../../index.mjs';
 import { Lattice } from './Lattice.mjs';
 
-const DistributiveLattice = protocol(({ Family, fold }) => ({
+const DistributiveLattice = protocol(({ family, fold }) => ({
     [extend]: Lattice,
     join: fold({
-        in: Family,
-        out: Family,
+        in: family,
+        out: family,
         properties: ['distributive:meet']
     }),
     meet: fold({
-        in: Family,
-        out: Family,
+        in: family,
+        out: family,
         properties: ['distributive:join']
     })
 }));

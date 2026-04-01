@@ -15,15 +15,15 @@
 
 import { protocol } from '../../index.mjs';
 
-const Lattice = protocol(({ Family, fold }) => ({
+const Lattice = protocol(({ family, fold }) => ({
     join: fold({
-        in: Family,
-        out: Family,
+        in: family,
+        out: family,
         properties: ['associative', 'commutative', 'idempotent', 'absorption:meet']
     }),
     meet: fold({
-        in: Family,
-        out: Family,
+        in: family,
+        out: family,
         properties: ['associative', 'commutative', 'idempotent', 'absorption:join']
     })
 }));

@@ -18,13 +18,13 @@ import { IOResponse } from '../lib/io/response.mjs';
 describe('Contracts on Main behavior', () => {
     describe('demands on unfold constructor', () => {
 
-        const App: any = behavior(({ Self }) => ({
+        const App: any = behavior(({ self }) => ({
             request: IORequest,
-            respond: { in: IOResponse, out: Self }
-        })).ops(({ fold, unfold, map, merge, Self }) => ({
+            respond: { in: IOResponse, out: self }
+        })).ops(({ fold, unfold, map, merge, self }) => ({
             Start: unfold({
                 in: { args: Array },
-                out: Self,
+                out: self,
                 demands: (_self: unknown, seed: { args: unknown[] }) =>
                     Array.isArray(seed.args) && seed.args.length > 0
             })({  
@@ -50,11 +50,11 @@ describe('Contracts on Main behavior', () => {
 
     describe('request observer returns valid IORequest', () => {
 
-        const App: any = behavior(({ Self }) => ({
+        const App: any = behavior(({ self }) => ({
             request: IORequest,
-            respond: { in: IOResponse, out: Self }
-        })).ops(({ fold, unfold, map, merge, Self }) => ({
-            Start: unfold({ in: { phase: String }, out: Self })({
+            respond: { in: IOResponse, out: self }
+        })).ops(({ fold, unfold, map, merge, self }) => ({
+            Start: unfold({ in: { phase: String }, out: self })({
                 // @ts-expect-error — variant instance not structurally assignable to DataInstance<D>
                 request: ({ phase }: { phase: string }) =>
                     phase === 'write'
@@ -80,11 +80,11 @@ describe('Contracts on Main behavior', () => {
 
     describe('respond continuation validates through usage', () => {
 
-        const App: any = behavior(({ Self }) => ({
+        const App: any = behavior(({ self }) => ({
             request: IORequest,
-            respond: { in: IOResponse, out: Self }
-        })).ops(({ fold, unfold, map, merge, Self }) => ({
-            Start: unfold({ in: { step: Number }, out: Self })({
+            respond: { in: IOResponse, out: self }
+        })).ops(({ fold, unfold, map, merge, self }) => ({
+            Start: unfold({ in: { step: Number }, out: self })({
                 // @ts-expect-error — variant instance not structurally assignable to DataInstance<D>
                 request: ({ step }: { step: number }) =>
                     step === 0

@@ -24,9 +24,9 @@ import { relation, origin, destination } from '@lapis-lang/lapis-js';
 
 // ---- Relation Definition ----
 
-const Edge = relation(({ Family }) => ({
+const Edge = relation(({ family }) => ({
     Direct: { from: String, to: String },
-    Path:   { first: Family, second: Family }
+    Path:   { first: family, second: family }
 })).ops(({ fold, origin, destination }) => ({
     [origin]: fold({ out: String })({
         Direct({ from }) { return from; },

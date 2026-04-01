@@ -27,12 +27,12 @@ function assertLawError(thunk: () => unknown, opName: string, property: string):
  * - Second arg = the raw binary argument.
  * - To return the receiver as-is:         `return this;`
  * - To return the binary arg as-is:       `return other;`
- * - To construct a NEW same-variant instance, prefer `Family.VariantName({...})` — `Family` is
+ * - To construct a NEW same-variant instance, prefer `family.VariantName({...})` — `family` is
  *   provided by the `ops()` callback and is always safe, even in chained declarations.
- *   For `Family.*` to resolve the variant constructors, `Family` must also be destructured in
- *   the `data()` factory (it binds `Family._adt` to the ADT on creation):
- *     `data(({ Family }) => ({ N: { v: Number } })).ops(({ fold, Family }) => ...)`
- *     `return Family.N({ field: value });`
+ *   For `family.*` to resolve the variant constructors, `family` must also be destructured in
+ *   the `data()` factory (it binds `family._adt` to the ADT on creation):
+ *     `data(({ family }) => ({ N: { v: Number } })).ops(({ fold, family }) => ...)`
+ *     `return family.N({ field: value });`
  *   When the variant name is not statically known, `this.constructor({...})` is an alternative:
  *   it is typed to return the same ADT family and is equally safe in both chained and two-step forms.
  *
@@ -57,8 +57,8 @@ describe('Law: associative', () => {
         // max: returns whichever instance has the larger value — associative.
         assert.doesNotThrow(() =>
             data(() => ({ N: { v: Number } }))
-                .ops(({ fold, Family }) => ({
-                    max: fold({ in: Family, out: Family, properties: ['associative'] })({
+                .ops(({ fold, family }) => ({
+                    max: fold({ in: family, out: family, properties: ['associative'] })({
                         // @ts-expect-error -- arity
                         N({ v }, b: { v: number }) { return (v >= b.v) ? this : b; }
                     })
@@ -70,11 +70,11 @@ describe('Law: associative', () => {
         // Subtraction: (a-b)-c ≠ a-(b-c) in general.
         assertLawError(
             () =>
-                data(({ Family }) => ({ N: { v: Number } }))
-                    .ops(({ fold, Family }) => ({
-                        sub: fold({ in: Family, out: Family, properties: ['associative'] })({
+                data(({ family }) => ({ N: { v: Number } }))
+                    .ops(({ fold, family }) => ({
+                        sub: fold({ in: family, out: family, properties: ['associative'] })({
                             // @ts-expect-error -- arity
-                            N({ v }, b: { v: number }) { return Family.N({ v: v - b.v }); }
+                            N({ v }, b: { v: number }) { return family.N({ v: v - b.v }); }
                         })
                     })),
             'sub',
@@ -85,11 +85,11 @@ describe('Law: associative', () => {
     it('includes a 3-element counterexample in the LawError', () => {
         let caught: LawError | null = null;
         try {
-            data(({ Family }) => ({ N: { v: Number } }))
-                .ops(({ fold, Family }) => ({
-                    sub: fold({ in: Family, out: Family, properties: ['associative'] })({
+            data(({ family }) => ({ N: { v: Number } }))
+                .ops(({ fold, family }) => ({
+                    sub: fold({ in: family, out: family, properties: ['associative'] })({
                         // @ts-expect-error -- arity
-                        N({ v }, b: { v: number }) { return Family.N({ v: v - b.v }); }
+                        N({ v }, b: { v: number }) { return family.N({ v: v - b.v }); }
                     })
                 }));
         } catch (e) {
@@ -104,8 +104,8 @@ describe('Law: associative', () => {
         // F AND anything = F; T AND x = x → associative, commutative, idempotent
         assert.doesNotThrow(() =>
             data(() => ({ F: {}, T: {} }))
-                .ops(({ fold, Family }) => ({
-                    and: fold({ in: Family, out: Family, properties: ['associative', 'commutative', 'idempotent'] })({
+                .ops(({ fold, family }) => ({
+                    and: fold({ in: family, out: family, properties: ['associative', 'commutative', 'idempotent'] })({
                         // @ts-expect-error -- arity
                         F(_fields, _other) { return this; },
                         // @ts-expect-error -- arity
@@ -126,8 +126,8 @@ describe('Law: commutative', () => {
     it('passes for a commutative binary fold', () => {
         assert.doesNotThrow(() =>
             data(() => ({ N: { v: Number } }))
-                .ops(({ fold, Family }) => ({
-                    max: fold({ in: Family, out: Family, properties: ['commutative'] })({
+                .ops(({ fold, family }) => ({
+                    max: fold({ in: family, out: family, properties: ['commutative'] })({
                         // @ts-expect-error -- arity
                         N({ v }, b: { v: number }) { return (v >= b.v) ? this : b; }
                     })
@@ -138,11 +138,11 @@ describe('Law: commutative', () => {
     it('throws LawError for a non-commutative operation', () => {
         assertLawError(
             () =>
-                data(({ Family }) => ({ N: { v: Number } }))
-                    .ops(({ fold, Family }) => ({
-                        sub: fold({ in: Family, out: Family, properties: ['commutative'] })({
+                data(({ family }) => ({ N: { v: Number } }))
+                    .ops(({ fold, family }) => ({
+                        sub: fold({ in: family, out: family, properties: ['commutative'] })({
                             // @ts-expect-error -- arity
-                            N({ v }, b: { v: number }) { return Family.N({ v: v - b.v }); }
+                            N({ v }, b: { v: number }) { return family.N({ v: v - b.v }); }
                         })
                     })),
             'sub',
@@ -161,8 +161,8 @@ describe('Law: idempotent', () => {
     it('passes for an idempotent binary fold', () => {
         assert.doesNotThrow(() =>
             data(() => ({ N: { v: Number } }))
-                .ops(({ fold, Family }) => ({
-                    max: fold({ in: Family, out: Family, properties: ['idempotent'] })({
+                .ops(({ fold, family }) => ({
+                    max: fold({ in: family, out: family, properties: ['idempotent'] })({
                         // @ts-expect-error -- arity
                         N({ v }, b: { v: number }) { return (v >= b.v) ? this : b; }
                     })
@@ -174,11 +174,11 @@ describe('Law: idempotent', () => {
         // Addition: N(v) + N(v) = N(2v) ≠ N(v) for v ≠ 0
         assertLawError(
             () =>
-                data(({ Family }) => ({ N: { v: Number } }))
-                    .ops(({ fold, Family }) => ({
-                        add: fold({ in: Family, out: Family, properties: ['idempotent'] })({
+                data(({ family }) => ({ N: { v: Number } }))
+                    .ops(({ fold, family }) => ({
+                        add: fold({ in: family, out: family, properties: ['idempotent'] })({
                             // @ts-expect-error -- arity
-                            N({ v }, b: { v: number }) { return Family.N({ v: v + b.v }); }
+                            N({ v }, b: { v: number }) { return family.N({ v: v + b.v }); }
                         })
                     })),
             'add',
@@ -197,8 +197,8 @@ describe('Law: involutory', () => {
     it('passes for a correct involutory unary fold', () => {
         assert.doesNotThrow(() => {
             const Sign = data(() => ({ Pos: {}, Neg: {} }));
-            Sign.ops(({ fold, Family }) => ({
-                flip: fold({ out: Family, properties: ['involutory'] })({
+            Sign.ops(({ fold, family }) => ({
+                flip: fold({ out: family, properties: ['involutory'] })({
                     Pos() { return Sign.Neg; },
                     Neg() { return Sign.Pos; }
                 })
@@ -211,8 +211,8 @@ describe('Law: involutory', () => {
         assertLawError(
             () => {
                 const Sign = data(() => ({ Pos: {}, Neg: {}, Zero: {} }));
-                Sign.ops(({ fold, Family }) => ({
-                    flip: fold({ out: Family, properties: ['involutory'] })({
+                Sign.ops(({ fold, family }) => ({
+                    flip: fold({ out: family, properties: ['involutory'] })({
                         Pos()  { return Sign.Neg; },
                         Neg()  { return Sign.Zero; }, // broken
                         Zero() { return Sign.Pos; }
@@ -247,9 +247,9 @@ describe('Law: involutory (getter-map)', () => {
 
     it('passes for a correct involutory getter-map', () => {
         assert.doesNotThrow(() => {
-            data(() => ({ Pos: {}, Neg: {} })).ops(({ map, Family }) => ({
-                flip: map({ out: Family, properties: ['involutory'] })({
-                    Family: (x: unknown) => x === Family.Pos ? Family.Neg : Family.Pos
+            data(() => ({ Pos: {}, Neg: {} })).ops(({ map, family }) => ({
+                flip: map({ out: family, properties: ['involutory'] })({
+                    family: (x: unknown) => x === family.Pos ? family.Neg : family.Pos
                 })
             }));
         });
@@ -258,7 +258,7 @@ describe('Law: involutory (getter-map)', () => {
     it('silently passes even for a broken involutory getter-map (known limitation)', () => {
         // The involutory law check for getter-maps can only run against the samples
         // that the auto-generator produces.  Map transforms are only applied to
-        // TypeParam-typed fields (T, U, …); pure Family-ref fields recurse directly
+        // TypeParam-typed fields (T, U, …); pure family-ref fields recurse directly
         // (no explicit transform), and primitive fields are copied as-is.
         //
         // Auto-generated samples never include TypeParam-containing variants
@@ -274,12 +274,12 @@ describe('Law: involutory (getter-map)', () => {
             // Declares `flip` as involutory, but its T-transform is broken
             // (Neg → Other instead of Neg → Pos).  No LawError is thrown because
             // no sample with a T-typed field is generated.
-            data(({ Family, T }) => ({
+            data(family => ({
                 Nil:  {},
-                Val:  { data: T }
-            })).ops(({ map, Family, T }) => ({
-                flip: map({ out: Family, properties: ['involutory'] })({
-                    T: (x: unknown) => -(x as number) * 99 // clearly non-involutory
+                Val:  { data: Object }
+            })).ops(({ map, family }) => ({
+                flip: map({ out: family, properties: ['involutory'] })({
+                    data: (x: unknown) => -(x as number) * 99 // clearly non-involutory
                 })
             }));
         }, 'broken involutory T-transform passes unchecked — TypeParam variants not sampled');
@@ -296,8 +296,8 @@ describe('Law: reflexive', () => {
     it('passes for a reflexive predicate', () => {
         assert.doesNotThrow(() =>
             data(() => ({ N: { v: Number } }))
-                .ops(({ fold, Family }) => ({
-                    lte: fold({ in: Family, out: Boolean, properties: ['reflexive'] })({
+                .ops(({ fold, family }) => ({
+                    lte: fold({ in: family, out: Boolean, properties: ['reflexive'] })({
                         // @ts-expect-error -- arity
                         N({ v }, b: { v: number }) { return v <= b.v; }
                     })
@@ -310,8 +310,8 @@ describe('Law: reflexive', () => {
         assertLawError(
             () =>
                 data(() => ({ N: { v: Number } }))
-                    .ops(({ fold, Family }) => ({
-                        lt: fold({ in: Family, out: Boolean, properties: ['reflexive'] })({
+                    .ops(({ fold, family }) => ({
+                        lt: fold({ in: family, out: Boolean, properties: ['reflexive'] })({
                             // @ts-expect-error -- arity
                             N({ v }, b: { v: number }) { return v < b.v; }
                         })
@@ -328,8 +328,8 @@ describe('Law: symmetric', () => {
     it('passes for a symmetric predicate', () => {
         assert.doesNotThrow(() =>
             data(() => ({ N: { v: Number } }))
-                .ops(({ fold, Family }) => ({
-                    eq: fold({ in: Family, out: Boolean, properties: ['symmetric'] })({
+                .ops(({ fold, family }) => ({
+                    eq: fold({ in: family, out: Boolean, properties: ['symmetric'] })({
                         // @ts-expect-error -- arity
                         N({ v }, b: { v: number }) { return v === b.v; }
                     })
@@ -342,8 +342,8 @@ describe('Law: symmetric', () => {
         assertLawError(
             () =>
                 data(() => ({ N: { v: Number } }))
-                    .ops(({ fold, Family }) => ({
-                        lte: fold({ in: Family, out: Boolean, properties: ['symmetric'] })({
+                    .ops(({ fold, family }) => ({
+                        lte: fold({ in: family, out: Boolean, properties: ['symmetric'] })({
                             // @ts-expect-error -- arity
                             N({ v }, b: { v: number }) { return v <= b.v; }
                         })
@@ -360,8 +360,8 @@ describe('Law: antisymmetric', () => {
     it('passes for an antisymmetric predicate', () => {
         assert.doesNotThrow(() =>
             data(() => ({ N: { v: Number } }))
-                .ops(({ fold, Family }) => ({
-                    lte: fold({ in: Family, out: Boolean, properties: ['antisymmetric'] })({
+                .ops(({ fold, family }) => ({
+                    lte: fold({ in: family, out: Boolean, properties: ['antisymmetric'] })({
                         // @ts-expect-error -- arity
                         N({ v }, b: { v: number }) { return v <= b.v; }
                     })
@@ -374,8 +374,8 @@ describe('Law: antisymmetric', () => {
         assertLawError(
             () =>
                 data(() => ({ N: { v: Number } }))
-                    .ops(({ fold, Family }) => ({
-                        always: fold({ in: Family, out: Boolean, properties: ['antisymmetric'] })({
+                    .ops(({ fold, family }) => ({
+                        always: fold({ in: family, out: Boolean, properties: ['antisymmetric'] })({
                             N() { return true; }
                         })
                     })),
@@ -391,8 +391,8 @@ describe('Law: transitive', () => {
     it('passes for a transitive predicate', () => {
         assert.doesNotThrow(() =>
             data(() => ({ N: { v: Number } }))
-                .ops(({ fold, Family }) => ({
-                    lte: fold({ in: Family, out: Boolean, properties: ['transitive'] })({
+                .ops(({ fold, family }) => ({
+                    lte: fold({ in: family, out: Boolean, properties: ['transitive'] })({
                         // @ts-expect-error -- arity
                         N({ v }, b: { v: number }) { return v <= b.v; }
                     })
@@ -405,8 +405,8 @@ describe('Law: transitive', () => {
         assertLawError(
             () =>
                 data(() => ({ N: { v: Number } }))
-                    .ops(({ fold, Family }) => ({
-                        near: fold({ in: Family, out: Boolean, properties: ['transitive'] })({
+                    .ops(({ fold, family }) => ({
+                        near: fold({ in: family, out: Boolean, properties: ['transitive'] })({
                             // @ts-expect-error -- arity
                             N({ v }, b: { v: number }) { return Math.abs(v - b.v) <= 1; }
                         })
@@ -423,8 +423,8 @@ describe('Law: total', () => {
     it('passes for a total relation', () => {
         assert.doesNotThrow(() =>
             data(() => ({ N: { v: Number } }))
-                .ops(({ fold, Family }) => ({
-                    lte: fold({ in: Family, out: Boolean, properties: ['total'] })({
+                .ops(({ fold, family }) => ({
+                    lte: fold({ in: family, out: Boolean, properties: ['total'] })({
                         // @ts-expect-error -- arity
                         N({ v }, b: { v: number }) { return v <= b.v; }
                     })
@@ -437,8 +437,8 @@ describe('Law: total', () => {
         assertLawError(
             () =>
                 data(() => ({ N: { v: Number } }))
-                    .ops(({ fold, Family }) => ({
-                        strictEq: fold({ in: Family, out: Boolean, properties: ['total'] })({
+                    .ops(({ fold, family }) => ({
+                        strictEq: fold({ in: family, out: Boolean, properties: ['total'] })({
                             // @ts-expect-error -- arity
                             N({ v }, b: { v: number }) { return v === b.v; }
                         })
@@ -462,15 +462,15 @@ describe('demands-aware filtering', () => {
         // → All tuples are filtered by demands → no valid checks → warn + no LawError.
         assert.doesNotThrow(() =>
             data(() => ({ N: { v: Number } }))
-                .ops(({ fold, Family }) => ({
+                .ops(({ fold, family }) => ({
                     op: fold({
-                        in: Family,
-                        out: Family,
+                        in: family,
+                        out: family,
                         properties: ['associative'],
                         demands: (_self: unknown, b: { v: number }) => b.v > 100
                     })({
                         // @ts-expect-error -- arity
-                        N({ v }, b: { v: number }) { return Family.N({ v: v + b.v }); }
+                        N({ v }, b: { v: number }) { return family.N({ v: v + b.v }); }
                     })
                 }))
         );
@@ -540,16 +540,16 @@ describe('Parametric ADTs', () => {
         // List(T): Cons has TypeParam T — only Nil is sampled.
         // append law on Nil triples: Nil.append(Nil.append(Nil)) = Nil = Nil.append(Nil).append(Nil) ✓
         assert.doesNotThrow(() => {
-            const List = data(({ T, Family }) => ({
+            const List = data(family => ({
                 Nil:  {},
-                Cons: { head: T, tail: Family }
+                Cons: { head: Object, tail: family }
             }));
-            List.ops(({ fold, Family }) => ({
-                append: fold({ in: Family, out: Family, properties: ['associative'] })({
+            List.ops(({ fold, family }) => ({
+                append: fold({ in: family, out: family, properties: ['associative'] })({
                     // @ts-expect-error -- arity
                     Nil(_fields, b) { return b; },
                     // @ts-expect-error -- arity
-                    Cons({ head, tail }, b) { return List.Cons({ head, tail: (tail as any).append(b) }); }
+                    Cons({ head, tail }, b) { return family.Cons({ head, tail: (tail as any).append(b) }); }
                 })
             }));
         });
@@ -566,18 +566,18 @@ describe('Recursive ADTs', () => {
     it('generates shallow recursive samples and verifies the law', () => {
         // List of Numbers: Nil and Cons({head:0, tail:Nil}) are both sampled.
         assert.doesNotThrow(() => {
-            const List = data(({ Family }) => ({
+            const List = data(({ family }) => ({
                 Nil:  {},
-                Cons: { head: Number, tail: Family }
+                Cons: { head: Number, tail: family }
             }));
-            List.ops(({ fold, Family }) => ({
-                append: fold({ in: Family, out: Family, properties: ['associative'] })({
+            List.ops(({ fold, family }) => ({
+                append: fold({ in: family, out: family, properties: ['associative'] })({
                     // @ts-expect-error -- arity
                     Nil(_fields, b) { return b; },
                     // @ts-expect-error -- arity
                     Cons({ head, tail }, b) {
                         // For parameterized folds, tail is a continuation: call it with b
-                        return List.Cons({ head, tail: (tail as any)(b) });
+                        return family.Cons({ head, tail: (tail as any)(b) });
                     }
                 })
             }));
@@ -599,11 +599,11 @@ describe('Recursive ADTs', () => {
         // Easiest: use the numerical sub check but with the recursive variant included.
         assertLawError(
             () => {
-                const Num = data(({ Family }) => ({ N: { v: Number } }));
-                Num.ops(({ fold, Family }) => ({
-                    sub: fold({ in: Family, out: Family, properties: ['associative'] })({
+                const Num = data(({ family }) => ({ N: { v: Number } }));
+                Num.ops(({ fold, family }) => ({
+                    sub: fold({ in: family, out: family, properties: ['associative'] })({
                         // @ts-expect-error -- arity
-                        N({ v }, b: { v: number }) { return Family.N({ v: v - b.v }); }
+                        N({ v }, b: { v: number }) { return family.N({ v: v - b.v }); }
                     })
                 }));
             },
@@ -626,9 +626,9 @@ describe('[extend] ADTs', () => {
         // The child adds C; inherited A, B (from Base) must also pass.
         const Base = data(() => ({ A: {}, B: {} }));
         assert.doesNotThrow(() => {
-            const Child = data(({ Family }) => ({ [extend]: Base, C: {} }));
-            Child.ops(({ fold, Family }) => ({
-                op: fold({ in: Family, out: Family, properties: ['associative'] })({
+            const Child = data(({ family }) => ({ [extend]: Base, C: {} }));
+            Child.ops(({ fold, family }) => ({
+                op: fold({ in: family, out: family, properties: ['associative'] })({
                     _(_fields, _other) { return this; } // constant left-projection
                 })
             }));
@@ -641,9 +641,9 @@ describe('[extend] ADTs', () => {
         const Base = data(() => ({ A: {}, B: {} }));
         assertLawError(
             () => {
-                const Child = data(({ Family }) => ({ [extend]: Base, C: {} }));
-                Child.ops(({ fold, Family }) => ({
-                    op: fold({ in: Family, out: Family, properties: ['commutative'] })({
+                const Child = data(({ family }) => ({ [extend]: Base, C: {} }));
+                Child.ops(({ fold, family }) => ({
+                    op: fold({ in: family, out: family, properties: ['commutative'] })({
                         _(_fields, _other) { return this; } // broken for commutativity
                     })
                 }));
@@ -657,9 +657,9 @@ describe('[extend] ADTs', () => {
         const Base = data(() => ({ A: {}, B: {} }));
         let caught: LawError | null = null;
         try {
-            const Child = data(({ Family }) => ({ [extend]: Base, C: {} }));
-            Child.ops(({ fold, Family }) => ({
-                op: fold({ in: Family, out: Family, properties: ['commutative'] })({
+            const Child = data(({ family }) => ({ [extend]: Base, C: {} }));
+            Child.ops(({ fold, family }) => ({
+                op: fold({ in: family, out: family, properties: ['commutative'] })({
                     _(_fields, _other) { return this; }
                 })
             }));

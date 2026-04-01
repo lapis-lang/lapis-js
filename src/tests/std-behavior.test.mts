@@ -52,7 +52,7 @@ describe('Stream', () => {
     it('Apply zips a function stream with a value stream', () => {
         const fns = Stream.From({ value: (x: number) => x * 2, next: () => (x: number) => x + 100 });
         const vals = Stream.Nats(1);
-        const result = Stream.Apply({ fns, vals });
+        const result: any = Stream.Apply({ fns, vals });
         // head: (x => x*2)(1) = 2
         // next fn: x => x+100, next val: 2 → head: (x => x+100)(2) = 102
         assert.strictEqual(result.head, 2);

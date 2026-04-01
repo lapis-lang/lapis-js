@@ -1,6 +1,6 @@
 /**
  * Basic Behavior Tests
- * 
+ *
  * Tests for core behavior() function declaration and parsing.
  * Basic infrastructure without unfold/fold/map operations.
  */
@@ -37,10 +37,10 @@ describe('Behavior - Basic Declaration', () => {
         assert.ok(yObserver.isSimple, 'y should be a simple observer');
     });
 
-    it('should create a behavior type with Self continuations', () => {
-        const Stream = behavior(({ Self, T }) => ({
-            head: T,
-            tail: Self
+    it('should create a behavior type with self continuations', () => {
+        const Stream = behavior(self => ({
+            head: Object,
+            tail: self
         }));
 
         const observers = behaviorObservers.get(Stream)!;
@@ -54,15 +54,15 @@ describe('Behavior - Basic Declaration', () => {
         assert.ok(!tailObserver.isSimple, 'tail should not be simple');
     });
 
-    it('should create a behavior type with parameterized Self', () => {
-        const Stream = behavior(({ Self, T }) => ({
-            head: T,
-            tail: Self(T)
+    it('should create a behavior type with parameterized self', () => {
+        const Stream = behavior(self => ({
+            head: Object,
+            tail: self
         }));
 
         const observers = behaviorObservers.get(Stream)!;
         const tailObserver = observers.get('tail')!;
-        assert.ok(tailObserver.isContinuation, 'tail with Self(T) should be a continuation');
+        assert.ok(tailObserver.isContinuation, 'tail with self(T) should be a continuation');
     });
 
     it('should create a behavior type with parametric observers', () => {
@@ -127,34 +127,34 @@ describe('Behavior - Basic Declaration', () => {
         );
     });
 
-    it('should extract type parameter names from callback', () => {
-        // Single type parameter
-        const Stream1 = behavior(({ Self, T }) => ({
-            head: T,
-            tail: Self(T)
+    it('should create behaviors with named observers', () => {
+        // Stream with head and tail
+        const Stream1 = behavior(self => ({
+            head: Object,
+            tail: self
         }));
-        assert.ok(Stream1, 'Should create behavior with single type param');
+        assert.ok(Stream1, 'Should create behavior with Object observer');
 
-        // Multiple type parameters
-        const Pair = behavior(({ Self, T, U }) => ({
-            first: T,
-            second: U
+        // Pair-like behavior
+        const Pair = behavior(_ => ({
+            first: Object,
+            second: Object
         }));
-        assert.ok(Pair, 'Should create behavior with multiple type params');
+        assert.ok(Pair, 'Should create behavior with two Object observers');
 
-        // Custom type parameter names (single uppercase letters)
-        const CustomStream = behavior(({ Self, I }) => ({
-            current: I,
-            next: Self(I)
+        // Custom observer names
+        const CustomStream = behavior(self => ({
+            current: Object,
+            next: self
         }));
-        assert.ok(CustomStream, 'Should create behavior with custom type param names');
+        assert.ok(CustomStream, 'Should create behavior with custom observer names');
     });
 
     it('should support mixed observer types', () => {
-        const MixedBehavior = behavior(({ Self, T }) => ({
+        const MixedBehavior = behavior(self => ({
             simpleField: Number,
             parametricMethod: { in: String, out: Boolean },
-            continuation: Self(T)
+            continuation: self
         }));
 
         const observers = behaviorObservers.get(MixedBehavior)!;

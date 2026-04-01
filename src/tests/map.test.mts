@@ -5,12 +5,12 @@ import assert from 'node:assert/strict';
 describe('Map Operations', () => {
     describe('Basic Map', () => {
         test('List.increment transforms numbers', () => {
-            const List = data(({ Family, T }) => ({
+            const List = data(family => ({
                 Nil: {},
-                Cons: { head: T, tail: Family(T) }
-            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
-                increment: map({ out: Family })({
-                    T: (x) => x + 1
+                Cons: { head: Object, tail: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
+                increment: map({ out: family })({
+                    head: (x) => x + 1
                 })
             }));
 
@@ -22,7 +22,7 @@ describe('Map Operations', () => {
                 })
             });
 
-            const incremented = list.increment;
+            const incremented: any = list.increment;
 
             assert.strictEqual(incremented.head, 2);
             assert.strictEqual(incremented.tail.head, 3);
@@ -30,12 +30,12 @@ describe('Map Operations', () => {
         });
 
         test('List.stringify changes type', () => {
-            const List = data(({ Family, T }) => ({
+            const List = data(family => ({
                 Nil: {},
-                Cons: { head: T, tail: Family(T) }
-            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
-                stringify: map({ out: Family })({
-                    T: (x) => String(x)
+                Cons: { head: Object, tail: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
+                stringify: map({ out: family })({
+                    head: (x) => String(x)
                 })
             }));
 
@@ -47,7 +47,7 @@ describe('Map Operations', () => {
                 })
             });
 
-            const stringified = list.stringify;
+            const stringified: any = list.stringify;
 
             assert.strictEqual(stringified.head, '42');
             assert.strictEqual(stringified.tail.head, '100');
@@ -56,12 +56,12 @@ describe('Map Operations', () => {
         });
 
         test('Maybe.double transforms Just value', () => {
-            const Maybe = data(({ Family, T }) => ({
+            const Maybe = data(family => ({
                 Nothing: {},
-                Just: { value: T }
-            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
-                double: map({ out: Family })({
-                    T: (x) => x * 2
+                Just: { value: Object }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
+                double: map({ out: family })({
+                    value: (x) => x * 2
                 })
             }));
 
@@ -79,12 +79,12 @@ describe('Map Operations', () => {
 
     describe('Recursive Structures', () => {
         test('Tree.increment recursively transforms', () => {
-            const Tree = data(({ Family, T }) => ({
-                Leaf: { value: T },
-                Node: { left: Family(T), right: Family(T), value: T }
-            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
-                increment: map({ out: Family })({
-                    T: (x) => x + 1
+            const Tree = data(family => ({
+                Leaf: { value: Object },
+                Node: { left: family, right: family, value: Object }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
+                increment: map({ out: family })({
+                    value: (x) => x + 1
                 })
             }));
 
@@ -94,7 +94,7 @@ describe('Map Operations', () => {
                 value: 10
             });
 
-            const incremented = tree.increment;
+            const incremented: any = tree.increment;
 
             assert.strictEqual(incremented.value, 11);
             assert.strictEqual(incremented.left.value, 2);
@@ -102,12 +102,12 @@ describe('Map Operations', () => {
         });
 
         test('Nested tree structure preserves shape', () => {
-            const Tree = data(({ Family, T }) => ({
-                Leaf: { value: T },
-                Node: { left: Family(T), right: Family(T), value: T }
-            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
-                square: map({ out: Family })({
-                    T: (x) => x * x
+            const Tree = data(family => ({
+                Leaf: { value: Object },
+                Node: { left: family, right: family, value: Object }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
+                square: map({ out: family })({
+                    value: (x) => x * x
                 })
             }));
 
@@ -121,7 +121,7 @@ describe('Map Operations', () => {
                 value: 11
             });
 
-            const squared = tree.square;
+            const squared: any = tree.square;
 
             assert.strictEqual(squared.value, 121);
             assert.strictEqual(squared.left.value, 25);
@@ -139,12 +139,12 @@ describe('Map Operations', () => {
 
     describe('Multiple Type Parameters', () => {
         test('Pair transforms both type parameters independently', () => {
-            const Pair = data(({ Family, T, U }) => ({
-                MakePair: { first: T, second: U }
-            })).ops(({ fold, unfold, map, merge, Family, T, U }) => ({
-                transform: map({ out: Family })({
-                    T: (x) => x * 2,
-                    U: (s) => s.toUpperCase()
+            const Pair = data(family => ({
+                MakePair: { first: Object, second: Object }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
+                transform: map({ out: family })({
+                    first:  (x) => x * 2,
+                    second: (s) => s.toUpperCase()
                 })
             }));
 
@@ -156,12 +156,12 @@ describe('Map Operations', () => {
         });
 
         test('Either transforms Left and Right with same type', () => {
-            const Either = data(({ Family, T }) => ({
-                Left: { value: T },
-                Right: { value: T }
-            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
-                negate: map({ out: Family })({
-                    T: (x) => -x
+            const Either = data(family => ({
+                Left:  { value: Object },
+                Right: { value: Object }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
+                negate: map({ out: family })({
+                    value: (x) => -x
                 })
             }));
 
@@ -175,39 +175,43 @@ describe('Map Operations', () => {
             assert.strictEqual(negatedRight.value, -10);
         });
 
-        test('Heterogeneous Either with different transforms', () => {
-            const Either = data(({ Family, T, U }) => ({
-                Left: { value: T },
-                Right: { value: U }
-            })).ops(({ fold, unfold, map, merge, Family, T, U }) => ({
-                convert: map({ out: Family })({
-                    T: (x) => String(x),
-                    U: (s) => s.length
+        test('Heterogeneous Either with different field-name transforms', () => {
+            const Either = data(_ => ({
+                Left:  { leftValue: Object },
+                Right: { rightValue: Object }
+            })).ops(({ map, family }) => ({
+                convert: map({ out: family })({
+                    leftValue:  (x) => String(x),
+                    rightValue: (s) => (s as string).length
                 })
             }));
 
-            const left = Either.Left({ value: 42 });
-            const right = Either.Right({ value: 'hello' });
+            const left = Either.Left({ leftValue: 42 });
+            const right = Either.Right({ rightValue: 'hello' });
 
             const convertedLeft = left.convert;
             const convertedRight = right.convert;
 
-            assert.strictEqual(convertedLeft.value, '42');
-            assert.strictEqual(typeof convertedLeft.value, 'string');
 
-            assert.strictEqual(convertedRight.value, 5);
-            assert.strictEqual(typeof convertedRight.value, 'number');
+            assert.strictEqual((convertedLeft as any).leftValue, '42');
+
+            assert.strictEqual(typeof (convertedLeft as any).leftValue, 'string');
+
+
+            assert.strictEqual((convertedRight as any).rightValue, 5);
+
+            assert.strictEqual(typeof (convertedRight as any).rightValue, 'number');
         });
     });
 
     describe('Callback Form', () => {
         test('supports callback form for transforms', () => {
-            const List = data(({ Family, T }) => ({
+            const List = data(family => ({
                 Nil: {},
-                Cons: { head: T, tail: Family(T) }
-            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
-                double: map({ out: Family })({
-                    T: (x) => x * 2
+                Cons: { head: Object, tail: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
+                double: map({ out: family })({
+                    head: (x) => x * 2
                 })
             }));
 
@@ -216,7 +220,7 @@ describe('Map Operations', () => {
                 tail: List.Cons({ head: 4, tail: List.Nil })
             });
 
-            const doubled = list.double;
+            const doubled: any = list.double;
 
             assert.strictEqual(doubled.head, 6);
             assert.strictEqual(doubled.tail.head, 8);
@@ -226,12 +230,12 @@ describe('Map Operations', () => {
     describe('Error Handling', () => {
         test('throws on non-camelCase operation name', () => {
             assert.throws(
-                () => data(({ Family, T }) => ({
+                () => data(family => ({
                     Nil: {},
-                    Cons: { head: T, tail: Family(T) }
-                })).ops(({ fold, unfold, map, merge, Family, T }) => ({
-                    Increment: map({ out: Family })({
-                        T: (x) => x + 1
+                    Cons: { head: Object, tail: family }
+                })).ops(({ fold, unfold, map, merge, family }) => ({
+                    Increment: map({ out: family })({
+                        head: (x) => x + 1
                     })
                 })),
                 /Map operation.*must be camelCase/
@@ -240,11 +244,11 @@ describe('Map Operations', () => {
 
         test('detects name collision with variant fields', () => {
             assert.throws(
-                () => data(({ Family, T }) => ({
-                    Point2D: { x: T, y: T }
-                })).ops(({ fold, unfold, map, merge, Family, T }) => ({
-                    x: map({ out: Family })({
-                        T: (v) => v * 2
+                () => data(family => ({
+                    Point2D: { x: Object, y: Object }
+                })).ops(({ fold, unfold, map, merge, family }) => ({
+                    x: map({ out: family })({
+                        x: (v) => v * 2
                     })
                 })),
                 /Operation name 'x' conflicts with field 'x' in variant 'Point2D'/
@@ -252,11 +256,11 @@ describe('Map Operations', () => {
         });
 
         test('handles missing transform gracefully', () => {
-            const Pair = data(({ Family, T, U }) => ({
-                MakePair: { first: T, second: U }
-            })).ops(({ fold, unfold, map, merge, Family, T, U }) => ({
-                transformFirst: map({ out: Family })({
-                    T: (x) => x * 2
+            const Pair = data(family => ({
+                MakePair: { first: Object, second: Object }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
+                transformFirst: map({ out: family })({
+                    first: (x) => x * 2
                 })
             }));
 
@@ -269,12 +273,12 @@ describe('Map Operations', () => {
         });
 
         test('works on non-parameterized ADTs with no-op', () => {
-            const Color = data(({ Family }) => ({
+            const Color = data(family => ({
                 Red: {},
                 Green: {},
                 Blue: {}
-            })).ops(({ fold, unfold, map, merge, Family }) => ({
-                identity: map({ out: Family })({})
+            })).ops(({ fold, unfold, map, merge, family }) => ({
+                identity: map({ out: family })({})
             }));
 
             // Map on non-parameterized ADT returns same instances
@@ -283,12 +287,12 @@ describe('Map Operations', () => {
         });
 
         test('supports arguments passed to transform functions', () => {
-            const List = data(({ Family, T }) => ({
+            const List = data(family => ({
                 Nil: {},
-                Cons: { head: T, tail: Family(T) }
-            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
-                scale: map({ in: Number, out: Family })({
-                    T: (x, factor) => x * factor
+                Cons: { head: Object, tail: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
+                scale: map({ in: Number, out: family })({
+                    head: (x, factor) => x * factor
                 })
             }));
 
@@ -297,19 +301,19 @@ describe('Map Operations', () => {
                 tail: List.Cons({ head: 3, tail: List.Nil })
             });
 
-            const scaled = list.scale(10);
+            const scaled: any = list.scale(10);
 
             assert.strictEqual(scaled.head, 20);
             assert.strictEqual(scaled.tail.head, 30);
         });
 
         test('supports multiple arguments in transform functions', () => {
-            const List = data(({ Family, T }) => ({
+            const List = data(family => ({
                 Nil: {},
-                Cons: { head: T, tail: Family(T) }
-            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
-                combine: map({ out: Family })({
-                    T: (x, a, b) => x + a + b
+                Cons: { head: Object, tail: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
+                combine: map({ out: family })({
+                    head: (x, a, b) => x + a + b
                 })
             }));
 
@@ -328,12 +332,12 @@ describe('Map Operations', () => {
 
     describe('Structure Preservation', () => {
         test('preserves instanceof relationships', () => {
-            const List = data(({ Family, T }) => ({
+            const List = data(family => ({
                 Nil: {},
-                Cons: { head: T, tail: Family(T) }
-            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
-                increment: map({ out: Family })({
-                    T: (x) => x + 1
+                Cons: { head: Object, tail: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
+                increment: map({ out: family })({
+                    head: (x) => x + 1
                 })
             }));
 
@@ -346,12 +350,12 @@ describe('Map Operations', () => {
         });
 
         test('creates new instances (immutability)', () => {
-            const Maybe = data(({ Family, T }) => ({
+            const Maybe = data(family => ({
                 Nothing: {},
-                Just: { value: T }
-            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
-                increment: map({ out: Family })({
-                    T: (x) => x + 1
+                Just: { value: Object }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
+                increment: map({ out: family })({
+                    value: (x) => x + 1
                 })
             }));
 
@@ -364,11 +368,11 @@ describe('Map Operations', () => {
         });
 
         test('preserves non-type-parameter fields', () => {
-            const Tagged = data(({ Family, T }) => ({
-                Value: { tag: String, value: T }
-            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
-                double: map({ out: Family })({
-                    T: (x) => x * 2
+            const Tagged = data(family => ({
+                Value: { tag: String, value: Object }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
+                double: map({ out: family })({
+                    value: (x) => x * 2
                 })
             }));
 
@@ -382,18 +386,18 @@ describe('Map Operations', () => {
 
     describe('Chaining Map Operations', () => {
         test('supports multiple map operations', () => {
-            const List = data(({ Family, T }) => ({
+            const List = data(family => ({
                 Nil: {},
-                Cons: { head: T, tail: Family(T) }
-            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
-                increment: map({ out: Family })({
-                    T: (x) => x + 1
+                Cons: { head: Object, tail: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
+                increment: map({ out: family })({
+                    head: (x) => x + 1
                 }),
-                double: map({ out: Family })({
-                    T: (x) => x * 2
+                double: map({ out: family })({
+                    head: (x) => x * 2
                 }),
-                stringify: map({ out: Family })({
-                    T: (x) => String(x)
+                stringify: map({ out: family })({
+                    head: (x) => String(x)
                 })
             }));
 
@@ -402,7 +406,7 @@ describe('Map Operations', () => {
                 tail: List.Cons({ head: 10, tail: List.Nil })
             });
 
-            const result = list.increment.double.stringify;
+            const result: any = list.increment.double.stringify;
 
             // ((5 + 1) * 2).toString() = "12"
             // ((10 + 1) * 2).toString() = "22"
@@ -411,12 +415,12 @@ describe('Map Operations', () => {
         });
 
         test('empty spec {} works without validation', () => {
-            const List = data(({ Family, T }) => ({
+            const List = data(family => ({
                 Nil: {},
-                Cons: { head: T, tail: Family }
-            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
+                Cons: { head: Object, tail: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
                 double: map({})({
-                    T: (x) => x * 2
+                    head: (x) => x * 2
                 })
             }));
 

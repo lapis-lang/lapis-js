@@ -51,10 +51,10 @@ const Region = data(() => ({
 
 // Board ::= Board(cells, size)
 
-const Board = data(({ Family }) => ({
+const Board = data(({ family }) => ({
     Board: { cells: Array, size: Number }
-})).ops(({ fold, unfold, Family }) => ({
-    FromGrid: unfold({ in: Array, out: Family })({
+})).ops(({ fold, unfold, family }) => ({
+    FromGrid: unfold({ in: Array, out: family })({
         Board: (grid: unknown[]) => ({
             cells: (grid as number[][]).map(row =>
                 row.map(d => d === 0 ? Cell.Blank : Cell.Given(d))
@@ -105,7 +105,7 @@ const Board = data(({ Family }) => ({
 
 const ChoiceBoard = data(() => ({
     ChoiceBoard: { cells: Array }
-})).ops(({ fold, unfold, Family }) => {
+})).ops(({ fold, unfold, family }) => {
     /** Remove determined digits from non-singleton cells in a group. */
     const reduce = (group: number[][]) => {
         const singles = group.filter(xs => xs.length === 1).map(xs => xs[0]);
@@ -130,7 +130,7 @@ const ChoiceBoard = data(() => ({
 
     return {
         /** Digit grid → ChoiceBoard. 0 → [1..9], nonzero → [d]. */
-        FromGrid: unfold({ in: Array, out: Family })({
+        FromGrid: unfold({ in: Array, out: family })({
             ChoiceBoard: (grid: unknown[]) => ({
                 cells: (grid as number[][]).map(row =>
                     row.map(d =>
@@ -148,7 +148,7 @@ const ChoiceBoard = data(() => ({
                     (m: any, inv: any) => pruneBy(inv)(m),
                     Matrix.FromArray(grid)
                 );
-                return Family.ChoiceBoard({ cells: pruned.toArray });
+                return family.ChoiceBoard({ cells: pruned.toArray });
             }
         }),
 
@@ -190,7 +190,7 @@ const ChoiceBoard = data(() => ({
                 }
                 if (minR === -1) return [];
                 return grid[minR][minC].map(d =>
-                    Family.ChoiceBoard({
+                    family.ChoiceBoard({
                         cells: grid.map((row, ri) =>
                             row.map((xs, ci) =>
                                 ri === minR && ci === minC ? [d] : xs
@@ -258,13 +258,13 @@ type SearchStateInstance = {
     [k: string]: unknown;
 };
 
-const SolverStream = behavior(({ Self }) => ({
+const SolverStream = behavior(({ self }) => ({
     board: Object,
     isSolved: Boolean,
     isExhausted: Boolean,
-    next: Self
-})).ops(({ fold, unfold, Self }) => ({
-    Search: unfold({ in: SearchState, out: Self })({
+    next: self
+})).ops(({ fold, unfold, self }) => ({
+    Search: unfold({ in: SearchState, out: self })({
         board:       (s) => (s as SearchStateInstance).currentBoard,
         isSolved:    (s) => (s as SearchStateInstance).isSolved,
         isExhausted: (s) => (s as SearchStateInstance).isExhausted,

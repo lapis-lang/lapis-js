@@ -12,16 +12,16 @@
 import { protocol, extend } from '../../index.mjs';
 import { Monoid } from './Monoid.mjs';
 
-const Group = protocol(({ Family, fold, map }) => ({
+const Group = protocol(({ family, fold, map }) => ({
     [extend]: Monoid,
     invert: map({
-        out: Family,
+        out: family,
         properties: ['involutory']
     }),
     // Re-declare combine to add the inverse law
     combine: fold({
-        in: Family,
-        out: Family,
+        in: family,
+        out: family,
         properties: ['inverse:invert:Identity']
     })
 }));

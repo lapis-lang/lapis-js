@@ -11,12 +11,12 @@
 import { protocol, extend } from '../../index.mjs';
 import { Semigroup } from './Semigroup.mjs';
 
-const Monoid = protocol(({ Family, fold, unfold }) => ({
+const Monoid = protocol(({ family, fold, unfold }) => ({
     [extend]: Semigroup,
-    Identity: unfold({ out: Family }),
+    Identity: unfold({ out: family }),
     combine: fold({
-        in: Family,
-        out: Family,
+        in: family,
+        out: family,
         properties: ['identity', 'identity:Identity']
     })
 }));

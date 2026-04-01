@@ -21,10 +21,10 @@ import { data, behavior, aux, extend, history } from '../index.mjs';
 // Shared base ADTs
 // ---------------------------------------------------------------------------
 
-const BaseTree = data(({ Family }) => ({
+const BaseTree = data(({ family }) => ({
     Leaf: { value: Number },
-    Node: { left: Family, right: Family }
-})).ops(({ fold, unfold, map, merge, Family }) => ({
+    Node: { left: family, right: family }
+})).ops(({ fold, unfold, map, merge, family }) => ({
     depth: fold({ out: Number })({
         Leaf() { return 0; },
         Node({ left, right }) { return 1 + Math.max(left, right); }
@@ -35,10 +35,10 @@ const BaseTree = data(({ Family }) => ({
     })
 }));
 
-const BaseList = data(({ Family }) => ({
+const BaseList = data(({ family }) => ({
     Nil: {},
-    Cons: { head: Number, tail: Family }
-})).ops(({ fold, unfold, map, merge, Family }) => ({
+    Cons: { head: Number, tail: family }
+})).ops(({ fold, unfold, map, merge, family }) => ({
     FromArray: unfold({ in: Array })({
         Nil: (arr) => (arr.length === 0 ? {} : null),
         Cons: (arr) => (arr.length > 0 ? { head: arr[0], tail: arr.slice(1) } : null)
@@ -53,10 +53,10 @@ const BaseList = data(({ Family }) => ({
     })
 }));
 
-const BaseNat = data(({ Family }) => ({
+const BaseNat = data(({ family }) => ({
     Zero: {},
-    Succ: { pred: Family }
-})).ops(({ fold, unfold, map, merge, Family }) => ({
+    Succ: { pred: family }
+})).ops(({ fold, unfold, map, merge, family }) => ({
     FromValue: unfold({ in: Number })({
         Zero: (n: number) => (n <= 0 ? {} : null),
         Succ: (n: number) => (n > 0 ? { pred: n - 1 } : null)
@@ -366,11 +366,11 @@ describe('Zygomorphism (Data) — string form', () => {
 
         test('behavior throws when aux names a fold that does not exist', () => {
             assert.throws(() => {
-                behavior(({ Self }) => ({
+                behavior(({ self }) => ({
                     head: Number,
-                    tail: Self
-                })).ops(({ fold, unfold, map, merge, Self }) => ({
-                    From: unfold({ in: Number, out: Self })({
+                    tail: self
+                })).ops(({ fold, unfold, map, merge, self }) => ({
+                    From: unfold({ in: Number, out: self })({
                         head: (n: number) => n,
                         tail: (n: number) => n + 1
                     }),
@@ -422,10 +422,10 @@ describe('Zygomorphism (Data) — string form', () => {
 
         test('throws when aux references an unfold operation', () => {
             assert.throws(() => {
-                data(({ Family }) => ({
+                data(({ family }) => ({
                     Nil: {},
-                    Cons: { head: Number, tail: Family }
-                })).ops(({ fold, unfold, map, merge, Family }) => ({
+                    Cons: { head: Number, tail: family }
+                })).ops(({ fold, unfold, map, merge, family }) => ({
                     FromArray: unfold({ in: Array })({
                         Nil: (arr: unknown[]) => (arr.length === 0 ? {} : null),
                         Cons: (arr: unknown[]) => (arr.length > 0 ? { head: arr[0], tail: arr.slice(1) } : null)
@@ -440,16 +440,16 @@ describe('Zygomorphism (Data) — string form', () => {
 
         test('throws when aux references a map operation', () => {
             assert.throws(() => {
-                data(({ Family, T }) => ({
-                    Leaf: { value: T },
-                    Node: { left: Family(T), right: Family(T) }
-                })).ops(({ fold, unfold, map, merge, Family, T }) => ({
-                    fmap: map({ out: Family })({
-                        T: (x: unknown) => x
+                data(family => ({
+                    Leaf: { value: Object },
+                    Node: { left: family, right: family }
+                })).ops(({ fold, unfold, map, merge, family }) => ({
+                    fmap: map({ out: family })({
+                        value: (x: unknown) => x
                     }),
                     bad: fold({ aux: 'fmap', out: Number })({
                         Leaf() { return 0; },
-                        Node({ left, right }) { return left + right; }
+                        Node({ left, right }: any) { return left + right; }
                     })
                 }));
             }, /references auxiliary fold 'fmap'.*but no fold named 'fmap' exists/);
@@ -565,10 +565,10 @@ describe('Zygomorphism (Data) — string form', () => {
 
     describe('Zygo where aux fold is defined in same ADT', () => {
         test('both depth and isBalanced defined together', () => {
-            const Tree = data(({ Family }) => ({
+            const Tree = data(({ family }) => ({
                 Leaf: { value: Number },
-                Node: { left: Family, right: Family }
-            })).ops(({ fold, unfold, map, merge, Family }) => ({
+                Node: { left: family, right: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
                 depth: fold({ out: Number })({
                     Leaf() { return 0; },
                     Node({ left, right }) { return 1 + Math.max(left, right); }
@@ -593,10 +593,10 @@ describe('Zygomorphism (Data) — string form', () => {
             // isBalanced references depth via aux, but depth is declared
             // *after* isBalanced in source order.  The topo sort must
             // resolve this dependency and register depth first.
-            const Tree = data(({ Family }) => ({
+            const Tree = data(({ family }) => ({
                 Leaf: { value: Number },
-                Node: { left: Family, right: Family }
-            })).ops(({ fold, unfold, map, merge, Family }) => ({
+                Node: { left: family, right: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
                 isBalanced: fold({ aux: 'depth', out: Boolean })({
                     Leaf() { return true; },
                     Node({ left, right, [aux]: a }) {
@@ -751,11 +751,11 @@ describe('Zygomorphism (Data) — array form', () => {
 describe('Zygomorphism (Behavior)', () => {
     describe('Stream with aux', () => {
         test('behavior fold with parameterized aux', () => {
-            const Stream = behavior(({ Self }) => ({
+            const Stream = behavior(({ self }) => ({
                 head: Number,
-                tail: Self
-            })).ops(({ fold, unfold, map, merge, Self }) => ({
-                From: unfold({ in: Number, out: Self })({
+                tail: self
+            })).ops(({ fold, unfold, map, merge, self }) => ({
+                From: unfold({ in: Number, out: self })({
                     head: (n: number) => n,
                     tail: (n: number) => n + 1
                 }),
@@ -789,11 +789,11 @@ describe('Zygomorphism (Behavior)', () => {
         });
 
         test('behavior fold without aux still works', () => {
-            const Stream = behavior(({ Self }) => ({
+            const Stream = behavior(({ self }) => ({
                 head: Number,
-                tail: Self
-            })).ops(({ fold, unfold, map, merge, Self }) => ({
-                From: unfold({ in: Number, out: Self })({
+                tail: self
+            })).ops(({ fold, unfold, map, merge, self }) => ({
+                From: unfold({ in: Number, out: self })({
                     head: (n: number) => n,
                     tail: (n: number) => n + 1
                 }),
@@ -809,11 +809,11 @@ describe('Zygomorphism (Behavior)', () => {
 
     describe('Behavior array form', () => {
         test('aux: [sum, double] on behavior stream', () => {
-            const Stream = behavior(({ Self }) => ({
+            const Stream = behavior(({ self }) => ({
                 head: Number,
-                tail: Self
-            })).ops(({ fold, unfold, map, merge, Self }) => ({
-                From: unfold({ in: Number, out: Self })({
+                tail: self
+            })).ops(({ fold, unfold, map, merge, self }) => ({
+                From: unfold({ in: Number, out: self })({
                     head: (n: number) => n,
                     tail: (n: number) => n + 1
                 }),

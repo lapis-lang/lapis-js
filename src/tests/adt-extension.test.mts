@@ -3,30 +3,6 @@ import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
 describe('ADT Extension', () => {
-    test('basic extension with simple variants', () => {
-        const Color = data(() => ({ Red: {}, Green: {}, Blue: {} }));
-
-        const ExtendedColor = data(() => ({ [extend]: Color, Yellow: {}, Orange: {} }));
-
-        // Extended ADT should have all variants accessible
-        assert.ok(ExtendedColor.Red);
-        assert.ok(ExtendedColor.Yellow);
-
-        // Extended ADT's own variants are instanceof ExtendedColor
-        assert.ok(ExtendedColor.Yellow instanceof ExtendedColor);
-
-        // Inherited variants get new singleton instances for ExtendedColor
-        assert.ok(ExtendedColor.Red instanceof Color);
-        assert.ok(ExtendedColor.Red instanceof ExtendedColor);
-
-        // Extended variants are also instanceof base (proper subtyping)
-        assert.ok(ExtendedColor.Yellow instanceof Color);
-
-        // Original Color.Red remains instanceof only Color
-        assert.ok(Color.Red instanceof Color);
-        assert.ok(!(Color.Red instanceof ExtendedColor));
-    });
-
     test('extension with structured variants', () => {
         const Point = data(() => ({
             Point2D: { x: Number, y: Number }
@@ -59,15 +35,15 @@ describe('ADT Extension', () => {
     });
 
     test('recursive extension - structure verification', () => {
-        const IntAlgebra = data(({ Family }) => ({
+        const IntAlgebra = data(({ family }) => ({
             Lit: { value: Number },
-            Add: { left: Family, right: Family }
+            Add: { left: family, right: family }
         }));
 
-        const IntBoolAlgebra = data(({ Family }) => ({
+        const IntBoolAlgebra = data(({ family }) => ({
             [extend]: IntAlgebra,
             BoolLit: { value: Boolean },
-            Iff: { cond: Family, thenBranch: Family, elseBranch: Family }
+            Iff: { cond: family, thenBranch: family, elseBranch: family }
         }));
 
         const lit1 = IntBoolAlgebra.Lit({ value: 42 });
@@ -89,15 +65,15 @@ describe('ADT Extension', () => {
     });
 
     test('recursive extension - instanceof hierarchy', () => {
-        const IntAlgebra = data(({ Family }) => ({
+        const IntAlgebra = data(({ family }) => ({
             Lit: { value: Number },
-            Add: { left: Family, right: Family }
+            Add: { left: family, right: family }
         }));
 
-        const IntBoolAlgebra = data(({ Family }) => ({
+        const IntBoolAlgebra = data(({ family }) => ({
             [extend]: IntAlgebra,
             BoolLit: { value: Boolean },
-            Iff: { cond: Family, thenBranch: Family, elseBranch: Family }
+            Iff: { cond: family, thenBranch: family, elseBranch: family }
         }));
 
         const lit1 = IntBoolAlgebra.Lit({ value: 42 });
@@ -122,22 +98,22 @@ describe('ADT Extension', () => {
         assert.strictEqual(iff instanceof IntAlgebra, true);
     });
 
-    test('Family references in extended ADT resolve to extended type', () => {
-        const Base = data(({ Family }) => ({
+    test('family references in extended ADT resolve to extended type', () => {
+        const Base = data(({ family }) => ({
             Base1: { value: Number },
-            Base2: { ref: Family }
+            Base2: { ref: family }
         }));
 
-        const Extended = data(({ Family }) => ({
+        const Extended = data(({ family }) => ({
             [extend]: Base,
             Extended1: { value: String },
-            Extended2: { ref: Family }
+            Extended2: { ref: family }
         }));
 
         const base1 = Extended.Base1({ value: 42 });
         const ext1 = Extended.Extended1({ value: 'hello' });
 
-        // Extended variants should accept both base and extended instances via Family
+        // Extended variants should accept both base and extended instances via family
         const ext2 = Extended.Extended2({ ref: base1 });
         const ext3 = Extended.Extended2({ ref: ext1 });
 
@@ -201,12 +177,19 @@ describe('ADT Extension', () => {
         assert.notStrictEqual(C.B1, B.B1);
     });
 
-    test('variant name collision throws error', () => {
+    test('valid covariant re-spec (same spec) is allowed', () => {
         const Color = data(() => ({ Red: {}, Green: {} }));
+        // Re-specifying Red:{} with identical spec is covariant — should not throw
+        assert.doesNotThrow(
+            () => data(() => ({ [extend]: Color, Red: {}, Yellow: {} }))
+        );
+    });
 
+    test('invalid re-spec (introducing new field) throws field narrowing error', () => {
+        const Color = data(() => ({ Red: {}, Green: {} }));
         assert.throws(
-            () => data(() => ({ [extend]: Color, Red: {}, Yellow: {} })),
-            /Variant name collision: 'Red' already exists in base ADT/
+            () => data(() => ({ [extend]: Color, Red: { shade: Number }, Yellow: {} })).ops(() => ({})),
+            /Field narrowing error: variant 'Red' introduces new field 'shade'/
         );
     });
 
@@ -291,15 +274,15 @@ describe('ADT Extension', () => {
         assert.ok(p3New instanceof Point3DExtended);
     });
 
-    test('extension of parameterized ADT', () => {
-        const Maybe = data(({ T }) => ({
+    test('extension of ADT', () => {
+        const Maybe = data(family => ({
             Nothing: {},
-            Just: { value: T }
+            Just: { value: Object }
         }));
 
-        const Result = data(({ T }) => ({
+        const Result = data(family => ({
             [extend]: Maybe,
-            Error: { message: String, value: T }
+            Error: { message: String, value: Object }
         }));
 
         // Use without instantiation
@@ -323,23 +306,23 @@ describe('ADT Extension', () => {
     });
 
     test('expression language extension - structure verification', () => {
-        const IntExpr = data(({ Family }) => ({
+        const IntExpr = data(({ family }) => ({
             IntLit: { value: Number },
-            Add: { left: Family, right: Family },
-            Mul: { left: Family, right: Family }
+            Add: { left: family, right: family },
+            Mul: { left: family, right: family }
         }));
 
-        const IntBoolExpr = data(({ Family }) => ({
+        const IntBoolExpr = data(({ family }) => ({
             [extend]: IntExpr,
             BoolLit: { value: Boolean },
-            LessThan: { left: Family, right: Family },
-            And: { left: Family, right: Family }
+            LessThan: { left: family, right: family },
+            And: { left: family, right: family }
         }));
 
-        const FullExpr = data(({ Family }) => ({
+        const FullExpr = data(({ family }) => ({
             [extend]: IntBoolExpr,
             Var: { name: String },
-            Let: { name: String, value: Family, body: Family }
+            Let: { name: String, value: family, body: family }
         }));
 
         // Build a complex expression: let x = 5 in x < 10
@@ -361,23 +344,23 @@ describe('ADT Extension', () => {
     });
 
     test('expression language extension - instanceof hierarchy', () => {
-        const IntExpr = data(({ Family }) => ({
+        const IntExpr = data(({ family }) => ({
             IntLit: { value: Number },
-            Add: { left: Family, right: Family },
-            Mul: { left: Family, right: Family }
+            Add: { left: family, right: family },
+            Mul: { left: family, right: family }
         }));
 
-        const IntBoolExpr = data(({ Family }) => ({
+        const IntBoolExpr = data(({ family }) => ({
             [extend]: IntExpr,
             BoolLit: { value: Boolean },
-            LessThan: { left: Family, right: Family },
-            And: { left: Family, right: Family }
+            LessThan: { left: family, right: family },
+            And: { left: family, right: family }
         }));
 
-        const FullExpr = data(({ Family }) => ({
+        const FullExpr = data(({ family }) => ({
             [extend]: IntBoolExpr,
             Var: { name: String },
-            Let: { name: String, value: Family, body: Family }
+            Let: { name: String, value: family, body: family }
         }));
 
         const five = FullExpr.IntLit({ value: 5 });

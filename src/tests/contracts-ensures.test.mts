@@ -108,13 +108,13 @@ describe('Contracts: Ensures (Postconditions)', () => {
 
     describe('Unfold ensures', () => {
         it('should check ensures on unfold result', () => {
-            const List = data(({ Family }) => ({
+            const List = data(({ family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family }
-            })).ops(({ fold, unfold, map, merge, Family }) => ({
+                Cons: { head: Number, tail: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
                 Range: unfold({
                     in: Number,
-                    out: Family,
+                    out: family,
                     ensures: (_self, _old, result) => result !== null && result !== undefined
                 })({
                     Nil: (n) => n <= 0 ? {} : null,
@@ -151,10 +151,10 @@ describe('Contracts: Ensures (Postconditions)', () => {
 
     describe('Old-state access with size tracking', () => {
         it('should verify size via old-state reference', () => {
-            const Stack = data(({ Family }) => ({
+            const Stack = data(({ family }) => ({
                 Empty: {},
-                Push: { value: Number, rest: Family }
-            })).ops(({ fold, unfold, map, merge, Family }) => ({
+                Push: { value: Number, rest: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
                 size: fold({ out: Number })({
                     Empty() { return 0; },
                     Push({ rest }) { return 1 + rest; }
@@ -164,10 +164,10 @@ describe('Contracts: Ensures (Postconditions)', () => {
                     ensures: (_self, old, result) => result.size === old.size + 1
                 })({
                     Empty({}, val) {
-                        return Stack.Push({ value: val, rest: Stack.Empty });
+                        return family.Push({ value: val, rest: family.Empty });
                     },
                     Push({ rest }, val) {
-                        return Stack.Push({ value: this.value, rest: rest(val) });
+                        return family.Push({ value: this.value, rest: rest(val) });
                     }
                 })
             }));
@@ -179,10 +179,10 @@ describe('Contracts: Ensures (Postconditions)', () => {
         });
 
         it('should throw EnsuresError when size invariant is violated', () => {
-            const Stack = data(({ Family }) => ({
+            const Stack = data(({ family }) => ({
                 Empty: {},
-                Push: { value: Number, rest: Family }
-            })).ops(({ fold, unfold, map, merge, Family }) => ({
+                Push: { value: Number, rest: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
                 size: fold({ out: Number })({
                     Empty() { return 0; },
                     Push({ rest }) { return 1 + rest; }
@@ -191,7 +191,7 @@ describe('Contracts: Ensures (Postconditions)', () => {
                     in: Number,
                     ensures: (_self, old, result) => result.size === old.size + 1
                 })({
-                    Empty() { return Stack.Empty; }, // broken: doesn't actually append
+                    Empty() { return family.Empty; }, // broken: doesn't actually append
                     Push() { return this; }
                 })
             }));

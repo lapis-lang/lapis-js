@@ -21,10 +21,10 @@ import { data, behavior, history, extend } from '../index.mjs';
 // Base ADTs — variants + unfold defined once, inherited by all children
 // ---------------------------------------------------------------------------
 
-const BaseNat = data(({ Family }) => ({
+const BaseNat = data(({ family }) => ({
     Zero: {},
-    Succ: { pred: Family }
-})).ops(({ fold, unfold, map, merge, Family }) => ({
+    Succ: { pred: family }
+})).ops(({ fold, unfold, map, merge, family }) => ({
     FromValue: unfold({ in: Number })({
         Zero: (n) => (n <= 0 ? {} : null),
         Succ: (n) => (n > 0 ? { pred: n - 1 } : null)
@@ -38,10 +38,10 @@ const BaseNat = data(({ Family }) => ({
     })
 }));
 
-const BaseList = data(({ Family }) => ({
+const BaseList = data(({ family }) => ({
     Nil: {},
-    Cons: { head: Number, tail: Family }
-})).ops(({ fold, unfold, map, merge, Family }) => ({
+    Cons: { head: Number, tail: family }
+})).ops(({ fold, unfold, map, merge, family }) => ({
     FromArray: unfold({ in: Array })({
         Nil: (arr) => (arr.length === 0 ? {} : null),
         Cons: (arr) => (arr.length > 0 ? { head: arr[0], tail: arr.slice(1) } : null)
@@ -150,10 +150,10 @@ describe('Histomorphism (Data)', () => {
 
     describe('Multi-field recursive variant', () => {
         test('binary tree with history on both children', () => {
-            const Tree = data(({ Family }) => ({
+            const Tree = data(({ family }) => ({
                 Leaf: { value: Number },
-                Node: { left: Family, right: Family }
-            })).ops(({ fold, unfold, map, merge, Family }) => ({
+                Node: { left: family, right: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
                 sumHisto: fold({ history: true, out: Number })({
                     Leaf({ value }) { return value; },
                     Node({ left, right, [history]: h }) {
@@ -183,10 +183,10 @@ describe('Histomorphism (Data)', () => {
         });
 
         test('tree history gives access to grandchild fold results', () => {
-            const Tree = data(({ Family }) => ({
+            const Tree = data(({ family }) => ({
                 Leaf: { value: Number },
-                Node: { left: Family, right: Family }
-            })).ops(({ fold, unfold, map, merge, Family }) => ({
+                Node: { left: family, right: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
                 check: fold({ history: true, out: Number })({
                     Leaf({ value }) { return value; },
                     Node({ left, right, [history]: h }) {
@@ -326,11 +326,11 @@ describe('Histomorphism (Data)', () => {
 describe('Histomorphism (Behavior)', () => {
     describe('Stream with history', () => {
         test('fold with history can look ahead into stream observations', () => {
-            const Stream = behavior(({ Self }) => ({
+            const Stream = behavior(({ self }) => ({
                 head: Number,
-                tail: Self
-            })).ops(({ fold, unfold, map, merge, Self }) => ({
-                From: unfold({ in: Number, out: Self })({
+                tail: self
+            })).ops(({ fold, unfold, map, merge, self }) => ({
+                From: unfold({ in: Number, out: self })({
                     head: (n: number) => n,
                     tail: (n: number) => n + 1
                 }),
@@ -358,11 +358,11 @@ describe('Histomorphism (Behavior)', () => {
         });
 
         test('fold without history on behavior works unchanged', () => {
-            const Stream = behavior(({ Self }) => ({
+            const Stream = behavior(({ self }) => ({
                 head: Number,
-                tail: Self
-            })).ops(({ fold, unfold, map, merge, Self }) => ({
-                From: unfold({ in: Number, out: Self })({
+                tail: self
+            })).ops(({ fold, unfold, map, merge, self }) => ({
+                From: unfold({ in: Number, out: self })({
                     head: (n: number) => n,
                     tail: (n: number) => n + 1
                 }),
@@ -376,11 +376,11 @@ describe('Histomorphism (Behavior)', () => {
         });
 
         test('behavior history has [history] for recursive sub-observations', () => {
-            const Stream = behavior(({ Self }) => ({
+            const Stream = behavior(({ self }) => ({
                 head: Number,
-                tail: Self
-            })).ops(({ fold, unfold, map, merge, Self }) => ({
-                From: unfold({ in: Number, out: Self })({
+                tail: self
+            })).ops(({ fold, unfold, map, merge, self }) => ({
+                From: unfold({ in: Number, out: self })({
                     head: (n: number) => n,
                     tail: (n: number) => n + 1
                 }),

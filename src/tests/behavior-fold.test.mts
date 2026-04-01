@@ -7,7 +7,7 @@
  * - Behavior fold: top-down, single `_` handler for the observation product (product type)
  *
  * Key design: the `_` handler receives destructured observations.
- * Continuations (Self) are wrapped as fold-functions (...params) => result.
+ * Continuations (self) are wrapped as fold-functions (...params) => result.
  * Not calling a continuation IS the base case (dual to the Nil handler in data fold).
  */
 
@@ -17,11 +17,11 @@ import { behavior } from '../index.mjs';
 
 describe('Behavior Fold - Basic', () => {
     it('should take N elements from an infinite stream', () => {
-        const Stream = behavior(({ Self, T }) => ({
-            head: T,
-            tail: Self(T)
-        })).ops(({ fold, unfold, map, merge, Self, T }) => ({
-            From: unfold({ in: Number, out: Self })({
+        const Stream = behavior(self => ({
+            head: Object,
+            tail: self
+        })).ops(({ fold, unfold, map, merge, self }) => ({
+            From: unfold({ in: Number, out: self })({
                 head: (n) => n,
                 tail: (n) => n + 1
             }),
@@ -38,11 +38,11 @@ describe('Behavior Fold - Basic', () => {
     });
 
     it('should sum N elements of an infinite stream', () => {
-        const Stream = behavior(({ Self, T }) => ({
-            head: T,
-            tail: Self(T)
-        })).ops(({ fold, unfold, map, merge, Self, T }) => ({
-            From: unfold({ in: Number, out: Self })({
+        const Stream = behavior(self => ({
+            head: Object,
+            tail: self
+        })).ops(({ fold, unfold, map, merge, self }) => ({
+            From: unfold({ in: Number, out: self })({
                 head: (n) => n,
                 tail: (n) => n + 1
             }),
@@ -59,11 +59,11 @@ describe('Behavior Fold - Basic', () => {
     });
 
     it('should extract the nth element', () => {
-        const Stream = behavior(({ Self, T }) => ({
-            head: T,
-            tail: Self(T)
-        })).ops(({ fold, unfold, map, merge, Self, T }) => ({
-            From: unfold({ in: Number, out: Self })({
+        const Stream = behavior(self => ({
+            head: Object,
+            tail: self
+        })).ops(({ fold, unfold, map, merge, self }) => ({
+            From: unfold({ in: Number, out: self })({
                 head: (n) => n,
                 tail: (n) => n + 1
             }),
@@ -81,12 +81,12 @@ describe('Behavior Fold - Basic', () => {
 
 describe('Behavior Fold - Parameterless (Getter)', () => {
     it('should install a parameterless fold as a getter', () => {
-        const Countdown = behavior(({ Self }) => ({
+        const Countdown = behavior(({ self }) => ({
             value: Number,
-            next: Self,
+            next: self,
             done: Boolean
-        })).ops(({ fold, unfold, map, merge, Self }) => ({
-            Create: unfold({ in: Number, out: Self })({
+        })).ops(({ fold, unfold, map, merge, self }) => ({
+            Create: unfold({ in: Number, out: self })({
                 value: (n) => n,
                 next: (n) => n - 1,
                 done: (n) => n <= 0
@@ -102,12 +102,12 @@ describe('Behavior Fold - Parameterless (Getter)', () => {
     });
 
     it('collects an empty countdown', () => {
-        const Countdown = behavior(({ Self }) => ({
+        const Countdown = behavior(({ self }) => ({
             value: Number,
-            next: Self,
+            next: self,
             done: Boolean
-        })).ops(({ fold, unfold, map, merge, Self }) => ({
-            Create: unfold({ in: Number, out: Self })({
+        })).ops(({ fold, unfold, map, merge, self }) => ({
+            Create: unfold({ in: Number, out: self })({
                 value: (n) => n,
                 next: (n) => n - 1,
                 done: (n) => n <= 0
@@ -123,11 +123,11 @@ describe('Behavior Fold - Parameterless (Getter)', () => {
 
 describe('Behavior Fold - Multiple Operations', () => {
     it('should support multiple fold operations on the same type', () => {
-        const Stream = behavior(({ Self, T }) => ({
-            head: T,
-            tail: Self(T)
-        })).ops(({ fold, unfold, map, merge, Self, T }) => ({
-            From: unfold({ in: Number, out: Self })({
+        const Stream = behavior(self => ({
+            head: Object,
+            tail: self
+        })).ops(({ fold, unfold, map, merge, self }) => ({
+            From: unfold({ in: Number, out: self })({
                 head: (n) => n,
                 tail: (n) => n + 1
             }),
@@ -151,11 +151,11 @@ describe('Behavior Fold - Multiple Operations', () => {
 
 describe('Behavior Fold - Duality with Data Fold', () => {
     it('base case: not calling continuation returns the base value', () => {
-        const Stream = behavior(({ Self, T }) => ({
-            head: T,
-            tail: Self(T)
-        })).ops(({ fold, unfold, map, merge, Self, T }) => ({
-            From: unfold({ in: Number, out: Self })({
+        const Stream = behavior(self => ({
+            head: Object,
+            tail: self
+        })).ops(({ fold, unfold, map, merge, self }) => ({
+            From: unfold({ in: Number, out: self })({
                 head: (n) => n,
                 tail: (n) => n + 1
             }),
@@ -170,11 +170,11 @@ describe('Behavior Fold - Duality with Data Fold', () => {
     });
 
     it('fold from a non-zero seed', () => {
-        const Stream = behavior(({ Self, T }) => ({
-            head: T,
-            tail: Self(T)
-        })).ops(({ fold, unfold, map, merge, Self, T }) => ({
-            From: unfold({ in: Number, out: Self })({
+        const Stream = behavior(self => ({
+            head: Object,
+            tail: self
+        })).ops(({ fold, unfold, map, merge, self }) => ({
+            From: unfold({ in: Number, out: self })({
                 head: (n) => n * 2,
                 tail: (n) => n + 1
             }),
@@ -191,11 +191,11 @@ describe('Behavior Fold - Duality with Data Fold', () => {
 
 describe('Behavior Fold - Fibonacci Stream', () => {
     it('should fold over a fibonacci stream correctly', () => {
-        const Stream = behavior(({ Self, T }) => ({
-            head: T,
-            tail: Self(T)
-        })).ops(({ fold, unfold, map, merge, Self, T }) => ({
-            Fib: unfold({ in: Object, out: Self })({
+        const Stream = behavior(self => ({
+            head: Object,
+            tail: self
+        })).ops(({ fold, unfold, map, merge, self }) => ({
+            Fib: unfold({ in: Object, out: self })({
                 // @ts-expect-error -- intentional type violation for test
                 head: ({ a }) => a,
                 // @ts-expect-error -- intentional type violation for test
@@ -213,11 +213,11 @@ describe('Behavior Fold - Fibonacci Stream', () => {
 
 describe('Behavior Fold - Tail-call accumulator style', () => {
     it('supports accumulator-passing style for deep folds', () => {
-        const Stream = behavior(({ Self, T }) => ({
-            head: T,
-            tail: Self(T)
-        })).ops(({ fold, unfold, map, merge, Self, T }) => ({
-            From: unfold({ in: Number, out: Self })({
+        const Stream = behavior(self => ({
+            head: Object,
+            tail: self
+        })).ops(({ fold, unfold, map, merge, self }) => ({
+            From: unfold({ in: Number, out: self })({
                 head: (n) => n,
                 tail: (n) => n + 1
             }),
@@ -234,10 +234,10 @@ describe('Behavior Fold - Tail-call accumulator style', () => {
 describe('Behavior Fold - Validation', () => {
     it('should throw if fold handler is not a function', () => {
         assert.throws(() => {
-            behavior(({ Self }) => ({
+            behavior(({ self }) => ({
                 head: Number,
-                tail: Self
-            })).ops(({ fold, unfold, map, merge, Self }) => ({
+                tail: self
+            })).ops(({ fold, unfold, map, merge, self }) => ({
                 bad: fold({ in: Number, out: Number })({})
             }));
         }, /handler/);
@@ -245,10 +245,10 @@ describe('Behavior Fold - Validation', () => {
 
     it('should throw if fold name is not camelCase', () => {
         assert.throws(() => {
-            behavior(({ Self }) => ({
+            behavior(({ self }) => ({
                 head: Number,
-                tail: Self
-            })).ops(({ fold, unfold, map, merge, Self }) => ({
+                tail: self
+            })).ops(({ fold, unfold, map, merge, self }) => ({
                 BadFold: fold({ in: Number, out: Number })({
                     _: ({ head, tail }, n) => n > 0 ? head + tail(n - 1) : 0
                 })

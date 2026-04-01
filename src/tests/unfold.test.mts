@@ -5,18 +5,18 @@ import * as assert from 'node:assert/strict';
 describe('Unfold Operations', () => {
     describe('Basic unfold', () => {
         it('should create a countdown list from a number', () => {
-            const List = data(({ Family }) => ({
+            const List = data(({ family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family }
-            })).ops(({ fold, unfold, map, merge, Family }) => ({
-                Counter: unfold({ in: Number, out: Family })({
+                Cons: { head: Number, tail: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
+                Counter: unfold({ in: Number, out: family })({
                     Nil: n => (n <= 0 ? {} : null),
                     Cons: n => (n > 0 ? { head: n, tail: n - 1 } : null)
                 })
             }));
 
             // Test it
-            const result = List.Counter(5);
+            const result: any = List.Counter(5);
 
             assert.ok(result !== undefined);
             assert.strictEqual(result.head, 5);
@@ -29,11 +29,11 @@ describe('Unfold Operations', () => {
         });
 
         it('should create an empty list when seed is 0', () => {
-            const List = data(({ Family }) => ({
+            const List = data(({ family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family }
-            })).ops(({ fold, unfold, map, merge, Family }) => ({
-                Counter: unfold({ in: Number, out: Family })({
+                Cons: { head: Number, tail: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
+                Counter: unfold({ in: Number, out: family })({
                     Nil: n => (n <= 0 ? {} : null),
                     Cons: n => (n > 0 ? { head: n, tail: n - 1 } : null)
                 })
@@ -47,15 +47,15 @@ describe('Unfold Operations', () => {
 
     describe('Multiple unfolds', () => {
         it('should support defining multiple unfold constructors', () => {
-            const List = data(({ Family }) => ({
+            const List = data(({ family }) => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family }
-            })).ops(({ fold, unfold, map, merge, Family }) => ({
-                Counter: unfold({ in: Number, out: Family })({
+                Cons: { head: Number, tail: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
+                Counter: unfold({ in: Number, out: family })({
                     Nil: n => (n <= 0 ? {} : null),
                     Cons: n => (n > 0 ? { head: n, tail: n - 1 } : null)
                 }),
-                Range: unfold({ in: Number, out: Family })({
+                Range: unfold({ in: Number, out: family })({
                     Nil: n => (n <= 0 ? {} : null),
                     Cons: n => (n > 0 ? { head: 1, tail: n - 1 } : null)
                 })
@@ -77,11 +77,11 @@ describe('Unfold Operations', () => {
         it('should reject lowercase unfold names', () => {
             assert.throws(
                 () => {
-                    data(({ Family }) => ({
+                    data(({ family }) => ({
                         Nil: {},
-                        Cons: { head: Number, tail: Family }
-                    })).ops(({ fold, unfold, map, merge, Family }) => ({
-                        counter: unfold({ in: Number, out: Family })({
+                        Cons: { head: Number, tail: family }
+                    })).ops(({ fold, unfold, map, merge, family }) => ({
+                        counter: unfold({ in: Number, out: family })({
                             Nil: n => (n <= 0 ? {} : null),
                             Cons: n => (n > 0 ? { head: n, tail: n - 1 } : null)
                         })
@@ -95,12 +95,12 @@ describe('Unfold Operations', () => {
 
     describe('Case evaluation order', () => {
         it('should evaluate cases in declaration order and use first non-null', () => {
-            const Num = data(({ Family }) => ({
+            const Num = data(({ family }) => ({
                 Zero: {},
                 Positive: { value: Number },
                 Negative: { value: Number }
-            })).ops(({ fold, unfold, map, merge, Family }) => ({
-                FromInt: unfold({ in: Number, out: Family })({
+            })).ops(({ fold, unfold, map, merge, family }) => ({
+                FromInt: unfold({ in: Number, out: family })({
                     Zero: n => (n === 0 ? {} : null),
                     Positive: n => (n > 0 ? { value: n } : null),
                     Negative: n => (n < 0 ? { value: n } : null)

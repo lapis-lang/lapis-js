@@ -36,21 +36,21 @@ function asClass(p: unknown): abstract new () => unknown {
 // Fixtures
 // =============================================================================
 
-const Semigroup = protocol(({ Family, fold: f }) => ({
-    combine: f({ in: Family, out: Family })
+const Semigroup = protocol(({ family, fold: f }) => ({
+    combine: f({ in: family, out: family })
 }));
 
-const Monoid = protocol(({ Family, fold: f, unfold: u }) => ({
+const Monoid = protocol(({ family, fold: f, unfold: u }) => ({
     [extend]: Semigroup,
-    Identity: u({ out: Family })
+    Identity: u({ out: family })
 }));
 
-const Group = protocol(({ Family, fold: f }) => ({
+const Group = protocol(({ family, fold: f }) => ({
     [extend]: Monoid,
-    inverse: f({ out: Family })
+    inverse: f({ out: family })
 }));
 
-const CommutativeMonoid = protocol(({ Family, fold: f }) => ({
+const CommutativeMonoid = protocol(({ family, fold: f }) => ({
     [extend]: Monoid
     // no new ops — just the commutative law annotation (handled via [properties] elsewhere)
 }));
@@ -61,7 +61,7 @@ const CommutativeMonoid = protocol(({ Family, fold: f }) => ({
 
 describe('multi-parent protocol [extend]', () => {
     it('parentProtocols array has both parents', () => {
-        const AbelianGroup = protocol(({ Family, fold: f }) => ({
+        const AbelianGroup = protocol(({ family, fold: f }) => ({
             [extend]: [Group, CommutativeMonoid]
         }));
 
@@ -71,7 +71,7 @@ describe('multi-parent protocol [extend]', () => {
     });
 
     it('parentProtocol is the first parent (backward compat)', () => {
-        const AbelianGroup = protocol(({ Family, fold: f }) => ({
+        const AbelianGroup = protocol(({ family, fold: f }) => ({
             [extend]: [Group, CommutativeMonoid]
         }));
 
@@ -79,7 +79,7 @@ describe('multi-parent protocol [extend]', () => {
     });
 
     it('requiredOps is the union of both parents\' ops (including grandparents)', () => {
-        const AbelianGroup = protocol(({ Family, fold: f }) => ({
+        const AbelianGroup = protocol(({ family, fold: f }) => ({
             [extend]: [Group, CommutativeMonoid]
         }));
 
@@ -92,9 +92,9 @@ describe('multi-parent protocol [extend]', () => {
     });
 
     it('child can add new ops on top of multi-parent inheritance', () => {
-        const Ring = protocol(({ Family, fold: f }) => ({
+        const Ring = protocol(({ family, fold: f }) => ({
             [extend]: [Group, CommutativeMonoid],
-            multiply: f({ in: Family, out: Family })
+            multiply: f({ in: family, out: family })
         }));
 
         assert.ok(Ring.requiredOps.has('combine'));
@@ -105,9 +105,9 @@ describe('multi-parent protocol [extend]', () => {
     });
 
     it('single-element array is equivalent to a plain single-parent [extend]', () => {
-        const MonoidArr = protocol(({ Family, fold: f, unfold: u }) => ({
+        const MonoidArr = protocol(({ family, fold: f, unfold: u }) => ({
             [extend]: [Semigroup],
-            Identity: u({ out: Family })
+            Identity: u({ out: family })
         }));
 
         assert.strictEqual(MonoidArr.parentProtocols.length, 1);
@@ -117,7 +117,7 @@ describe('multi-parent protocol [extend]', () => {
     });
 
     it('zero-parent (no [extend]) gives empty parentProtocols', () => {
-        const Standalone = protocol(({ Family, fold: f }) => ({
+        const Standalone = protocol(({ family, fold: f }) => ({
             check: f({ out: Boolean })
         }));
 
@@ -127,7 +127,7 @@ describe('multi-parent protocol [extend]', () => {
 
     it('throws TypeError when [extend] contains a non-protocol value', () => {
         assert.throws(
-            () => protocol(({ Family, fold: f }) => ({
+            () => protocol(({ family, fold: f }) => ({
                 [extend]: [Semigroup, 42 as unknown as typeof Semigroup],
                 extra: f({ out: Boolean })
             })),
@@ -137,42 +137,53 @@ describe('multi-parent protocol [extend]', () => {
 });
 
 // =============================================================================
-// 2. requiredTypeParams union from all parents
+// 2. multi-parent protocol [extend] merges ops from all parents
 // =============================================================================
 
-describe('requiredTypeParams union across parents', () => {
-    it('unions type params from two parents', () => {
-        const PA = protocol(({ T, Family, fold: f }) => ({
-            first: f({ out: Family })
+describe('multi-parent protocol [extend] merges ops', () => {
+    it('child protocol exposes ops from both parents', () => {
+        const PA = protocol(({ family, fold: f }) => ({
+            first: f({ out: family })
         }));
 
-        const PB = protocol(({ U, Family, fold: f }) => ({
-            second: f({ out: Family })
+        const PB = protocol(({ family, fold: f }) => ({
+            second: f({ out: family })
         }));
 
-        const Child = protocol(({ Family, fold: f }) => ({
+        const Child = protocol(({ family, fold: f }) => ({
             [extend]: [PA, PB]
         }));
 
-        assert.ok(Child.requiredTypeParams.has('T'));
-        assert.ok(Child.requiredTypeParams.has('U'));
+        // An ADT satisfying Child must also satisfy PA and PB
+        const Impl = data(family => ({
+            [satisfies]: [Child],
+            Val: { n: Number }
+        })).ops(({ fold, family }) => ({
+            first: fold({ out: family })({ Val() { return this; } }),
+            second: fold({ out: family })({ Val() { return this; } })
+        }));
+
+        const v = Impl.Val({ n: 1 });
+        assert.ok(v instanceof PA);
+        assert.ok(v instanceof PB);
+        assert.ok(v instanceof Child);
     });
 
-    it('does not duplicate type params appearing in both parents', () => {
-        const PA = protocol(({ T, Family, fold: f }) => ({
-            first: f({ out: Family })
+    it('child protocol with same op from two parents merges silently', () => {
+        const PA = protocol(({ family, fold: f }) => ({
+            size: f({ out: Number })
         }));
 
-        const PB = protocol(({ T, Family, fold: f }) => ({
-            second: f({ out: Family })
+        const PB = protocol(({ family, fold: f }) => ({
+            size: f({ out: Number })
         }));
 
-        const Child = protocol(({ Family, fold: f }) => ({
-            [extend]: [PA, PB]
-        }));
-
-        // T appears in both but requiredTypeParams is a Set — should be one entry
-        assert.strictEqual([...Child.requiredTypeParams].filter(x => x === 'T').length, 1);
+        // Same-named identical op from both parents: should not throw
+        assert.doesNotThrow(() => {
+            protocol(({ family, fold: f }) => ({
+                [extend]: [PA, PB]
+            }));
+        });
     });
 });
 
@@ -184,7 +195,7 @@ describe('diamond protocol resolution', () => {
     it('identical op from two paths merges silently (no error)', () => {
         // Both Group and CommutativeMonoid inherit `combine` from Monoid (same kind)
         assert.doesNotThrow(() => {
-            protocol(({ Family, fold: f }) => ({
+            protocol(({ family, fold: f }) => ({
                 [extend]: [Group, CommutativeMonoid]
             }));
         });
@@ -194,16 +205,16 @@ describe('diamond protocol resolution', () => {
         // Two independent protocols both declare `transform: fold({ in: T, out: T })`.
         // The T markers have different object identities (separate protocol() calls)
         // but the same param name, so typeRefEqual must treat them as equal.
-        const PA = protocol(({ T, Family, fold: f }) => ({
+        const PA = protocol(({ T, family, fold: f }) => ({
             transform: f({ in: T, out: T })
         }));
 
-        const PB = protocol(({ T, Family, fold: f }) => ({
+        const PB = protocol(({ T, family, fold: f }) => ({
             transform: f({ in: T, out: T })
         }));
 
         assert.doesNotThrow(() => {
-            protocol(({ Family, fold: f }) => ({
+            protocol(({ family, fold: f }) => ({
                 [extend]: [PA, PB]
             }));
         });
@@ -212,11 +223,11 @@ describe('diamond protocol resolution', () => {
     it('properties are unioned when same op comes from two paths', () => {
         // PA uses the same in/out shape as Semigroup.combine so the specs are
         // compatible and merge silently (both FamilyRef values normalise as equal).
-        const PA = protocol(({ Family, fold: f }) => ({
-            combine: f({ in: Family, out: Family })
+        const PA = protocol(({ family, fold: f }) => ({
+            combine: f({ in: family, out: family })
         }));
 
-        const Child = protocol(({ Family, fold: f }) => ({
+        const Child = protocol(({ family, fold: f }) => ({
             [extend]: [PA, Semigroup]
         }));
 
@@ -225,22 +236,22 @@ describe('diamond protocol resolution', () => {
 
     it('throws when same op name appears with different kinds in two parents', () => {
         // Create two protocols where 'foo' has different kinds
-        const PA = protocol(({ Family, fold: f }) => ({
+        const PA = protocol(({ family, fold: f }) => ({
             foo: f({ out: Boolean })   // kind = 'fold'
         }));
 
-        const PB = protocol(({ Family, unfold: u }) => ({
-            Foo: u({ out: Family })    // kind = 'unfold'
+        const PB = protocol(({ family, unfold: u }) => ({
+            Foo: u({ out: family })    // kind = 'unfold'
         }));
 
         // Add a fold 'foo' to PB by creating a bridge protocol
-        const PBWithFoo = protocol(({ Family, map: m }) => ({
+        const PBWithFoo = protocol(({ family, map: m }) => ({
             [extend]: PB,
-            foo: m({ out: Family })    // kind = 'map' — conflicts with PA's 'fold'
+            foo: m({ out: family })    // kind = 'map' — conflicts with PA's 'fold'
         }));
 
         assert.throws(
-            () => protocol(({ Family, fold: f }) => ({
+            () => protocol(({ family, fold: f }) => ({
                 [extend]: [PA, PBWithFoo]
             })),
             (e: Error) => e instanceof TypeError && e.message.includes("'foo'")
@@ -248,15 +259,15 @@ describe('diamond protocol resolution', () => {
     });
 
     it('throws when same-kind op has incompatible out types in two parents', () => {
-        const PA = protocol(({ Family, fold: f }) => ({
+        const PA = protocol(({ family, fold: f }) => ({
             foo: f({ out: Boolean })   // out = Boolean
         }));
-        const PB = protocol(({ Family, fold: f }) => ({
+        const PB = protocol(({ family, fold: f }) => ({
             foo: f({ out: Number })    // out = Number — incompatible!
         }));
 
         assert.throws(
-            () => protocol(({ Family, fold: f }) => ({
+            () => protocol(({ family, fold: f }) => ({
                 [extend]: [PA, PB]
             })),
             (e: Error) =>
@@ -267,15 +278,15 @@ describe('diamond protocol resolution', () => {
     });
 
     it('throws when same-kind op has incompatible in types in two parents', () => {
-        const PA = protocol(({ Family, fold: f }) => ({
-            bar: f({ in: Family, out: Boolean })
+        const PA = protocol(({ family, fold: f }) => ({
+            bar: f({ in: family, out: Boolean })
         }));
-        const PB = protocol(({ Family, fold: f }) => ({
+        const PB = protocol(({ family, fold: f }) => ({
             bar: f({ out: Boolean })   // no 'in' — incompatible!
         }));
 
         assert.throws(
-            () => protocol(({ Family, fold: f }) => ({
+            () => protocol(({ family, fold: f }) => ({
                 [extend]: [PA, PB]
             })),
             (e: Error) =>
@@ -289,15 +300,15 @@ describe('diamond protocol resolution', () => {
         const demandA = () => true;
         const demandB = () => true; // different function reference, same shape
 
-        const PA = protocol(({ Family, fold: f }) => ({
+        const PA = protocol(({ family, fold: f }) => ({
             foo: f({ out: Boolean, demands: demandA })
         }));
-        const PB = protocol(({ Family, fold: f }) => ({
+        const PB = protocol(({ family, fold: f }) => ({
             foo: f({ out: Boolean, demands: demandB })
         }));
 
         assert.throws(
-            () => protocol(({ Family, fold: f }) => ({
+            () => protocol(({ family, fold: f }) => ({
                 [extend]: [PA, PB]
             })),
             (e: Error) =>
@@ -310,30 +321,30 @@ describe('diamond protocol resolution', () => {
     it('merges silently when same-kind op shares the exact same contract reference', () => {
         const sharedDemand = () => true;
 
-        const PA = protocol(({ Family, fold: f }) => ({
+        const PA = protocol(({ family, fold: f }) => ({
             foo: f({ out: Boolean, demands: sharedDemand })
         }));
-        const PB = protocol(({ Family, fold: f }) => ({
+        const PB = protocol(({ family, fold: f }) => ({
             foo: f({ out: Boolean, demands: sharedDemand })
         }));
 
         assert.doesNotThrow(() => {
-            protocol(({ Family, fold: f }) => ({
+            protocol(({ family, fold: f }) => ({
                 [extend]: [PA, PB]
             }));
         });
     });
 
     it('child re-declaration resolves a same-kind spec conflict', () => {
-        const PA = protocol(({ Family, fold: f }) => ({
+        const PA = protocol(({ family, fold: f }) => ({
             foo: f({ out: Boolean })
         }));
-        const PB = protocol(({ Family, fold: f }) => ({
+        const PB = protocol(({ family, fold: f }) => ({
             foo: f({ out: Number })    // same kind, different out
         }));
 
         assert.doesNotThrow(() => {
-            protocol(({ Family, fold: f }) => ({
+            protocol(({ family, fold: f }) => ({
                 [extend]: [PA, PB],
                 foo: f({ out: Boolean })   // child re-declares, resolves the conflict
             }));
@@ -341,17 +352,17 @@ describe('diamond protocol resolution', () => {
     });
 
     it('child re-declaration resolves a kind conflict', () => {
-        const PA = protocol(({ Family, fold: f }) => ({
+        const PA = protocol(({ family, fold: f }) => ({
             foo: f({ out: Boolean })
         }));
 
-        const PBWithFoo = protocol(({ Family, map: m }) => ({
-            foo: m({ out: Family })
+        const PBWithFoo = protocol(({ family, map: m }) => ({
+            foo: m({ out: family })
         }));
 
         // Child re-declares foo — this overrides the conflict
         assert.doesNotThrow(() => {
-            protocol(({ Family, fold: f }) => ({
+            protocol(({ family, fold: f }) => ({
                 [extend]: [PA, PBWithFoo],
                 foo: f({ out: Boolean })   // child re-declares, resolves the conflict
             }));
@@ -364,24 +375,24 @@ describe('diamond protocol resolution', () => {
 // =============================================================================
 
 describe('conformance and instanceof with multi-parent protocols', () => {
-    const AbelianGroup = protocol(({ Family, fold: f }) => ({
+    const AbelianGroup = protocol(({ family, fold: f }) => ({
         [extend]: [Group, CommutativeMonoid]
     }));
 
-    const MyNum = data(({ Family }) => ({
+    const MyNum = data(({ family }) => ({
         [satisfies]: AbelianGroup,
         Num: { value: Number }
-    })).ops(({ fold: f, unfold: u, Family }) => ({
-        combine: f({ in: Family, out: Family })({
+    })).ops(({ fold: f, unfold: u, family }) => ({
+        combine: f({ in: family, out: family })({
             Num({ value }: any, other?: any) {
-                return Family.Num({ value: value + (other as { value: number }).value });
+                return family.Num({ value: value + (other as { value: number }).value });
             }
         }),
-        Identity: u({ out: Family })({
+        Identity: u({ out: family })({
             Num: () => ({ value: 0 })
         }),
-        inverse: f({ out: Family })({
-            Num: ({ value }) => Family.Num({ value: -value })
+        inverse: f({ out: family })({
+            Num: ({ value }) => family.Num({ value: -value })
         })
     }));
 
@@ -406,7 +417,7 @@ describe('conformance and instanceof with multi-parent protocols', () => {
     });
 
     it('does not satisfy an unrelated protocol', () => {
-        const Unrelated = protocol(({ Family, fold: f }) => ({
+        const Unrelated = protocol(({ family, fold: f }) => ({
             foo: f({ out: Boolean })
         }));
 
@@ -420,20 +431,20 @@ describe('conformance and instanceof with multi-parent protocols', () => {
 
 describe('missing ops from multi-parent protocol', () => {
     it('throws when missing an op inherited from the second parent', () => {
-        const PA = protocol(({ Family, fold: f }) => ({
+        const PA = protocol(({ family, fold: f }) => ({
             aOp: f({ out: Boolean })
         }));
 
-        const PB = protocol(({ Family, fold: f }) => ({
+        const PB = protocol(({ family, fold: f }) => ({
             bOp: f({ out: Number })
         }));
 
-        const AB = protocol(({ Family, fold: f }) => ({
+        const AB = protocol(({ family, fold: f }) => ({
             [extend]: [PA, PB]
         }));
 
         assert.throws(
-            () => data(({ Family }) => ({
+            () => data(({ family }) => ({
                 [satisfies]: AB,
                 X: {}
             })).ops(({ fold: f }) => ({
@@ -450,24 +461,24 @@ describe('missing ops from multi-parent protocol', () => {
 // =============================================================================
 
 describe('behavior() with multi-parent protocol', () => {
-    const Observable = protocol(({ Self, fold: f }) => ({
+    const Observable = protocol(({ self, fold: f }) => ({
         subscribe: f({ out: Boolean })
     }));
 
-    const Printable = protocol(({ Self, fold: f }) => ({
+    const Printable = protocol(({ self, fold: f }) => ({
         print: f({ out: String })
     }));
 
-    const PrintableObservable = protocol(({ Self, fold: f }) => ({
+    const PrintableObservable = protocol(({ self, fold: f }) => ({
         [extend]: [Observable, Printable]
     }));
 
     it('behavior satisfying multi-parent protocol passes instanceof checks', () => {
-        const Counter = behavior(({ Self }) => ({
+        const Counter = behavior(({ self }) => ({
             [satisfies]: PrintableObservable,
             value: Number
-        })).ops(({ fold: f, unfold: u, Self }) => ({
-            From: u({ in: Number, out: Self })({
+        })).ops(({ fold: f, unfold: u, self }) => ({
+            From: u({ in: Number, out: self })({
                 value: (n: number) => n
             }),
             subscribe: f({ out: Boolean })({
@@ -491,22 +502,22 @@ describe('behavior() with multi-parent protocol', () => {
 
 describe('[invariant] with multi-parent protocols', () => {
     it('validates invariants from both parents', () => {
-        const PA = protocol(({ Family, fold: f }) => ({
+        const PA = protocol(({ family, fold: f }) => ({
             [invariant]: (_type: unknown) => true,  // always passes
             aOp: f({ out: Boolean })
         }));
 
-        const PB = protocol(({ Family, fold: f }) => ({
+        const PB = protocol(({ family, fold: f }) => ({
             [invariant]: (_type: unknown) => false, // always fails
             bOp: f({ out: Number })
         }));
 
-        const AB = protocol(({ Family, fold: f }) => ({
+        const AB = protocol(({ family, fold: f }) => ({
             [extend]: [PA, PB]
         }));
 
         assert.throws(
-            () => data(({ Family }) => ({
+            () => data(({ family }) => ({
                 [satisfies]: AB,
                 X: {}
             })).ops(({ fold: f }) => ({
@@ -518,22 +529,22 @@ describe('[invariant] with multi-parent protocols', () => {
     });
 
     it('passes when both parent invariants pass', () => {
-        const PA = protocol(({ Family, fold: f }) => ({
+        const PA = protocol(({ family, fold: f }) => ({
             [invariant]: (_type: unknown) => true,
             aOp: f({ out: Boolean })
         }));
 
-        const PB = protocol(({ Family, fold: f }) => ({
+        const PB = protocol(({ family, fold: f }) => ({
             [invariant]: (_type: unknown) => true,
             bOp: f({ out: Number })
         }));
 
-        const AB = protocol(({ Family, fold: f }) => ({
+        const AB = protocol(({ family, fold: f }) => ({
             [extend]: [PA, PB]
         }));
 
         assert.doesNotThrow(
-            () => data(({ Family }) => ({
+            () => data(({ family }) => ({
                 [satisfies]: AB,
                 X: {}
             })).ops(({ fold: f }) => ({

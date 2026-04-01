@@ -13,11 +13,11 @@ import { behavior, extend, behaviorObservers, data } from '../index.mjs';
 // Shared base behaviors used across multiple test groups
 // ---------------------------------------------------------------------------
 
-const BaseStream = behavior(({ Self, T }) => ({
-    head: T,
-    tail: Self
-})).ops(({ fold, unfold, map, merge, Self, T }) => ({
-    From: unfold({ in: Number, out: Self })({
+const BaseStream = behavior(self => ({
+    head: Object,
+    tail: self
+})).ops(({ fold, unfold, map, merge, self }) => ({
+    From: unfold({ in: Number, out: self })({
         head: (n) => n,
         tail: (n) => n + 1
     }),
@@ -33,66 +33,46 @@ const BaseStream = behavior(({ Self, T }) => ({
 
 describe('behavior [extend] — instanceof and observer inheritance', () => {
     it('creates a child behavior without extra observers', () => {
-        const ChildStream = behavior(({ Self, T }) => ({
+        const ChildStream = behavior(self => ({
             [extend]: BaseStream
-        })).ops(({ fold, unfold, map, merge, Self, T }) => ({
-            Repeat: unfold({ in: T, out: Self })({
+        })).ops(({ fold, unfold, map, merge, self }) => ({
+            Repeat: unfold({ in: Object, out: self })({
                 head: (v) => v,
                 tail: (v) => v
             })
         }));
 
-        const s = ChildStream({ T: Number }).Repeat(42);
+        const s: any = ChildStream.Repeat(42);
         assert.equal(s.head, 42);
         assert.equal(s.tail.head, 42);
     });
 
-    it('child instance is instanceof child behavior (non-parameterized)', () => {
-        const Base = behavior(({ Self }) => ({
+    it('child instance is instanceof parent and child behaviors (non-parameterized)', () => {
+        const Base = behavior(({ self }) => ({
             value: Number
-        })).ops(({ fold, unfold, map, merge, Self }) => ({
-            Next: unfold({ in: Number, out: Self })({
+        })).ops(({ fold, unfold, map, merge, self }) => ({
+            Next: unfold({ in: Number, out: self })({
                 value: (n) => n
             })
         }));
-        const Child = behavior(({ Self }) => ({
+        const Child = behavior(({ self }) => ({
             [extend]: Base
-        })).ops(({ fold, unfold, map, merge, Self }) => ({
-            Next2: unfold({ in: Number, out: Self })({
+        })).ops(({ fold, unfold, map, merge, self }) => ({
+            Next2: unfold({ in: Number, out: self })({
                 value: (n) => n
             })
         }));
 
-        const s = Child.Next2(42);
-        assert.equal(s instanceof Child, true);
-    });
-
-    it('child instance is instanceof parent behavior (non-parameterized)', () => {
-        const Base = behavior(({ Self }) => ({
-            value: Number
-        })).ops(({ fold, unfold, map, merge, Self }) => ({
-            Next: unfold({ in: Number, out: Self })({
-                value: (n) => n
-            })
-        }));
-        const Child = behavior(({ Self }) => ({
-            [extend]: Base
-        })).ops(({ fold, unfold, map, merge, Self }) => ({
-            Next2: unfold({ in: Number, out: Self })({
-                value: (n) => n
-            })
-        }));
-
-        const s = Child.Next2(42);
-        assert.equal(s instanceof Base, true);
-        assert.equal(s instanceof Child, true);
+        const s: any = Child.Next2(42);
+        assert.equal(s instanceof (Base as any), true);
+        assert.equal(s instanceof (Child as any), true);
     });
 
     it('child inherits parent observer names', () => {
         // behaviorObservers stores the observerMap keyed on the non-parameterized proxy
-        const ChildStream = behavior(({ Self, T }) => ({
+        const ChildStream = behavior(self => ({
             [extend]: BaseStream,
-            peek: { in: Number, out: T }
+            peek: { in: Number, out: Object }
         }));
 
         const obsMap = behaviorObservers.get(ChildStream)!;
@@ -106,50 +86,50 @@ describe('behavior [extend] — instanceof and observer inheritance', () => {
 
 describe('behavior [extend] — adding new observers', () => {
     it('child can add a new simple observer', () => {
-        const LabeledStream = behavior(({ Self, T }) => ({
+        const LabeledStream = behavior(self => ({
             [extend]: BaseStream,
             label: String
-        })).ops(({ fold, unfold, map, merge, Self, T }) => ({
-            Tagged: unfold({ in: Number, out: Self })({
+        })).ops(({ fold, unfold, map, merge, self }) => ({
+            Tagged: unfold({ in: Number, out: self })({
                 head: (n) => n,
                 tail: (n) => n + 1,
                 label: () => 'tagged'
             })
         }));
 
-        const s = LabeledStream({ T: Number }).Tagged(1);
+        const s: any = LabeledStream.Tagged(1);
         assert.equal(s.head, 1);
         assert.equal(s.label, 'tagged');
         assert.equal(s.tail.head, 2);
     });
 
     it('child can add a new parametric observer', () => {
-        const IndexedStream = behavior(({ Self, T }) => ({
+        const IndexedStream = behavior(self => ({
             [extend]: BaseStream,
-            nth: { in: Number, out: T }
-        })).ops(({ fold, unfold, map, merge, Self, T }) => ({
-            FromIdx: unfold({ in: Number, out: Self })({
+            nth: { in: Number, out: Object }
+        })).ops(({ fold, unfold, map, merge, self }) => ({
+            FromIdx: unfold({ in: Number, out: self })({
                 head: (n) => n,
                 tail: (n) => n + 1,
                 nth: (n) => (i) => n + i
             })
         }));
 
-        const s = IndexedStream({ T: Number }).FromIdx(10);
+        const s = IndexedStream.FromIdx(10);
         assert.equal(s.head, 10);
         assert.equal(s.nth(3), 13);
     });
 
     it('child unfold must provide handlers for all observers (parent + new)', () => {
         assert.throws(() => {
-            const BadChild = behavior(({ Self, T }) => ({
+            const BadChild = behavior(self => ({
                 [extend]: BaseStream,
                 extra: String
-            })).ops(({ fold, unfold, map, merge, Self, T }) => ({
+            })).ops(({ fold, unfold, map, merge, self }) => ({
                 // @ts-expect-error — deliberately passing empty handlers to test runtime validation
-                Bad: unfold({ in: Number, out: Self })({})
+                Bad: unfold({ in: Number, out: self })({})
             }));
-            BadChild({ T: Number }); // trigger type setup
+            BadChild; // trigger type setup
         });
     });
 });
@@ -159,17 +139,17 @@ describe('behavior [extend] — adding new observers', () => {
 describe('behavior [extend] — parent unfold inheritance', () => {
     it('inherits parent unfold when child adds no new observers', () => {
         // Child only adds a new operation (no new observers)
-        const Base = behavior(({ Self }) => ({
+        const Base = behavior(({ self }) => ({
             value: Number
-        })).ops(({ fold, unfold, map, merge, Self }) => ({
-            FromBase: unfold({ in: Number, out: Self })({
+        })).ops(({ fold, unfold, map, merge, self }) => ({
+            FromBase: unfold({ in: Number, out: self })({
                 value: (n) => n
             })
         }));
-        const Child = behavior(({ Self }) => ({
+        const Child = behavior(({ self }) => ({
             [extend]: Base
-        })).ops(({ fold, unfold, map, merge, Self }) => ({
-            Double: unfold({ in: Number, out: Self })({
+        })).ops(({ fold, unfold, map, merge, self }) => ({
+            Double: unfold({ in: Number, out: self })({
                 value: (n) => n * 2
             })
         }));
@@ -180,18 +160,18 @@ describe('behavior [extend] — parent unfold inheritance', () => {
     });
 
     it('does NOT inherit parent unfold when child adds new observers', () => {
-        const Base = behavior(({ Self }) => ({
+        const Base = behavior(({ self }) => ({
             value: Number
-        })).ops(({ fold, unfold, map, merge, Self }) => ({
-            FromBase: unfold({ in: Number, out: Self })({
+        })).ops(({ fold, unfold, map, merge, self }) => ({
+            FromBase: unfold({ in: Number, out: self })({
                 value: (n) => n
             })
         }));
-        const Extended = behavior(({ Self }) => ({
+        const Extended = behavior(({ self }) => ({
             [extend]: Base,
             extra: String
-        })).ops(({ fold, unfold, map, merge, Self }) => ({
-            Fresh: unfold({ in: Number, out: Self })({
+        })).ops(({ fold, unfold, map, merge, self }) => ({
+            Fresh: unfold({ in: Number, out: self })({
                 value: (n) => n,
                 extra: () => 'x'
             })
@@ -203,17 +183,17 @@ describe('behavior [extend] — parent unfold inheritance', () => {
     });
 
     it('child can override a parent unfold by redeclaring it', () => {
-        const Base = behavior(({ Self }) => ({
+        const Base = behavior(({ self }) => ({
             value: Number
-        })).ops(({ fold, unfold, map, merge, Self }) => ({
-            Create: unfold({ in: Number, out: Self })({
+        })).ops(({ fold, unfold, map, merge, self }) => ({
+            Create: unfold({ in: Number, out: self })({
                 value: (n) => n
             })
         }));
-        const Child = behavior(({ Self }) => ({
+        const Child = behavior(({ self }) => ({
             [extend]: Base
-        })).ops(({ fold, unfold, map, merge, Self }) => ({
-            Create: unfold({ in: Number, out: Self })({
+        })).ops(({ fold, unfold, map, merge, self }) => ({
+            Create: unfold({ in: Number, out: self })({
                 value: (n) => n * 2
             })
         }));
@@ -222,58 +202,62 @@ describe('behavior [extend] — parent unfold inheritance', () => {
         assert.equal(s.value, 6);   // child overrides: 3 * 2
     });
 
-    it('throws when override changes in type', () => {
-        const Base = behavior(({ Self }) => ({
-            value: Number
-        })).ops(({ fold, unfold, map, merge, Self }) => ({
-            Create: unfold({ in: Number, out: Self })({
-                value: (n) => n
-            })
-        }));
-        assert.throws(
-            () => behavior(({ Self }) => ({
-                [extend]: Base
-            })).ops(({ fold, unfold, map, merge, Self }) => ({
-                Create: unfold({ in: String, out: Self })({
-                    value: (s) => s.length
-                })
-            })),
-            { message: /Cannot change unfold 'Create' input specification when overriding/ }
-        );
-    });
+    it('throws for invalid unfold override signature changes', () => {
+        const invalidOverrides = [
+            {
+                parentUnfoldSpec: { in: Number, out: 'self' as const },
+                parentValue: (n: any) => n,
+                childUnfoldSpec: { in: String, out: 'self' as const },
+                childValue: (s: any) => s.length,
+                message: /Cannot change unfold 'Create' input specification when overriding/
+            },
+            {
+                parentUnfoldSpec: { out: 'self' as const },
+                parentValue: () => 0,
+                childUnfoldSpec: { in: Number, out: 'self' as const },
+                childValue: (n: any) => n,
+                message: /Cannot change unfold 'Create' from parameterless to parameterized when overriding/
+            }
+        ];
 
-    it('throws when override adds in where parent had none', () => {
-        const Base = behavior(({ Self }) => ({
-            value: Number
-        })).ops(({ fold, unfold, map, merge, Self }) => ({
-            Create: unfold({ out: Self })({
-                value: () => 0
-            })
-        }));
-        assert.throws(
-            () => behavior(({ Self }) => ({
-                [extend]: Base
-            })).ops(({ fold, unfold, map, merge, Self }) => ({
-                Create: unfold({ in: Number, out: Self })({
-                    value: (n) => n
+        for (const c of invalidOverrides) {
+            const Base = behavior(({ self }) => ({
+                value: Number
+            })).ops(({ unfold, self }) => ({
+                Create: unfold(c.parentUnfoldSpec.in === undefined
+                    ? { out: self }
+                    : { in: c.parentUnfoldSpec.in, out: self })({
+                    value: c.parentValue
                 })
-            })),
-            { message: /Cannot change unfold 'Create' from parameterless to parameterized when overriding/ }
-        );
+            }));
+
+            assert.throws(
+                () => behavior(({ self }) => ({
+                    [extend]: Base
+                })).ops(({ unfold, self }) => ({
+                    Create: unfold(c.childUnfoldSpec.in === undefined
+                        ? { out: self }
+                        : { in: c.childUnfoldSpec.in, out: self })({
+                        value: c.childValue
+                    })
+                })),
+                { message: c.message }
+            );
+        }
     });
 
     it('inherits in from parent spec when override omits it', () => {
-        const Base = behavior(({ Self }) => ({
+        const Base = behavior(({ self }) => ({
             value: Number
-        })).ops(({ fold, unfold, map, merge, Self }) => ({
-            Create: unfold({ in: Number, out: Self })({
+        })).ops(({ fold, unfold, map, merge, self }) => ({
+            Create: unfold({ in: Number, out: self })({
                 value: (n) => n
             })
         }));
-        const Child = behavior(({ Self }) => ({
+        const Child = behavior(({ self }) => ({
             [extend]: Base
-        })).ops(({ fold, unfold, map, merge, Self }) => ({
-            Create: unfold({ out: Self })({
+        })).ops(({ fold, unfold, map, merge, self }) => ({
+            Create: unfold({ out: self })({
                 // @ts-expect-error -- intentional type violation for test
                 value: (n) => n * 2
             })
@@ -286,17 +270,17 @@ describe('behavior [extend] — parent unfold inheritance', () => {
     });
 
     it('throws when override changes out type', () => {
-        const Base = behavior(({ Self }) => ({
+        const Base = behavior(({ self }) => ({
             value: Number
-        })).ops(({ fold, unfold, map, merge, Self }) => ({
+        })).ops(({ fold, unfold, map, merge, self }) => ({
             Create: unfold({ in: Number, out: Number })({
                 value: (n) => n
             })
         }));
         assert.throws(
-            () => behavior(({ Self }) => ({
+            () => behavior(({ self }) => ({
                 [extend]: Base
-            })).ops(({ fold, unfold, map, merge, Self }) => ({
+            })).ops(({ fold, unfold, map, merge, self }) => ({
                 Create: unfold({ in: Number, out: String })({
                     // @ts-expect-error -- intentional wrong output spec for negative test
                     value: (n) => String(n)
@@ -312,20 +296,20 @@ describe('behavior [extend] — parent unfold inheritance', () => {
 describe('behavior [extend] — parent fold inheritance', () => {
     it('inherits parent fold operation', () => {
         // Base with fold op
-        const Base = behavior(({ Self }) => ({
+        const Base = behavior(({ self }) => ({
             value: Number
-        })).ops(({ fold, unfold, map, merge, Self }) => ({
-            FromBase: unfold({ in: Number, out: Self })({
+        })).ops(({ fold, unfold, map, merge, self }) => ({
+            FromBase: unfold({ in: Number, out: self })({
                 value: (n) => n
             }),
             show: fold({})({
                 _: ({ value }) => `v=${value}`
             })
         }));
-        const Child = behavior(({ Self }) => ({
+        const Child = behavior(({ self }) => ({
             [extend]: Base
-        })).ops(({ fold, unfold, map, merge, Self }) => ({
-            Double: unfold({ in: Number, out: Self })({
+        })).ops(({ fold, unfold, map, merge, self }) => ({
+            Double: unfold({ in: Number, out: self })({
                 value: (n) => n * 2
             })
         }));
@@ -339,21 +323,21 @@ describe('behavior [extend] — parent fold inheritance', () => {
 // ---------------------------------------------------------------------------
 
 describe('behavior [extend] — non-parameterized base', () => {
-    const SimpleSet = behavior(({ Self }) => ({
+    const SimpleSet = behavior(({ self }) => ({
         isEmpty: Boolean,
         member: { in: Number, out: Boolean }
-    })).ops(({ fold, unfold, map, merge, Self }) => ({
-        Empty: unfold({ out: Self })({
+    })).ops(({ fold, unfold, map, merge, self }) => ({
+        Empty: unfold({ out: self })({
             isEmpty: () => true,
             member: () => () => false
         })
     }));
 
     it('child inherits observers from non-parameterized parent', () => {
-        const EvenSet = behavior(({ Self }) => ({
+        const EvenSet = behavior(({ self }) => ({
             [extend]: SimpleSet
-        })).ops(({ fold, unfold, map, merge, Self }) => ({
-            Evens: unfold({ out: Self })({
+        })).ops(({ fold, unfold, map, merge, self }) => ({
+            Evens: unfold({ out: self })({
                 isEmpty: () => false,
                 member: () => (n) => n % 2 === 0
             })
@@ -366,25 +350,25 @@ describe('behavior [extend] — non-parameterized base', () => {
     });
 
     it('child instance is instanceof parent (non-parameterized)', () => {
-        const EvenSet = behavior(({ Self }) => ({
+        const EvenSet = behavior(({ self }) => ({
             [extend]: SimpleSet
-        })).ops(({ fold, unfold, map, merge, Self }) => ({
-            Evens: unfold({ out: Self })({
+        })).ops(({ fold, unfold, map, merge, self }) => ({
+            Evens: unfold({ out: self })({
                 isEmpty: () => false,
                 member: () => (n) => n % 2 === 0
             })
         }));
 
-        const s = EvenSet.Evens;
-        assert.equal(s instanceof SimpleSet, true);
-        assert.equal(s instanceof EvenSet, true);
+        const s: any = EvenSet.Evens;
+        assert.equal(s instanceof (SimpleSet as any), true);
+        assert.equal(s instanceof (EvenSet as any), true);
     });
 
     it('inherits parent unfold when child adds no new observers', () => {
-        const EvenSet = behavior(({ Self }) => ({
+        const EvenSet = behavior(({ self }) => ({
             [extend]: SimpleSet
-        })).ops(({ fold, unfold, map, merge, Self }) => ({
-            Evens: unfold({ out: Self })({
+        })).ops(({ fold, unfold, map, merge, self }) => ({
+            Evens: unfold({ out: self })({
                 isEmpty: () => false,
                 member: () => (n) => n % 2 === 0
             })
@@ -402,7 +386,7 @@ describe('behavior [extend] — non-parameterized base', () => {
 describe('behavior [extend] — validation', () => {
     it('throws when [extend] does not reference a behavior type', () => {
         assert.throws(
-            () => behavior(({ Self }) => ({
+            () => behavior(({ self }) => ({
                 [extend]: 'not-a-behavior',
                 observer: Boolean
             })),
@@ -413,7 +397,7 @@ describe('behavior [extend] — validation', () => {
     it('throws when [extend] references a plain class', () => {
         class Foo { }
         assert.throws(
-            () => behavior(({ Self }) => ({
+            () => behavior(({ self }) => ({
                 [extend]: Foo,
                 observer: Boolean
             })),
@@ -422,9 +406,9 @@ describe('behavior [extend] — validation', () => {
     });
 
     it('throws when [extend] references a data type', () => {
-        const MyData = data(({ T }) => ({ Foo: {} }));
+        const MyData = data(_ => ({ Foo: {} }));
         assert.throws(
-            () => behavior(({ Self }) => ({
+            () => behavior(({ self }) => ({
                 [extend]: MyData,
                 observer: Boolean
             })),
@@ -433,41 +417,41 @@ describe('behavior [extend] — validation', () => {
     });
 
     it('multiple levels of inheritance work', () => {
-        const A = behavior(({ Self }) => ({
+        const A = behavior(({ self }) => ({
             aObs: Boolean
-        })).ops(({ fold, unfold, map, merge, Self }) => ({
-            Create: unfold({ out: Self })({
+        })).ops(({ fold, unfold, map, merge, self }) => ({
+            Create: unfold({ out: self })({
                 aObs: () => true
             })
         }));
 
-        const B = behavior(({ Self }) => ({
+        const B = behavior(({ self }) => ({
             [extend]: A,
             bObs: Boolean
-        })).ops(({ fold, unfold, map, merge, Self }) => ({
-            CreateB: unfold({ out: Self })({
+        })).ops(({ fold, unfold, map, merge, self }) => ({
+            CreateB: unfold({ out: self })({
                 aObs: () => true,
                 bObs: () => false
             })
         }));
 
-        const C = behavior(({ Self }) => ({
+        const C = behavior(({ self }) => ({
             [extend]: B,
             cObs: Boolean
-        })).ops(({ fold, unfold, map, merge, Self }) => ({
-            CreateC: unfold({ out: Self })({
+        })).ops(({ fold, unfold, map, merge, self }) => ({
+            CreateC: unfold({ out: self })({
                 aObs: () => true,
                 bObs: () => false,
                 cObs: () => true
             })
         }));
 
-        const c = C.CreateC;
+        const c: any = C.CreateC;
         assert.equal(c.aObs, true);
         assert.equal(c.bObs, false);
         assert.equal(c.cObs, true);
-        assert.equal(c instanceof A, true);
-        assert.equal(c instanceof B, true);
-        assert.equal(c instanceof C, true);
+        assert.equal(c instanceof (A as any), true);
+        assert.equal(c instanceof (B as any), true);
+        assert.equal(c instanceof (C as any), true);
     });
 });

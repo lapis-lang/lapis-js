@@ -1,52 +1,51 @@
 /**
- * Either(L, R) — a disjoint union: Left(value) or Right(value).
+ * Either — a disjoint union: Left(value) or Right(value).
  *
  * By convention, Left represents failure/error and Right represents success.
  *
- * Satisfies: Functor (maps over Right), Applicative, Monad, Foldable,
- * Eq({ L: Eq, R: Eq })
+ * Satisfies: Functor (maps over Right), Applicative, Monad, Foldable.
+ * Note: Eq is NOT declared here. Subtypes that know their concrete field
+ * types should declare [satisfies]: [Eq] explicitly.
  *
  * @module
  */
 
 import { data, satisfies } from '../../index.mjs';
-import { Functor, Applicative, Monad, Foldable, Eq } from '../protocols/index.mjs';
+import { Functor, Applicative, Monad, Foldable } from '../protocols/index.mjs';
 
-const Either = data(({ L, R }) => ({
-    [satisfies]: [
-        Functor, Applicative, Monad, Foldable,
-        Eq({ L: Eq, R: Eq })
-    ],
-    Left:  { value: L },
-    Right: { value: R }
-})).ops(({ fold, unfold, map, Family, R }) => ({
+const Either = data(() => ({
+    [satisfies]: [Functor, Applicative, Monad, Foldable],
+    Left:  { value: Object },
+    Right: { value: Object }
+})).ops(({ fold, unfold, family }) => ({
     // ── Functor (maps over Right; Left propagates unchanged) ──────────────
-    fmap: map({ out: Family })({
-        R: (x: unknown, f: (a: unknown) => unknown) => f(x)
+    fmap: fold({ in: Function, out: family })({
+        Left() { return this; },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        Right({ value }: any, f: any) { return family.Right({ value: f(value) }); }
     }),
 
     // ── Applicative ──────────────────────────────────────────────────────
     // Pure(x) → Right(x)
-    Pure: unfold({ in: Object, out: Family })({
+    Pure: unfold({ in: Object, out: family })({
         Left: () => null,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         Right: (value: any) => ({ value })
     }),
-    // this.apply(ef): ef is Either(L, fn R→S)
-    apply: fold({ in: Family, out: Family })({
+    // this.apply(ef): ef is Either(fn → S)
+    apply: fold({ in: family, out: family })({
         Left() { return this; },
         // @ts-expect-error — binary fold handler
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         Right({ value }: any, ef: any) {
             if (ef !== null && ef !== undefined && 'value' in ef && typeof ef.value === 'function')
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                return (Family(R) as any).Right({ value: ef.value(value) });
+                return family.Right({ value: ef.value(value) });
             return ef; // propagate Left
         }
     }),
 
     // ── Monad ─────────────────────────────────────────────────────────────
-    flatMap: fold({ in: Object, out: Family })({
+    flatMap: fold({ in: Object, out: family })({
         Left() { return this; },
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         Right({ value }: any, f: any) { return f(value); }
@@ -58,26 +57,6 @@ const Either = data(({ L, R }) => ({
         Left(_ctx: unknown, opts: any)  { return opts.monoid.Identity; },
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         Right({ value }: any, opts: any) { return opts.f(value); }
-    }),
-
-    // ── Eq (conditional: L and R must satisfy Eq) ─────────────────────────
-    equals: fold({ in: Family, out: Boolean })({
-        // @ts-expect-error — binary fold handler
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        Left({ value }: any, other: any) {
-            return other !== null && other !== undefined &&
-                   this.constructor === other.constructor &&
-                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                   (value as any).equals(other.value);
-        },
-        // @ts-expect-error — binary fold handler
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        Right({ value }: any, other: any) {
-            return other !== null && other !== undefined &&
-                   this.constructor === other.constructor &&
-                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                   (value as any).equals(other.value);
-        }
     })
 
 }));

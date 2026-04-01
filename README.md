@@ -21,12 +21,13 @@ there is an emphasis on the Bird-Meertens Formalism (BMF) (Squiggol) of making p
 - [Parameterized and Recursive ADTs](#parameterized-and-recursive-adts)
 - [ADT Extension (Subtyping)](#adt-extension-subtyping)
   - [Extending recursive ADTs](#extending-recursive-adts)
+  - [Field Narrowing (Covariant Re-specification)](#field-narrowing-covariant-re-specification)
+  - [Mutual Recursion Between ADTs](#mutual-recursion-between-adts)
 - [Multi-Sorted Algebras](#multi-sorted-algebras)
-  - [Declaring Multi-Sorted ADTs](#declaring-multi-sorted-adts)
-  - [Sort-Typed Field Validation](#sort-typed-field-validation)
-  - [Sort Reflection](#sort-reflection)
-  - [Folds on Multi-Sorted ADTs](#folds-on-multi-sorted-adts)
-  - [Extending Multi-Sorted ADTs](#extending-multi-sorted-adts)
+  - [Sorts as Separate Declarations](#sorts-as-separate-declarations)
+  - [Cross-Sort Field Validation](#cross-sort-field-validation)
+  - [Per-Sort Operations](#per-sort-operations)
+  - [Extending Multi-Sorted Systems](#extending-multi-sorted-systems)
 - [Fold Operations](#fold-operations)
   - [Basic Fold Operations](#basic-fold-operations)
   - [Specs](#specs)
@@ -45,7 +46,7 @@ there is an emphasis on the Bird-Meertens Formalism (BMF) (Squiggol) of making p
   - [Recursion and Stack Safety](#recursion-and-stack-safety)
   - [Circular Fold Protection](#circular-fold-protection)
   - [Polymorphic Recursion in Extended Folds](#polymorphic-recursion-in-extended-folds)
-- [Type Parameter Transformations with Map](#type-parameter-transformations-with-map)
+- [Field Transformations with Map](#field-transformations-with-map)
   - [Invertible Maps (Allegories)](#invertible-maps-allegories)
 - [Unfold Operations (Corecursion)](#unfold-operations-corecursion)
   - [Basic Unfold Operations](#basic-unfold-operations)
@@ -85,8 +86,7 @@ there is an emphasis on the Bird-Meertens Formalism (BMF) (Squiggol) of making p
   - [Declaring Conformance with `[satisfies]`](#declaring-conformance-with-satisfies)
   - [Checking Conformance with `instanceof`](#checking-conformance-with-instanceof)
   - [Typed Instances (`InstanceOf`)](#typed-instances-instanceof)
-  - [Conditional Conformance](#conditional-conformance)
-  - [Higher-Kinded Protocol Parameters](#higher-kinded-protocol-parameters)
+  - [Selective Conformance via Concrete Subtypes](#selective-conformance-via-concrete-subtypes)
   - [Algebraic Laws via Contracts](#algebraic-laws-via-contracts)
   - [Protocol-Level `[invariant]`](#protocol-level-invariant)
   - [Algebraic Property Annotations](#algebraic-property-annotations)
@@ -164,7 +164,7 @@ Data types like simple enumerations can be defined as such:
 ```ts
 import { data } from '@lapis-lang/lapis-js';
 
-const Color = data(({Family}) => ({ Red: {}, Green: {}, Blue: {} }));
+const Color = data(family => ({ Red: {}, Green: {}, Blue: {} }));
 
 // Color is the data type; Red, Green, Blue are singleton variants
 console.log(Color.Red instanceof Color); // true
@@ -178,6 +178,8 @@ if (Color.Red instanceof Color)
 - Variant names, being constructors, must be **PascalCase** (start with uppercase letter)
 - Variant definitions use empty object literals `{}` to indicate simple singleton variants
 - Singleton variants are accessed as properties (e.g., `Color.Red`), not called as functions
+
+> **Always-lazy evaluation:** The declaration callback passed to `data()` is *never* evaluated at the `data()` call site. Materialisation (evaluation of the callback and creation of all variant constructors) is deferred until the first call to `.ops()` on the returned ADT, or until the first variant is accessed. This means validation errors (naming conventions, field guards, law violations) surface at materialisation time, not at the `data()` call site.
 
 Semantically you can think of the above as creating the following JavaScript:
 
@@ -194,7 +196,7 @@ abstract class Color {
 Structured data can be defined by utilizing the object literal associated with each variant:
 
 ```ts
-const Point = data((Family) => ({
+const Point = data(family => ({
     Point2D: { x: Number, y: Number },
     Point3D: { x: Number, y: Number, z: Number }
 }));
@@ -218,7 +220,7 @@ Both forms are type-checked by TypeScript, but with an important difference in s
 - The **positional form** provides a weaker, best-effort check. Each argument is checked against the *union* of all field types in the spec, not its specific per-position type. This means:
   - For a single-primitive-type spec (`{ x: Number, y: Number }`), the overload is `(...args: number[])` and wrong types are caught at compile time.
   - For a mixed-primitive spec (`{ name: String, age: Number }`), the overload is `(...args: string | number[])`, so transposed arguments like `Ctor(42, 'Alice')` are **not** a compile-time error.
-  - If any field is recursive (`Family`), parameterized (`T`, `U`, …), or a predicate function, the entire overload widens to `(...args: unknown[])` and **all** positional type errors are only caught at runtime.
+  - If any field is recursive (`family`), parameterized (`T`, `U`, …), or a predicate function, the entire overload widens to `(...args: unknown[])` and **all** positional type errors are only caught at runtime.
 
 ```ts
 // All-number spec: compile-time error ✓
@@ -229,7 +231,7 @@ const Person = data(() => ({ Make: { name: String, age: Number } }));
 Person.Make(42, 'Alice'); // NOT a TS error — both in (string | number)[]
 
 // Recursive spec: entire overload becomes unknown[], no compile-time checks
-const List = data(({ Family }) => ({ Cons: { head: Number, tail: Family } }));
+const List = data(family => ({ Cons: { head: Number, tail: family } }));
 List.Cons('bad', List.Nil); // NOT a TS error
 ```
 
@@ -327,12 +329,12 @@ Range.CharRange({ start: 'z', end: 'a' }); // Throws TypeError
 
 ## Parameterized and Recursive ADTs
 
-Recursive data structures and parameterized (generic) data types can be defined using the callback form of the `data` function `data(({Family, ...}) => ({ ... }))`.
+Recursive data structures are defined by passing a callback to `data()`. The callback receives a single parameter — the **family sentinel** — which you use directly as the field type for recursive references:
 
 ```ts
-const Peano = data(({ Family }) => ({
+const Peano = data(family => ({
     Zero: {},
-    Succ: { pred: Family }
+    Succ: { pred: family }
 }));
 
 const zero = Peano.Zero;
@@ -342,62 +344,53 @@ const two = Peano.Succ({ pred: one });
 console.log(two.pred.pred === zero); // true
 ```
 
-In the above, `Family` is a reserved special reference to the ADT being defined, allowing recursive references. `Family` references are validated at **runtime** with `instanceof` checks against the ADT family. Since the `Peano` ADT is not parameterized, `Family` is used directly as a guard (it is not callable). In other words, `Family` is equivalent to `Family()` for non-parameterized recursive ADTs, but you write `Family` not `Family()`.
+The `family` parameter is the guard for recursive fields and is validated at **runtime** with `instanceof` checks against the ADT. For non-recursive variants such as `Zero: {}`, the `family` parameter is simply not mentioned.
 
-For parameterized ADTs, type parameter names are single uppercase letters (`A`–`Z`). This restriction enables full compile-time type propagation: when you instantiate a parameterized ADT with concrete types, TypeScript correctly resolves field types:
+A linked list uses `family` for the recursive tail field:
 
 ```ts
-const Pair = data(({ T, U }) => ({
-    MakePair: { first: T, second: U }
+const List = data(family => ({
+    Nil:  {},
+    Cons: { head: Object, tail: family }
 }));
 
-const numStrPair = Pair({ T: Number, U: String });
-
-const pair = numStrPair.MakePair({ first: 42, second: 'hello' });
-
-console.log(pair.first);  // 42
-console.log(pair.second); // 'hello'
-
-numStrPair.MakePair('bad', 100); // Throws TypeError at runtime
+const xs = List.Cons({ head: 1, tail: List.Cons({ head: 2, tail: List.Nil }) });
+console.log(xs.head);         // 1
+console.log(xs.tail.head);    // 2
 ```
 
-When using the object form of type instantiation, TypeScript propagates type arguments at the type level:
+**Specialised (parameterized) lists** are created as subtypes with narrowed field types — see [Field Narrowing](#field-narrowing-covariant-re-specification):
 
 ```ts
-const Dictionary = data(({ K, V }) => ({
-    Empty: {},
-    Entry: { key: K, value: V }
+import { data, extend } from '@lapis-lang/lapis-js';
+
+// Base list accepts any Object in the head
+const List = data(family => ({
+    Nil:  {},
+    Cons: { head: Object, tail: family }
 }));
 
-const StrNumDict = Dictionary({ K: String, V: Number });
-// entry.key is typed as `string`, entry.value as `number`
-const entry = StrNumDict.Entry({ key: 'age', value: 30 });
-```
-
-> **Note:** `Family` (in `data()` declarations) and `Self` (in `behavior()` declarations) are reserved names and cannot be used as type parameter names.
-
-Recursive parameterized ADTs can combine `Family` and type parameters:
-
-```ts
-const List = data(({ Family, T }) => ({
-    Nil: {},
-    Cons: { head: T, tail: Family(T) }
+// NumList narrows head: Object → Number
+const NumList = data(family => ({
+    [extend]: List,
+    Cons: { head: Number, tail: family }
 }));
 
-const {Cons, Nil} = List({ T: Number });
-
+const { Cons, Nil } = NumList;
 const nums = Cons({ head: 1, tail: Cons({ head: 2, tail: Cons({ head: 3, tail: Nil }) }) });
 console.log(nums.head);         // 1
 console.log(nums.tail.head);    // 2
 
-const badList = Cons({ head: 'bad', tail: Nil }); // Throws TypeError at runtime
+NumList.Cons({ head: 'bad', tail: Nil }); // TypeError at runtime: head must be Number
 ```
 
-Type instantiation must use the object form (`List({ T: Number })`), which maps parameter names to concrete types.
+Instances of `NumList.Cons` are also `instanceof List.Cons` and `instanceof List` (comb inheritance), so existing code that accepts a `List` automatically accepts a `NumList`.
 
 ## ADT Extension (Subtyping)
 
-Extend existing ADTs with new variants using the `[extend]` symbol within a new `data()` declaration. This enables open ADTs that can be incrementally extended while maintaining proper subtyping relationships.
+Lapis JS implements subtyping via **comb inheritance** — a form of multiple inheritance pioneered by [NewtonScript](https://en.wikipedia.org/wiki/NewtonScript). It combines two distinct lookup paths: the standard prototype chain for shared behavior, and an instance-based delegation chain from the child ADT to the parent ADT for subtype relationships. When a property is not found on an instance's own prototype chain, the runtime delegates to the corresponding parent ADT instance and resumes the search there. This makes `instanceof` work correctly across the entire hierarchy: an instance of a child variant is simultaneously `instanceof` the child ADT, the child variant, the parent variant, and the parent ADT — without any explicit adapter code.
+
+This subtyping relationship is expressed in Lapis JS using the `[extend]` symbol inside a new `data()` declaration. The result is an open ADT that inherits all parent variants and can be incrementally extended with new ones while preserving proper subtyping.
 
 ```ts
 import { data, extend } from '@lapis-lang/lapis-js';
@@ -424,30 +417,30 @@ console.log(ExtendedColor.Red === Color.Red); // false (new singleton instance c
 
 ### Extending recursive ADTs
 
-Use the callback form with `[extend]` and `Family` to extend recursive ADTs. The `Family` reference in extended variants accepts instances from any level of the hierarchy:
+Use the callback form with `[extend]` and `family` to extend recursive ADTs. The `family` reference in extended variants accepts instances from any level of the hierarchy:
 
 ```ts
 // Base expression language
-const IntExpr = data(({ Family }) => ({
+const IntExpr = data(family => ({
     IntLit: { value: Number },
-    Add: { left: Family, right: Family }
+    Add: { left: family, right: family }
 }));
 
 // Extend with boolean operations
-const IntBoolExpr = data(({ Family }) => ({
+const IntBoolExpr = data(family => ({
     [extend]: IntExpr,
     BoolLit: { value: Boolean },
-    LessThan: { left: Family, right: Family }
+    LessThan: { left: family, right: family }
 }));
 
 // Extend further with variables
-const FullExpr = data(({ Family }) => ({
+const FullExpr = data(family => ({
     [extend]: IntBoolExpr,
     Var: { name: String },
-    Let: { name: String, value: Family, body: Family }
+    Let: { name: String, value: family, body: family }
 }));
 
-// Family fields accept instances from any hierarchy level
+// family fields accept instances from any hierarchy level
 const letExpr = FullExpr.Let({
     name: 'x',
     value: FullExpr.IntLit({ value: 5 }),      // IntExpr variant
@@ -467,197 +460,185 @@ console.log(letExpr instanceof FullExpr);    // true
 - Extended variants are `instanceof` both extended and base ADTs
 - Inherited variants maintain original type (not `instanceof` extended ADT)
 - Singleton and constructor identity preserved
-- `Family` accepts instances from any hierarchy level
-- Variant name collisions throw errors
+- `family` accepts instances from any hierarchy level
+- Variant name collisions throw errors (unless the re-spec is a valid field narrowing — see below)
+
+### Field Narrowing (Covariant Re-specification)
+
+A child ADT may re-declare an inherited variant to **narrow** the type of one or more fields, provided the child field type is a subtype of the parent field type. All non-re-specified fields are transparently inherited.
+
+```ts
+const List = data(family => ({
+    Nil:  {},
+    Cons: { head: Object, tail: family }
+}));
+
+// head: Object → Number is a valid narrowing (Number <: Object)
+const NumList = data(family => ({
+    [extend]: List,
+    Cons: { head: Number, tail: family }
+}));
+
+const xs = NumList.Cons({ head: 1, tail: NumList.Nil });
+console.log(xs instanceof NumList.Cons); // true
+console.log(xs instanceof List.Cons);    // true  ← comb inheritance
+console.log(xs instanceof NumList);      // true
+console.log(xs instanceof List);         // true
+```
+
+**Rules:**
+- The child type must be a subtype (or equal) of the parent field type — widening (`Number → Object`) throws an error
+- The child may not introduce new fields absent from the parent spec
+- Unmentioned fields are inherited from the parent unchanged
+
+### Mutual Recursion Between ADTs
+
+Because `data()` always defers evaluation of its declaration callback, two ADTs can freely reference each other without running into temporal-dead-zone (TDZ) errors. Declare all ADTs first, then trigger materialisation with `.ops()` (or by accessing a variant) once every binding is in scope. `.ops()` returns the same ADT object, so for mutual recursion you attach operations after both declarations are in scope rather than chaining `.ops()` immediately on the first declaration:
+
+```ts
+// Declare both first — no materialisation yet, so no TDZ
+const Expr = data(family => ({
+    Lit:    { value: Number },
+    Block:  { stmt: Stmt, body: family }  // Stmt not yet initialised; safe
+}));
+
+const Stmt = data(family => ({
+    Assign: { name: String, value: Number },
+    Seq:    { first: family, second: family }
+}));
+
+// Now BOTH bindings are settled — attach ops (triggers materialisation)
+Expr.ops(({ fold }) => ({
+    size: fold({ out: Number })({
+        Lit()              { return 1; },
+        Block({ body }: any) { return 1 + body; }
+    })
+}));
+
+const assign = Stmt.Assign({ name: 'x', value: 0 });
+const block  = Expr.Block({ stmt: assign, body: Expr.Lit({ value: 1 }) });
+console.log(block.size); // 2
+```
+
+**When validation errors surface:**
+Validation (naming conventions, field guards, algebraic-law checking) runs during materialisation — when `.ops()` is first called or when a variant is first accessed — not at the `data()` call site.
 
 ## Multi-Sorted Algebras
 
-A standard (single-sorted) ADT has one carrier type — every constructor produces values of the same sort, and every fold handler returns the same result type. Some domains, however, require **multiple syntactic sorts** within a single ADT. An expression language, for example, may distinguish *expressions* from *statements* — each sort gets its own carrier type in a fold.
+Some domains require **multiple syntactic sorts** — distinct categories of terms that play different roles. An expression language, for example, may distinguish *expressions* (which produce values) from *statements* (which produce effects). In Lapis JS, each sort is simply its own `data()` declaration. Sort membership is `instanceof`, and cross-sort field references are ordinary field type guards — no special sort-parameter syntax is needed.
 
-Multi-sorted algebras add **sort parameters** (`$A`–`$Z`) alongside the existing type parameters (`A`–`Z`) and self-reference (`Family`). Import the `sort` and `isSort` symbols:
+### Sorts as Separate Declarations
 
-```ts
-import { data, sort, isSort } from '@lapis-lang/lapis-js';
-```
-
-| Category | Syntax | Example | Bound when |
-| --- | --- | --- | --- |
-| Self-reference | `Family` | `tail: Family` | Always (the ADT itself) |
-| Type parameter | `A`–`Z` | `head: T` | At instantiation: `List({T: Number})` |
-| Sort parameter | `$A`–`$Z` | `left: $E` | At fold definition |
-
-### Declaring Multi-Sorted ADTs
-
-Sort parameters are destructured from the callback parameter alongside `Family` and type parameters. Each variant declares its sort using the `[sort]` symbol:
+Each sort becomes a separate `data()` declaration. Cross-sort references are expressed as field types:
 
 ```ts
-const Lang = data(({ $E, $S }) => ({
-    // Exp sort
-    Lit:    { [sort]: $E, value: Number },
-    Add:    { [sort]: $E, left: $E, right: $E },
-    // Stmt sort
-    Assign: { [sort]: $S, name: String, expr: $E },
-    Seq:    { [sort]: $S, first: $S, second: $S }
+import { data } from '@lapis-lang/lapis-js';
+
+const Stmt = data(family => ({
+    Assign: { name: String, value: Number },
+    Seq:    { first: family, second: family }
 }));
 
-const lit5 = Lang.Lit(5);
-const lit3 = Lang.Lit(3);
-const sum  = Lang.Add(lit5, lit3);
-const assign = Lang.Assign('x', sum);
-const seq  = Lang.Seq(assign, Lang.Assign('y', Lang.Lit(1)));
-```
-
-**`[sort]` annotation rules:**
-
-- **Optional when single-sorted:** If only one sort parameter is used (e.g., only `$E`), the annotation is optional — all variants are inferred to belong to that single sort.
-- **Required when multi-sorted:** If two or more sort parameters appear, every variant MUST have a `[sort]` annotation. Missing annotations throw an error.
-- **Not present = single-sorted (backward compatible):** ADTs that don't destructure any `$`-prefixed names work exactly as before. `Family` remains the sole recursion marker.
-
-Single-sorted example without explicit `[sort]`:
-
-```ts
-const Nat = data(({ $N }) => ({
-    Zero: {},
-    Succ: { pred: $N }
-})).ops(({ fold }) => ({
-    toNum: fold({ out: Number })({
-        Zero() { return 0; },
-        Succ({ pred }) { return 1 + pred; }
-    })
+const Expr = data(family => ({
+    Lit:    { value: Number },
+    Add:    { left: family, right: family },
+    IfExpr: { cond: family, then: Stmt, else: Stmt }  // cross-sort field
 }));
 
-const two = Nat.Succ(Nat.Succ(Nat.Zero));
-console.log(two.toNum); // 2
+// Sort membership via instanceof
+const e = Expr.Lit({ value: 42 });
+const s = Stmt.Assign({ name: 'x', value: 1 });
+
+console.log(e instanceof Expr); // true
+console.log(e instanceof Stmt); // false
+console.log(s instanceof Stmt); // true
+console.log(s instanceof Expr); // false
 ```
 
-### Sort-Typed Field Validation
+Because `data()` defers evaluation until first use, the declaration order above works without temporal dead zone errors even though `Stmt` appears before `Expr`. Circular cross-sort references also work — see [Mutual Recursion Between ADTs](#mutual-recursion-between-adts).
 
-Sort parameters serve double duty as both `[sort]` annotation values and **field type guards**. At construction time, the framework validates that sort-typed fields receive values of the correct sort:
+### Cross-Sort Field Validation
+
+Using another ADT as a field guard enforces sort correctness at construction time:
 
 ```ts
-const Lang = data(({ $E, $S }) => ({
-    Lit:    { [sort]: $E, value: Number },
-    Add:    { [sort]: $E, left: $E, right: $E },
-    Assign: { [sort]: $S, name: String, expr: $E },
-    Seq:    { [sort]: $S, first: $S, second: $S }
-}));
+const expr = Expr.Lit({ value: 1 });
+const stmt = Stmt.Assign({ name: 'x', value: 1 });
 
-// Assign.expr expects $E — Lit is $E, so this works:
-Lang.Assign('x', Lang.Lit(1)); // OK
+// IfExpr expects Stmt-typed fields — Stmt instances are valid:
+Expr.IfExpr({ cond: expr, then: stmt, else: stmt }); // OK
 
-// Seq expects $S fields — passing a $E value throws:
-Lang.Seq(Lang.Lit(1), Lang.Assign('x', Lang.Lit(2)));
-// TypeError: Field 'first' expected a variant of sort '$S', but got sort '$E'
+// Passing an Expr where Stmt is expected throws:
+Expr.IfExpr({ cond: expr, then: expr, else: stmt });
+// TypeError: Field 'then' must be an instance of ...
 ```
 
-`Family`-typed fields impose no sort restriction — they accept any variant regardless of sort.
+### Per-Sort Operations
 
-### Sort Reflection
-
-The `[isSort]` symbol on a multi-sorted ADT checks sort membership at runtime:
+Each sort has its own `.ops()`. Folds are naturally per-sort — each carrier type is independent:
 
 ```ts
-const lit = Lang.Lit(42);
-const assign = Lang.Assign('x', lit);
-
-Lang[isSort](lit, '$E');     // true
-Lang[isSort](lit, '$S');     // false
-Lang[isSort](assign, '$S');  // true
-Lang[isSort](assign, '$E');  // false
-```
-
-### Folds on Multi-Sorted ADTs
-
-#### Sort-erasing folds
-
-A fold with a plain `out` spec collapses all sorts to a single carrier type — the same as standard single-sorted folds:
-
-```ts
-const Lang = data(({ $E, $S }) => ({
-    Lit:    { [sort]: $E, value: Number },
-    Add:    { [sort]: $E, left: $E, right: $E },
-    Assign: { [sort]: $S, name: String, expr: $E },
-    Seq:    { [sort]: $S, first: $S, second: $S }
+const Stmt = data(family => ({
+    Assign: { name: String, value: Number },
+    Seq:    { first: family, second: family }
 })).ops(({ fold }) => ({
     pretty: fold({ out: String })({
-        Lit({ value }) { return String(value); },
-        Add({ left, right }) { return `(${left} + ${right})`; },
-        Assign({ name, expr }) { return `${name} = ${expr}`; },
+        Assign({ name, value }) { return `${name} = ${value}`; },
         Seq({ first, second }) { return `${first}; ${second}`; }
     })
 }));
 
-const program = Lang.Seq(
-    Lang.Assign('x', Lang.Add(Lang.Lit(1), Lang.Lit(2))),
-    Lang.Assign('y', Lang.Lit(42))
-);
-
-console.log(program.pretty); // 'x = (1 + 2); y = 42'
-```
-
-Sort-typed fields are structurally recursive — inside handlers, `left`, `right`, `expr`, `first`, and `second` are already folded to their carrier values (strings in this case).
-
-#### Per-sort carrier folds
-
-When each sort needs a distinct carrier type, pass an object keyed by sort parameter names as the `out` value:
-
-```ts
-// Inside .ops():
-eval: fold({ out: { $E: Number, $S: undefined } })({
-    Lit({ value })         { return value; },
-    Add({ left, right })   { return left + right; },
-    Assign({ name, expr }) { console.log(`${name} = ${expr}`); },
-    Seq({ first, second }) { first; second; }
-})
-```
-
-Inside handlers, sort-typed fields are folded to their sort's carrier: the `Add` handler receives `left` and `right` as numbers (the `$E` carrier), and the `Seq` handler receives `first` and `second` as `undefined` (the `$S` carrier).
-
-If `out` is an object with sort-name keys, ALL declared sort names must be present.
-
-### Extending Multi-Sorted ADTs
-
-Multi-sorted ADTs can be extended with `[extend]`, just like single-sorted ADTs. Sort identity is matched by name — parent's `$E` and child's `$E` are the same sort:
-
-```ts
-const BaseLang = data(({ $E, $S }) => ({
-    Lit:    { [sort]: $E, value: Number },
-    Add:    { [sort]: $E, left: $E, right: $E },
-    Assign: { [sort]: $S, name: String, expr: $E }
+const Expr = data(family => ({
+    Lit: { value: Number },
+    Add: { left: family, right: family }
 })).ops(({ fold }) => ({
-    pretty: fold({ out: String })({
-        Lit({ value }) { return String(value); },
-        Add({ left, right }) { return `(${left} + ${right})`; },
-        Assign({ name, expr }) { return `${name} = ${expr}`; }
+    eval: fold({ out: Number })({
+        Lit({ value }) { return value; },
+        Add({ left, right }) { return left + right; }
     })
 }));
 
-const ExtLang = data(({ $E, $S }) => ({
-    [extend]: BaseLang,
-    Mul:  { [sort]: $E, left: $E, right: $E },
-    Seq:  { [sort]: $S, first: $S, second: $S }
+const e = Expr.Add({ left: Expr.Lit({ value: 3 }), right: Expr.Lit({ value: 4 }) });
+console.log(e.eval); // 7
+
+const s = Stmt.Seq({
+    first:  Stmt.Assign({ name: 'x', value: 1 }),
+    second: Stmt.Assign({ name: 'y', value: 2 })
+});
+console.log(s.pretty); // 'x = 1; y = 2'
+```
+
+### Extending Multi-Sorted Systems
+
+Use `[extend]` on each sort independently to add new variants:
+
+```ts
+import { data, extend } from '@lapis-lang/lapis-js';
+
+const RichExpr = data(family => ({
+    [extend]: Expr,
+    Mul: { left: family, right: family }
 })).ops(({ fold }) => ({
-    pretty: fold({ out: String })({
-        Mul({ left, right }) { return `(${left} * ${right})`; },
-        Seq({ first, second }) { return `${first}; ${second}`; }
+    eval: fold({ out: Number })({
+        Lit({ value }) { return value; },
+        Add({ left, right }) { return left + right; },
+        Mul({ left, right }) { return left * right; }
     })
 }));
 
-const program = ExtLang.Seq(
-    ExtLang.Assign('x', ExtLang.Mul(ExtLang.Lit(2), ExtLang.Lit(3))),
-    ExtLang.Assign('y', ExtLang.Add(ExtLang.Lit(1), ExtLang.Lit(1)))
-);
+const RichStmt = data(family => ({
+    [extend]: Stmt,
+    While: { cond: RichExpr, body: family }
+}));
 
-console.log(program.pretty); // 'x = (2 * 3); y = (1 + 1)'
+// Extended variants maintain comb inheritance
+const e = RichExpr.Mul({ left: RichExpr.Lit({ value: 2 }), right: RichExpr.Lit({ value: 3 }) });
+console.log(e.eval);                // 6
+console.log(e instanceof Expr);     // true — comb inheritance
+console.log(e instanceof RichExpr); // true
 ```
 
-**Key points:**
-
-- Inherited variants keep their parent sort assignment
-- The child can introduce sort parameters not present in the parent
-- The child's sort set is the union of parent's and child's sorts
-- Fold handlers are inherited from the parent; the child only provides handlers for new variants
-- `[isSort]` works on inherited variants: `ExtLang[isSort](ExtLang.Lit(42), '$E')` returns `true`
+Each sort is extended in isolation — no shared sort-parameter namespace, no coordination between the two declarations.
 
 ## Fold Operations
 
@@ -679,7 +660,7 @@ Tree: Node(Leaf(1), Node(Leaf(2), Leaf(3)))
 
 The result has the same shape as the input — only the constructor labels change.
 
-For non-recursive ADTs, folds perform simple pattern matching. For recursive ADTs, folds automatically recurse into `Family` fields, replacing constructors with functions. Operations are installed on variant class prototypes and support proper inheritance through the extension hierarchy.
+For non-recursive ADTs, folds perform simple pattern matching. For recursive ADTs, folds automatically recurse into `family` fields, replacing constructors with functions. Operations are installed on variant class prototypes and support proper inheritance through the extension hierarchy.
 
 Semantically you can think of folds as creating methods on each variant class that dispatch based on the variant type and recursively process fields as needed.
 
@@ -718,21 +699,21 @@ The spec (first argument to `fold()`, `unfold()`, or `map()`) is an **object lit
 When provided, the spec can contain:
 
 - `in`: The input guard for parameters: validated at runtime for both fold and unfold operations. Two forms are supported:
-  - **Scalar guard** — a single constructor or type marker (e.g. `in: Number`, `in: Object`, `in: Family`). Validated at call time for unfold; used as a type annotation for fold (handler arity is the runtime signal).
+  - **Scalar guard** — a single constructor or type marker (e.g. `in: Number`, `in: Object`, `in: family`). Validated at call time for unfold; used as a type annotation for fold (handler arity is the runtime signal).
   - **Structured object-literal guard** — a plain object mapping field names to guards (e.g. `in: { monoid: Object, f: Function }`). Validated at call time for fold **and** unfold — the caller-supplied argument must be a plain object with every declared key present and each value matching its guard.
 - `out`: The return guard: **only validated at runtime for fold operations**; on unfold operations it carries no runtime enforcement
 
-**Why `out` is not checked on unfold:** fold handlers are *user code* that returns a value: the framework validates it against `out` because the handler could return the wrong type. Unfold handlers, by contrast, never return the ADT/behavior instance directly; they return either `null` or a plain fields object (e.g. `{ head: n, tail: n-1 }`), and the framework constructs the actual output instance itself. The output type is therefore a structural guarantee enforced by construction, not something a handler can violate. Stating `out: Family` or `out: Self` on an unfold is documentation of intent only.
+**Why `out` is not checked on unfold:** fold handlers are *user code* that returns a value: the framework validates it against `out` because the handler could return the wrong type. Unfold handlers, by contrast, never return the ADT/behavior instance directly; they return either `null` or a plain fields object (e.g. `{ head: n, tail: n-1 }`), and the framework constructs the actual output instance itself. The output type is therefore a structural guarantee enforced by construction, not something a handler can violate. Stating `out: family` or `out: self` on an unfold is documentation of intent only.
 
 **Summary:** omit `spec` entirely when there is no `in` to validate. Adding `out` to an unfold spec is always optional documentation, never runtime enforcement.
 
-For recursive ADTs, the spec can reference `Family` from the `.ops()` callback context:
+For recursive ADTs, the spec can reference `family` from the `.ops()` callback context:
 
 ```ts
-data(({ Family }) => ({
+data(family => ({
     // ... variants ...
-})).ops(({ fold, Family }) => ({
-    operationName: fold({ out: Family })({
+})).ops(({ fold, family }) => ({
+    operationName: fold({ out: family })({
         // ... handlers ...
     })
 }))
@@ -997,9 +978,9 @@ Any `fold`, `unfold`, or `map` definition can be given one or more additional na
 
 ```ts
 const Lattice = data(() => ({ False: {}, True: {} }))
-    .ops(({ fold, unfold, Family }) => ({
+    .ops(({ fold, unfold, family }) => ({
         // Canonical: instance.meet(other)  — Alias: instance.and(other)
-        meet: fold({ in: Family, out: Family })({
+        meet: fold({ in: family, out: family })({
             // @ts-expect-error -- arity
             False({}, _other: any) { return this; },
             // @ts-expect-error -- arity
@@ -1007,7 +988,7 @@ const Lattice = data(() => ({ False: {}, True: {} }))
         }).as('and'),
 
         // Canonical: instance.join(other)  — Alias: instance.or(other)
-        join: fold({ in: Family, out: Family })({
+        join: fold({ in: family, out: family })({
             // @ts-expect-error -- arity
             False({}, other: any)  { return other; },
             // @ts-expect-error -- arity
@@ -1015,7 +996,7 @@ const Lattice = data(() => ({ False: {}, True: {} }))
         }).as('or'),
 
         // Canonical: Lattice.FromBool(v)  — Aliases: Lattice.Of(v), Lattice.From(v)
-        FromBool: unfold({ in: Boolean, out: Family })({
+        FromBool: unfold({ in: Boolean, out: family })({
             True:  (v: boolean) => v ? {} : null,
             False: (v: boolean) => v ? null : {}
         }).as('Of', 'From')
@@ -1038,12 +1019,12 @@ Lattice.From(true);                 // Lattice.True  (alias)
 
 ### Structural Recursion
 
-For recursive ADTs, fold operations perform **structural recursion** from leaves to root (also known as *catamorphisms*). The framework automatically recurses into `Family` fields, passing already-folded values to handlers.
+For recursive ADTs, fold operations perform **structural recursion** from leaves to root (also known as *catamorphisms*). The framework automatically recurses into `family` fields, passing already-folded values to handlers.
 
 ```ts
-const Peano = data(({ Family }) => ({
+const Peano = data(family => ({
     Zero: {},
-    Succ: { pred: Family }
+    Succ: { pred: family }
 })).ops(({ fold }) => ({
     toValue: fold({})({
         Zero() { return 0; },
@@ -1055,9 +1036,9 @@ const three = Peano.Succ({ pred: Peano.Succ({ pred: Peano.Succ({ pred: Peano.Zer
 console.log(three.toValue); // 3
 
 // For lists: accumulates bottom-up (Nil base case first, then each Cons from tail to head)
-const List = data(({ Family }) => ({
+const List = data(family => ({
     Nil: {},
-    Cons: { head: Number, tail: Family }
+    Cons: { head: Number, tail: family }
 })).ops(({ fold }) => ({
     sum: fold({})({
         Nil() { return 0; },
@@ -1069,9 +1050,9 @@ const list = List.Cons(1, List.Cons(2, List.Cons(3, List.Nil)));
 console.log(list.sum); // 6 (1 + (2 + (3 + 0)))
 
 // For trees: processes from leaves to root
-const Tree = data(({ Family }) => ({
+const Tree = data(family => ({
     Leaf: { value: Number },
-    Node: { left: Family, right: Family, value: Number }
+    Node: { left: family, right: family, value: Number }
 })).ops(({ fold }) => ({
     sum: fold({ out: Number })({
         Leaf({ value }) { return value; },
@@ -1086,12 +1067,12 @@ Fold operations can accept a single input parameter, enabling operations like `a
 
 **How parameterized folds differ from simple folds:**
 
-In a **simple fold** (without parameter), `Family` fields are replaced with their already-computed folded values:
+In a **simple fold** (without parameter), `family` fields are replaced with their already-computed folded values:
 
 ```ts
-const List = data(({ Family }) => ({
+const List = data(family => ({
     Nil: {},
-    Cons: { head: Number, tail: Family }
+    Cons: { head: Number, tail: family }
 })).ops(({ fold }) => ({
     length: fold({})({
         Nil() { return 0; },
@@ -1100,20 +1081,20 @@ const List = data(({ Family }) => ({
 }));
 ```
 
-In a **parameterized fold** (with parameter), `Family` fields become **partially-applied functions** that accept the parameter:
+In a **parameterized fold** (with parameter), `family` fields become **partially-applied functions** that accept the parameter:
 
 ```ts
-const List = data(({ Family }) => ({
+const List = data(family => ({
     Nil: {},
-    Cons: { head: Number, tail: Family }
-})).ops(({ fold }) => ({
+    Cons: { head: Number, tail: family }
+})).ops(({ fold, family }) => ({
     append: fold({})({
         Nil({}, val) {
-            return List.Cons(val, List.Nil);
+            return family.Cons(val, family.Nil);
         },
         Cons({ head, tail }, val) {
             // tail is a function: tail(val) continues the fold with the parameter
-            return List.Cons(head, tail(val));
+            return family.Cons(head, tail(val));
         }
     })
 }));
@@ -1136,7 +1117,7 @@ The parameter is threaded through the entire structure, allowing each level to u
 
 - Fold operations accept **at most one input parameter**
 - **Getter vs method is determined by handler arity**: if any handler declares more than one argument (e.g., `Cons({ head, tail }, val)`), the fold is installed as an instance method; otherwise it is a getter. `spec.in` is *not* what controls this. For scalar guards (`in: Number`, `in: Object`, etc.) it is optional documentation. For **object-literal guards** (`in: { key: Guard, ... }`), the argument is validated at runtime: the caller must supply a plain object with every declared key present and each value matching its guard.
-- For recursive ADTs, `Family` fields become **partially applied functions** that accept the input parameter
+- For recursive ADTs, `family` fields become **partially applied functions** that accept the input parameter
 - Handler signature for singleton variants: `Variant({}, inputArg) => result`
 - Handler signature for structured variants: `Variant({ field1, field2, ... }, inputArg) => result`
 - **Wildcard handler signature**: `_(fields, inputArg) => result` (receives both fields and input parameter)
@@ -1144,24 +1125,30 @@ The parameter is threaded through the entire structure, allowing each level to u
 - Both forms still process structures bottom-up (catamorphic recursion)
 
 ```ts
-// Polymorphic fold for generic ADTs
-const List = data(({ Family, T }) => ({
+// Fold for a recursive ADT — each variant declared with concrete field types.
+// To specialize for a different element type, extend with a concrete subtype:
+const List = data(family => ({
     Nil: {},
-    Cons: { head: T, tail: Family }
-})).ops(({ fold, Family }) => ({
-    append: fold({ in: Object, out: Family })({
+    Cons: { head: Object, tail: family }
+})).ops(({ fold, family }) => ({
+    append: fold({ in: Object, out: family })({
         Nil({}, val) {
-            return List.Cons(val, List.Nil);
+            return family.Cons(val, family.Nil);
         },
         Cons({ head, tail }, val) {
-            return List.Cons(head, tail(val));
+            return family.Cons(head, tail(val));
         }
     })
 }));
 
-const NumList = List({ T: Number });
+// Concrete numeric list via explicit subtype extension:
+const NumList = data(family => ({
+    [extend]: List,
+    Cons: { head: Number, tail: family }
+}));
+
 const nums = NumList.Cons(1, NumList.Cons(2, NumList.Nil));
-const result = nums.append(3);  // Returns NumList instance, not generic List
+const result = nums.append(3);  // Returns a NumList-extended instance
 ```
 
 **Structured input guards** — use an object-literal `in` spec to require a named options bag. Each declared key is validated at call time; missing or wrong-typed keys throw a `TypeError` that names the offending field:
@@ -1218,9 +1205,9 @@ Enable course-of-values recursion by adding `history: true` to the fold spec. Im
 ```ts
 import { data, history } from '@lapis-lang/lapis-js';
 
-const Nat = data(({ Family }) => ({
+const Nat = data(family => ({
     Zero: {},
-    Succ: { pred: Family }
+    Succ: { pred: family }
 })).ops(({ fold }) => ({
     fib: fold({ history: true, out: Number })({
         Zero() { return 0; },
@@ -1253,9 +1240,9 @@ For **base-case variants** (no recursive fields), `[history]` is an empty object
 Histomorphisms also work with **binary trees**, where history provides access to both children:
 
 ```ts
-const Tree = data(({ Family }) => ({
+const Tree = data(family => ({
     Leaf: { value: Number },
-    Node: { left: Family, right: Family }
+    Node: { left: family, right: family }
 })).ops(({ fold }) => ({
     sumHisto: fold({ history: true, out: Number })({
         Leaf({ value }) { return value; },
@@ -1270,9 +1257,9 @@ const Tree = data(({ Family }) => ({
 Histomorphisms work with **parameterized folds** too: history entries become lazy getters that resolve after the child thunk is invoked:
 
 ```ts
-const List = data(({ Family }) => ({
+const List = data(family => ({
     Nil: {},
-    Cons: { head: Number, tail: Family }
+    Cons: { head: Number, tail: family }
 })).ops(({ fold }) => ({
     scan: fold({ history: true, in: Number, out: Array })({
         Nil() { return []; },
@@ -1296,9 +1283,9 @@ Enable auxiliary folds by adding `aux` to the fold spec. Import the `aux` symbol
 ```ts
 import { data, aux } from '@lapis-lang/lapis-js';
 
-const Tree = data(({ Family }) => ({
+const Tree = data(family => ({
     Leaf: { value: Number },
-    Node: { left: Family, right: Family }
+    Node: { left: family, right: family }
 })).ops(({ fold }) => ({
     depth: fold({ out: Number })({
         Leaf() { return 0; },
@@ -1319,9 +1306,9 @@ const Tree = data(({ Family }) => ({
 **Array form**: multiple auxiliary folds produce a *nested* shape `a.<foldName>.<fieldName>`:
 
 ```ts
-const Tree = data(({ Family }) => ({
+const Tree = data(family => ({
     Leaf: { value: Number },
-    Node: { left: Family, right: Family }
+    Node: { left: family, right: family }
 })).ops(({ fold }) => ({
     depth: fold({ out: Number })({ /* … */ }),
     size:  fold({ out: Number })({ /* … */ }),
@@ -1542,9 +1529,9 @@ Lapis JS provides **stack-safe structural recursion** through its fold mechanism
 The library implements fold operations using **iterative post-order traversal** with an explicit work stack. This means that when you define a fold operation on a recursive ADT, the recursion through the data structure happens iteratively, not through JavaScript function calls:
 
 ```ts
-const List = data(({ Family }) => ({
+const List = data(family => ({
     Nil: {},
-    Cons: { head: Number, tail: Family }
+    Cons: { head: Number, tail: family }
 })).ops(({ fold }) => ({
     sum: fold({ out: Number })({
         Nil() { return 0; },
@@ -1564,7 +1551,7 @@ console.log(bigList.sum); // 100000 - no stack overflow
 The fold mechanism automatically:
 
 - Traverses the structure from leaves to root
-- Processes `Family` fields iteratively
+- Processes `family` fields iteratively
 - Passes already-computed values to handlers
 - Avoids deep JavaScript call stacks
 
@@ -1607,11 +1594,11 @@ Instead of writing mutually recursive functions, express computations as **struc
 
 ```ts
 // Idiomatic: single fold operation
-const Peano = data(({ Family }) => ({
+const Peano = data(family => ({
     Zero: {},
-    Succ: { pred: Family }
-})).ops(({ fold, unfold, Family }) => ({
-    FromValue: unfold({ in: Number, out: Family })({
+    Succ: { pred: family }
+})).ops(({ fold, unfold, family }) => ({
+    FromValue: unfold({ in: Number, out: family })({
         Zero: (n) => (n <= 0 ? {} : null),
         Succ: (n) => (n > 0 ? { pred: n - 1 } : null)
     }),
@@ -1631,9 +1618,9 @@ console.log(big.isEven); // Works without overflow
 Lapis JS enforces a **re-entrancy guard** that prevents a fold operation from being invoked on the same instance during its own evaluation. This catches the class of bugs where `this.sameOp` creates infinite recursion:
 
 ```ts
-const List = data(({ Family }) => ({
+const List = data(family => ({
     Nil: {},
-    Cons: { head: Number, tail: Family }
+    Cons: { head: Number, tail: family }
 })).ops(({ fold }) => ({
     // ✗ This will throw at runtime - circular fold
     bad: fold({ out: Number })({
@@ -1664,9 +1651,9 @@ The guard also catches **mutual recursion** cycles where two operations call eac
 
 ```ts
 // ✗ opA → opB → opA on same instance - detected and throws
-const List = data(({ Family }) => ({
+const List = data(family => ({
     Nil: {},
-    Cons: { head: Number, tail: Family }
+    Cons: { head: Number, tail: family }
 })).ops(({ fold }) => ({
     opA: fold({ out: Number })({
         Nil() { return 0; },
@@ -1697,9 +1684,9 @@ When extending fold operations on recursive ADTs, recursive calls use the **exte
 ```ts
 import { data, extend } from '@lapis-lang/lapis-js';
 
-const IntExpr = data(({ Family }) => ({
+const IntExpr = data(family => ({
     IntLit: { value: Number },
-    Add: { left: Family, right: Family }
+    Add: { left: family, right: family }
 })).ops(({ fold }) => ({
     eval: fold({ out: Number })({
         IntLit({ value }) { return value; },
@@ -1708,9 +1695,9 @@ const IntExpr = data(({ Family }) => ({
 }));
 
 // Extend with multiplication - inherited Add works with new Mul
-const ExtendedExpr = data(({ Family }) => ({
+const ExtendedExpr = data(family => ({
     [extend]: IntExpr,
-    Mul: { left: Family, right: Family }
+    Mul: { left: family, right: family }
 })).ops(({ fold }) => ({
     eval: fold({ out: Number })({
         Mul({ left, right }) { return left * right; }
@@ -1733,9 +1720,9 @@ console.log(product.eval); // 20
 ```ts
 import { data, extend, parent } from '@lapis-lang/lapis-js';
 
-const Peano = data(({ Family }) => ({
+const Peano = data(family => ({
     Zero: {},
-    Succ: { pred: Family }
+    Succ: { pred: family }
 })).ops(({ fold }) => ({
     toValue: fold({ out: Number })({
         Zero() { return 0; },
@@ -1743,9 +1730,9 @@ const Peano = data(({ Family }) => ({
     })
 }));
 
-const ExtendedPeano = data(({ Family }) => ({
+const ExtendedPeano = data(family => ({
     [extend]: Peano,
-    NegSucc: { pred: Family }
+    NegSucc: { pred: family }
 })).ops(({ fold }) => ({
     toValue: fold({ out: Number })({
         NegSucc({ pred }) { return -1 + pred; },
@@ -1760,17 +1747,19 @@ console.log(ExtendedPeano.Succ({ pred: ExtendedPeano.Zero }).toValue); // 10
 console.log(Peano.Succ({ pred: Peano.Zero }).toValue); // 1 (original)
 ```
 
-## Type Parameter Transformations with Map
+## Field Transformations with Map
 
-Map operations transform type parameter values while preserving ADT structure. They are defined in the `.ops()` phase using `map(spec)(handlers)`:
+Map operations transform field values while preserving ADT structure. They are defined in the `.ops()` phase using `map(spec)(handlers)`, where the handler object maps **field names** to transform functions:
+
+For recursive ADTs, direct `family` or `self` fields recurse automatically under the same map operation. Handler functions apply to non-recursive fields; they do not override the structural recursion rule for direct recursive fields. This automatic descent only applies to fields declared directly as `family` or `self` — if recursion is wrapped inside another container such as `Array` or `Object`, map treats that container as an ordinary field unless you transform it explicitly.
 
 ```ts
-const List = data(({ Family, T }) => ({
+const List = data(family => ({
     Nil: {},
-    Cons: { head: T, tail: Family(T) }
-})).ops(({ fold, map, Family }) => ({
-    increment: map({ out: Family })({ T: (x) => x + 1 }),
-    stringify: map({ out: Family })({ T: (x) => String(x) })
+    Cons: { head: Number, tail: family }
+})).ops(({ fold, map, family }) => ({
+    increment: map({ out: family })({ head: (x) => x + 1 }),
+    stringify: map({ out: family })({ head: (x) => String(x) })
 }));
 
 const list = List.Cons(1, List.Cons(2, List.Cons(3, List.Nil)));
@@ -1781,25 +1770,25 @@ console.log(incremented.head); // 2 (structure preserved)
 const strings = list.stringify;
 console.log(typeof strings.head); // 'string' (type changed)
 
-// Multiple type parameters
-const Pair = data(({ T, U }) => ({
-    MakePair: { first: T, second: U }
-})).ops(({ map, Family }) => ({
-    transform: map({ out: Family })({
-        T: (x) => x * 2,
-        U: (s) => s.toUpperCase()
+// Multiple fields transformed
+const Pair = data(() => ({
+    MakePair: { first: Number, second: String }
+})).ops(({ map, family }) => ({
+    transform: map({ out: family })({
+        first: (x) => x * 2,
+        second: (s) => s.toUpperCase()
     })
 }));
 
-// Map with arguments
-const List2 = data(({ Family, T }) => ({
+// Map with extra arguments — installed as a method
+const List2 = data(family => ({
     Nil: {},
-    Cons: { head: T, tail: Family }
-})).ops(({ map, Family }) => ({
-    scale: map({ out: Family })({ T: (x, factor) => x * factor })
+    Cons: { head: Number, tail: family }
+})).ops(({ map, family }) => ({
+    scale: map({ out: family })({ head: (x, factor) => x * factor })
 }));
 
-const scaled = list.scale(10); // All values multiplied by 10
+const scaled = list.scale(10); // All head values multiplied by 10
 ```
 
 ### Invertible Maps (Allegories)
@@ -1807,24 +1796,23 @@ const scaled = list.scale(10); // All values multiplied by 10
 Two map operations can be declared as inverses of each other using the `inverse` spec property. This establishes a bijective (one-to-one) relationship: applying the forward map followed by its inverse is the identity.
 
 ```ts
-const TempList = data(({ Family, T }) => ({
+const TempList = data(family => ({
     Nil: {},
-    Cons: { head: T, tail: Family(T) }
-})).ops(({ map, merge, Family }) => ({
+    Cons: { head: Number, tail: family }
+})).ops(({ map, merge, family }) => ({
     // Celsius → Fahrenheit
-    toFahrenheit: map({ out: Family })({ T: (c) => c * 9 / 5 + 32 }),
+    toFahrenheit: map({ out: family })({ head: (c) => c * 9 / 5 + 32 }),
 
     // Fahrenheit → Celsius (declared as inverse of toFahrenheit)
-    toCelsius: map({ out: Family, inverse: 'toFahrenheit' })({
-        T: (f) => (f - 32) * 5 / 9
+    toCelsius: map({ out: family, inverse: 'toFahrenheit' })({
+        head: (f) => (f - 32) * 5 / 9
     })
 }));
 
-const Temps = TempList({ T: Number });
-const readings = Temps.Cons(0, Temps.Cons(100, Temps.Nil));
+const readings = TempList.Cons(0, TempList.Cons(100, TempList.Nil));
 
-readings.toFahrenheit;                // [32, 212]
-readings.toFahrenheit.toCelsius;      // [0, 100] — round-trip identity
+readings.toFahrenheit;                // structure with 32, 212
+readings.toFahrenheit.toCelsius;      // back to 0, 100 — round-trip identity
 ```
 
 The declaration is **one-sided**: only the inverse operation declares the relationship via `inverse: 'forwardOpName'`. The system registers the link bidirectionally. A strict **1:1 constraint** is enforced — each operation may have at most one inverse. Attempting to declare a second inverse for the same operation throws a `TypeError`.
@@ -1847,16 +1835,16 @@ Consecutive getter-map operations are composed into a single map whose per-param
 
 **4. Map-fold fusion (fold with f pre-applied)**
 
-A map getter immediately before a fold is fused: the fold pre-applies the map transforms to type-parameter fields, eliminating the intermediate mapped structure entirely.
+A map getter immediately before a fold is fused: the fold pre-applies the map transforms to transformed fields, eliminating the intermediate mapped structure entirely.
 
 ```ts
-const List = data(({ Family, T }) => ({
+const List = data(family => ({
     Nil: {},
-    Cons: { head: T, tail: Family(T) }
-})).ops(({ fold, map, merge, Family }) => ({
-    double:    map({ out: Family })({ T: (x) => x * 2 }),
-    halve:     map({ out: Family, inverse: 'double' })({ T: (x) => x / 2 }),
-    increment: map({ out: Family })({ T: (x) => x + 1 }),
+    Cons: { head: Number, tail: family }
+})).ops(({ fold, map, merge, family }) => ({
+    double:    map({ out: family })({ head: (x) => x * 2 }),
+    halve:     map({ out: family, inverse: 'double' })({ head: (x) => x / 2 }),
+    increment: map({ out: family })({ head: (x) => x + 1 }),
 
     sum: fold({ out: Number })({
         Nil()              { return 0; },
@@ -1913,77 +1901,65 @@ Each unfold handler inspects the seed value and decides whether to produce its v
 - An object `{ field: value, ... }` containing field values to construct that variant
 - `null` to indicate the handler doesn't match (try next variant)
 
-The first handler that returns a non-null object determines which variant gets constructed. For `Family` fields, the returned value becomes the seed for recursive unfolding.
+The first handler that returns a non-null object determines which variant gets constructed. For `family` fields, the returned value becomes the seed for recursive unfolding.
 
 ```js
-const List = data(({ Family }) => ({
+const List = data(family => ({
     Nil: {},
-    Cons: { head: Number, tail: Family }
-})).ops(({ unfold, Family }) => ({
-    Range: unfold({ in: Number, out: Family })({
-        Nil: (n) => (n <= 0 ? {} : null),  // Return {} to produce Nil when n <=> 0
+    Cons: { head: Number, tail: family }
+})).ops(({ unfold, family }) => ({
+    Range: unfold({ in: Number, out: family })({
+        Nil: (n) => (n <= 0 ? {} : null),  // Return {} to produce Nil when n <= 0
         Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)  // Return fields for Cons, n-1 seeds tail
     })
 }));
 
 const countdown = List.Range(5);
 // Creates: List.Cons(5, List.Cons(4, List.Cons(3, List.Cons(2, List.Cons(1, List.Nil)))))
-
-// Works with parameterized ADTs
-const GenericList = data(({ Family, T }) => ({
-    Nil: {},
-    Cons: { head: T, tail: Family }
-})).ops(({ unfold, Family }) => ({
-    // Unfold operation available on all instantiations
-    Range: unfold({ in: Number, out: Family })({
-        Nil: (n) => (n <= 0 ? {} : null),
-        Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
-    })
-}));
-
-const NumList = GenericList({ T: Number });
-
-// Unfold operation available on all instantiations
-const nums = NumList.Range(3);  // Works
-const strs = GenericList({ T: String }).Range(3);  // Also works
 ```
 
 ### Binary Operations with Fold
 
-Fold operations with parameterized input enable binary operations:
+Fold operations with binary input enable pairing two lists:
 
 ```ts
-const Pair = data(({ T, U }) => ({
-    MakePair: { first: T, second: U }
+const Pair = data(() => ({
+    MakePair: { first: Number, second: String }
 }));
 
-const List = data(({ Family, T }) => ({
+const NumList = data(family => ({
     Nil: {},
-    Cons: { head: T, tail: Family(T) }
-})).ops(({ fold, Family, T }) => ({
+    Cons: { head: Number, tail: family }
+}));
+
+const StrList = data(family => ({
+    Nil: {},
+    Cons: { head: String, tail: family }
+}));
+
+const ZipList = data(family => ({
+    [extend]: NumList,
+    Nil: {},
+    Cons: { head: Number, tail: family }
+})).ops(({ fold, family }) => ({
     zip: fold({})({
-        Nil() { return Family(T).Nil; },
+        Nil() { return StrList.Nil; },
         Cons({ head, tail }, ys) {
             // If other list is empty, stop
             if (!ys || ys.constructor.name === 'Nil')
-                return Family(T).Nil;
+                return StrList.Nil;
 
-            const PairType = Pair({ T: Number, U: String });
-            return Family(T).Cons({
-                head: PairType.MakePair({ first: head, second: ys.head }),
-                tail: tail(ys.tail)  // tail is a partially applied function
+            return family.Cons({
+                head: Pair.MakePair({ first: head, second: ys.head }),
+                tail: tail(ys.tail)
             });
         }
     })
 }));
 
-// Instantiate types
-const NumList = List({ T: Number });
-const StrList = List({ T: String });
-
 // Usage
-const nums = NumList.Cons({ head: 1, tail: NumList.Cons({ head: 2, tail: NumList.Cons({ head: 3, tail: NumList.Nil }) }) });
-const strs = StrList.Cons({ head: "a", tail: StrList.Cons({ head: "b", tail: StrList.Cons({ head: "c", tail: StrList.Nil }) }) });
+const nums = NumList.Cons(1, NumList.Cons(2, NumList.Cons(3, NumList.Nil)));
+const strs = StrList.Cons("a", StrList.Cons("b", StrList.Cons("c", StrList.Nil)));
 const zipped = nums.zip(strs);
 
 // zipped contains pairs: (1, "a"), (2, "b"), (3, "c")
@@ -2018,18 +1994,18 @@ The table below maps each standard recursion scheme to its Lapis operations. The
 | **Map + fold** *(prepromorphism)* | Map + fold | Transform then consume | Apply type transformation before consuming |
 | **Unfold + map** *(postpromorphism)* | Unfold + map | Generate then transform | Apply type transformation after generating |
 
-> **Fold with substructure access via `this`:** In a fold handler, `this` is the raw original instance. Recursive `Family` fields in `foldedFields` carry the already-folded result, while `this.<field>` accesses the original substructure: giving you both at once, which is the defining characteristic of a fold-with-substructure (also called a *paramorphism*). Note: `this.sameOp` on the same instance is guarded against (see [Circular Fold Protection](#circular-fold-protection)): use `this.childField.sameOp` or destructured fields instead.
+> **Fold with substructure access via `this`:** In a fold handler, `this` is the raw original instance. Recursive `family` fields in `foldedFields` carry the already-folded result, while `this.<field>` accesses the original substructure: giving you both at once, which is the defining characteristic of a fold-with-substructure (also called a *paramorphism*). Note: `this.sameOp` on the same instance is guarded against (see [Circular Fold Protection](#circular-fold-protection)): use `this.childField.sameOp` or destructured fields instead.
 
 ### Examples
 
 **Unfold + Fold: `List.Factorial`** (no intermediate list materialized):
 
 ```js
-const List = data(({ Family }) => ({
+const List = data(family => ({
     Nil: {},
-    Cons: { head: Number, tail: Family }
-})).ops(({ fold, unfold, merge, Family }) => ({
-    Range: unfold({ in: Number, out: Family })({
+    Cons: { head: Number, tail: family }
+})).ops(({ fold, unfold, merge, family }) => ({
+    Range: unfold({ in: Number, out: family })({
         Nil: (n) => (n <= 0 ? {} : null),
         Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
     }),
@@ -2048,10 +2024,10 @@ console.log(List.Factorial(5)); // 120 (5 * 4 * 3 * 2 * 1) - no intermediate lis
 A single Stack ADT can illustrate every recursion scheme in the table. Each operation is annotated with its corresponding scheme:
 
 ```js
-const Stack = data(({ Family, T }) => ({
+const Stack = data(family => ({
     Empty: {},
-    Push: { value: T, rest: Family(T) }
-})).ops(({ fold, unfold, map, merge, Family, T }) => ({
+    Push: { value: Number, rest: family }
+})).ops(({ fold, unfold, map, merge, family }) => ({
     // Fold: plain fold - consumes structure bottom-up (catamorphism)
     size: fold({ out: Number })({
         Empty() { return 0; },
@@ -2066,7 +2042,7 @@ const Stack = data(({ Family, T }) => ({
     }),
 
     // Map step used in map+fold and unfold+map below
-    double: map({ out: Family })({ T: (x) => x * 2 }),
+    double: map({ out: family })({ value: (x) => x * 2 }),
 
     // Fold steps used in unfold+fold, map+fold, and fold+unfold below
     toArray: fold({ out: Array })({
@@ -2084,7 +2060,7 @@ const Stack = data(({ Family, T }) => ({
     }),
 
     // Unfold: generates a Stack top-down from an array seed (anamorphism)
-    FromArray: unfold({ in: Array, out: Family })({
+    FromArray: unfold({ in: Array, out: family })({
         Empty: (arr) => (arr.length === 0 ? {} : null),
         Push: (arr) => (arr.length > 0 ? { value: arr[0], rest: arr.slice(1) } : null)
     }),
@@ -2104,8 +2080,7 @@ const Stack = data(({ Family, T }) => ({
     sorted: merge('toSortedArray', 'FromArray')
 }));
 
-const NumStack = Stack({ T: Number });
-const { Empty, Push } = NumStack;
+const { Empty, Push } = Stack;
 
 const stack = Push({ value: 3, rest: Push({ value: 2, rest: Push({ value: 1, rest: Empty }) }) });
 
@@ -2118,17 +2093,17 @@ console.log(top);                                 // 3
 console.log(remaining.size);                      // 2
 
 // Unfold (anamorphism)
-const fromArr = NumStack.FromArray([10, 20, 30]);
+const fromArr = Stack.FromArray([10, 20, 30]);
 console.log(fromArr.size);                        // 3
 
 // Unfold + fold (hylomorphism) - array → Stack → size, no intermediate Stack retained
-console.log(NumStack.SizeOf([10, 20, 30]));       // 3
+console.log(Stack.SizeOf([10, 20, 30]));          // 3
 
 // Map + fold (prepromorphism) - double values, then collect to array
 console.log(stack.doubledArray);                  // [6, 4, 2]
 
 // Unfold + map (postpromorphism) - build from array with all values doubled
-console.log(NumStack.DoubleFrom([1, 2, 3]).toArray); // [2, 4, 6]
+console.log(Stack.DoubleFrom([1, 2, 3]).toArray); // [2, 4, 6]
 
 // Fold + unfold (metamorphism) - fold to sorted array, then unfold into a new sorted Stack
 console.log(stack.sorted.toArray);                // [1, 2, 3]
@@ -2185,7 +2160,7 @@ This asymmetry is sometimes called the **Expression Problem**: data makes adding
 | Aspect | Data | Behavior |
 | --- | --- | --- |
 | **Defined by** | Constructors (how to build) | Observers / Destructors (how to observe) |
-| **Self-reference** | `Family` | `Self` |
+| **Self-reference** | `family` | `self` |
 | **Naturally open to** | New observations (folds) | New generators (unfolds) |
 | **Extensible via** | `extend` (add variants + inherit ops) | New unfold implementations |
 | **Universal arrow** | Fold | Unfold |
@@ -2202,23 +2177,23 @@ This asymmetry is sometimes called the **Expression Problem**: data makes adding
 
 ### Basic Behavior Declaration
 
-Behavior types are defined using the `behavior()` function with a callback that receives `Self` (for continuations) and type parameters:
+Behavior types are defined using the `behavior()` function with a callback that receives `self` (for continuations):
 
 ```js
 import { behavior } from '@lapis-lang/lapis-js';
 
-const Stream = behavior(({ Self, T }) => ({
-    head: T,           // Simple observer: returns current value
-    tail: Self(T)      // Continuation: returns next stream instance
+const Stream = behavior(self => ({
+    head: Number,      // Simple observer: returns current value
+    tail: self         // Continuation: returns next stream instance
 }));
 ```
 
 **Observer types:**
 
-- **Simple observer**: `head: T` Returns a value of type T; installed as a getter
-- **Parametric observer**: `nth: { in: Number, out: T }` Takes input, returns output; installed as a method
-- **Continuation**: `tail: Self(T)` Returns the next behavior instance (lazy, memoized)
-- **Parametric continuation**: `advance: { in: Number, out: Self }` Takes input, returns next behavior instance
+- **Simple observer**: `head: Number` Returns a value; installed as a getter
+- **Parametric observer**: `nth: { in: Number, out: Number }` Takes input, returns output; installed as a method
+- **Continuation**: `tail: self` Returns the next behavior instance (lazy, memoized)
+- **Parametric continuation**: `advance: { in: Number, out: self }` Takes input, returns next behavior instance
 
 **Naming conventions:**
 
@@ -2236,11 +2211,11 @@ const Stream = behavior(({ Self, T }) => ({
 Unfold operations define how to construct behavior instances from seed values. The unfold name becomes a static factory method (or getter if parameterless) on the behavior type.
 
 ```js
-const Stream = behavior(({ Self, T }) => ({
-    head: T,
-    tail: Self(T)
-})).ops(({ unfold, Self }) => ({
-    From: unfold({ in: Number, out: Self })({
+const Stream = behavior(self => ({
+    head: Number,
+    tail: self
+})).ops(({ unfold, self }) => ({
+    From: unfold({ in: Number, out: self })({
         head: (n) => n,      // handler returns observer value
         tail: (n) => n + 1   // handler returns next seed
     })
@@ -2256,7 +2231,7 @@ console.log(nums.tail.tail.head); // 2
 
 - **Simple observers**: `(seed) => value`
 - **Parametric observers**: `(seed) => (param) => value`
-- **Continuations (`Self`)**: `(seed) => nextSeed`: the framework creates the next instance lazily
+- **Continuations (`self`)**: `(seed) => nextSeed`: the framework creates the next instance lazily
 
 **Parameterless unfold (UAP):**
 
@@ -2282,19 +2257,19 @@ io.log('hello');
 Define multiple unfold operations to provide different ways to construct a behavior type:
 
 ```js
-const Stream = behavior(({ Self, T }) => ({
-    head: T,
-    tail: Self(T)
-})).ops(({ unfold, Self }) => ({
-    From: unfold({ in: Number, out: Self })({
+const Stream = behavior(self => ({
+    head: Number,
+    tail: self
+})).ops(({ unfold, self }) => ({
+    From: unfold({ in: Number, out: self })({
         head: (n) => n,
         tail: (n) => n + 1
     }),
-    Constant: unfold({ in: Number, out: Self })({
+    Constant: unfold({ in: Number, out: self })({
         head: (n) => n,
         tail: (n) => n          // Same seed = constant stream
     }),
-    Fibonacci: unfold({ in: { a: Number, b: Number }, out: Self })({
+    Fibonacci: unfold({ in: { a: Number, b: Number }, out: self })({
         head: ({ a }) => a,
         tail: ({ a, b }) => ({ a: b, b: a + b })
     })
@@ -2309,12 +2284,12 @@ const fib  = Stream.Fibonacci({ a: 0, b: 1 });
 Observers can accept parameters:
 
 ```js
-const Stream = behavior(({ Self, T }) => ({
-    head: T,
-    tail: Self(T),
-    nth: { in: Number, out: T }
-})).ops(({ unfold, Self }) => ({
-    From: unfold({ in: Number, out: Self })({
+const Stream = behavior(self => ({
+    head: Number,
+    tail: self,
+    nth: { in: Number, out: Number }
+})).ops(({ unfold, self }) => ({
+    From: unfold({ in: Number, out: self })({
         head: (n) => n,
         tail: (n) => n + 1,
         nth: (n) => (index) => n + index
@@ -2332,7 +2307,7 @@ Behavior instances use Proxy-based lazy evaluation:
 
 - **Simple observers**: recomputed on each access (no memoization)
 - **Parametric observers**: function wrapper is memoized
-- **Continuations (`Self`)**: instances are memoized (same instance on repeated access)
+- **Continuations (`self`)**: instances are memoized (same instance on repeated access)
 
 ```js
 const stream = Stream.From(0);
@@ -2351,12 +2326,12 @@ Behavior naturally represents potentially infinite structures:
 
 ```js
 // Infinite binary tree
-const Tree = behavior(({ Self }) => ({
+const Tree = behavior(self => ({
     value: Number,
-    left: Self,
-    right: Self
-})).ops(({ unfold, Self }) => ({
-    Create: unfold({ in: Number, out: Self })({
+    left: self,
+    right: self
+})).ops(({ unfold, self }) => ({
+    Create: unfold({ in: Number, out: self })({
         value: (n) => n,
         left:  (n) => n * 2,
         right: (n) => n * 2 + 1
@@ -2387,10 +2362,11 @@ Fold is the dual elimination operation for behavior. Where data fold dispatches 
 The `_` key is the sole canonical form: there is no per-observer alternative because behavior is a product type.
 
 ```js
-const Stream = behavior(({ Self, T }) => ({
-    head: T,
-    tail: Self(T),
-    From: unfold({ in: Number, out: Self })({
+const Stream = behavior(self => ({
+    head: Number,
+    tail: self
+})).ops(({ fold, unfold, self }) => ({
+    From: unfold({ in: Number, out: self })({
         head: (n) => n,
         tail: (n) => n + 1
     }),
@@ -2416,12 +2392,12 @@ In the handler, `tail` is a **fold function**: calling `tail(n - 1)` recursively
 When the `_` handler accepts only one argument (the observations object), the fold is installed as a getter. This mirrors the `data` fold rule; handler arity drives getter vs method; `spec.in` is optional.
 
 ```js
-const Countdown = behavior(({ Self }) => ({
+const Countdown = behavior(self => ({
     value: Number,
-    next: Self,
+    next: self,
     done: Boolean
-})).ops(({ fold, unfold, Self }) => ({
-    Create: unfold({ in: Number, out: Self })({
+})).ops(({ fold, unfold, self }) => ({
+    Create: unfold({ in: Number, out: self })({
         value: (n) => n,
         next:  (n) => n - 1,
         done:  (n) => n <= 0
@@ -2439,14 +2415,14 @@ cd.collect  // [5, 4, 3, 2, 1]  - getter via UAP
 
 Map is the dual of data's map operation. Where data map eagerly reconstructs the entire structure O(n), behavior map is lazy: the transform is applied on-demand at observation time, O(1) to create.
 
-Map propagates through continuations automatically: accessing a `Self` observer on a mapped instance returns another mapped instance with the same transform applied.
+Map propagates through continuations automatically: accessing a `self` observer on a mapped instance returns another mapped instance with the same transform applied.
 
 ```js
-const Stream = behavior(({ Self, T }) => ({
-    head: T,
-    tail: Self(T)
-})).ops(({ fold, unfold, map, Self }) => ({
-    From: unfold({ in: Number, out: Self })({
+const Stream = behavior(self => ({
+    head: Number,
+    tail: self
+})).ops(({ fold, unfold, map, self }) => ({
+    From: unfold({ in: Number, out: self })({
         head: (n) => n,
         tail: (n) => n + 1
     }),
@@ -2454,9 +2430,9 @@ const Stream = behavior(({ Self, T }) => ({
         _: ({ head, tail }, n) => n > 0 ? [head, ...tail(n - 1)] : []
     }),
     // Getter map - no extra args
-    doubled: map({})({ T: (x) => x * 2 }),
+    doubled: map({})({ head: (x) => x * 2 }),
     // Method map - extra args become method parameters
-    apply: map({})({ T: (x, f) => f(x) })
+    apply: map({})({ head: (x, f) => f(x) })
 }));
 
 const nums = Stream.From(0);
@@ -2484,15 +2460,15 @@ Merge composes a pipeline of operations into a single named callable, eliminatin
 - No unfold (map + fold only) → camelCase, installed on instances
 
 ```js
-const Stream = behavior(({ Self, T }) => ({
-    head: T,
-    tail: Self(T)
-})).ops(({ fold, unfold, map, merge, Self }) => ({
-    From: unfold({ in: Number, out: Self })({
+const Stream = behavior(self => ({
+    head: Number,
+    tail: self
+})).ops(({ fold, unfold, map, merge, self }) => ({
+    From: unfold({ in: Number, out: self })({
         head: (n) => n,
         tail: (n) => n + 1
     }),
-    doubled: map({})({ T: (x) => x * 2 }),
+    doubled: map({})({ head: (x) => x * 2 }),
     take: fold({ in: Number, out: Array })({
         _: ({ head, tail }, n) => n > 0 ? [head, ...tail(n - 1)] : []
     }),
@@ -2520,11 +2496,11 @@ Stream.From(0).doubled.take(5)    // same as TakeDoubled(0, 5)
 Behavior with parametric observers can model effects like IO:
 
 ```js
-const Console = behavior(({ Self }) => ({
+const Console = behavior(self => ({
     log: { in: String, out: undefined },
     read: { out: String }
-})).ops(({ unfold, Self }) => ({
-    Create: unfold({ out: Self })({
+})).ops(({ unfold, self }) => ({
+    Create: unfold({ out: self })({
         log: () => (msg) => { console.log(msg); },
         read: () => () => Promise.resolve('input')
     })
@@ -2543,7 +2519,7 @@ const input = await io.read();
 - Map operations are camelCase; lazy: O(1) creation, transform applied at observation time
 - Merge operations compose pipelines; naming follows whether an unfold is included
 - Lazy evaluation via Proxy enables infinite structures with no up-front cost
-- Continuations (`Self`) are memoized; simple observers are recomputed each access
+- Continuations (`self`) are memoized; simple observers are recomputed each access
 
 **See also:**
 
@@ -2570,10 +2546,10 @@ import { relation } from '@lapis-lang/lapis-js';
 A relation is declared like a `data()` type, with two required fold operations (`[origin]` and `[destination]`) defined in the `.ops()` phase that project each variant to its endpoints:
 
 ```ts
-const Edge = relation(({ Family }) => ({
+const Edge = relation(family => ({
     // Variants (same as data)
     Direct: { from: String, to: String },
-    Path:   { first: Family, second: Family }
+    Path:   { first: family, second: family }
 })).ops(({ fold, origin, destination }) => ({
     // Endpoint projections (required)
     [origin]: fold({ out: String })({
@@ -2664,7 +2640,7 @@ Edge.reachingTo(allPairs, ['C']);  // ['A', 'B', 'D']
 
 ### Join Invariant (Auto-Generated)
 
-For any recursive variant with two or more `Family` fields, `relation()` automatically attaches an invariant enforcing composability on every adjacent pair:
+For any recursive variant with two or more `family` fields, `relation()` automatically attaches an invariant enforcing composability on every adjacent pair:
 
 ```text
 fields[0].destination === fields[1].origin
@@ -2672,7 +2648,7 @@ fields[1].destination === fields[2].origin
 ...
 ```
 
-For the common two-field case `{ first: Family, second: Family }`, this reduces to:
+For the common two-field case `{ first: family, second: family }`, this reduces to:
 
 ```text
 first.destination === second.origin
@@ -2700,9 +2676,9 @@ The key insight is that a relation instance IS a proof witness: a `Direct('alice
 ### Complete Example: Ancestor Relation
 
 ```ts
-const Ancestor = relation(({ Family }) => ({
+const Ancestor = relation(family => ({
     Direct:     { from: String, to: String },
-    Transitive: { hop: Family, rest: Family }
+    Transitive: { hop: family, rest: family }
 })).ops(({ fold, origin, destination }) => ({
     [origin]: fold({ out: String })({
         Direct({ from })       { return from; },
@@ -2762,7 +2738,7 @@ Where `relation()` computes exhaustively bottom-up (like Datalog), `query()` exp
 | Computes **all** reachable pairs (bottom-up) | Explores **lazily** from a seed (top-down) |
 | `[origin]` / `[destination]` project endpoints (fold ops) | `[output]` / `[done]` / `[accept]` observe state (field references) |
 | `closure()` iterates to a fixpoint | `explore()` steps until done or limit reached |
-| Join invariant auto-generated | `Self` continuation auto-detected |
+| Join invariant auto-generated | `self` continuation auto-detected |
 | Datalog-style | Prolog-style |
 
 ```ts
@@ -2776,20 +2752,20 @@ A query is declared like a `behavior()` type, with three required cospan project
 Each cospan key is a **string naming a query field**. The framework auto-generates the corresponding fold projection:
 
 ```ts
-const PathFinder = query(({ Self }) => ({
+const PathFinder = query(({ self }) => ({
     // Observers (same as behavior)
     path: Array,
     found: Boolean,
     exhausted: Boolean,
-    next: Self
-})).ops(({ unfold, output, done, accept, Self }) => ({
+    next: self
+})).ops(({ unfold, output, done, accept, self }) => ({
     // Cospan projections — each names a field defined above
     [output]: 'path',
     [done]:   'exhausted',
     [accept]: 'found',
 
     // Unfold (query map, same as behavior)
-    Search: unfold({ in: Object, out: Self })({
+    Search: unfold({ in: Object, out: self })({
         path:      (s) => s.path,
         found:     (s) => s.isFound,
         exhausted: (s) => s.isExhausted,
@@ -2803,10 +2779,10 @@ Any derived value (e.g. filtering, transforming) belongs in the unfold as a dedi
 ```ts
     // Computed in the unfold, referenced by name in the cospan:
     isEven: Boolean
-})).ops(({ unfold, accept, Self }) => ({
+})).ops(({ unfold, accept, self }) => ({
     [accept]: 'isEven',
 
-    Gen: unfold({ in: Number, out: Self })({
+    Gen: unfold({ in: Number, out: self })({
         isEven: (n) => n % 2 === 0,
         ...
     })
@@ -2822,7 +2798,7 @@ Any derived value (e.g. filtering, transforming) belongs in the unfold as a dedi
 
 The referenced field's type serves as the projection type: the `[output]` field's type is the codomain (what `explore()` returns). The `in` type of the unfold serves as the domain type (the seed).
 
-The `Self` continuation is **auto-detected**: any field whose value is a `Self` reference becomes the stepping mechanism.
+The `self` continuation is **auto-detected**: any field whose value is a `self` reference becomes the stepping mechanism.
 
 All other keys follow the same rules as `behavior()`: observers, fold/unfold operations, etc.
 
@@ -2834,7 +2810,7 @@ The `explore()` method drives the query step by step, collecting results along t
 2. At each step, read `[accept]` (fold getter) on the current instance
 3. If `[accept]` is true, collect `[output]` (fold getter) into results
 4. If `[done]` (fold getter) is true, stop
-5. Follow the `Self` continuation to the next state
+5. Follow the `self` continuation to the next state
 6. Repeat until done, exhausted, or limits reached
 
 ```ts
@@ -2923,17 +2899,17 @@ const Query = data(() => ({
 }));
 
 // PathFinder - query with cospan structure
-const PathFinder = query(({ Self }) => ({
+const PathFinder = query(({ self }) => ({
     path: Array,
     found: Boolean,
     exhausted: Boolean,
-    next: Self
-})).ops(({ unfold, output, done, accept, Self }) => ({
+    next: self
+})).ops(({ unfold, output, done, accept, self }) => ({
     [output]: 'path',
     [done]:   'exhausted',
     [accept]: 'found',
 
-    Search: unfold({ in: Object, out: Self })({
+    Search: unfold({ in: Object, out: self })({
         path:      (s) => s.path,
         found:     (s) => s.isFound,
         exhausted: (s) => s.isExhausted,
@@ -3005,22 +2981,22 @@ Protocols declare *what* operations must exist and *what shape* they must have. 
 
 ### Declaring a Protocol
 
-Use `protocol()` with the same destructured-parameter style as `data()` and `behavior()`. The callback receives `Family`, optional single-letter type params, and spec-only helpers (`fold`, `unfold`, `map`, `merge`) that return spec objects directly — no second handlers phase:
+Use `protocol()` with the same destructured-parameter style as `data()` and `behavior()`. The callback receives `family`, optional single-letter type params, and spec-only helpers (`fold`, `unfold`, `map`, `merge`) that return spec objects directly — no second handlers phase:
 
 ```ts
 import { protocol, extend } from '@lapis-lang/lapis-js';
 
-const Semigroup = protocol(({ Family, fold }) => ({
-    combine: fold({ in: Family, out: Family })
+const Semigroup = protocol(({ family, fold }) => ({
+    combine: fold({ in: family, out: family })
 }));
 
-const Monoid = protocol(({ Family, fold, unfold }) => ({
+const Monoid = protocol(({ family, fold, unfold }) => ({
     [extend]: Semigroup,     // inherits 'combine' requirement
-    Identity: unfold({ out: Family })
+    Identity: unfold({ out: family })
 }));
 
-const Ordered = protocol(({ Family, fold }) => ({
-    compare: fold({ in: Family, out: Number })
+const Ordered = protocol(({ family, fold }) => ({
+    compare: fold({ in: family, out: Number })
 }));
 ```
 
@@ -3037,13 +3013,13 @@ Naming conventions are enforced at declaration time:
 Protocols support `[extend]` for hierarchies. A child protocol inherits all required operations from its parent:
 
 ```ts
-const Semigroup = protocol(({ Family, fold }) => ({
-    combine: fold({ in: Family, out: Family })
+const Semigroup = protocol(({ family, fold }) => ({
+    combine: fold({ in: family, out: family })
 }));
 
-const Monoid = protocol(({ Family, fold, unfold }) => ({
+const Monoid = protocol(({ family, fold, unfold }) => ({
     [extend]: Semigroup,
-    Identity: unfold({ out: Family })
+    Identity: unfold({ out: family })
 }));
 
 // Monoid.requiredOps has both 'combine' (inherited) and 'Identity' (own)
@@ -3057,18 +3033,18 @@ Conformance is transitive: satisfying `Monoid` automatically implies satisfying 
 Protocol `[extend]` accepts an **array of parents**, enabling protocols that sit at the intersection of multiple hierarchies:
 
 ```ts
-const Group = protocol(({ Family, fold, unfold }) => ({
+const Group = protocol(({ family, fold, unfold }) => ({
     [extend]: Monoid,
-    inverse: fold({ out: Family })  // every element has an inverse
+    inverse: fold({ out: family })  // every element has an inverse
 }));
 
-const CommutativeMonoid = protocol(({ Family, fold, unfold }) => ({
+const CommutativeMonoid = protocol(({ family, fold, unfold }) => ({
     [extend]: Monoid,
     // combine is inherited with commutativity implied by the protocol's name
 }));
 
 // AbelianGroup logically has two parents:
-const AbelianGroup = protocol(({ Family, fold, unfold }) => ({
+const AbelianGroup = protocol(({ family, fold, unfold }) => ({
     [extend]: [Group, CommutativeMonoid]   // ← array of parents
 }));
 ```
@@ -3082,22 +3058,22 @@ const AbelianGroup = protocol(({ Family, fold, unfold }) => ({
 - If the parents declare the operation with **different kinds**, the child protocol **must explicitly re-declare** the operation. Failing to do so throws a `TypeError` at declaration time.
 
 ```ts
-const PA = protocol(({ Family, fold }) => ({
+const PA = protocol(({ family, fold }) => ({
     op: fold({ out: Boolean })   // kind = 'fold'
 }));
-const PB = protocol(({ Family, map }) => ({
-    op: map({ out: Family })     // kind = 'map' — conflicts with fold!
+const PB = protocol(({ family, map }) => ({
+    op: map({ out: family })     // kind = 'map' — conflicts with fold!
 }));
 
 // Throws: 'op' appears in multiple parents with different kinds ('fold' vs 'map')
-const Bad = protocol(({ Family, fold }) => ({
+const Bad = protocol(({ family, fold }) => ({
     [extend]: [PA, PB]
 }));
 
 // OK — child re-declares 'op', resolving the kind conflict
-const Good = protocol(({ Family, fold }) => ({
+const Good = protocol(({ family, fold }) => ({
     [extend]: [PA, PB],
-    op: fold({ in: Family, out: Boolean })  // resolution
+    op: fold({ in: family, out: Boolean })  // resolution
 }));
 ```
 
@@ -3110,22 +3086,22 @@ Conformance remains fully transitive: an ADT or behavior satisfying `AbelianGrou
 Protocol operation specs can include a **default implementation** by providing a wildcard `_` handler body inline — the same `_` wildcard used in `.ops()`. When a conforming type does not declare the operation in its own `.ops()`, the default is automatically installed on its prototype at conformance validation time.
 
 ```ts
-const Ord = protocol(({ Family, fold }) => ({
+const Ord = protocol(({ family, fold }) => ({
     // Required: every conforming type must implement compare
-    compare: fold({ in: Family, out: Number }),
+    compare: fold({ in: family, out: Number }),
 
     // Default: equals is derived from compare — no implementation required
-    equals: fold({ in: Family, out: Boolean })({
+    equals: fold({ in: family, out: Boolean })({
         _: (ctx: any, other: unknown) => ctx.compare(other) === 0
     })
 }));
 
-const Temperature = data(({ Family }) => ({
+const Temperature = data(family => ({
     [satisfies]: Ord,
     Celsius: { degrees: Number }
-})).ops(({ fold, Family }) => ({
+})).ops(({ fold, family }) => ({
     // Only 'compare' is provided — 'equals' is installed automatically from Ord's default
-    compare: fold({ in: Family, out: Number })({
+    compare: fold({ in: family, out: Number })({
         Celsius: ({ degrees }, other) =>
             degrees < other.degrees ? -1 : degrees > other.degrees ? 1 : 0
     })
@@ -3141,16 +3117,16 @@ Defaults are inherited through `[extend]` chains: if `Ord` extends another proto
 **Overriding a default:** A conforming type can always override a default by providing its own implementation in `.ops()`. The user-provided implementation completely replaces the default (shadowing). Protocol contracts (`demands`, `ensures`) still apply to both the default and any override.
 
 ```ts
-const MyTemp = data(({ Family }) => ({
+const MyTemp = data(family => ({
     [satisfies]: Ord,
     Celsius: { degrees: Number }
-})).ops(({ fold, Family }) => ({
-    compare: fold({ in: Family, out: Number })({
+})).ops(({ fold, family }) => ({
+    compare: fold({ in: family, out: Number })({
         Celsius: ({ degrees }, other) =>
             degrees < other.degrees ? -1 : degrees > other.degrees ? 1 : 0
     }),
     // Override the default — e.g. treat 0.001-degree differences as equal
-    equals: fold({ in: Family, out: Boolean })({
+    equals: fold({ in: family, out: Boolean })({
         Celsius: ({ degrees }, other) => Math.abs(degrees - other.degrees) < 0.001
     })
 }));
@@ -3159,7 +3135,7 @@ const MyTemp = data(({ Family }) => ({
 **Zero-argument defaults (getters):** A `fold` or `map` spec with no `in` type produces a getter. The same applies to defaults — a default on a no-argument op is installed as a getter property:
 
 ```ts
-const Stringifiable = protocol(({ Family, fold }) => ({
+const Stringifiable = protocol(({ family, fold }) => ({
     // Default description is a getter: `instance.description`
     description: fold({ out: String })({
         _: (ctx: any) => `${ctx.constructor.name}(${JSON.stringify(ctx)})`
@@ -3171,8 +3147,8 @@ const Stringifiable = protocol(({ Family, fold }) => ({
 
 ```ts
 // Throws: Protocol unfold operation 'From' cannot have a default body
-const Bad = protocol(({ Family, unfold }) => ({
-    From: unfold({ out: Family })({ _: (ctx: any) => ctx })
+const Bad = protocol(({ family, unfold }) => ({
+    From: unfold({ out: family })({ _: (ctx: any) => ctx })
 }));
 ```
 
@@ -3185,27 +3161,17 @@ ADTs declare conformance in **phase 1** (the structural declaration), using the 
 ```ts
 import { data, satisfies, extend } from '@lapis-lang/lapis-js';
 
-const List = data(({ Family, T }) => ({
-    [satisfies]: [Monoid, Ordered({ T: Ordered })],
+const List = data(family => ({
+    [satisfies]: [Monoid],
     Nil: {},
-    Cons: { head: T, tail: Family(T) }
-})).ops(({ fold, unfold, Family, T }) => ({
+    Cons: { head: Object, tail: family }
+})).ops(({ fold, unfold, family }) => ({
     // Fulfills Monoid
-    Identity: unfold({ out: Family })({ Nil: () => ({}), Cons: () => null }),
-    combine: fold({ in: Family, out: Family })({
+    Identity: unfold({ out: family })({ Nil: () => ({}), Cons: () => null }),
+    combine: fold({ in: family, out: family })({
         Nil({}, other) { return other; },
         Cons({ head, tail }, other) {
-            return Family.Cons({ head, tail: tail(other) });
-        }
-    }),
-    // Fulfills Ordered — only registered when T also satisfies Ordered;
-    // calling compare on a non-conforming parameterization throws a TypeError
-    compare: fold({ in: Family, out: Number })({
-        Nil({}, other) { return other instanceof List.Nil ? 0 : -1; },
-        Cons({ head, tail }, other) {
-            if (other instanceof List.Nil) return 1;
-            const hCmp = head.compare(other.head);
-            return hCmp !== 0 ? hCmp : tail(other.tail);
+            return family.Cons({ head, tail: tail(other) });
         }
     })
 }));
@@ -3216,8 +3182,8 @@ Conformance is validated when `.ops()` is called. A `TypeError` is thrown if a r
 `[satisfies]` accepts a single protocol or an array:
 
 ```ts
-[satisfies]: Monoid                          // single
-[satisfies]: [Monoid, Ordered({ T: Ordered })]  // array, mixed
+[satisfies]: Monoid                  // single
+[satisfies]: [Monoid, Ordered]       // array
 ```
 
 ### Checking Conformance with `instanceof`
@@ -3259,9 +3225,9 @@ Protocol operation kinds map to TypeScript types as follows:
 
 | Protocol kind | Example declaration                  | Instance-side type              |
 |---------------|--------------------------------------|---------------------------------|
-| `fold` (with `in`)    | `combine: fold({ in: Family, out: Family })` | `(other: unknown) => unknown` — instance method |
+| `fold` (with `in`)    | `combine: fold({ in: family, out: family })` | `(other: unknown) => unknown` — instance method |
 | `fold` (no `in`)      | `size: fold({ out: Number })`        | `unknown` — computed getter property |
-| `unfold`      | `Identity: unfold({ out: Family })` | `unknown`                       |
+| `unfold`      | `Identity: unfold({ out: family })` | `unknown`                       |
 | `map`         | `fmap: map({ out: Family })`        | `(f: unknown) => unknown`       |
 
 Within a `protocol()` declaration, `in` presence is the discriminant: `fold({ out: X })` declares a getter contract; `fold({ in: Y, out: X })` declares a method contract. `ProtocolOps` reflects this declared contract. Note that within `.ops()` implementations, handler arity is the authoritative runtime signal — a handler with more than one argument is installed as a method even when `in` is absent from the spec — and `in` can also be inherited from a parent protocol. `ProtocolOps` does not inspect implementations.
@@ -3306,15 +3272,9 @@ type StreamInstance = InstanceOf<typeof Stream>;
 
 `Relation` and `Query` follow the same pattern — `Relation` is built on `data` and `Query` on `behavior`, so `InstanceOf` resolves through the same mechanism.
 
-### Conditional Conformance
+### Selective Conformance via Concrete Subtypes
 
-`List(T)` is `Ordered` only when `T` is also `Ordered`. Express this by calling the protocol with a constraints object:
-
-```ts
-[satisfies]: [Ordered({ T: Ordered })]
-```
-
-This reuses the same `X({ param: value })` calling convention as type instantiation. When `List({ T: Number })` is constructed, the system checks whether `Number` satisfies `Ordered`. If it does, `instanceof Ordered` returns `true` for instances of `List(Number)`. If not, it returns `false`.
+Rather than conditional conformance, Lapis uses **explicit specialization**: create a concrete subtype that extends the base ADT and declares conformance. Only the specialized type satisfies the protocol — the base type does not.
 
 ```ts
 const Num = data(() => ({
@@ -3327,65 +3287,52 @@ const Point = data(() => ({
     Point: { x: Number, y: Number }
 })).ops(/* ... */);
 
-const ListOfNum   = List({ T: Num });
-const ListOfPoint = List({ T: Point });   // Point does not satisfy Ordered
+// A generic list — no protocol conformance declared
+const List = data(family => ({
+    Nil: {},
+    Cons: { head: Object, tail: family }
+})).ops(/* ... */);
 
-ListOfNum.Cons({ head: Num.Num({ value: 1 }), tail: ListOfNum.Nil })
-    instanceof Ordered;  // true — T=Num satisfies Ordered
-
-ListOfPoint.Cons({ head: Point.Point({ x: 1, y: 2 }), tail: ListOfPoint.Nil })
-    instanceof Ordered;  // false — T=Point does not satisfy Ordered
-```
-
-When the constraint is **not** met, any operation contributed by the unsatisfied protocol is replaced with a throwing stub. Calling it produces a clear `TypeError` at the call site:
-
-```ts
-const listOfPoint = ListOfPoint.Cons({ head: Point.Point({ x: 1, y: 2 }), tail: ListOfPoint.Nil });
-listOfPoint.compare(listOfPoint);
-// TypeError: 'compare' is not available: this type was not instantiated with
-// compatible type arguments ('T' is 'Point' — does not satisfy the required
-// constraint). Provide a type argument that satisfies the required protocol.
-```
-
-This means a conditional protocol's operations are structurally present as stubs on every parameterization, but only become live (and `instanceof` returns `true`) when all constraints are satisfied. The stub ensures the failure is caught at the call site with a precise, actionable message rather than silently succeeding for empty variants or surfacing a cryptic deep error.
-
-Unconstrained conformance uses the protocol directly: `[satisfies]: [Monoid]`. Constrained conformance calls the protocol with constraints: `[satisfies]: [Ordered({ T: Ordered })]`.
-
-### Higher-Kinded Protocol Parameters
-
-Protocols can declare type parameters (`T`, `U`, ...) alongside `Family` using the same single-uppercase-letter convention:
-
-```ts
-// Functor: requires a map operation that transforms type parameter T
-const Functor = protocol(({ Family, T, map }) => ({
-    fmap: map({ out: Family })
+// A concrete "list of Num" that explicitly satisfies Ordered
+const NumList = data(family => ({
+    [extend]: List,
+    [satisfies]: [Ordered],
+    Nil: {},
+    Cons: { head: Num, tail: family }
+})).ops(({ fold }) => ({
+    compare: fold({ in: family, out: Number })({
+        Nil({}, other) { return other instanceof NumList.Nil ? 0 : -1; },
+        Cons({ head, tail }, other) {
+            if (other instanceof NumList.Nil) return 1;
+            const hCmp = head.compare(other.head);
+            return hCmp !== 0 ? hCmp : tail(other.tail);
+        }
+    })
 }));
 
-// Bifunctor: requires maps over both T and U
-const Bifunctor = protocol(({ Family, T, U, map }) => ({
-    bimap: map({ out: Family })
-}));
+NumList.Cons(Num.Num({ value: 1 }), NumList.Nil) instanceof Ordered;  // true
+List.Cons(1, List.Nil) instanceof Ordered;                             // false
 ```
 
-When a parameterized ADT satisfies a protocol with type parameters, the protocol's type params bind to the ADT's type params by name.
+Unconditional conformance: `[satisfies]: [Monoid]`. Explicit-specialization conformance: create a concrete subtype with `[extend]` and `[satisfies]` together.
 
 ### Algebraic Laws via Contracts
 
 Protocol specs support `demands`, `ensures`, and `rescue` — the same contract system used in `.ops()`. This turns protocols from structural assertions into **algebraic specifications with laws**:
 
 ```ts
-const Semigroup = protocol(({ Family, fold }) => ({
+const Semigroup = protocol(({ family, fold }) => ({
     combine: fold({
-        in: Family,
-        out: Family,
+        in: family,
+        out: family,
         // Associativity: result must be the same type as self
         ensures: (self, _old, result) => result instanceof self.constructor
     })
 }));
 
-const Ordered = protocol(({ Family, fold }) => ({
+const Ordered = protocol(({ family, fold }) => ({
     compare: fold({
-        in: Family,
+        in: family,
         out: Number,
         // compare must return -1, 0, or 1
         ensures: (_self, _old, result) =>
@@ -3409,9 +3356,9 @@ This follows the Liskov Substitution Principle: protocol contracts apply everywh
 For cross-operation laws (e.g. Monoid identity: `combine(x, Identity) ≡ x`) that cannot be expressed as per-operation `ensures`, use a protocol-level `[invariant]` predicate:
 
 ```ts
-const Monoid = protocol(({ Family, fold, unfold }) => ({
+const Monoid = protocol(({ family, fold, unfold }) => ({
     [extend]: Semigroup,
-    Identity: unfold({ out: Family }),
+    Identity: unfold({ out: family }),
     [invariant]: (type) => {
         // Structural check: Identity must exist and be the right shape
         return typeof type.Identity !== 'undefined';
@@ -3438,27 +3385,27 @@ Annotate any `fold`/`unfold`/`map` spec with `properties` — an array of proper
 ```ts
 import { protocol, extend } from '@lapis-lang/lapis-js';
 
-const Semigroup = protocol(({ Family, fold }) => ({
+const Semigroup = protocol(({ family, fold }) => ({
     combine: fold({
-        in: Family,
-        out: Family,
+        in: family,
+        out: family,
         properties: ['associative']
     })
 }));
 
-const CommutativeMonoid = protocol(({ Family, fold, unfold }) => ({
+const CommutativeMonoid = protocol(({ family, fold, unfold }) => ({
     [extend]: Semigroup,
-    Identity: unfold({ out: Family }),
+    Identity: unfold({ out: family }),
     combine: fold({
-        in: Family,
-        out: Family,
+        in: family,
+        out: family,
         properties: ['commutative', 'identity']
     })
 }));
 
-const Ordered = protocol(({ Family, fold }) => ({
+const Ordered = protocol(({ family, fold }) => ({
     compare: fold({
-        in: Family,
+        in: family,
         out: Number,
         properties: ['antisymmetric', 'transitive', 'total']
     })
@@ -3470,13 +3417,13 @@ const Ordered = protocol(({ Family, fold }) => ({
 ```ts
 import { data } from '@lapis-lang/lapis-js';
 
-const IntSet = data(({ Self }) => ({
+const IntSet = data(self => ({
     Empty: {},
-    Insert: { value: Number, rest: Self }
-})).ops(({ fold, map, Self }) => ({
+    Insert: { value: Number, rest: self }
+})).ops(({ fold, map, self }) => ({
     union: fold({
-        in: Self,
-        out: Self,
+        in: self,
+        out: self,
         properties: ['associative', 'commutative', 'idempotent']
     })({
         Empty: (other) => other,
@@ -3496,12 +3443,12 @@ const IntSet = data(({ Self }) => ({
 ```ts
 import { behavior } from '@lapis-lang/lapis-js';
 
-const Counter = behavior(({ Self }) => ({
+const Counter = behavior(self => ({
     value: Number
-})).ops(({ fold, unfold, Self }) => ({
+})).ops(({ fold, unfold, self }) => ({
     Counting: unfold({
         in: Number,
-        out: Self,
+        out: self,
         properties: ['identity']
     })({
         value: (n) => n
@@ -3553,8 +3500,8 @@ function myLaw(sample: unknown, adt: unknown): boolean {
     return ...;
 }
 
-const ADT = data(() => ({ ... })).ops(({ fold, Family }) => ({
-    op: fold({ in: Family, out: Family, properties: [myLaw] })({ ... })
+const ADT = data(() => ({ ... })).ops(({ fold, family }) => ({
+    op: fold({ in: family, out: family, properties: [myLaw] })({ ... })
 }));
 ```
 
@@ -3586,15 +3533,15 @@ The full set of known plain-string property names is exported as `KNOWN_PROPERTI
 Properties inherit through `[extend]` just like operations. When a child protocol redeclares an operation, properties from the parent are **unioned** — a child cannot remove a parent's properties (this preserves the Liskov Substitution Principle):
 
 ```ts
-const Semigroup = protocol(({ Family, fold }) => ({
-    combine: fold({ in: Family, out: Family, properties: ['associative'] })
+const Semigroup = protocol(({ family, fold }) => ({
+    combine: fold({ in: family, out: family, properties: ['associative'] })
 }));
 
-const CommutativeMonoid = protocol(({ Family, fold, unfold }) => ({
+const CommutativeMonoid = protocol(({ family, fold, unfold }) => ({
     [extend]: Semigroup,
-    Identity: unfold({ out: Family }),
+    Identity: unfold({ out: family }),
     // Only declares 'commutative', but 'associative' is inherited from Semigroup
-    combine: fold({ in: Family, out: Family, properties: ['commutative'] })
+    combine: fold({ in: family, out: family, properties: ['commutative'] })
 }));
 // CommutativeMonoid.combine now has both 'associative' (inherited) and 'commutative' (declared)
 ```
@@ -3609,21 +3556,21 @@ When `properties` are declared on a **data** operation (via `data().ops()`), Lap
 import { data } from '@lapis-lang/lapis-js';
 
 // ✔ Passes — addition is associative
-const Nat = data(({ Family }) => ({
+const Nat = data(family => ({
     Zero: {},
-    Succ: { pred: Family }
-})).ops(({ fold, Family }) => ({
-    add: fold({ in: Family, out: Family, properties: ['associative', 'commutative'] })({
+    Succ: { pred: family }
+})).ops(({ fold, family }) => ({
+    add: fold({ in: family, out: family, properties: ['associative', 'commutative'] })({
         Zero(_ctx, other) { return other; },
-        Succ({ pred }, other) { return Family.Succ({ pred: pred(other) }); }
+        Succ({ pred }, other) { return family.Succ({ pred: pred(other) }); }
     })
 }));
 
 // ✘ Throws LawError at .ops() time — subtraction is not associative
-const Num = data(({ Family }) => ({ N: { v: Number } }))
-    .ops(({ fold, Family }) => ({
-        sub: fold({ in: Family, out: Family, properties: ['associative'] })({
-            N({ v }, b) { return Family.N({ v: v - b.v }); }
+const Num = data(family => ({ N: { v: Number } }))
+    .ops(({ fold, family }) => ({
+        sub: fold({ in: family, out: family, properties: ['associative'] })({
+            N({ v }, b) { return family.N({ v: v - b.v }); }
         })
     }));
 // LawError: Law 'associative' violated for operation 'sub' on ADT { N }.
@@ -3632,7 +3579,7 @@ const Num = data(({ Family }) => ({ N: { v: Number } }))
 
 **How it works:**
 
-1. After the transformer is registered, Lapis generates a small set of representative instances — singletons, primitive-field records (up to three value combinations per variant), and one shallow recursive sample per `Family`-field variant.
+1. After the transformer is registered, Lapis generates a small set of representative instances — singletons, primitive-field records (up to three value combinations per variant), and one shallow recursive sample per `family`-field variant.
 2. Every declared law is tested against all relevant tuples of those samples.
 3. The first failing tuple causes a `LawError` to be thrown **before** `.ops()` returns, so a violating declaration never silently enters the module graph.
 
@@ -3667,30 +3614,30 @@ import { data } from '@lapis-lang/lapis-js';
 const Z2 = data(() => ({
     Zero: {},
     One:  {}
-})).ops(({ fold, map, Family }) => ({
+})).ops(({ fold, map, family }) => ({
     // Every element is its own additive inverse in Z/2Z
-    negate: map({ out: Family, properties: ['involutory'] })({
-        Zero: (_) => (Family as any).Zero,
-        One:  (_) => (Family as any).One
+    negate: map({ out: family, properties: ['involutory'] })({
+        Zero: (_) => (family as any).Zero,
+        One:  (_) => (family as any).One
     }),
     // XOR: commutative group with additive identity Zero
     add: fold({
-        in: Family, out: Family,
+        in: family, out: family,
         properties: ['associative', 'commutative', 'identity:Zero', 'inverse:negate:Zero']
     })({
         Zero({}, other) { return other; },
         One({}, other) {
-            const F = Family as any;
+            const F = family as any;
             if (other === F.One) return F.Zero;
             return F.One;
         }
     }),
     // AND: commutative monoid, Zero is absorbing, distributes over XOR
     multiply: fold({
-        in: Family, out: Family,
+        in: family, out: family,
         properties: ['associative', 'commutative', 'identity:One', 'absorbing:Zero', 'distributive:add']
     })({
-        Zero({}, _) { return (Family as any).Zero; },
+        Zero({}, _) { return (family as any).Zero; },
         One({}, other) { return other; }
     })
 }));
@@ -3719,17 +3666,17 @@ Companion elements (`identity:E`, `absorbing:Z`) are resolved lazily on the firs
 import { data } from '@lapis-lang/lapis-js';
 
 // Peano addition — identity:Zero guard installed automatically
-const Nat = data(({ Family }) => ({
+const Nat = data(family => ({
     Zero: {},
-    Succ: { pred: Family }
-})).ops(({ fold, Family }) => ({
+    Succ: { pred: family }
+})).ops(({ fold, family }) => ({
     add: fold({
-        in: Family,
-        out: Family,
+        in: family,
+        out: family,
         properties: ['associative', 'commutative', 'identity:Zero']
     })({
         Zero(_ctx, other) { return other; },
-        Succ({ pred }, other) { return Family.Succ({ pred: pred(other) }); }
+        Succ({ pred }, other) { return family.Succ({ pred: pred(other) }); }
     })
 }));
 
@@ -3744,13 +3691,13 @@ console.log(zero.add(three) === three); // true
 ```ts
 // Boolean AND — absorbing:False guard
 const Bool = data(() => ({ False: {}, True: {} }))
-    .ops(({ fold, Family }) => ({
+    .ops(({ fold, family }) => ({
         and: fold({
-            in: Family,
-            out: Family,
+            in: family,
+            out: family,
             properties: ['absorbing:False']
         })({
-            False(_ctx, _other) { return Family.False; },
+            False(_ctx, _other) { return family.False; },
             True(_ctx, other)   { return other; }
         })
     }));
@@ -3762,18 +3709,18 @@ console.log(Bool.True.and(Bool.False) === Bool.False); // true
 
 ```ts
 // Idempotent set-union
-const IntSet = data(({ Family }) => ({
+const IntSet = data(family => ({
     Empty: {},
-    Insert: { value: Number, rest: Family }
-})).ops(({ fold, Family }) => ({
+    Insert: { value: Number, rest: family }
+})).ops(({ fold, family }) => ({
     union: fold({
-        in: Family,
-        out: Family,
+        in: family,
+        out: family,
         properties: ['associative', 'commutative', 'idempotent']
     })({
         Empty(_ctx, other) { return other; },
         Insert({ value, rest }, other) {
-            return Family.Insert({ value, rest: rest.union(other) });
+            return family.Insert({ value, rest: rest.union(other) });
         }
     })
 }));
@@ -3791,19 +3738,19 @@ Guards apply to **binary Family→Family folds** only (those declared with `in: 
 
 The `involutory` property also feeds into the merge fusion pass (rule 2 above). Any operation — fold or map — annotated `properties: ['involutory']` has the `f ∘ f = id` identity, so consecutive pairs are eliminated from a merge pipeline at definition time. The elimination is applied repeatedly until no more adjacent pairs remain.
 
-> **Checked vs trusted:** for unary *fold* operations, `involutory` is automatically verified at `.ops()` time using the auto-generated sample set. For *map* operations, the transform function is only applied to `TypeParam`-typed fields (`T`, `U`, …); because variants that contain type-parameter fields are excluded from the sample set (the type parameter is unresolved at declaration time), the involutory identity `f(f(a)) ≡ a` cannot be checked automatically for maps. Declaring `properties: ['involutory']` on a map is therefore **trusted on your word** — the merge fusion optimisation acts on it, but no runtime counter-example check guards it.
+> **Checked vs trusted:** for unary *fold* operations, `involutory` is automatically verified at `.ops()` time using the auto-generated sample set. For *map* operations, field transforms are keyed by field name; because the involutory identity `f(f(a)) ≡ a` depends on the transform function itself, it cannot be checked automatically. Declaring `properties: ['involutory']` on a map is therefore **trusted on your word** — the merge fusion optimisation acts on it, but no runtime counter-example check guards it.
 
 ```ts
-const List = data(({ Family, T }) => ({
+const List = data(family => ({
     Nil: {},
-    Cons: { head: T, tail: Family(T) }
-})).ops(({ fold, map, merge, Family, T }) => ({
+    Cons: { head: Number, tail: family }
+})).ops(({ fold, map, merge, family }) => ({
     // `negate` is involutory because applying it twice returns the original
     // value: -(-x) = x.  Declare `properties: ['involutory']` on any operation
     // that satisfies f(f(a)) ≡ a — common examples include bitwise NOT,
     // matrix transpose, list reversal, and boolean negation.
-    negate: map({ out: Family, properties: ['involutory'] })({
-        T: (x) => -(x as number)
+    negate: map({ out: family, properties: ['involutory'] })({
+        head: (x) => -(x as number)
     }),
     sum: fold({ out: Number })({
         Nil() { return 0; },
@@ -3813,8 +3760,7 @@ const List = data(({ Family, T }) => ({
     doubleNegateSum: merge('negate', 'negate', 'sum')
 }));
 
-const NumList = List({ T: Number });
-const xs = NumList.Cons({ head: 1, tail: NumList.Cons({ head: 2, tail: NumList.Nil }) });
+const xs = List.Cons(1, List.Cons(2, List.Nil));
 
 // negate is never called — the pair was eliminated at definition time:
 console.log(xs.doubleNegateSum); // 3  (same as xs.sum)
@@ -3827,15 +3773,15 @@ An odd-count run leaves one operation in the pipeline — so `merge('negate', 'n
 Behavior types (`behavior()`) support `[satisfies]` identically to data types. Declare conformance in phase 1 and implement in `.ops()`:
 
 ```ts
-const Steppable = protocol(({ Family, fold }) => ({
+const Steppable = protocol(({ family, fold }) => ({
     step: fold({ out: Number })
 }));
 
-const Counter = behavior(({ Self }) => ({
+const Counter = behavior(self => ({
     [satisfies]: [Steppable],
     value: Number
-})).ops(({ fold, unfold, Self }) => ({
-    Counting: unfold({ in: Number, out: Self })({
+})).ops(({ fold, unfold, self }) => ({
+    Counting: unfold({ in: Number, out: self })({
         value: (n) => n
     }),
     step: fold({ out: Number })({
@@ -3927,9 +3873,9 @@ implies(weather.isSunny, person.visitsBeach);
 Useful in demands and ensures predicates:
 
 ```ts
-const Stack = data(({ Family, T }) => ({
+const Stack = data(family => ({
     Empty: {},
-    Push: { value: T, rest: Family(T) }
+    Push: { value: Number, rest: family }
 })).ops(({ fold }) => ({
     size: fold({ out: Number })({
         Empty() { return 0; },
@@ -3966,12 +3912,12 @@ iff(person.hasTicket, person.ridesTrain);
 Useful for encoding equivalences in invariants:
 
 ```ts
-const Stack = data(({ Family, T }) => ({
+const Stack = data(family => ({
     Empty: {},
     Push: {
         [invariant]: (self) => iff(self.size === 0, self instanceof Stack.Empty),
-        value: T,
-        rest: Family(T)
+        value: Number,
+        rest: family
     }
 })).ops(({ fold }) => ({
     size: fold({ out: Number })({
@@ -3993,10 +3939,10 @@ const Stack = data(({ Family, T }) => ({
 Use `demands` in a fold or unfold spec to specify preconditions. If the condition fails, a `DemandsError` is thrown **before** the operation body executes. This represents **caller blame**: the caller invoked the operation with invalid state or arguments.
 
 ```ts
-const Stack = data(({ Family, T }) => ({
+const Stack = data(family => ({
     Empty: {},
-    Push: { value: T, rest: Family(T) }
-})).ops(({ fold, T }) => ({
+    Push: { value: Number, rest: family }
+})).ops(({ fold, family }) => ({
     size: fold({ out: Number })({
         Empty() { return 0; },
         Push({ rest }) { return 1 + rest; }
@@ -4012,16 +3958,15 @@ const Stack = data(({ Family, T }) => ({
 
     // demands with input parameter: value must not be null/undefined
     append: fold({
-        in: T,
+        in: Number,
         demands: (self, val) => val !== undefined && val !== null
     })({
-        Empty({}, val) { return Stack({ T: Number }).Push({ value: val, rest: Stack({ T: Number }).Empty }); },
-        Push({ rest }, val) { return Stack({ T: Number }).Push({ value: this.value, rest: rest(val) }); }
+        Empty({}, val) { return family.Push({ value: val, rest: family.Empty }); },
+        Push({ rest }, val) { return family.Push({ value: this.value, rest: rest(val) }); }
     })
 }));
 
-const NumStack = Stack({ T: Number });
-const { Empty, Push } = NumStack;
+const { Empty, Push } = Stack;
 
 const stack = Push({ value: 1, rest: Empty });
 console.log(stack.pop); // [1, Empty] - demands satisfied
@@ -4036,13 +3981,13 @@ try {
 **Demands on unfold operations:**
 
 ```ts
-const List = data(({ Family }) => ({
+const List = data(family => ({
     Nil: {},
-    Cons: { head: Number, tail: Family }
-})).ops(({ unfold, Family }) => ({
+    Cons: { head: Number, tail: family }
+})).ops(({ unfold, family }) => ({
     Range: unfold({
         in: Number,
-        out: Family,
+        out: family,
         demands: (self, n) => typeof n === 'number' && n >= 0
     })({
         Nil: (n) => (n <= 0 ? {} : null),
@@ -4066,10 +4011,10 @@ List.Range(-1); // DemandsError: n must be >= 0
 Use `ensures` in a fold or unfold spec to specify postconditions. If the condition fails, an `EnsuresError` is thrown **after** the operation body completes. This represents **implementer blame**: the operation produced a result that violates its contract.
 
 ```ts
-const Stack = data(({ Family, T }) => ({
+const Stack = data(family => ({
     Empty: {},
-    Push: { value: T, rest: Family(T) }
-})).ops(({ fold, T, Family }) => ({
+    Push: { value: Number, rest: family }
+})).ops(({ fold, family }) => ({
     size: fold({ out: Number })({
         Empty() { return 0; },
         Push({ rest }) { return 1 + rest; }
@@ -4077,12 +4022,12 @@ const Stack = data(({ Family, T }) => ({
 
     // ensures: the result size must be one more than the original
     append: fold({
-        in: T,
-        out: Family,
+        in: Number,
+        out: family,
         ensures: (self, old, result) => result.size === old.size + 1
     })({
-        Empty({}, val) { return Stack({ T: Number }).Push({ value: val, rest: Stack({ T: Number }).Empty }); },
-        Push({ rest }, val) { return Stack({ T: Number }).Push({ value: this.value, rest: rest(val) }); }
+        Empty({}, val) { return family.Push({ value: val, rest: family.Empty }); },
+        Push({ rest }, val) { return family.Push({ value: this.value, rest: rest(val) }); }
     })
 }));
 ```
@@ -4109,9 +4054,9 @@ This is the mechanism underlying [Organized Panic](#design-by-contract): you can
 ```ts
 import { data } from '@lapis-lang/lapis-js';
 
-const Expr = data(({ Family }) => ({
+const Expr = data(family => ({
     Lit: { value: Number },
-    Div: { left: Family, right: Family }
+    Div: { left: family, right: family }
 })).ops(({ fold }) => ({
     eval: fold({
         out: Number,
@@ -4140,13 +4085,13 @@ Div({ left: Lit({ value: 10 }), right: Lit({ value: 0 }) }).eval;
 The rescue handler receives a `retry` function as its fourth argument. Calling `retry(...newArgs)` re-executes the operation body with new arguments, re-checking all contracts:
 
 ```ts
-const Stack = data(({ Family, T }) => ({
+const Stack = data(family => ({
     Empty: {},
-    Push: { value: T, rest: Family(T) }
-})).ops(({ fold, T, Family }) => ({
+    Push: { value: Number, rest: family }
+})).ops(({ fold, family }) => ({
     append: fold({
-        in: T,
-        out: Family,
+        in: Number,
+        out: family,
         rescue: (self, error, args, retry) => {
             console.log(`append failed, retrying with default value 0`);
             return retry(0); // Retry with a fallback argument
@@ -4154,10 +4099,10 @@ const Stack = data(({ Family, T }) => ({
     })({
         Empty({}, val) {
             if (val === undefined) throw new Error('No value');
-            return Stack({ T: Number }).Push({ value: val, rest: Stack({ T: Number }).Empty });
+            return family.Push({ value: val, rest: family.Empty });
         },
         Push({ rest }, val) {
-            return Stack({ T: Number }).Push({ value: this.value, rest: rest(val) });
+            return family.Push({ value: this.value, rest: rest(val) });
         }
     })
 }));
@@ -4179,10 +4124,10 @@ rescue: (self, error, args, retry) => result
 Rescue handlers work per-node during fold traversal, enabling [Fault-Tolerance](https://en.wikipedia.org/wiki/Fault_tolerance). When a handler throws for a particular node, rescue provides a fallback ([Redundancy](https://en.wikipedia.org/wiki/Redundancy_(engineering))) for that node while the rest of the tree continues folding normally:
 
 ```ts
-const Expr = data(({ Family }) => ({
+const Expr = data(family => ({
     Lit: { value: Number },
-    Add: { left: Family, right: Family },
-    Div: { left: Family, right: Family }
+    Add: { left: family, right: family },
+    Div: { left: family, right: family }
 })).ops(({ fold }) => ({
     eval: fold({
         out: Number,
@@ -4222,12 +4167,12 @@ console.log(expr.eval); // 5 (5 + 0)
 ```ts
 import { data, invariant, InvariantError } from '@lapis-lang/lapis-js';
 
-const Stack = data(({ Family, T }) => ({
+const Stack = data(family => ({
     Empty: {},
     Push: {
         [invariant]: (self) => self.size >= 0,
-        value: T,
-        rest: Family(T)
+        value: Number,
+        rest: family
     }
 })).ops(({ fold }) => ({
     size: fold({ out: Number })({
@@ -4261,9 +4206,9 @@ When a child ADT extends a parent ADT (via `[extend]`) and both define contracts
 A child type can weaken preconditions to accept a wider range of inputs:
 
 ```ts
-const IntExpr = data(({ Family }) => ({
+const IntExpr = data(family => ({
     Lit: { value: Number },
-    Add: { left: Family, right: Family }
+    Add: { left: family, right: family }
 })).ops(({ fold }) => ({
     eval: fold({
         out: Number,
@@ -4275,9 +4220,9 @@ const IntExpr = data(({ Family }) => ({
     })
 }));
 
-const ExtExpr = data(({ Family }) => ({
+const ExtExpr = data(family => ({
     [extend]: IntExpr,
-    Neg: { operand: Family }
+    Neg: { operand: family }
 })).ops(({ fold }) => ({
     eval: fold({
         out: Number,
@@ -4295,7 +4240,7 @@ const ExtExpr = data(({ Family }) => ({
 **Ensures: strengthening (AND):**
 
 ```ts
-const Base = data(({ Family }) => ({
+const Base = data(family => ({
     Lit: { value: Number }
 })).ops(({ fold }) => ({
     eval: fold({
@@ -4306,7 +4251,7 @@ const Base = data(({ Family }) => ({
     })
 }));
 
-const Extended = data(({ Family }) => ({
+const Extended = data(family => ({
     [extend]: Base
 })).ops(({ fold }) => ({
     eval: fold({
@@ -4322,7 +4267,7 @@ const Extended = data(({ Family }) => ({
 **Rescue: override or inherit:**
 
 ```ts
-const Base = data(({ Family }) => ({
+const Base = data(family => ({
     Lit: { value: Number }
 })).ops(({ fold }) => ({
     eval: fold({
@@ -4333,9 +4278,9 @@ const Base = data(({ Family }) => ({
     })
 }));
 
-const Extended = data(({ Family }) => ({
+const Extended = data(family => ({
     [extend]: Base,
-    Neg: { operand: Family }
+    Neg: { operand: family }
 })).ops(({ fold }) => ({
     eval: fold({
         out: Number,
@@ -4384,14 +4329,14 @@ Contracts work on `behavior` types the same way they work on `data` types. Deman
 ```ts
 import { behavior, DemandsError } from '@lapis-lang/lapis-js';
 
-const Stream = behavior(({ Self, T }) => ({
-    head: T,
-    tail: Self(T)
-})).ops(({ fold, unfold, Self, T }) => ({
+const Stream = behavior(self => ({
+    head: Number,
+    tail: self
+})).ops(({ fold, unfold, self }) => ({
     // Unfold with demands: seed must be non-negative
     From: unfold({
         in: Number,
-        out: Self,
+        out: self,
         demands: (self, seed) => typeof seed === 'number' && seed >= 0
     })({
         head: (n) => n,
@@ -4424,14 +4369,12 @@ const Stream = behavior(({ Self, T }) => ({
     })
 }));
 
-const NumStream = Stream({ T: Number });
-
-const nats = NumStream.From(0);
+const nats = Stream.From(0);
 console.log(nats.take(5)); // [0, 1, 2, 3, 4]
 console.log(nats.sum(5));  // 10
 
 try {
-    NumStream.From(-1); // DemandsError: seed must be >= 0
+    Stream.From(-1); // DemandsError: seed must be >= 0
 } catch (e) {
     console.log(e instanceof DemandsError); // true
 }
@@ -4806,9 +4749,9 @@ Modules receive their dependencies at instantiation time:
 
 ```ts
 const TypedListModule = module({}, ({ T }: { T: Function }) => ({
-    List: data(({ Family }) => ({
+    List: data(family => ({
         Nil:  {},
-        Cons: { head: T, tail: Family }
+        Cons: { head: T, tail: family }
     }))
 }));
 
@@ -4877,9 +4820,9 @@ const ValidatedListModule = module(
         invariant: ({ T }: { T: Function }) => T !== null
     },
     ({ T }: { T: Function }) => ({
-        List: data(({ Family }) => ({
+        List: data(family => ({
             Nil:  {},
-            Cons: { head: T, tail: Family }
+            Cons: { head: T, tail: family }
         }))
     })
 );
@@ -4899,17 +4842,17 @@ Dependencies are shared: the same `deps` object is passed to both parent and chi
 ```ts
 import { module, data } from '@lapis-lang/lapis-js';
 
-const Stack = data(({ Family }) => ({
+const Stack = data(family => ({
     Empty: {},
-    Push:  { top: Number, rest: Family }
+    Push:  { top: Number, rest: family }
 }));
 
 const BaseCollectionModule = module({}, () => ({ Stack }));
 
 const ExtendedCollectionModule = module({ extend: BaseCollectionModule }, () => ({
-    Queue: data(({ Family }) => ({          // add Queue
+    Queue: data(family => ({          // add Queue
         Empty:   {},
-        Enqueue: { front: Number, rest: Family }
+        Enqueue: { front: Number, rest: family }
     }))
 }));
 

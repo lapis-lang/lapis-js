@@ -3,6 +3,10 @@ import assert from 'node:assert/strict';
 import { module, data, behavior } from '../index.mjs';
 import { DemandsError, EnsuresError, InvariantError } from '../index.mjs';
 
+function isTypeErrorWithMessageParts(err: unknown, parts: string[]): boolean {
+    return err instanceof TypeError && parts.every(part => err.message.includes(part));
+}
+
 describe('module() — core definition and instantiation', () => {
     test('no deps, no contracts — exports a data type', () => {
         const Counter = data(() => ({ Zero: {}, Succ: { pred: Number } }));
@@ -55,9 +59,9 @@ describe('module() — core definition and instantiation', () => {
 
     test('module body can export a behavior type', () => {
         const M = module({}, () => ({
-            Stream: behavior(({ Self }) => ({
+            Stream: behavior(({ self }) => ({
                 head: Number,
-                tail: Self
+                tail: self
             }))
         }));
         const { Stream } = M({});
@@ -151,71 +155,24 @@ describe('module() — core definition and instantiation', () => {
     });
 
     describe('isLapisValue — invalid export rejection', () => {
-        test('number export — message quotes string key and reports type: number', () => {
-            const M = module({}, () => ({ count: 1 as any }));
-            assert.throws(
-                () => M({}),
-                (err: unknown) =>
-                    err instanceof TypeError &&
-                    err.message.includes('"count"') &&
-                    err.message.includes('type: number')
-            );
-        });
+        const badStringKeyExports = [
+            { key: 'count', value: 1, typeName: 'number' },
+            { key: 'label', value: 'hello', typeName: 'string' },
+            { key: 'flag', value: true, typeName: 'boolean' },
+            { key: 'val', value: null, typeName: 'object' },
+            { key: 'config', value: {}, typeName: 'object' },
+            { key: 'helper', value: (() => {}), typeName: 'function' }
+        ] as const;
 
-        test('string export — message quotes string key and reports type: string', () => {
-            const M = module({}, () => ({ label: 'hello' as any }));
-            assert.throws(
-                () => M({}),
-                (err: unknown) =>
-                    err instanceof TypeError &&
-                    err.message.includes('"label"') &&
-                    err.message.includes('type: string')
-            );
-        });
-
-        test('boolean export — reports type: boolean', () => {
-            const M = module({}, () => ({ flag: true as any }));
-            assert.throws(
-                () => M({}),
-                (err: unknown) =>
-                    err instanceof TypeError &&
-                    err.message.includes('"flag"') &&
-                    err.message.includes('type: boolean')
-            );
-        });
-
-        test('null export — reports type: object', () => {
-            const M = module({}, () => ({ val: null as any }));
-            assert.throws(
-                () => M({}),
-                (err: unknown) =>
-                    err instanceof TypeError &&
-                    err.message.includes('"val"') &&
-                    err.message.includes('type: object')
-            );
-        });
-
-        test('plain object export — reports type: object', () => {
-            const M = module({}, () => ({ config: {} as any }));
-            assert.throws(
-                () => M({}),
-                (err: unknown) =>
-                    err instanceof TypeError &&
-                    err.message.includes('"config"') &&
-                    err.message.includes('type: object')
-            );
-        });
-
-        test('plain function export (no LapisTypeSymbol) — reports type: function', () => {
-            const M = module({}, () => ({ helper: (() => {}) as any }));
-            assert.throws(
-                () => M({}),
-                (err: unknown) =>
-                    err instanceof TypeError &&
-                    err.message.includes('"helper"') &&
-                    err.message.includes('type: function')
-            );
-        });
+        for (const c of badStringKeyExports) {
+            test(`${c.typeName} export reports quoted key and type`, () => {
+                const M = module({}, () => ({ [c.key]: c.value } as any));
+                assert.throws(
+                    () => M({}),
+                    (err: unknown) => isTypeErrorWithMessageParts(err, [`"${c.key}"`, `type: ${c.typeName}`])
+                );
+            });
+        }
 
         test('symbol key with invalid export — message shows Symbol(...) not quoted key', () => {
             const sym = Symbol('myKey');
@@ -276,80 +233,45 @@ describe('module() — core definition and instantiation', () => {
             );
         });
 
-        test('extend: string literal throws TypeError with invalid-ModuleDef message', () => {
-            const M = module({ extend: 'not-a-module' as any }, () => ({ Tag: data(() => ({ Tag: {} })) }));
-            assert.throws(
-                () => M({}),
-                (err: unknown) =>
-                    err instanceof TypeError &&
-                    err.message.includes("spec 'extend' must reference a ModuleDef")
-            );
-        });
+        const invalidExtendValues = [
+            { label: 'string', value: 'not-a-module' },
+            { label: 'null', value: null },
+            { label: 'plain object', value: {} },
+            { label: 'plain function', value: () => {} }
+        ];
 
-        test('extend: null throws TypeError with invalid-ModuleDef message', () => {
-            const M = module({ extend: null as any }, () => ({ Tag: data(() => ({ Tag: {} })) }));
-            assert.throws(
-                () => M({}),
-                (err: unknown) =>
-                    err instanceof TypeError &&
-                    err.message.includes("spec 'extend' must reference a ModuleDef")
-            );
-        });
-
-        test('extend: plain object throws TypeError with invalid-ModuleDef message', () => {
-            const M = module({ extend: {} as any }, () => ({ Tag: data(() => ({ Tag: {} })) }));
-            assert.throws(
-                () => M({}),
-                (err: unknown) =>
-                    err instanceof TypeError &&
-                    err.message.includes("spec 'extend' must reference a ModuleDef")
-            );
-        });
-
-        test('extend: plain function (no _body/_spec) throws TypeError with invalid-ModuleDef message', () => {
-            const M = module({ extend: (() => {}) as any }, () => ({ Tag: data(() => ({ Tag: {} })) }));
-            assert.throws(
-                () => M({}),
-                (err: unknown) =>
-                    err instanceof TypeError &&
-                    err.message.includes("spec 'extend' must reference a ModuleDef")
-            );
-        });
+        for (const c of invalidExtendValues) {
+            test(`extend: ${c.label} throws TypeError with invalid-ModuleDef message`, () => {
+                const M = module({ extend: c.value as any }, () => ({ Tag: data(() => ({ Tag: {} })) }));
+                assert.throws(
+                    () => M({}),
+                    (err: unknown) =>
+                        err instanceof TypeError &&
+                        err.message.includes("spec 'extend' must reference a ModuleDef")
+                );
+            });
+        }
     });
 
     describe('body return validation', () => {
-        test('body returning null throws TypeError with descriptive message', () => {
-            const M = module({}, () => null as any);
-            assert.throws(
-                () => M({}),
-                (err: unknown) =>
-                    err instanceof TypeError &&
-                    err.message.includes('body must return a plain object') &&
-                    err.message.includes('null')
-            );
-        });
+        const badBodyReturns = [
+            { value: null, typeName: 'null' },
+            { value: 'oops', typeName: 'string' },
+            { value: 42, typeName: 'number' }
+        ] as const;
 
-        test('body returning a string throws TypeError with descriptive message', () => {
-            const M = module({}, () => 'oops' as any);
-            assert.throws(
-                () => M({}),
-                (err: unknown) =>
-                    err instanceof TypeError &&
-                    err.message.includes('body must return a plain object') &&
-                    err.message.includes('string')
-            );
-        });
-
-        test('body returning a number throws TypeError with descriptive message', () => {
-            const M = module({}, () => 42 as any);
-            assert.throws(
-                () => M({}),
-                (err: unknown) =>
-                    err instanceof TypeError &&
-                    err.message.includes('body must return a plain object') &&
-                    err.message.includes('number')
-            );
-        });
+        for (const c of badBodyReturns) {
+            test(`body returning ${c.typeName} throws TypeError with descriptive message`, () => {
+                const M = module({}, () => c.value as any);
+                assert.throws(
+                    () => M({}),
+                    (err: unknown) =>
+                        err instanceof TypeError &&
+                        err.message.includes('body must return a plain object') &&
+                        err.message.includes(c.typeName)
+                );
+            });
+        }
     });
 });
 

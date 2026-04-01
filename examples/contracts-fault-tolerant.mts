@@ -8,10 +8,10 @@
 import { data } from '@lapis-lang/lapis-js';
 
 // A simple expression tree that may contain bad nodes
-const Expr = data(({ Family }) => ({
+const Expr = data(({ family }) => ({
     Lit: { value: Number },
-    Add: { left: Family, right: Family },
-    Div: { left: Family, right: Family }
+    Add: { left: family, right: family },
+    Div: { left: family, right: family }
 })).ops(({ fold }) => ({
     eval: fold({
         out: Number,

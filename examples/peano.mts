@@ -1,9 +1,9 @@
 import { data } from '@lapis-lang/lapis-js';
 
 // Recursive ADT for Peano natural numbers
-const Peano = data(({ Family }) => ({
+const Peano = data(({ family }) => ({
     Zero: {},
-    Succ: { pred: Family }
+    Succ: { pred: family }
 })).ops(({ fold, unfold}) => ({
     toValue: fold({ out: Number })({
         Zero() { return 0; },

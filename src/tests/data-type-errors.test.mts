@@ -10,14 +10,14 @@ import assert from 'node:assert/strict';
 describe('Data Type Errors - Runtime Validation', () => {
     test('lowercase variant names should throw runtime error', () => {
         assert.throws(
-            () => data(() => ({ Red: {}, Green: {}, yellow: {} })),
+            () => data(() => ({ Red: {}, Green: {}, yellow: {} })).ops(() => ({})),
             /Variant 'yellow' must be PascalCase/
         );
     });
 
     test('camelCase variant names should throw runtime error', () => {
         assert.throws(
-            () => data(() => ({ NotStarted: {}, inProgress: {} })),
+            () => data(() => ({ NotStarted: {}, inProgress: {} })).ops(() => ({})),
             /Variant 'inProgress' must be PascalCase/
         );
     });
@@ -38,7 +38,7 @@ describe('Data Type Errors - Runtime Validation', () => {
                 Red: {},
                 yellow: {},
                 Blue: {}
-            })),
+            })).ops(() => ({})),
             /Variant 'yellow' must be PascalCase/
         );
     });
@@ -47,7 +47,7 @@ describe('Data Type Errors - Runtime Validation', () => {
         assert.throws(
             () => data(() => ({
                 Point2D: { X: Number, Y: Number }
-            })),
+            })).ops(() => ({})),
             /Field 'X' must be camelCase/
         );
     });
@@ -56,7 +56,7 @@ describe('Data Type Errors - Runtime Validation', () => {
         assert.throws(
             () => data(() => ({
                 Point2D: { _x: Number, y: Number }
-            })),
+            })).ops(() => ({})),
             /Field '_x' must be camelCase/
         );
     });
@@ -65,7 +65,7 @@ describe('Data Type Errors - Runtime Validation', () => {
         assert.throws(
             () => data(() => ({
                 Settings: { HOST: String, port: Number }
-            })),
+            })).ops(() => ({})),
             /Field 'HOST' must be camelCase/
         );
     });

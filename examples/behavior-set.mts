@@ -29,9 +29,9 @@ const Set = behavior(() => ({
     // The parent unfold Empty is inherited automatically.
     // =============================================================================
 
-    NumericSet = behavior(({ Self }) => ({
+    NumericSet = behavior(({ self }) => ({
         [extend]: Set
-    })).ops(({ unfold, Self }) => ({
+    })).ops(({ unfold, self }) => ({
         Empty: unfold({})({
             isEmpty: () => true,
             member: () => () => false
@@ -44,15 +44,15 @@ const Set = behavior(() => ({
             isEmpty: () => false,
             member: () => (n) => n % 2 !== 0
         }),
-        Multiples: unfold({ in: Number, out: Self })({
+        Multiples: unfold({ in: Number, out: self })({
             isEmpty: () => false,
             member: (divisor) => (n) => n % divisor === 0
         })
     }));
 
 console.log('\n=== Numeric Sets ===');
-console.log('NumericSet.Evens instanceof Set:', NumericSet.Evens instanceof Set);             // true
-console.log('NumericSet.Evens instanceof NumericSet:', NumericSet.Evens instanceof NumericSet); // true
+console.log('NumericSet.Evens instanceof Set:', NumericSet.Evens instanceof (Set as any));             // true
+console.log('NumericSet.Evens instanceof NumericSet:', NumericSet.Evens instanceof (NumericSet as any)); // true
 
 const evens = NumericSet.Evens;
 console.log('evens.isEmpty:', evens.isEmpty);         // false
@@ -91,7 +91,7 @@ const PrimeSet = behavior(() => ({
 }));
 
 console.log('\n=== Prime Numbers Set ===');
-console.log('primes instanceof Set:', PrimeSet.Create instanceof Set);   // true
+console.log('primes instanceof Set:', PrimeSet.Create instanceof (Set as any));   // true
 
 const primes = PrimeSet.Create;
 console.log('primes.isEmpty:', primes.isEmpty);              // false
@@ -110,12 +110,12 @@ for (let i = 0; i < 10; i++)
 // Example 3: Range Set (extends Set, adds min and max observers)
 // =============================================================================
 
-const RangeSet = behavior(({ Self }) => ({
+const RangeSet = behavior(({ self }) => ({
     [extend]: Set,
     min: Number,
     max: Number
-})).ops(({ fold, unfold, map, merge, Self }) => ({
-    Create: unfold({ in: { min: Number, max: Number }, out: Self })({
+})).ops(({ fold, unfold, map, merge, self }) => ({
+    Create: unfold({ in: { min: Number, max: Number }, out: self })({
         member: ({ min, max }) => (n) => n >= min && n <= max,
         min: ({ min }) => min,
         max: ({ max }) => max,
@@ -130,7 +130,7 @@ const RangeSet = behavior(({ Self }) => ({
 }));
 
 console.log('\n=== Range Sets ===');
-console.log('range instanceof Set:', RangeSet.Create({ min: 1, max: 10 }) instanceof Set); // true
+console.log('range instanceof Set:', RangeSet.Create({ min: 1, max: 10 }) instanceof (Set as any)); // true
 
 const range = RangeSet.Create({ min: 1, max: 10 });
 console.log('range[1,10].member(5):', range.member(5));    // true
@@ -185,7 +185,7 @@ const CharSet = behavior(() => ({
 }));
 
 console.log('\n=== Characteristic Functions ===');
-console.log('squares instanceof Set:', CharSet.Squares instanceof Set);  // true
+console.log('squares instanceof Set:', CharSet.Squares instanceof (Set as any));  // true
 
 const squares = CharSet.Squares;
 console.log('squares.member(4):', squares.member(4));      // true

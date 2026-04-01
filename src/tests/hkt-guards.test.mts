@@ -1,20 +1,32 @@
-import { data } from '@lapis-lang/lapis-js';
+import { data, extend } from '@lapis-lang/lapis-js';
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 
-describe('Higher-Kinded Type Guards (issue #55)', () => {
-    const Pair = data(({ T, U }) => ({
-        MakePair: { first: T, second: U }
+/**
+ * Higher-Kinded Type Guards via subtype declarations (issue #55 — new approach).
+ *
+ * The old pattern `List({ T: PairSN })` is replaced by a subtype declaration:
+ *   const ListOfPairs = data(family => ({ [extend]: List, Cons: { head: PairSN, tail: family } }));
+ *
+ * Type safety is enforced by comb-inheritance `instanceof` checks at construction time.
+ */
+describe('Higher-Kinded Type Guards (issue #55 — subtype approach)', () => {
+    // Base Pair — accepts any first/second
+    const Pair = data(_ => ({
+        MakePair: { first: Object, second: Object }
     }));
 
-    const List = data(({ Family, T }) => ({
+    // Base List — accepts any head value
+    const List = data(family => ({
         Nil: {},
-        Cons: { head: T, tail: Family(T) }
+        Cons: { head: Object, tail: family }
     }));
 
-    test('BUG 1: plain string rejected where Pair({ T: String, U: Number }) expected', () => {
-        const PairSN = Pair({ T: String, U: Number });
-        const ListOfPairs = List({ T: PairSN });
+    test('plain string rejected where PairSN element expected', () => {
+        // Narrow first:String, second:Number
+        const PairSN = data(_ => ({ [extend]: Pair, MakePair: { first: String, second: Number } }));
+        // List whose head must be a PairSN instance
+        const ListOfPairs = data(family => ({ [extend]: List, Cons: { head: PairSN, tail: family } }));
 
         assert.throws(
             () => ListOfPairs.Cons({ head: 'not a pair', tail: ListOfPairs.Nil }),
@@ -22,11 +34,13 @@ describe('Higher-Kinded Type Guards (issue #55)', () => {
         );
     });
 
-    test('BUG 2: wrong parameterization rejected', () => {
-        const PairSN = Pair({ T: String, U: Number });
-        const ListOfPairs = List({ T: PairSN });
+    test('wrong subtype rejected', () => {
+        const PairSN = data(_ => ({ [extend]: Pair, MakePair: { first: String, second: Number } }));
+        const PairNN = data(_ => ({ [extend]: Pair, MakePair: { first: Number, second: Number } }));
+        const ListOfPairs = data(family => ({ [extend]: List, Cons: { head: PairSN, tail: family } }));
 
-        const wrongPair = Pair({ T: Number, U: Number }).MakePair({ first: 1, second: 2 });
+        // PairNN is not PairSN — should be rejected
+        const wrongPair = PairNN.MakePair({ first: 1, second: 2 });
 
         assert.throws(
             () => ListOfPairs.Cons({ head: wrongPair, tail: ListOfPairs.Nil }),
@@ -34,9 +48,9 @@ describe('Higher-Kinded Type Guards (issue #55)', () => {
         );
     });
 
-    test('correct parameterization accepted', () => {
-        const PairSN = Pair({ T: String, U: Number });
-        const ListOfPairs = List({ T: PairSN });
+    test('correct subtype accepted', () => {
+        const PairSN = data(_ => ({ [extend]: Pair, MakePair: { first: String, second: Number } }));
+        const ListOfPairs = data(family => ({ [extend]: List, Cons: { head: PairSN, tail: family } }));
 
         const goodPair = PairSN.MakePair({ first: 'hello', second: 42 });
         const list = ListOfPairs.Cons({ head: goodPair, tail: ListOfPairs.Nil }) as
@@ -46,9 +60,9 @@ describe('Higher-Kinded Type Guards (issue #55)', () => {
         assert.strictEqual(list.head.second, 42);
     });
 
-    test('non-parameterized ADT used as type argument', () => {
+    test('non-parameterized ADT used as element type', () => {
         const Color = data(() => ({ Red: {}, Green: {}, Blue: {} }));
-        const ListOfColors = List({ T: Color });
+        const ListOfColors = data(family => ({ [extend]: List, Cons: { head: Color, tail: family } }));
 
         // Valid: Color instances accepted
         const list = ListOfColors.Cons({ head: Color.Red, tail: ListOfColors.Nil });
@@ -67,9 +81,9 @@ describe('Higher-Kinded Type Guards (issue #55)', () => {
         );
     });
 
-    test('nested parameterized ADT type args', () => {
-        const PairSN = Pair({ T: String, U: Number });
-        const ListOfPairs = List({ T: PairSN });
+    test('nested subtype element in list', () => {
+        const PairSN = data(_ => ({ [extend]: Pair, MakePair: { first: String, second: Number } }));
+        const ListOfPairs = data(family => ({ [extend]: List, Cons: { head: PairSN, tail: family } }));
 
         const pair1 = PairSN.MakePair({ first: 'a', second: 1 });
         const pair2 = PairSN.MakePair({ first: 'b', second: 2 });

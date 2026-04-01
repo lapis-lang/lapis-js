@@ -64,9 +64,9 @@ test('Positional arguments - single field with ADT instance', () => {
 });
 
 test('Positional arguments - recursive ADT (Peano)', () => {
-    const Peano = data(({ Family }) => ({
+    const Peano = data(({ family }) => ({
         Zero: {},
-        Succ: { pred: Family }
+        Succ: { pred: family }
     }));
 
     const zero = Peano.Zero;
@@ -88,9 +88,9 @@ test('Positional arguments - recursive ADT (Peano)', () => {
 });
 
 test('Positional arguments - recursive List', () => {
-    const List = data(({ Family }) => ({
+    const List = data(({ family }) => ({
         Nil: {},
-        Cons: { head: Number, tail: Family }
+        Cons: { head: Number, tail: family }
     }));
 
     const empty = List.Nil;
@@ -112,9 +112,9 @@ test('Positional arguments - recursive List', () => {
 });
 
 test('Positional arguments - binary tree', () => {
-    const Tree = data(({ Family }) => ({
+    const Tree = data(({ family }) => ({
         Leaf: { value: Number },
-        Node: { left: Family, right: Family, value: Number }
+        Node: { left: family, right: family, value: Number }
     }));
 
     const leaf1 = Tree.Leaf(1);
@@ -172,17 +172,17 @@ test('Positional arguments - with predicates', () => {
     }, /Field 'y' failed predicate validation/);
 });
 
-test('Positional arguments - parameterized ADT', () => {
-    const List = data(({ Family, T }) => ({
+test('Positional arguments - recursive ADT with typed head field', () => {
+    const List = data(family => ({
         Nil: {},
-        Cons: { head: T, tail: Family }
+        Cons: { head: Number, tail: family }
     }));
 
-    const NumList = List({ T: Number });
+    const NumList = List;
     const empty = NumList.Nil;
 
     // Positional form with type parameters
-    const nums = NumList.Cons(1, NumList.Cons(2, NumList.Cons(3, empty)));
+    const nums: any = NumList.Cons(1, NumList.Cons(2, NumList.Cons(3, empty)));
     assert.equal(nums.head, 1);
     assert.equal(nums.tail.head, 2);
     assert.equal(nums.tail.tail.head, 3);
@@ -285,15 +285,15 @@ test('Positional arguments - with extend', () => {
 });
 
 test('Positional arguments - recursive extend', () => {
-    const IntExpr = data(({ Family }) => ({
+    const IntExpr = data(({ family }) => ({
         IntLit: { value: Number },
-        Add: { left: Family, right: Family }
+        Add: { left: family, right: family }
     }));
 
-    const IntBoolExpr = data(({ Family }) => ({
+    const IntBoolExpr = data(({ family }) => ({
         [extend]: IntExpr,
         BoolLit: { value: Boolean },
-        LessThan: { left: Family, right: Family }
+        LessThan: { left: family, right: family }
     }));
 
     // Positional form for cleaner construction

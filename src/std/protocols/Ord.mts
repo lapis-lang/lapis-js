@@ -11,10 +11,10 @@
 import { protocol, extend } from '../../index.mjs';
 import { Eq } from './Eq.mjs';
 
-const Ord = protocol(({ Family, fold }) => ({
+const Ord = protocol(({ family, fold }) => ({
     [extend]: Eq,
     compare: fold({
-        in: Family,
+        in: family,
         out: Number,
         properties: ['antisymmetric', 'transitive', 'total'],
         ensures: (_self: unknown, _old: unknown, result: unknown) =>

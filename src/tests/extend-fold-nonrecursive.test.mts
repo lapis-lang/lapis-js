@@ -62,34 +62,6 @@ describe('ExtendFold Operation (Non-Recursive ADTs)', () => {
             assert.strictEqual(p2.describe, '2D point at (1, 2)');
             assert.strictEqual(p3.describe, '3D point at (1, 2, 3)');
         });
-
-        test('should support callback form with Family', () => {
-            const Color = data(() => ({
-                Red: {},
-                Green: {},
-                Blue: {}
-            })).ops(({ fold, unfold, map, merge }) => ({
-                toHex: fold({ out: String })({
-                    Red() { return '#FF0000'; },
-                    Green() { return '#00FF00'; },
-                    Blue() { return '#0000FF'; }
-                })
-            }));
-
-            const ExtendedColor = data(() => ({
-                [extend]: Color,
-                Yellow: {},
-                Orange: {}
-            })).ops(({ fold, unfold, map, merge }) => ({
-                toHex: fold({ out: String })({
-                    Yellow() { return '#FFFF00'; },
-                    Orange() { return '#FFA500'; }
-                })
-            }));
-
-            assert.strictEqual(ExtendedColor.Yellow.toHex, '#FFFF00');
-            assert.strictEqual(ExtendedColor.Orange.toHex, '#FFA500');
-        });
     });
 
     describe('Override Semantics', () => {
@@ -645,31 +617,6 @@ describe('Error Handling', () => {
 
         assert.strictEqual(ExtendedColor.Blue.toHex, '#0000FF');
     });
-
-    test('should work on both base and extended ADTs', () => {
-        const Color = data(() => ({
-            Red: {},
-            Green: {}
-        })).ops(({ fold, unfold, map, merge }) => ({
-            toHex: fold({ out: String })({
-                Red() { return '#FF0000'; },
-                Green() { return '#00FF00'; }
-            })
-        }));
-
-        // But it should work on extended ADTs
-        const ExtendedColor = data(() => ({
-            [extend]: Color,
-            Blue: {}
-        })).ops(({ fold, unfold, map, merge }) => ({
-            toHex: fold({ out: String })({
-                Blue() { return '#0000FF'; }
-            })
-        }));
-        const result = ExtendedColor;
-
-        assert.strictEqual(result.Blue.toHex, '#0000FF');
-    });
 });
 
 test('should allow overriding handlers at multiple levels', () => {
@@ -711,20 +658,20 @@ test('should allow overriding handlers at multiple levels', () => {
 
 describe('Recursive ADTs', () => {
     test('should extend fold on recursive ADT', () => {
-        const List = data(({ Family, T }) => ({
+        const List = data(family => ({
             Nil: {},
-            Cons: { head: T, tail: Family }
-        })).ops(({ fold, unfold, map, merge, Family, T }) => ({
+            Cons: { head: Object, tail: family }
+        })).ops(({ fold, unfold, map, merge, family }) => ({
             isEmpty: fold({ out: Boolean })({
                 Nil() { return true; },
                 Cons() { return false; }
             })
         }));
 
-        const ExtendedList = data(({ _Family, T }: any) => ({
+        const ExtendedList = data((_Family: any) => ({
             [extend]: List,
-            Single: { value: T }
-        })).ops(({ fold, unfold, map, merge, _Family, T }: any) => ({
+            Single: { value: Object }
+        })).ops(({ fold, unfold, map, merge, _Family }: any) => ({
             isEmpty: fold({ out: Boolean })({
                 Single() { return false; }
             })

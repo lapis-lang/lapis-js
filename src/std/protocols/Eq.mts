@@ -9,9 +9,9 @@
 
 import { protocol } from '../../index.mjs';
 
-const Eq = protocol(({ Family, fold }) => ({
+const Eq = protocol(({ family, fold }) => ({
     equals: fold({
-        in: Family,
+        in: family,
         out: Boolean,
         properties: ['reflexive', 'symmetric', 'transitive']
     })

@@ -2,15 +2,15 @@ export { parent } from './Data.mjs';
 export { invariant } from './Data.mjs';
 export { extend } from './Data.mjs';
 export { data } from './Data.mjs';
-export { TypeArgsSymbol, FamilyRefSymbol, aux } from './Data.mjs';
+export { aux } from './Data.mjs';
 export type { FamilyMarker, FoldCtxSymbolKeys } from './Data.mjs';
 export { protocol } from './Protocol.mjs';
 export { satisfies } from './operations.mjs';
-export type { ProtocolLike, ProtocolEntry, ConditionalConformance, ProtocolDeclContext, FoldSpecEntry, MethodFoldSpecEntry, GetterFoldSpecEntry, UnfoldSpecEntry, MapSpecEntry, ProtocolOps } from './Protocol.mjs';
-export { op, spec, operations, history, sort } from './operations.mjs';
+export type { ProtocolLike, ProtocolEntry, ProtocolDeclContext, FoldSpecEntry, MethodFoldSpecEntry, GetterFoldSpecEntry, UnfoldSpecEntry, MapSpecEntry, ProtocolOps } from './Protocol.mjs';
+export { op, spec, operations, history } from './operations.mjs';
 export type { OperationProperty, NamespacedProperty, PredicateFn, PropertyEntry } from './operations.mjs';
 export { KNOWN_PROPERTIES, INTER_OP_PREFIXES } from './operations.mjs';
-export { DeclBrand, isSort } from './types.mjs';
+export { DeclBrand } from './types.mjs';
 export { unfold, fold, map, merge } from './ops.mjs';
 export type { UnfoldDef, UnfoldDefBase, FoldDef, FoldDefBase, MapDef, MapDefBase, MergeDef, ExpandAliases, HasAliases } from './ops.mjs';
 export { behavior } from './Behavior.mjs';
@@ -48,8 +48,8 @@ export type { ContractSpec } from './contracts.mjs';
 export { LawError } from './laws.mjs';
 
 // Type exports
-export type { DataADT, DataADTWithParams, DataADTIsSort, DataADTDeclBrand, BehaviorADT, BehaviorADTWithParams, BehaviorADTDeclBrand, QueryADT, DataDeclParams, BehaviorDeclParams, Letter, SortLetter, CollectParams } from './types.mjs';
-export type { TypeSpec, FamilyRef, SelfRef, TypeParamRef, SortRef } from './types.mjs';
+export type { DataADT, DataADTWithParams, DataADTDeclBrand, BehaviorADT, BehaviorADTWithParams, BehaviorADTDeclBrand, QueryADT, DataDeclParams, BehaviorDeclParams } from './types.mjs';
+export type { TypeSpec, FamilyRef, SelfRef } from './types.mjs';
 
 // Module system exports
 export { module, system, validateMealyMachine } from './Module.mjs';

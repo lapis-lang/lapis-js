@@ -5,13 +5,13 @@ import { behavior, extend, DemandsError, EnsuresError } from '../index.mjs';
 describe('Contracts: Behavior', () => {
     describe('Behavior unfold contracts', () => {
         it('should check demands on behavior unfold seed', () => {
-            const Stream = behavior(({ Self }) => ({
+            const Stream = behavior(({ self }) => ({
                 head: Number,
-                tail: Self
-            })).ops(({ fold, unfold, map, merge, Self }) => ({
+                tail: self
+            })).ops(({ fold, unfold, map, merge, self }) => ({
                 From: unfold({
                     in: Number,
-                    out: Self,
+                    out: self,
                     demands: (_self, n) => typeof n === 'number' && n >= 0
                 })({
                     head: (n) => n,
@@ -34,11 +34,11 @@ describe('Contracts: Behavior', () => {
 
     describe('Behavior fold contracts', () => {
         it('should check demands on behavior fold', () => {
-            const Stream = behavior(({ Self }) => ({
+            const Stream = behavior(({ self }) => ({
                 head: Number,
-                tail: Self
-            })).ops(({ fold, unfold, map, merge, Self }) => ({
-                From: unfold({ in: Number, out: Self })({
+                tail: self
+            })).ops(({ fold, unfold, map, merge, self }) => ({
+                From: unfold({ in: Number, out: self })({
                     head: (n) => n,
                     tail: (n) => n + 1
                 }),
@@ -64,11 +64,11 @@ describe('Contracts: Behavior', () => {
         });
 
         it('should check ensures on behavior fold result', () => {
-            const Stream = behavior(({ Self }) => ({
+            const Stream = behavior(({ self }) => ({
                 head: Number,
-                tail: Self
-            })).ops(({ fold, unfold, map, merge, Self }) => ({
-                From: unfold({ in: Number, out: Self })({
+                tail: self
+            })).ops(({ fold, unfold, map, merge, self }) => ({
+                From: unfold({ in: Number, out: self })({
                     head: (n) => n,
                     tail: (n) => n + 1
                 }),
@@ -88,11 +88,11 @@ describe('Contracts: Behavior', () => {
         it('should invoke rescue on behavior fold failure', () => {
             let rescueCalled = false;
 
-            const Stream = behavior(({ Self }) => ({
+            const Stream = behavior(({ self }) => ({
                 head: Number,
-                tail: Self
-            })).ops(({ fold, unfold, map, merge, Self }) => ({
-                From: unfold({ in: Number, out: Self })({
+                tail: self
+            })).ops(({ fold, unfold, map, merge, self }) => ({
+                From: unfold({ in: Number, out: self })({
                     head: (n) => n,
                     tail: (n) => n + 1
                 }),
@@ -122,13 +122,13 @@ describe('Contracts: Behavior', () => {
         it('should invoke rescue when ensures fails on unfold result', () => {
             let rescueCalled = false;
 
-            const Stream = behavior(({ Self }) => ({
+            const Stream = behavior(({ self }) => ({
                 head: Number,
-                tail: Self
-            })).ops(({ fold, unfold, map, merge, Self }) => ({
+                tail: self
+            })).ops(({ fold, unfold, map, merge, self }) => ({
                 From: unfold({
                     in: Number,
-                    out: Self,
+                    out: self,
                     ensures: (_self, _old, result) => result.head >= 0,
                     rescue: (_self, _error, _args) => {
                         rescueCalled = true;
@@ -154,13 +154,13 @@ describe('Contracts: Behavior', () => {
         it('should pass error and args to unfold rescue on ensures failure', () => {
             let capturedError, capturedArgs;
 
-            const Stream = behavior(({ Self }) => ({
+            const Stream = behavior(({ self }) => ({
                 head: Number,
-                tail: Self
-            })).ops(({ fold, unfold, map, merge, Self }) => ({
+                tail: self
+            })).ops(({ fold, unfold, map, merge, self }) => ({
                 From: unfold({
                     in: Number,
-                    out: Self,
+                    out: self,
                     ensures: (_self, _old, result) => result.head >= 0,
                     rescue: (_self, error, args) => {
                         capturedError = error;
@@ -181,13 +181,13 @@ describe('Contracts: Behavior', () => {
         it('should support retry in unfold rescue', () => {
             let retryCount = 0;
 
-            const Stream = behavior(({ Self }) => ({
+            const Stream = behavior(({ self }) => ({
                 head: Number,
-                tail: Self
-            })).ops(({ fold, unfold, map, merge, Self }) => ({
+                tail: self
+            })).ops(({ fold, unfold, map, merge, self }) => ({
                 From: unfold({
                     in: Number,
-                    out: Self,
+                    out: self,
                     ensures: (_self, _old, result) => result.head >= 0,
                     rescue: (_self, _error, _args, retry) => {
                         retryCount++;
@@ -207,13 +207,13 @@ describe('Contracts: Behavior', () => {
         it('should not rescue DemandsError in unfold', () => {
             let rescueCalled = false;
 
-            const Stream = behavior(({ Self }) => ({
+            const Stream = behavior(({ self }) => ({
                 head: Number,
-                tail: Self
-            })).ops(({ fold, unfold, map, merge, Self }) => ({
+                tail: self
+            })).ops(({ fold, unfold, map, merge, self }) => ({
                 From: unfold({
                     in: Number,
-                    out: Self,
+                    out: self,
                     demands: (_self, n) => n >= 0,
                     rescue: () => {
                         rescueCalled = true;
@@ -235,13 +235,13 @@ describe('Contracts: Behavior', () => {
         it('should invoke rescue on ensures failure in unfold', () => {
             let rescueCalled = false;
 
-            const Stream = behavior(({ Self }) => ({
+            const Stream = behavior(({ self }) => ({
                 head: Number,
-                tail: Self
-            })).ops(({ fold, unfold, map, merge, Self }) => ({
+                tail: self
+            })).ops(({ fold, unfold, map, merge, self }) => ({
                 From: unfold({
                     in: Number,
-                    out: Self,
+                    out: self,
                     ensures: (_self, _old, result) => result.head >= 0,
                     rescue: (_self, _error, _args) => {
                         rescueCalled = true;
@@ -261,11 +261,11 @@ describe('Contracts: Behavior', () => {
 
     describe('Behavior fold contract composition (subcontracting)', () => {
         it('should inherit parent demands when child has none', () => {
-            const Stream = behavior(({ Self }) => ({
+            const Stream = behavior(({ self }) => ({
                 head: Number,
-                tail: Self
-            })).ops(({ fold, unfold, map, merge, Self }) => ({
-                From: unfold({ in: Number, out: Self })({
+                tail: self
+            })).ops(({ fold, unfold, map, merge, self }) => ({
+                From: unfold({ in: Number, out: self })({
                     head: (n) => n,
                     tail: (n) => n + 1
                 }),
@@ -279,11 +279,11 @@ describe('Contracts: Behavior', () => {
             }));
 
             // Child overrides fold without own demands — should inherit parent's
-            const ChildStream = behavior(({ Self }) => ({
+            const ChildStream = behavior(({ self }) => ({
                 [extend]: Stream,
                 head: Number,
-                tail: Self
-            })).ops(({ fold, unfold, map, merge, Self }) => ({
+                tail: self
+            })).ops(({ fold, unfold, map, merge, self }) => ({
                 take: fold({ in: Number, out: Array })({
                     _: ({ head, tail }, n) => n > 0 ? [head, ...tail(n - 1)] : []
                 })
@@ -302,11 +302,11 @@ describe('Contracts: Behavior', () => {
         });
 
         it('should OR parent and child demands (weakening)', () => {
-            const Stream = behavior(({ Self }) => ({
+            const Stream = behavior(({ self }) => ({
                 head: Number,
-                tail: Self
-            })).ops(({ fold, unfold, map, merge, Self }) => ({
-                From: unfold({ in: Number, out: Self })({
+                tail: self
+            })).ops(({ fold, unfold, map, merge, self }) => ({
+                From: unfold({ in: Number, out: self })({
                     head: (n) => n,
                     tail: (n) => n + 1
                 }),
@@ -320,11 +320,11 @@ describe('Contracts: Behavior', () => {
             }));
 
             // Child adds wider demands — composed result should accept if EITHER passes
-            const ChildStream = behavior(({ Self }) => ({
+            const ChildStream = behavior(({ self }) => ({
                 [extend]: Stream,
                 head: Number,
-                tail: Self
-            })).ops(({ fold, unfold, map, merge, Self }) => ({
+                tail: self
+            })).ops(({ fold, unfold, map, merge, self }) => ({
                 take: fold({
                     in: Number,
                     out: Array,
@@ -341,11 +341,11 @@ describe('Contracts: Behavior', () => {
         });
 
         it('should AND parent and child ensures (strengthening)', () => {
-            const Stream = behavior(({ Self }) => ({
+            const Stream = behavior(({ self }) => ({
                 head: Number,
-                tail: Self
-            })).ops(({ fold, unfold, map, merge, Self }) => ({
-                From: unfold({ in: Number, out: Self })({
+                tail: self
+            })).ops(({ fold, unfold, map, merge, self }) => ({
+                From: unfold({ in: Number, out: self })({
                     head: (n) => n,
                     tail: (n) => n + 1
                 }),
@@ -359,11 +359,11 @@ describe('Contracts: Behavior', () => {
             }));
 
             // Child adds stricter ensures — both must pass
-            const ChildStream = behavior(({ Self }) => ({
+            const ChildStream = behavior(({ self }) => ({
                 [extend]: Stream,
                 head: Number,
-                tail: Self
-            })).ops(({ fold, unfold, map, merge, Self }) => ({
+                tail: self
+            })).ops(({ fold, unfold, map, merge, self }) => ({
                 take: fold({
                     in: Number,
                     out: Array,
@@ -381,11 +381,11 @@ describe('Contracts: Behavior', () => {
         it('should inherit parent rescue when child has none', () => {
             let rescueCalled = false;
 
-            const Stream = behavior(({ Self }) => ({
+            const Stream = behavior(({ self }) => ({
                 head: Number,
-                tail: Self
-            })).ops(({ fold, unfold, map, merge, Self }) => ({
-                From: unfold({ in: Number, out: Self })({
+                tail: self
+            })).ops(({ fold, unfold, map, merge, self }) => ({
+                From: unfold({ in: Number, out: self })({
                     head: (n) => n,
                     tail: (n) => n + 1
                 }),
@@ -405,11 +405,11 @@ describe('Contracts: Behavior', () => {
             }));
 
             // Child overrides fold without own rescue — should inherit parent's
-            const ChildStream = behavior(({ Self }) => ({
+            const ChildStream = behavior(({ self }) => ({
                 [extend]: Stream,
                 head: Number,
-                tail: Self
-            })).ops(({ fold, unfold, map, merge, Self }) => ({
+                tail: self
+            })).ops(({ fold, unfold, map, merge, self }) => ({
                 risky: fold({ in: Number, out: Array })({
                     _: (_ctx, n) => {
                         if (n < 0) throw new Error('still negative');

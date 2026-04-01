@@ -14,157 +14,200 @@ import assert from 'node:assert/strict';
 import { IORequest } from '../lib/io/request.mjs';
 import { IOResponse } from '../lib/io/response.mjs';
 
+type StructuredCtorCase = {
+    name: string;
+    ctor: (arg: Record<string, unknown>) => any;
+    variantCtor: abstract new (...args: any[]) => any;
+    validArg: Record<string, unknown>;
+    field: string;
+    expected: unknown;
+};
+
+type SingletonCtorCase = {
+    name: string;
+    value: any;
+    sourceValue: () => any;
+    familyCtor: abstract new (...args: any[]) => any;
+};
+
+type GuardCase = {
+    name: string;
+    invoke: () => unknown;
+};
+
 // =============================================================================
 // IORequest
 // =============================================================================
 
 describe('IORequest', () => {
-    describe('Pull/Single variants', () => {
-        it('should construct Read with path field', () => {
-            const req = IORequest.Read({ path: '/tmp/test.txt' });
-            assert.ok(req instanceof IORequest.Read);
-            assert.ok(req instanceof IORequest);
-            assert.strictEqual(req.path, '/tmp/test.txt');
-        });
+    const structuredCases: StructuredCtorCase[] = [
+        {
+            name: 'Read',
+            ctor: IORequest.Read,
+            variantCtor: IORequest.Read,
+            validArg: { path: '/tmp/test.txt' },
+            field: 'path',
+            expected: '/tmp/test.txt'
+        },
+        {
+            name: 'Write',
+            ctor: IORequest.Write,
+            variantCtor: IORequest.Write,
+            validArg: { message: 'hello world' },
+            field: 'message',
+            expected: 'hello world'
+        },
+        {
+            name: 'HttpGet',
+            ctor: IORequest.HttpGet,
+            variantCtor: IORequest.HttpGet,
+            validArg: { url: 'https://example.com' },
+            field: 'url',
+            expected: 'https://example.com'
+        },
+        {
+            name: 'OpenStream',
+            ctor: IORequest.OpenStream,
+            variantCtor: IORequest.OpenStream,
+            validArg: { path: '/data.csv' },
+            field: 'path',
+            expected: '/data.csv'
+        },
+        {
+            name: 'ReadChunk',
+            ctor: IORequest.ReadChunk,
+            variantCtor: IORequest.ReadChunk,
+            validArg: { handle: 'stream-1' },
+            field: 'handle',
+            expected: 'stream-1'
+        },
+        {
+            name: 'CloseStream',
+            ctor: IORequest.CloseStream,
+            variantCtor: IORequest.CloseStream,
+            validArg: { handle: 'stream-1' },
+            field: 'handle',
+            expected: 'stream-1'
+        },
+        {
+            name: 'Listen',
+            ctor: IORequest.Listen,
+            variantCtor: IORequest.Listen,
+            validArg: { event: 'click' },
+            field: 'event',
+            expected: 'click'
+        },
+        {
+            name: 'Timer',
+            ctor: IORequest.Timer,
+            variantCtor: IORequest.Timer,
+            validArg: { ms: 1000 },
+            field: 'ms',
+            expected: 1000
+        },
+        {
+            name: 'Subscribe',
+            ctor: IORequest.Subscribe,
+            variantCtor: IORequest.Subscribe,
+            validArg: { source: 'keyboard' },
+            field: 'source',
+            expected: 'keyboard'
+        },
+        {
+            name: 'Done',
+            ctor: IORequest.Done,
+            variantCtor: IORequest.Done,
+            validArg: { code: 0 },
+            field: 'code',
+            expected: 0
+        }
+    ];
 
-        it('should construct Write with message field', () => {
-            const req = IORequest.Write({ message: 'hello world' });
-            assert.ok(req instanceof IORequest.Write);
-            assert.ok(req instanceof IORequest);
-            assert.strictEqual(req.message, 'hello world');
-        });
+    const singletonCases: SingletonCtorCase[] = [
+        { name: 'GetTime', value: IORequest.GetTime, sourceValue: () => IORequest.GetTime, familyCtor: IORequest },
+        { name: 'AwaitEvent', value: IORequest.AwaitEvent, sourceValue: () => IORequest.AwaitEvent, familyCtor: IORequest }
+    ];
 
-        it('should construct HttpGet with url field', () => {
-            const req = IORequest.HttpGet({ url: 'https://example.com' });
-            assert.ok(req instanceof IORequest.HttpGet);
-            assert.ok(req instanceof IORequest);
-            assert.strictEqual(req.url, 'https://example.com');
-        });
+    const guardCases: GuardCase[] = [
+        {
+            name: 'Read with non-string path',
+            invoke: () => {
+                // @ts-expect-error intentionally wrong type to test runtime guard
+                IORequest.Read({ path: 42 });
+            }
+        },
+        {
+            name: 'Write with non-string message',
+            invoke: () => {
+                // @ts-expect-error intentionally wrong type to test runtime guard
+                IORequest.Write({ message: true });
+            }
+        },
+        {
+            name: 'Done with non-number code',
+            invoke: () => {
+                // @ts-expect-error intentionally wrong type to test runtime guard
+                IORequest.Done({ code: 'zero' });
+            }
+        },
+        {
+            name: 'Timer with non-number ms',
+            invoke: () => {
+                // @ts-expect-error intentionally wrong type to test runtime guard
+                IORequest.Timer({ ms: '1000' });
+            }
+        },
+        {
+            name: 'OpenStream with non-string path',
+            invoke: () => {
+                // @ts-expect-error intentionally wrong type to test runtime guard
+                IORequest.OpenStream({ path: 123 });
+            }
+        },
+        {
+            name: 'ReadChunk with non-string handle',
+            invoke: () => {
+                // @ts-expect-error intentionally wrong type to test runtime guard
+                IORequest.ReadChunk({ handle: 42 });
+            }
+        },
+        {
+            name: 'CloseStream with non-string handle',
+            invoke: () => {
+                // @ts-expect-error intentionally wrong type to test runtime guard
+                IORequest.CloseStream({ handle: true });
+            }
+        }
+    ];
 
-        it('should construct GetTime as singleton', () => {
-            const req = IORequest.GetTime;
-            assert.strictEqual(req, IORequest.GetTime);
-            assert.ok(req instanceof IORequest);
-        });
-    });
+    describe('structured variants', () => {
+        for (const c of structuredCases) {
+            it(`constructs ${c.name} with expected field/type`, () => {
+                const req = c.ctor(c.validArg);
+                assert.ok(req instanceof c.variantCtor);
+                assert.ok(req instanceof IORequest);
+                assert.strictEqual(req[c.field], c.expected);
+            });
+        }
 
-    describe('Pull/Multiple variants', () => {
-        it('should construct OpenStream with path field', () => {
-            const req = IORequest.OpenStream({ path: '/data.csv' });
-            assert.ok(req instanceof IORequest.OpenStream);
-            assert.ok(req instanceof IORequest);
-            assert.strictEqual(req.path, '/data.csv');
-        });
-
-        it('should construct ReadChunk with handle field', () => {
-            const req = IORequest.ReadChunk({ handle: 'stream-1' });
-            assert.ok(req instanceof IORequest.ReadChunk);
-            assert.ok(req instanceof IORequest);
-            assert.strictEqual(req.handle, 'stream-1');
-        });
-
-        it('should construct CloseStream with handle field', () => {
-            const req = IORequest.CloseStream({ handle: 'stream-1' });
-            assert.ok(req instanceof IORequest.CloseStream);
-            assert.ok(req instanceof IORequest);
-            assert.strictEqual(req.handle, 'stream-1');
-        });
-    });
-
-    describe('Push/Single variants', () => {
-        it('should construct Listen with event field', () => {
-            const req = IORequest.Listen({ event: 'click' });
-            assert.ok(req instanceof IORequest.Listen);
-            assert.ok(req instanceof IORequest);
-            assert.strictEqual(req.event, 'click');
-        });
-
-        it('should construct Timer with ms field', () => {
-            const req = IORequest.Timer({ ms: 1000 });
-            assert.ok(req instanceof IORequest.Timer);
-            assert.ok(req instanceof IORequest);
-            assert.strictEqual(req.ms, 1000);
-        });
-    });
-
-    describe('Push/Multiple variants', () => {
-        it('should construct Subscribe with source field', () => {
-            const req = IORequest.Subscribe({ source: 'keyboard' });
-            assert.ok(req instanceof IORequest.Subscribe);
-            assert.ok(req instanceof IORequest);
-            assert.strictEqual(req.source, 'keyboard');
-        });
-
-        it('should construct AwaitEvent as singleton', () => {
-            const req = IORequest.AwaitEvent;
-            assert.strictEqual(req, IORequest.AwaitEvent);
-            assert.ok(req instanceof IORequest);
-        });
-    });
-
-    describe('Terminal variant', () => {
-        it('should construct Done with code field', () => {
-            const req = IORequest.Done({ code: 0 });
-            assert.ok(req instanceof IORequest.Done);
-            assert.ok(req instanceof IORequest);
-            assert.strictEqual(req.code, 0);
-        });
-
-        it('should construct Done with non-zero exit code', () => {
+        it('constructs Done with non-zero exit code', () => {
             const req = IORequest.Done({ code: 1 });
             assert.strictEqual(req.code, 1);
         });
     });
 
-    describe('Guard validation', () => {
-        it('should reject Read with non-string path', () => {
-            assert.throws(() => {
-                // @ts-expect-error intentionally wrong type to test runtime guard
-                IORequest.Read({ path: 42 });
-            }, TypeError);
-        });
+    describe('singleton variants', () => {
+        for (const c of singletonCases) {
+            it(`constructs ${c.name} as singleton`, () => {
+                assert.strictEqual(c.value, c.sourceValue());
+                assert.ok(c.value instanceof c.familyCtor);
+            });
+        }
+    });
 
-        it('should reject Write with non-string message', () => {
-            assert.throws(() => {
-                // @ts-expect-error intentionally wrong type to test runtime guard
-                IORequest.Write({ message: true });
-            }, TypeError);
-        });
-
-        it('should reject Done with non-number code', () => {
-            assert.throws(() => {
-                // @ts-expect-error intentionally wrong type to test runtime guard
-                IORequest.Done({ code: 'zero' });
-            }, TypeError);
-        });
-
-        it('should reject Timer with non-number ms', () => {
-            assert.throws(() => {
-                // @ts-expect-error intentionally wrong type to test runtime guard
-                IORequest.Timer({ ms: '1000' });
-            }, TypeError);
-        });
-
-        it('should reject OpenStream with non-string path', () => {
-            assert.throws(() => {
-                // @ts-expect-error intentionally wrong type to test runtime guard
-                IORequest.OpenStream({ path: 123 });
-            }, TypeError);
-        });
-
-        it('should reject ReadChunk with non-string handle', () => {
-            assert.throws(() => {
-                // @ts-expect-error intentionally wrong type to test runtime guard
-                IORequest.ReadChunk({ handle: 42 });
-            }, TypeError);
-        });
-
-        it('should reject CloseStream with non-string handle', () => {
-            assert.throws(() => {
-                // @ts-expect-error intentionally wrong type to test runtime guard
-                IORequest.CloseStream({ handle: true });
-            }, TypeError);
-        });
+    describe('guard validation', () => {
+        for (const c of guardCases)
+            it(`rejects ${c.name}`, () => assert.throws(() => c.invoke(), TypeError));
     });
 
     describe('Cross-variant instanceof', () => {
@@ -186,98 +229,122 @@ describe('IORequest', () => {
 // =============================================================================
 
 describe('IOResponse', () => {
-    it('should construct ReadResult with content field', () => {
-        const res = IOResponse.ReadResult({ content: 'file contents' });
-        assert.ok(res instanceof IOResponse.ReadResult);
-        assert.ok(res instanceof IOResponse);
-        assert.strictEqual(res.content, 'file contents');
-    });
+    const structuredCases: StructuredCtorCase[] = [
+        {
+            name: 'ReadResult',
+            ctor: IOResponse.ReadResult,
+            variantCtor: IOResponse.ReadResult,
+            validArg: { content: 'file contents' },
+            field: 'content',
+            expected: 'file contents'
+        },
+        {
+            name: 'HttpResult',
+            ctor: IOResponse.HttpResult,
+            variantCtor: IOResponse.HttpResult,
+            validArg: { status: 200, body: '<html>' },
+            field: 'status',
+            expected: 200
+        },
+        {
+            name: 'TimeResult',
+            ctor: IOResponse.TimeResult,
+            variantCtor: IOResponse.TimeResult,
+            validArg: { now: 1700000000000 },
+            field: 'now',
+            expected: 1700000000000
+        },
+        {
+            name: 'StreamOpened',
+            ctor: IOResponse.StreamOpened,
+            variantCtor: IOResponse.StreamOpened,
+            validArg: { handle: 'stream-1' },
+            field: 'handle',
+            expected: 'stream-1'
+        },
+        {
+            name: 'StreamChunk',
+            ctor: IOResponse.StreamChunk,
+            variantCtor: IOResponse.StreamChunk,
+            validArg: { data: 'chunk of text' },
+            field: 'data',
+            expected: 'chunk of text'
+        },
+        {
+            name: 'EventResult',
+            ctor: IOResponse.EventResult,
+            variantCtor: IOResponse.EventResult,
+            validArg: { payload: '{"key":"value"}' },
+            field: 'payload',
+            expected: '{"key":"value"}'
+        }
+    ];
 
-    it('should construct WriteResult as singleton', () => {
-        const res = IOResponse.WriteResult;
-        assert.strictEqual(res, IOResponse.WriteResult);
-        assert.ok(res instanceof IOResponse);
-    });
+    const singletonCases: SingletonCtorCase[] = [
+        { name: 'WriteResult', value: IOResponse.WriteResult, sourceValue: () => IOResponse.WriteResult, familyCtor: IOResponse },
+        { name: 'TimerResult', value: IOResponse.TimerResult, sourceValue: () => IOResponse.TimerResult, familyCtor: IOResponse },
+        { name: 'EndOfStream', value: IOResponse.EndOfStream, sourceValue: () => IOResponse.EndOfStream, familyCtor: IOResponse },
+        { name: 'None', value: IOResponse.None, sourceValue: () => IOResponse.None, familyCtor: IOResponse }
+    ];
 
-    it('should construct HttpResult with status and body', () => {
-        const res = IOResponse.HttpResult({ status: 200, body: '<html>' });
-        assert.ok(res instanceof IOResponse.HttpResult);
-        assert.ok(res instanceof IOResponse);
-        assert.strictEqual(res.status, 200);
-        assert.strictEqual(res.body, '<html>');
-    });
-
-    it('should construct TimeResult with now field', () => {
-        const res = IOResponse.TimeResult({ now: 1700000000000 });
-        assert.ok(res instanceof IOResponse.TimeResult);
-        assert.strictEqual(res.now, 1700000000000);
-    });
-
-    it('should construct StreamOpened with handle field', () => {
-        const res = IOResponse.StreamOpened({ handle: 'stream-1' });
-        assert.ok(res instanceof IOResponse.StreamOpened);
-        assert.ok(res instanceof IOResponse);
-        assert.strictEqual(res.handle, 'stream-1');
-    });
-
-    it('should construct StreamChunk with data field', () => {
-        const res = IOResponse.StreamChunk({ data: 'chunk of text' });
-        assert.ok(res instanceof IOResponse.StreamChunk);
-        assert.ok(res instanceof IOResponse);
-        assert.strictEqual(res.data, 'chunk of text');
-    });
-
-    it('should construct EventResult with payload field', () => {
-        const res = IOResponse.EventResult({ payload: '{"key":"value"}' });
-        assert.ok(res instanceof IOResponse.EventResult);
-        assert.strictEqual(res.payload, '{"key":"value"}');
-    });
-
-    it('should construct TimerResult as singleton', () => {
-        const res = IOResponse.TimerResult;
-        assert.strictEqual(res, IOResponse.TimerResult);
-        assert.ok(res instanceof IOResponse);
-    });
-
-    it('should construct EndOfStream as singleton', () => {
-        const res = IOResponse.EndOfStream;
-        assert.strictEqual(res, IOResponse.EndOfStream);
-        assert.ok(res instanceof IOResponse);
-    });
-
-    it('should construct None as singleton', () => {
-        const res = IOResponse.None;
-        assert.strictEqual(res, IOResponse.None);
-        assert.ok(res instanceof IOResponse);
-    });
-
-    describe('Guard validation', () => {
-        it('should reject ReadResult with non-string content', () => {
-            assert.throws(() => {
+    const guardCases: GuardCase[] = [
+        {
+            name: 'ReadResult with non-string content',
+            invoke: () => {
                 // @ts-expect-error intentionally wrong type to test runtime guard
                 IOResponse.ReadResult({ content: 42 });
-            }, TypeError);
-        });
-
-        it('should reject HttpResult with non-number status', () => {
-            assert.throws(() => {
+            }
+        },
+        {
+            name: 'HttpResult with non-number status',
+            invoke: () => {
                 // @ts-expect-error intentionally wrong type to test runtime guard
                 IOResponse.HttpResult({ status: 'ok', body: '' });
-            }, TypeError);
-        });
-
-        it('should reject StreamOpened with non-string handle', () => {
-            assert.throws(() => {
+            }
+        },
+        {
+            name: 'StreamOpened with non-string handle',
+            invoke: () => {
                 // @ts-expect-error intentionally wrong type to test runtime guard
                 IOResponse.StreamOpened({ handle: 123 });
-            }, TypeError);
-        });
-
-        it('should reject StreamChunk with non-string data', () => {
-            assert.throws(() => {
+            }
+        },
+        {
+            name: 'StreamChunk with non-string data',
+            invoke: () => {
                 // @ts-expect-error intentionally wrong type to test runtime guard
                 IOResponse.StreamChunk({ data: 42 });
-            }, TypeError);
+            }
+        }
+    ];
+
+    describe('structured variants', () => {
+        for (const c of structuredCases) {
+            it(`constructs ${c.name} with expected field/type`, () => {
+                const res = c.ctor(c.validArg);
+                assert.ok(res instanceof c.variantCtor);
+                assert.ok(res instanceof IOResponse);
+                assert.strictEqual(res[c.field], c.expected);
+            });
+        }
+
+        it('constructs HttpResult with expected body', () => {
+            const res = IOResponse.HttpResult({ status: 200, body: '<html>' });
+            assert.strictEqual(res.body, '<html>');
         });
+    });
+
+    describe('singleton variants', () => {
+        for (const c of singletonCases) {
+            it(`constructs ${c.name} as singleton`, () => {
+                assert.strictEqual(c.value, c.sourceValue());
+                assert.ok(c.value instanceof c.familyCtor);
+            });
+        }
+    });
+
+    describe('guard validation', () => {
+        for (const c of guardCases)
+            it(`rejects ${c.name}`, () => assert.throws(() => c.invoke(), TypeError));
     });
 });

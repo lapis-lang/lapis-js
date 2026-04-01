@@ -10,7 +10,7 @@
  * - Test 3: Rose Tree - lazy children generation on demand
  * - Test 4: Behavior Set - interface-defined infinite sets (e.g., all evens)
  * - Verify lazy evaluation (observers computed on access)
- * - Verify memoization (same Self reference === same instance)
+ * - Verify memoization (same self reference === same instance)
  * - Test parametric observers (functions with inputs)
  */
 
@@ -22,17 +22,17 @@ import { behavior } from '../index.mjs';
 describe('Behavior - Infinite Structures', () => {
     describe('Test 1: Infinite Stream', () => {
         it('should create infinite streams with lazy evaluation', () => {
-            const Stream = behavior(({ Self, T }) => ({
-                head: T,
-                tail: Self(T)
-            })).ops(({ fold, unfold, map, merge, Self, T }) => ({
-                From: unfold({ in: Number, out: Self })({
+            const Stream = behavior(self => ({
+                head: Object,
+                tail: self
+            })).ops(({ fold, unfold, map, merge, self }) => ({
+                From: unfold({ in: Number, out: self })({
                     head: (n) => n,
                     tail: (n) => n + 1
                 })
             }));
 
-            const nums = Stream.From(0);
+            const nums: any = Stream.From(0);
 
             // Should be able to access arbitrarily deep into the stream
             assert.equal(nums.head, 0);
@@ -41,7 +41,7 @@ describe('Behavior - Infinite Structures', () => {
             assert.equal(nums.tail.tail.tail.head, 3);
 
             // Go deep to verify it's truly infinite
-            let current = nums;
+            let current: any = nums;
             for (let i = 0; i < 100; i++) {
                 assert.equal(current.head, i);
                 current = current.tail;
@@ -50,17 +50,17 @@ describe('Behavior - Infinite Structures', () => {
         });
 
         it('should memoize continuation instances', () => {
-            const Stream = behavior(({ Self, T }) => ({
-                head: T,
-                tail: Self(T)
-            })).ops(({ fold, unfold, map, merge, Self, T }) => ({
-                From: unfold({ in: Number, out: Self })({
+            const Stream = behavior(self => ({
+                head: Object,
+                tail: self
+            })).ops(({ fold, unfold, map, merge, self }) => ({
+                From: unfold({ in: Number, out: self })({
                     head: (n) => n,
                     tail: (n) => n + 1
                 })
             }));
 
-            const nums = Stream.From(0);
+            const nums: any = Stream.From(0);
 
             // Access tail multiple times - should return same instance
             const tail1 = nums.tail;
@@ -74,10 +74,10 @@ describe('Behavior - Infinite Structures', () => {
         it('should not memoize simple observers', () => {
             let headCallCount = 0;
 
-            const Stream = behavior(({ Self, T }) => ({
-                head: T,
-                tail: Self(T)
-            })).ops(({ fold, unfold, map, merge, Self, T }) => ({
+            const Stream = behavior(self => ({
+                head: Object,
+                tail: self
+            })).ops(({ fold, unfold, map, merge, self }) => ({
                 From: unfold({ in: Number })({
                     head: (n) => {
                         headCallCount++;
@@ -87,7 +87,7 @@ describe('Behavior - Infinite Structures', () => {
                 })
             }));
 
-            const nums = Stream.From(0);
+            const nums: any = Stream.From(0);
 
             // Each access to head should recompute
             assert.equal(nums.head, 0);
@@ -104,10 +104,10 @@ describe('Behavior - Infinite Structures', () => {
             let headCallCount = 0;
             let tailCallCount = 0;
 
-            const Stream = behavior(({ Self, T }) => ({
-                head: T,
-                tail: Self(T)
-            })).ops(({ fold, unfold, map, merge, Self, T }) => ({
+            const Stream = behavior(self => ({
+                head: Object,
+                tail: self
+            })).ops(({ fold, unfold, map, merge, self }) => ({
                 From: unfold({ in: Number })({
                     head: (n) => {
                         headCallCount++;
@@ -120,7 +120,7 @@ describe('Behavior - Infinite Structures', () => {
                 })
             }));
 
-            const nums = Stream.From(0);
+            const nums: any = Stream.From(0);
 
             // First access to tail - creates instance
             const tail1 = nums.tail;
@@ -142,17 +142,17 @@ describe('Behavior - Infinite Structures', () => {
 
     describe('Test 2: Constant Stream (ones)', () => {
         it('should create infinite constant streams via corecursion', () => {
-            const Stream = behavior(({ Self, T }) => ({
-                head: T,
-                tail: Self(T)
-            })).ops(({ fold, unfold, map, merge, Self, T }) => ({
+            const Stream = behavior(self => ({
+                head: Object,
+                tail: self
+            })).ops(({ fold, unfold, map, merge, self }) => ({
                 Repeat: unfold({ in: Number })({
                     head: (n) => n,
                     tail: (n) => n
                 })
             }));
 
-            const ones = Stream.Repeat(1);
+            const ones: any = Stream.Repeat(1);
 
             // Should repeat the same value infinitely
             assert.equal(ones.head, 1);
@@ -161,7 +161,7 @@ describe('Behavior - Infinite Structures', () => {
             assert.equal(ones.tail.tail.tail.head, 1);
 
             // Verify deep into the stream
-            let current = ones;
+            let current: any = ones;
             for (let i = 0; i < 100; i++) {
                 assert.equal(current.head, 1);
                 current = current.tail;
@@ -169,19 +169,19 @@ describe('Behavior - Infinite Structures', () => {
         });
 
         it('should work with different constant values', () => {
-            const Stream = behavior(({ Self, T }) => ({
-                head: T,
-                tail: Self(T)
-            })).ops(({ fold, unfold, map, merge, Self, T }) => ({
-                Repeat: unfold({ in: Number, out: Self })({
+            const Stream = behavior(self => ({
+                head: Object,
+                tail: self
+            })).ops(({ fold, unfold, map, merge, self }) => ({
+                Repeat: unfold({ in: Number, out: self })({
                     head: (n) => n,
                     tail: (n) => n
                 })
             }));
 
-            const zeros = Stream.Repeat(0);
-            const fives = Stream.Repeat(5);
-            const negatives = Stream.Repeat(-42);
+            const zeros: any = Stream.Repeat(0);
+            const fives: any = Stream.Repeat(5);
+            const negatives: any = Stream.Repeat(-42);
 
             assert.equal(zeros.head, 0);
             assert.equal(zeros.tail.head, 0);
@@ -194,17 +194,17 @@ describe('Behavior - Infinite Structures', () => {
         });
 
         it('should memoize constant stream continuations', () => {
-            const Stream = behavior(({ Self, T }) => ({
-                head: T,
-                tail: Self(T)
-            })).ops(({ fold, unfold, map, merge, Self, T }) => ({
-                Repeat: unfold({ in: Number, out: Self })({
+            const Stream = behavior(self => ({
+                head: Object,
+                tail: self
+            })).ops(({ fold, unfold, map, merge, self }) => ({
+                Repeat: unfold({ in: Number, out: self })({
                     head: (n) => n,
                     tail: (n) => n
                 })
             }));
 
-            const ones = Stream.Repeat(1);
+            const ones: any = Stream.Repeat(1);
 
             const tail1 = ones.tail;
             const tail2 = ones.tail;
@@ -220,10 +220,10 @@ describe('Behavior - Infinite Structures', () => {
 
     describe('Test 3: Rose Tree', () => {
         it('should create lazy rose trees with on-demand children generation', () => {
-            const RoseTree = behavior(({ Self, T }) => ({
-                value: T,
+            const RoseTree = behavior(self => ({
+                value: Object,
                 children: Array
-            })).ops(({ fold, unfold, map, merge, Self, T }) => ({
+            })).ops(({ fold, unfold, map, merge, self }) => ({
                 Node: unfold({ in: { value: Number, childGen: Function } })({
                     value: ({ value }) => value,
                     children: ({ value, childGen }) => childGen(value)
@@ -248,19 +248,19 @@ describe('Behavior - Infinite Structures', () => {
 
         it('should support nested rose tree structures', () => {
             // For a more complex example, we can create nested behavior
-            const RoseTree = behavior(({ Self, T }) => ({
-                value: T,
-                left: Self(T),
-                right: Self(T)
-            })).ops(({ fold, unfold, map, merge, Self, T }) => ({
-                Create: unfold({ in: Number, out: Self })({
+            const RoseTree = behavior(self => ({
+                value: Object,
+                left: self,
+                right: self
+            })).ops(({ fold, unfold, map, merge, self }) => ({
+                Create: unfold({ in: Number, out: self })({
                     value: (n) => n,
                     left: (n) => n * 2,
                     right: (n) => n * 2 + 1
                 })
             }));
 
-            const tree = RoseTree.Create(1);
+            const tree: any = RoseTree.Create(1);
 
             // Root value
             assert.equal(tree.value, 1);
@@ -281,19 +281,19 @@ describe('Behavior - Infinite Structures', () => {
         });
 
         it('should memoize tree continuations (left/right)', () => {
-            const RoseTree = behavior(({ Self, T }) => ({
-                value: T,
-                left: Self(T),
-                right: Self(T)
-            })).ops(({ fold, unfold, map, merge, Self, T }) => ({
-                Create: unfold({ in: Number, out: Self })({
+            const RoseTree = behavior(self => ({
+                value: Object,
+                left: self,
+                right: self
+            })).ops(({ fold, unfold, map, merge, self }) => ({
+                Create: unfold({ in: Number, out: self })({
                     value: (n) => n,
                     left: (n) => n * 2,
                     right: (n) => n * 2 + 1
                 })
             }));
 
-            const tree = RoseTree.Create(1);
+            const tree: any = RoseTree.Create(1);
 
             // Access left multiple times
             const left1 = tree.left;
@@ -309,12 +309,12 @@ describe('Behavior - Infinite Structures', () => {
 
     describe('Test 4: Behavior Set', () => {
         it('should represent infinite sets via interface', () => {
-            const BehaviorSet = behavior(({ Self }) => ({
+            const BehaviorSet = behavior(({ self }) => ({
                 isEmpty: Boolean,
                 lookup: { in: Number, out: Boolean },
-                insert: { in: Number, out: Self },
-                remove: { in: Number, out: Self }
-            })).ops(({ fold, unfold, map, merge, Self }) => ({
+                insert: { in: Number, out: self },
+                remove: { in: Number, out: self }
+            })).ops(({ fold, unfold, map, merge, self }) => ({
                 Evens: unfold({})({
                     isEmpty: () => false,
                     lookup: () => (n) => n % 2 === 0,
@@ -345,10 +345,10 @@ describe('Behavior - Infinite Structures', () => {
         });
 
         it('should support multiple infinite set types', () => {
-            const BehaviorSet = behavior(({ Self }) => ({
+            const BehaviorSet = behavior(({ self }) => ({
                 isEmpty: Boolean,
                 lookup: { in: Number, out: Boolean }
-            })).ops(({ fold, unfold, map, merge, Self }) => ({
+            })).ops(({ fold, unfold, map, merge, self }) => ({
                 Evens: unfold({})({
                     isEmpty: () => false,
                     lookup: () => (n) => n % 2 === 0
@@ -385,10 +385,10 @@ describe('Behavior - Infinite Structures', () => {
         });
 
         it('should memoize parametric observer functions', () => {
-            const BehaviorSet = behavior(({ Self }) => ({
+            const BehaviorSet = behavior(({ self }) => ({
                 isEmpty: Boolean,
                 lookup: { in: Number, out: Boolean }
-            })).ops(({ fold, unfold, map, merge, Self }) => ({
+            })).ops(({ fold, unfold, map, merge, self }) => ({
                 Evens: unfold({})({
                     isEmpty: () => false,
                     lookup: () => (n) => n % 2 === 0
@@ -411,19 +411,19 @@ describe('Behavior - Infinite Structures', () => {
 
     describe('Parametric Observers in Infinite Structures', () => {
         it('should support parametric observers on infinite streams', () => {
-            const Stream = behavior(({ Self, T }) => ({
-                head: T,
-                tail: Self(T),
-                nth: { in: Number, out: T }
-            })).ops(({ fold, unfold, map, merge, Self, T }) => ({
-                From: unfold({ in: Number, out: Self })({
+            const Stream = behavior(self => ({
+                head: Object,
+                tail: self,
+                nth: { in: Number, out: Object }
+            })).ops(({ fold, unfold, map, merge, self }) => ({
+                From: unfold({ in: Number, out: self })({
                     head: (n) => n,
                     tail: (n) => n + 1,
                     nth: (n) => (index) => n + index
                 })
             }));
 
-            const nums = Stream.From(0);
+            const nums: any = Stream.From(0);
 
             // nth should allow random access
             assert.equal(typeof nums.nth, 'function');
@@ -438,12 +438,12 @@ describe('Behavior - Infinite Structures', () => {
         });
 
         it('should support multiple parametric observers', () => {
-            const Stream = behavior(({ Self, T }) => ({
-                head: T,
-                tail: Self(T),
-                nth: { in: Number, out: T },
+            const Stream = behavior(self => ({
+                head: Object,
+                tail: self,
+                nth: { in: Number, out: Object },
                 take: { in: Number, out: Array }
-            })).ops(({ fold, unfold, map, merge, Self, T }) => ({
+            })).ops(({ fold, unfold, map, merge, self }) => ({
                 From: unfold({ in: Number })({
                     head: (n) => n,
                     tail: (n) => n + 1,
@@ -458,7 +458,7 @@ describe('Behavior - Infinite Structures', () => {
                 })
             }));
 
-            const nums = Stream.From(0);
+            const nums: any = Stream.From(0);
 
             // nth
             assert.equal(nums.nth(5), 5);
@@ -469,19 +469,19 @@ describe('Behavior - Infinite Structures', () => {
         });
 
         it('should memoize parametric observer functions but not their results', () => {
-            const Stream = behavior(({ Self, T }) => ({
-                head: T,
-                tail: Self(T),
-                nth: { in: Number, out: T }
-            })).ops(({ fold, unfold, map, merge, Self, T }) => ({
-                From: unfold({ in: Number, out: Self })({
+            const Stream = behavior(self => ({
+                head: Object,
+                tail: self,
+                nth: { in: Number, out: Object }
+            })).ops(({ fold, unfold, map, merge, self }) => ({
+                From: unfold({ in: Number, out: self })({
                     head: (n) => n,
                     tail: (n) => n + 1,
                     nth: (n) => (index) => n + index
                 })
             }));
 
-            const nums = Stream.From(0);
+            const nums: any = Stream.From(0);
 
             // Access nth multiple times - should return same function (memoized)
             const nth1 = nums.nth;
@@ -503,10 +503,10 @@ describe('Behavior - Infinite Structures', () => {
 
     describe('Complex Infinite Structures', () => {
         it('should support Fibonacci sequence as infinite stream', () => {
-            const Stream = behavior(({ Self }) => ({
+            const Stream = behavior(({ self }) => ({
                 current: Number,
-                next: Self
-            })).ops(({ fold, unfold, map, merge, Self }) => ({
+                next: self
+            })).ops(({ fold, unfold, map, merge, self }) => ({
                 Fibonacci: unfold({ in: { a: Number, b: Number } })({
                     current: ({ a }) => a,
                     next: ({ a, b }) => ({ a: b, b: a + b })
@@ -517,7 +517,7 @@ describe('Behavior - Infinite Structures', () => {
 
             // Verify Fibonacci sequence: 0, 1, 1, 2, 3, 5, 8, 13, 21, 34...
             const sequence: unknown[] = [];
-            let current = fib;
+            let current: any = fib;
             for (let i = 0; i < 10; i++) {
                 sequence.push(current.current);
                 current = current.next;
@@ -527,10 +527,10 @@ describe('Behavior - Infinite Structures', () => {
         });
 
         it('should support prime number stream', () => {
-            const Stream = behavior(({ Self }) => ({
+            const Stream = behavior(({ self }) => ({
                 head: Number,
-                tail: Self
-            })).ops(({ fold, unfold, map, merge, Self }) => ({
+                tail: self
+            })).ops(({ fold, unfold, map, merge, self }) => ({
                 Primes: unfold({ in: Number })({
                     head: (n) => n,
                     tail: (n) => nextPrimeAfter(n)
@@ -541,7 +541,7 @@ describe('Behavior - Infinite Structures', () => {
 
             // Verify prime sequence: 2, 3, 5, 7, 11, 13, 17, 19, 23, 29...
             const sequence: unknown[] = [];
-            let current = primes;
+            let current: any = primes;
             for (let i = 0; i < 10; i++) {
                 sequence.push(current.head);
                 current = current.tail;
@@ -551,12 +551,12 @@ describe('Behavior - Infinite Structures', () => {
         });
 
         it('should support infinite binary tree', () => {
-            const Tree = behavior(({ Self }) => ({
+            const Tree = behavior(({ self }) => ({
                 value: Number,
-                left: Self,
-                right: Self,
+                left: self,
+                right: self,
                 depth: { in: Number, out: Array }
-            })).ops(({ fold, unfold, map, merge, Self }) => ({
+            })).ops(({ fold, unfold, map, merge, self }) => ({
                 Create: unfold({ in: Number })({
                     value: (n) => n,
                     left: (n) => n * 2,
@@ -595,10 +595,10 @@ describe('Behavior - Infinite Structures', () => {
 
     describe('Performance and Deep Structures', () => {
         it('should handle deep continuation chains without stack overflow', () => {
-            const Stream = behavior(({ Self }) => ({
+            const Stream = behavior(({ self }) => ({
                 head: Number,
-                tail: Self
-            })).ops(({ fold, unfold, map, merge, Self }) => ({
+                tail: self
+            })).ops(({ fold, unfold, map, merge, self }) => ({
                 From: unfold({ in: Number })({
                     head: (n) => n,
                     tail: (n) => n + 1
@@ -621,10 +621,10 @@ describe('Behavior - Infinite Structures', () => {
         it('should efficiently memoize repeated accesses', () => {
             let tailCallCount = 0;
 
-            const Stream = behavior(({ Self }) => ({
+            const Stream = behavior(({ self }) => ({
                 head: Number,
-                tail: Self
-            })).ops(({ fold, unfold, map, merge, Self }) => ({
+                tail: self
+            })).ops(({ fold, unfold, map, merge, self }) => ({
                 From: unfold({ in: Number })({
                     head: (n) => n,
                     tail: (n) => {
@@ -646,10 +646,10 @@ describe('Behavior - Infinite Structures', () => {
         });
 
         it('should support wide tree structures', () => {
-            const Tree = behavior(({ Self }) => ({
+            const Tree = behavior(({ self }) => ({
                 value: Number,
                 children: Array
-            })).ops(({ fold, unfold, map, merge, Self }) => ({
+            })).ops(({ fold, unfold, map, merge, self }) => ({
                 Create: unfold({ in: { value: Number, fanout: Number } })({
                     value: ({ value }) => value,
                     children: ({ value, fanout }) => {

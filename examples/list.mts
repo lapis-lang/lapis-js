@@ -7,46 +7,46 @@ import { data } from '@lapis-lang/lapis-js';
 //     MakePair: { first: T, second: U }
 // }));
 
-// Parameterized recursive list ADT with operations defined inline
-const List = data(({ Family, T }) => ({
+// Recursive list ADT with operations defined inline
+const List = data(family => ({
         Nil: {},
-        Cons: { head: T, tail: Family(T) }
-    })).ops(({ fold, unfold, map, merge, Family, T }) => ({
+        Cons: { head: Object, tail: family }
+    })).ops(({ fold, unfold, map, merge, family }) => ({
         sum: fold({ out: Number })({
             Nil() { return 0; },
-            Cons({ head, tail }) { return (head as number) + tail; }
+            Cons({ head, tail }: any) { return (head as number) + tail; }
         }),
         length: fold({ out: Number })({
             Nil() { return 0; },
-            Cons({ tail }) { return 1 + tail; }
+            Cons({ tail }: any) { return 1 + tail; }
         }),
         product: fold({ out: Number })({
             Nil() { return 1; },
-            Cons({ head, tail }) { return (head as number) * tail; }
+            Cons({ head, tail }: any) { return (head as number) * tail; }
         }),
         show: fold({ out: String })({
             Nil() { return '[]'; },
-            Cons({ head, tail }) {
+            Cons({ head, tail }: any) {
                 if (tail === '[]') return `[${head}]`;
                 return `[${head}, ${tail.slice(1, -1)}]`;
             }
         }),
-        increment: map({ out: Family(Number) })({
-            T: (x) => x + 1
+        increment: map({ out: family })({
+            head: (x) => (x as number) + 1
         }),
-        double: map({ out: Family(Number) })({
-            T: (x) => x * 2
+        double: map({ out: family })({
+            head: (x) => (x as number) * 2
         }),
-        square: map({ out: Family(Number) })({
-            T: (x) => x * x
+        square: map({ out: family })({
+            head: (x) => (x as number) * (x as number)
         }),
-        Range: unfold({ in: Number, out: Family(T) })({
+        Range: unfold({ in: Number, out: family })({
             Nil: (n) => (n <= 0 ? {} : null),
             Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
         }),
         Factorial: merge('Range', 'product'),
         sumOfSquares: merge('square', 'sum'),
-        Zip: unfold({ in: Object, out: Family(T) })({
+        Zip: unfold({ in: Object, out: family })({
             // @ts-expect-error -- intentional type violation for test
             Nil: ({ xs, ys }) => (!xs || !('head' in xs) || !ys || !('head' in ys) ? {} : null),
             // @ts-expect-error -- intentional type violation for test
@@ -62,8 +62,8 @@ const List = data(({ Family, T }) => ({
         })
     })),
 
-    // Instantiate for numbers
-    NumList = List({ T: Number });
+    // Use directly
+    NumList = List;
 
 console.log('=== List ADT Example ===\n');
 
@@ -87,7 +87,7 @@ console.log(`list2.length = ${list2.length}`);
 // Map operations
 console.log('\nMap operations:');
 const incremented = list1.increment,
-    doubled = list1.double,
+    doubled: any = list1.double,
     squared = list1.square;
 
 console.log(`list1.increment = ${incremented.show}`);
@@ -119,7 +119,7 @@ console.log('\nZip operation:');
 // Create a list of objects (pairs) - Zip operation already defined in List base
 // Note: In declarative form, we use the Zip operation that's already defined
 // The show operation will need to handle pair objects appropriately
-const PairListWithZip = List({ T: Object }),
+const PairListWithZip = List,
 
     zipped = PairListWithZip.Zip({ xs: list1, ys: list2 });
 // Note: show() for object lists will show the default representation
@@ -133,14 +133,14 @@ console.log('Zipped short result:', zippedShort);
 
 // Type checking
 console.log('\nType checking:');
-console.log(`list1 instanceof List({ T: Number }): ${list1 instanceof NumList}`);
-console.log(`Nil instanceof List({ T: Number }): ${Nil instanceof NumList}`);
+console.log(`list1 instanceof List: ${list1 instanceof NumList}`);
+console.log(`Nil instanceof List: ${Nil instanceof NumList}`);
 
 // Field access
 console.log('\nField access:');
 console.log(`list1.head = ${list1.head}`);
-console.log(`list1.tail = ${list1.tail.show}`);
-console.log(`list1.tail.head = ${list1.tail.head}`);
+console.log(`list1.tail = ${(list1.tail as any).show}`);
+console.log(`list1.tail.head = ${(list1.tail as any).head}`);
 
 // Stack safety
 console.log('\nStack safety (large list):');
@@ -151,7 +151,7 @@ console.log(`Range(1000).sum = ${largeRange.sum}`);
 // Using with strings
 console.log('\n=== String List ===');
 // Note: length and show operations already defined in base List
-const StrList = List({ T: String }),
+const StrList = List,
     { Cons: SCons, Nil: SNil } = StrList,
     words = SCons({ head: 'hello', tail: SCons({ head: 'world', tail: SNil }) });
 console.log(`words = ${words.show}`);

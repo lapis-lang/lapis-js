@@ -14,23 +14,22 @@
  */
 
 import { data, satisfies } from '../../index.mjs';
-import { Functor, Foldable, Semigroup, Eq, Ord } from '../protocols/index.mjs';
+import { Functor, Foldable, Semigroup } from '../protocols/index.mjs';
 
-const NonEmpty = data(({ Family, T }) => ({
+const NonEmpty = data(family => ({
     [satisfies]: [
         Functor,
         Foldable,
-        Semigroup,
-        Eq({ T: Eq }),
-        Ord({ T: Ord })
+        Semigroup
     ],
-    Singleton: { value: T },
-    Cons:      { head: T, tail: Family(T) }
-})).ops(({ fold, map, Family, T }) => ({
+    Singleton: { value: Object },
+    Cons:      { head: Object, tail: family }
+})).ops(({ fold, map, family }) => ({
 
     // ── Functor ──────────────────────────────────────────────────────────
-    fmap: map({ out: Family })({
-        T: (x: unknown, f: (a: unknown) => unknown) => f(x)
+    fmap: map({ out: family })({
+        value: (x: unknown, f: (a: unknown) => unknown) => f(x),
+        head:  (x: unknown, f: (a: unknown) => unknown) => f(x)
     }),
 
     // ── Foldable ─────────────────────────────────────────────────────────
@@ -45,25 +44,25 @@ const NonEmpty = data(({ Family, T }) => ({
 
     // ── Semigroup (append) ─────────────────────────────────────────────
     combine: fold({
-        in: Family,
-        out: Family
+        in: family,
+        out: family
     })({
         // @ts-expect-error — binary fold handler
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         Singleton({ value }: any, other: unknown) {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            return (Family(T) as any).Cons({ head: value, tail: other });
+            return (family as any).Cons({ head: value, tail: other });
         },
         // @ts-expect-error — binary fold handler
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         Cons({ head, tail }: any, other: unknown) {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            return (Family(T) as any).Cons({ head, tail: tail(other) });
+            return (family as any).Cons({ head, tail: tail(other) });
         }
     }),
 
     // ── Eq (conditional: T must satisfy Eq) ──────────────────────────────
-    equals: fold({ in: Family, out: Boolean })({
+    equals: fold({ in: family, out: Boolean })({
         // @ts-expect-error — binary fold handler
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         Singleton({ value }: any, other: any) {
@@ -84,7 +83,7 @@ const NonEmpty = data(({ Family, T }) => ({
     }),
 
     // ── Ord (conditional: T must satisfy Ord) ─────────────────────────────
-    compare: fold({ in: Family, out: Number })({
+    compare: fold({ in: family, out: Number })({
         // @ts-expect-error — binary fold handler
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         Singleton({ value }: any, other: any) {

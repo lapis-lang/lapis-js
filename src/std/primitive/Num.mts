@@ -12,11 +12,11 @@ import { Eq, Ord, CommutativeMonoid, Semiring, Ring } from '../protocols/index.m
 const Num = data(() => ({
     [satisfies]: [Eq, Ord, CommutativeMonoid, Semiring, Ring],
     N: { value: Number }
-})).ops(({ fold, unfold, map: _map, Family }) => ({
+})).ops(({ fold, unfold, map: _map, family }) => ({
 
     // ── Eq ───────────────────────────────────────────────────────────────
     equals: fold({
-        in: Family,
+        in: family,
         out: Boolean
     })({
         // @ts-expect-error — binary fold handler
@@ -28,7 +28,7 @@ const Num = data(() => ({
 
     // ── Ord ──────────────────────────────────────────────────────────────
     compare: fold({
-        in: Family,
+        in: family,
         out: Number
     })({
         // @ts-expect-error — binary fold handler
@@ -39,12 +39,12 @@ const Num = data(() => ({
     }),
 
     // ── CommutativeMonoid (additive) ─────────────────────────────────────
-    Identity: unfold({ out: Family })({
+    Identity: unfold({ out: family })({
         N: () => ({ value: 0 })
     }),
     combine: fold({
-        in: Family,
-        out: Family
+        in: family,
+        out: family
     })({
         // @ts-expect-error — binary fold handler
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -57,8 +57,8 @@ const Num = data(() => ({
     // ── Semiring ─────────────────────────────────────────────────────────
     // add = combine (additive monoid)
     add: fold({
-        in: Family,
-        out: Family
+        in: family,
+        out: family
     })({
         // @ts-expect-error — binary fold handler
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -67,12 +67,12 @@ const Num = data(() => ({
             return new (this.constructor as any)({ value: value + other.value });
         }
     }),
-    Zero: unfold({ out: Family })({
+    Zero: unfold({ out: family })({
         N: () => ({ value: 0 })
     }),
     multiply: fold({
-        in: Family,
-        out: Family
+        in: family,
+        out: family
     })({
         // @ts-expect-error — binary fold handler
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -81,12 +81,12 @@ const Num = data(() => ({
             return new (this.constructor as any)({ value: value * other.value });
         }
     }),
-    One: unfold({ out: Family })({
+    One: unfold({ out: family })({
         N: () => ({ value: 1 })
     }),
 
     // ── Ring ─────────────────────────────────────────────────────────────
-    negate: fold({ out: Family })({
+    negate: fold({ out: family })({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         N({ value }: any) {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any

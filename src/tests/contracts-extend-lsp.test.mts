@@ -294,10 +294,10 @@ describe('Contracts: Extend + LSP', () => {
     describe('Integrated Stack with demands + ensures', () => {
         // From decorator-contracts Stack.test.mts
         it('should enforce demands on pop (non-empty) and ensures on append (size+1)', () => {
-            const Stack = data(({ Family }) => ({
+            const Stack = data(({ family }) => ({
                 Empty: {},
-                Push: { value: Number, rest: Family }
-            })).ops(({ fold, unfold, map, merge, Family }) => ({
+                Push: { value: Number, rest: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
                 size: fold({ out: Number })({
                     Empty() { return 0; },
                     Push({ rest }) { return 1 + rest; }
@@ -322,10 +322,10 @@ describe('Contracts: Extend + LSP', () => {
                     ensures: (_self, old, result) => result.size === old.size + 1
                 })({
                     Empty({}, val) {
-                        return Stack.Push({ value: val, rest: Stack.Empty });
+                        return family.Push({ value: val, rest: family.Empty });
                     },
                     Push({ rest }, val) {
-                        return Stack.Push({ value: this.value, rest: rest(val) });
+                        return family.Push({ value: this.value, rest: rest(val) });
                     }
                 })
             }));

@@ -16,10 +16,10 @@
 import { protocol, extend } from '../../index.mjs';
 import { Functor } from './Functor.mjs';
 
-const Applicative = protocol(({ Family, fold, unfold }) => ({
+const Applicative = protocol(({ family, fold, unfold }) => ({
     [extend]: Functor,
-    Pure: unfold({ out: Family }),
-    apply: fold({ in: Family, out: Family })
+    Pure: unfold({ out: family }),
+    apply: fold({ in: family, out: family })
 }));
 
 export { Applicative };

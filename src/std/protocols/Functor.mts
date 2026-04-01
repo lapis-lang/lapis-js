@@ -12,9 +12,9 @@
 
 import { protocol } from '../../index.mjs';
 
-const Functor = protocol(({ Family, map }) => ({
+const Functor = protocol(({ family, map }) => ({
     fmap: map({
-        out: Family,
+        out: family,
         properties: ['identity', 'composition']
     })
 }));
