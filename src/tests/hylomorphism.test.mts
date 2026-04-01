@@ -13,11 +13,11 @@ describe('Merge pipeline (unfold + fold)', () => {
             let unfoldCaseCalls = 0;
             let foldHandlerCalls = 0;
 
-            const List = data(({ Family }) => ({
+            const List = data(family => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family }
-            })).ops(({ fold, unfold, map, merge, Family }) => ({
-                Counter: unfold({ in: Number, out: Family })({
+                Cons: { head: Number, tail: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
+                Counter: unfold({ in: Number, out: family })({
                     Nil: (n) => {
                         unfoldCaseCalls++;
                         return n <= 0 ? {} : null;
@@ -53,17 +53,17 @@ describe('Merge pipeline (unfold + fold)', () => {
         });
 
         test('merge matches manual unfold → fold at moderate depth', () => {
-            const List = data(({ Family }) => ({
+            const List = data(family => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family }
-            })).ops(({ fold, unfold, map, merge, Family }) => ({
-                Range: unfold({ in: Number, out: Family })({
+                Cons: { head: Number, tail: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
+                Range: unfold({ in: Number, out: family })({
                     Nil: (n) => (n <= 0 ? {} : null),
                     Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
                 }),
                 sum: fold({ out: Number })({
                     Nil() { return 0; },
-                    Cons({ head, tail }) { return head + tail; }
+                    Cons({ head, tail }: any) { return head + tail; }
                 }),
                 Sum: merge('Range', 'sum')
             }));
@@ -81,28 +81,28 @@ describe('Merge pipeline (unfold + fold)', () => {
         test('unfold + map + fold applies map transforms correctly', () => {
             let mapCallCount = 0;
 
-            const List = data(({ Family, T }) => ({
+            const List = data(family => ({
                 Nil: {},
-                Cons: { head: T, tail: Family }
-            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
-                Range: unfold({ in: Number, out: Family })({
+                Cons: { head: Object, tail: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
+                Range: unfold({ in: Number, out: family })({
                     Nil: (n) => (n <= 0 ? {} : null),
                     Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
                 }),
-                square: map({ out: Family })({
-                    T: (x) => {
+                square: map({ out: family })({
+                    head: (x) => {
                         mapCallCount++;
                         return x * x;
                     }
                 }),
                 sum: fold({ out: Number })({
                     Nil() { return 0; },
-                    Cons({ head, tail }) { return head + tail; }
+                    Cons({ head, tail }: any) { return head + tail; }
                 }),
                 SumOfSquares: merge('Range', 'square', 'sum')
             }));
 
-            const NumList = List({ T: Number });
+            const NumList = List;
 
             mapCallCount = 0;
             const result = NumList.SumOfSquares(4);
@@ -114,24 +114,24 @@ describe('Merge pipeline (unfold + fold)', () => {
         });
 
         test('unfold + multiple maps + fold applies maps in order', () => {
-            const List = data(({ Family, T }) => ({
+            const List = data(family => ({
                 Nil: {},
-                Cons: { head: T, tail: Family }
-            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
-                Range: unfold({ in: Number, out: Family })({
+                Cons: { head: Object, tail: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
+                Range: unfold({ in: Number, out: family })({
                     Nil: (n) => (n <= 0 ? {} : null),
                     Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
                 }),
-                double: map({ out: Family })({ T: (x) => x * 2 }),
-                increment: map({ out: Family })({ T: (x) => x + 1 }),
+                double: map({ out: family })({ head: (x) => x * 2 }),
+                increment: map({ out: family })({ head: (x) => x + 1 }),
                 sum: fold({ out: Number })({
                     Nil() { return 0; },
-                    Cons({ head, tail }) { return head + tail; }
+                    Cons({ head, tail }: any) { return head + tail; }
                 }),
                 Pipeline: merge('Range', 'double', 'increment', 'sum')
             }));
 
-            const NumList = List({ T: Number });
+            const NumList = List;
 
             // n=3: [3,2,1] → double → [6,4,2] → increment → [7,5,3] → sum = 15
             assert.strictEqual(NumList.Pipeline(3), 15);
@@ -140,20 +140,20 @@ describe('Merge pipeline (unfold + fold)', () => {
 
     describe('Unfold + map (no fold)', () => {
         test('produces concrete ADT instances when no fold is present', () => {
-            const List = data(({ Family, T }) => ({
+            const List = data(family => ({
                 Nil: {},
-                Cons: { head: T, tail: Family }
-            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
-                CountDown: unfold({ in: Number, out: Family })({
+                Cons: { head: Object, tail: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
+                CountDown: unfold({ in: Number, out: family })({
                     Nil: (n) => (n <= 0 ? {} : null),
                     Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
                 }),
-                square: map({ out: Family })({ T: (x) => x * x }),
+                square: map({ out: family })({ head: (x) => x * x }),
                 SquareCountDown: merge('CountDown', 'square')
             }));
 
-            const NumList = List({ T: Number });
-            const result = NumList.SquareCountDown(3);
+            const NumList = List;
+            const result: any = NumList.SquareCountDown(3);
 
             assert.strictEqual(result.head, 9);        // 3²
             assert.strictEqual(result.tail.head, 4);    // 2²
@@ -163,11 +163,11 @@ describe('Merge pipeline (unfold + fold)', () => {
 
     describe('Correctness across patterns', () => {
         test('merge factorial matches sequential factorial', () => {
-            const List = data(({ Family }) => ({
+            const List = data(family => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family }
-            })).ops(({ fold, unfold, map, merge, Family }) => ({
-                Counter: unfold({ in: Number, out: Family })({
+                Cons: { head: Number, tail: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
+                Counter: unfold({ in: Number, out: family })({
                     Nil: (n) => (n <= 0 ? {} : null),
                     Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
                 }),
@@ -187,11 +187,11 @@ describe('Merge pipeline (unfold + fold)', () => {
         });
 
         test('wildcard fold handler works in merge', () => {
-            const List = data(({ Family }) => ({
+            const List = data(family => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family }
-            })).ops(({ fold, unfold, map, merge, Family }) => ({
-                Range: unfold({ in: Number, out: Family })({
+                Cons: { head: Number, tail: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
+                Range: unfold({ in: Number, out: family })({
                     Nil: (n) => (n <= 0 ? {} : null),
                     Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
                 }),
@@ -207,11 +207,11 @@ describe('Merge pipeline (unfold + fold)', () => {
         });
 
         test('merge validates unfold input types', () => {
-            const List = data(({ Family }) => ({
+            const List = data(family => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family }
-            })).ops(({ fold, unfold, map, merge, Family }) => ({
-                Range: unfold({ in: Number, out: Family })({
+                Cons: { head: Number, tail: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
+                Range: unfold({ in: Number, out: family })({
                     Nil: (n) => (n <= 0 ? {} : null),
                     Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
                 }),
@@ -230,11 +230,11 @@ describe('Merge pipeline (unfold + fold)', () => {
         });
 
         test('merge on binary tree structure', () => {
-            const Tree = data(({ Family }) => ({
+            const Tree = data(family => ({
                 Leaf: { value: Number },
-                Node: { left: Family, right: Family, value: Number }
-            })).ops(({ fold, unfold, map, merge, Family }) => ({
-                Build: unfold({ in: Number, out: Family })({
+                Node: { left: family, right: family, value: Number }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
+                Build: unfold({ in: Number, out: family })({
                     Leaf: (n) => (n <= 1 ? { value: n } : null),
                     Node: (n) => (n > 1 ? {
                         left: Math.floor(n / 2),
@@ -276,11 +276,11 @@ describe('Merge pipeline (unfold + fold)', () => {
         });
 
         test('fold handler can access other operations via this in merge', () => {
-            const List = data(({ Family }) => ({
+            const List = data(family => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family }
-            })).ops(({ fold, unfold, map, merge, Family }) => ({
-                Range: unfold({ in: Number, out: Family })({
+                Cons: { head: Number, tail: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
+                Range: unfold({ in: Number, out: family })({
                     Nil: (n) => (n <= 0 ? {} : null),
                     Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
                 }),
@@ -307,11 +307,11 @@ describe('Merge pipeline (unfold + fold)', () => {
             // Store in a container to break the TS7022 circular reference
             // while the fold handlers capture `ref` by closure.
             const ref: { List: unknown } = { List: null };
-            const List = data(({ Family }) => ({
+            const List = data(family => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family }
-            })).ops(({ fold, unfold, map, merge, Family }) => ({
-                Range: unfold({ in: Number, out: Family })({
+                Cons: { head: Number, tail: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
+                Range: unfold({ in: Number, out: family })({
                     Nil: (n) => (n <= 0 ? {} : null),
                     Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
                 }),
@@ -332,11 +332,11 @@ describe('Merge pipeline (unfold + fold)', () => {
 
     describe('Correctness at scale', () => {
         test('merge produces correct results for large inputs', () => {
-            const List = data(({ Family }) => ({
+            const List = data(family => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family }
-            })).ops(({ fold, unfold, map, merge, Family }) => ({
-                Counter: unfold({ in: Number, out: Family })({
+                Cons: { head: Number, tail: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
+                Counter: unfold({ in: Number, out: family })({
                     Nil: (n) => (n <= 0 ? {} : null),
                     Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
                 }),

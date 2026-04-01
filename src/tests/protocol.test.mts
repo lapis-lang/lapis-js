@@ -6,12 +6,12 @@
  * - [satisfies] in data() phase 1
  * - instanceof via Symbol.hasInstance
  * - Protocol inheritance via [extend]
- * - Conditional conformance via Ordered({ T: Ordered })
  * - Protocol-level [invariant]
  * - Naming convention enforcement
  * - Error on missing required operations
  * - behavior() conformance
- * - Defaults auto-installed for satisfied conditional protocols
+ * - Explicit subtype conformance (replacing conditional conformance)
+ * - Protocol contract composition via unconditional [satisfies]
  */
 
 import { describe, it } from 'node:test';
@@ -26,15 +26,16 @@ import {
     DemandsError,
     EnsuresError
 } from '../index.mjs';
+import { Functor } from '../std/protocols/Functor.mjs';
 
 // ---- Shared fixtures (used across multiple sections) -----------------------
 
-const Printable = protocol(({ Family, fold }) => ({
+const Printable = protocol(({ family, fold }) => ({
     print: fold({ out: String })
 }));
 
-const Ordered = protocol(({ Family, fold }) => ({
-    compare: fold({ in: Family, out: Number })
+const Ordered = protocol(({ family, fold }) => ({
+    compare: fold({ in: family, out: Number })
 }));
 
 /** Cast a protocol to the constructor type required by `instanceof` */
@@ -57,8 +58,8 @@ describe('protocol() factory', () => {
     });
 
     it('stores unfold as PascalCase required op', () => {
-        const Constructible = protocol(({ Family, unfold }) => ({
-            Empty: unfold({ out: Family })
+        const Constructible = protocol(({ family, unfold }) => ({
+            Empty: unfold({ out: family })
         }));
 
         assert.ok(Constructible.requiredOps.has('Empty'));
@@ -66,8 +67,8 @@ describe('protocol() factory', () => {
     });
 
     it('stores map required op', () => {
-        const Functor = protocol(({ Family, T, map }) => ({
-            fmap: map({ out: Family })
+        const Functor = protocol(({ family, T, map }) => ({
+            fmap: map({ out: family })
         }));
 
         assert.ok(Functor.requiredOps.has('fmap'));
@@ -75,7 +76,7 @@ describe('protocol() factory', () => {
     });
 
     it('parentProtocol is null for standalone protocol', () => {
-        const Standalone = protocol(({ Family, fold }) => ({
+        const Standalone = protocol(({ family, fold }) => ({
             check: fold({ out: Boolean })
         }));
 
@@ -83,7 +84,7 @@ describe('protocol() factory', () => {
     });
 
     it('invariantFn is null when [invariant] not given', () => {
-        const NoInvariant = protocol(({ Family, fold }) => ({
+        const NoInvariant = protocol(({ family, fold }) => ({
             size: fold({ out: Number })
         }));
 
@@ -92,8 +93,8 @@ describe('protocol() factory', () => {
 
     it('throws TypeError on camelCase unfold name', () => {
         assert.throws(
-            () => protocol(({ Family, unfold }) => ({
-                empty: unfold({ out: Family }) // should be PascalCase
+            () => protocol(({ family, unfold }) => ({
+                empty: unfold({ out: family }) // should be PascalCase
             })),
             TypeError
         );
@@ -101,7 +102,7 @@ describe('protocol() factory', () => {
 
     it('throws TypeError on PascalCase fold name', () => {
         assert.throws(
-            () => protocol(({ Family, fold }) => ({
+            () => protocol(({ family, fold }) => ({
                 Print: fold({ out: String }) // should be camelCase
             })),
             TypeError
@@ -110,8 +111,8 @@ describe('protocol() factory', () => {
 
     it('throws TypeError on PascalCase map name', () => {
         assert.throws(
-            () => protocol(({ Family, map }) => ({
-                Transform: map({ out: Family }) // should be camelCase
+            () => protocol(({ family, map }) => ({
+                Transform: map({ out: family }) // should be camelCase
             })),
             TypeError
         );
@@ -124,13 +125,13 @@ describe('protocol() factory', () => {
 
 describe('protocol() with [extend]', () => {
     it('inherits parent required ops', () => {
-        const Semigroup = protocol(({ Family, fold }) => ({
-            combine: fold({ in: Family, out: Family })
+        const Semigroup = protocol(({ family, fold }) => ({
+            combine: fold({ in: family, out: family })
         }));
 
-        const Monoid = protocol(({ Family, fold, unfold }) => ({
+        const Monoid = protocol(({ family, fold, unfold }) => ({
             [extend]: Semigroup,
-            Identity: unfold({ out: Family })
+            Identity: unfold({ out: family })
         }));
 
         assert.ok(Monoid.requiredOps.has('combine'), 'inherited from Semigroup');
@@ -139,14 +140,14 @@ describe('protocol() with [extend]', () => {
     });
 
     it('inherits transitively across three levels', () => {
-        const A = protocol(({ Family, fold }) => ({
+        const A = protocol(({ family, fold }) => ({
             opA: fold({ out: Number })
         }));
-        const B = protocol(({ Family, fold }) => ({
+        const B = protocol(({ family, fold }) => ({
             [extend]: A,
             opB: fold({ out: Number })
         }));
-        const C = protocol(({ Family, fold }) => ({
+        const C = protocol(({ family, fold }) => ({
             [extend]: B,
             opC: fold({ out: Number })
         }));
@@ -164,7 +165,7 @@ describe('protocol() with [extend]', () => {
 describe('protocol() [invariant]', () => {
     it('stores [invariant] as invariantFn', () => {
         const pred = (_type: unknown) => true;
-        const Verified = protocol(({ Family, fold }) => ({
+        const Verified = protocol(({ family, fold }) => ({
             size: fold({ out: Number }),
             [invariant]: pred
         }));
@@ -176,7 +177,7 @@ describe('protocol() [invariant]', () => {
 describe('protocol [invariant] enforcement', () => {
     it('throws TypeError when data ADT fails unconditional protocol invariant', () => {
         // Protocol requires that the type has a static 'tag' property
-        const Tagged = protocol(({ Family, fold }) => ({
+        const Tagged = protocol(({ family, fold }) => ({
             name: fold({ out: String }),
             [invariant]: (type: unknown) =>
                 typeof (type as Record<string, unknown>)['tag'] === 'string'
@@ -196,8 +197,8 @@ describe('protocol [invariant] enforcement', () => {
     });
 
     it('no error when data ADT passes unconditional protocol invariant', () => {
-        const HasIdentity = protocol(({ Family, unfold }) => ({
-            Identity: unfold({ out: Family }),
+        const HasIdentity = protocol(({ family, unfold }) => ({
+            Identity: unfold({ out: family }),
             [invariant]: (type: unknown) =>
                 typeof (type as Record<string, unknown>)['Identity'] !== 'undefined'
         }));
@@ -205,8 +206,8 @@ describe('protocol [invariant] enforcement', () => {
         const Unit = data(() => ({
             [satisfies]: [HasIdentity],
             Unit: {}
-        })).ops(({ unfold, Family }) => ({
-            Identity: unfold({ out: Family })({
+        })).ops(({ unfold, family }) => ({
+            Identity: unfold({ out: family })({
                 Unit: () => ({})
             })
         }));
@@ -215,12 +216,12 @@ describe('protocol [invariant] enforcement', () => {
     });
 
     it('ancestor protocol invariant is also checked', () => {
-        const Base = protocol(({ Family, fold }) => ({
+        const Base = protocol(({ family, fold }) => ({
             val: fold({ out: Number }),
             [invariant]: (_type: unknown) => false   // always fails
         }));
 
-        const Child = protocol(({ Family, fold }) => ({
+        const Child = protocol(({ family, fold }) => ({
             [extend]: Base,
             extra: fold({ out: Number })
         }));
@@ -241,7 +242,7 @@ describe('protocol [invariant] enforcement', () => {
     });
 
     it('invariant that throws is caught and wrapped in TypeError', () => {
-        const Boom = protocol(({ Family, fold }) => ({
+        const Boom = protocol(({ family, fold }) => ({
             go: fold({ out: Number }),
             [invariant]: () => { throw new Error('kaboom'); }
         }));
@@ -259,18 +260,18 @@ describe('protocol [invariant] enforcement', () => {
     });
 
     it('behavior type fails protocol invariant', () => {
-        const NeedsStatic = protocol(({ Family, fold }) => ({
+        const NeedsStatic = protocol(({ family, fold }) => ({
             step: fold({ out: Number }),
             [invariant]: (type: unknown) =>
                 typeof (type as Record<string, unknown>)['magic'] === 'function'
         }));
 
         assert.throws(() => {
-            behavior(({ Self }) => ({
+            behavior(self => ({
                 [satisfies]: [NeedsStatic],
                 value: Number
-            })).ops(({ fold, unfold, Self }) => ({
-                Start: unfold({ in: Number, out: Self })({
+            })).ops(({ fold, unfold, self }) => ({
+                Start: unfold({ in: Number, out: self })({
                     value: (n) => n
                 }),
                 step: fold({ out: Number })({
@@ -280,59 +281,44 @@ describe('protocol [invariant] enforcement', () => {
         }, TypeError);
     });
 
-    it('conditional protocol invariant is checked when constraints are met', () => {
-        // Base protocol — no invariant, easy to satisfy
-        const Checkable = protocol(({ Family, fold }) => ({
-            check: fold({ out: Boolean })
-        }));
-
-        // Conditional protocol — has a strict invariant that Box won't satisfy
-        const Strict = protocol(({ Family, fold }) => ({
+    it('protocol invariant fires when type unconditionally satisfies protocol', () => {
+        // Protocol with a strict invariant requiring a static 'magic' property
+        const Strict = protocol(({ family, fold }) => ({
             check: fold({ out: Boolean }),
             [invariant]: (type: unknown) =>
                 (type as Record<string, unknown>)['magic'] === 42
         }));
 
-        const Box = data(({ T }) => ({
-            [satisfies]: [Strict({ T: Checkable })],
-            Box: { val: T }
+        // Box tries to satisfy Strict unconditionally — invariant fires at creation.
+        // Box has no 'magic' property → invariant fails → TypeError
+        assert.throws(() => data(family => ({
+            [satisfies]: [Strict],
+            Box: { val: Object }
         })).ops(({ fold }) => ({
             check: fold({ out: Boolean })({
                 Box() { return true; }
             })
-        }));
-
-        // SimpleT satisfies Checkable (no invariant) — that's the constraint
-        const SimpleT = data(() => ({
-            [satisfies]: [Checkable],
-            S: {}
-        })).ops(({ fold }) => ({
-            check: fold({ out: Boolean })({
-                S() { return true; }
-            })
-        }));
-
-        // Constraint met (T=SimpleT satisfies Checkable), so Strict's invariant fires.
-        // Box has no 'magic' property → invariant fails → TypeError
-        assert.throws(() => Box({ T: SimpleT }), TypeError);
+        })), TypeError);
     });
 });
 
 // =============================================================================
-// 4. Conditional conformance (callable protocol)
+// 4. Protocol is not callable (conditional conformance removed)
 // =============================================================================
 
-describe('protocol conditional conformance', () => {
-    it('calling a protocol returns a ConditionalConformance object', () => {
-        const cond = Ordered({ T: Ordered });
-        assert.strictEqual(typeof cond, 'object');
-        assert.strictEqual(cond.protocol, Ordered);
-        assert.deepStrictEqual(Object.keys(cond.constraints), ['T']);
+describe('protocol is not callable', () => {
+    it('calling a protocol throws TypeError', () => {
+        assert.throws(
+            () => (Ordered as unknown as (...args: unknown[]) => unknown)({ T: Ordered }),
+            TypeError
+        );
     });
 
-    it('calling with no args returns empty constraints', () => {
-        const cond = Ordered();
-        assert.deepStrictEqual(cond.constraints, {});
+    it('calling a protocol with no args also throws TypeError', () => {
+        assert.throws(
+            () => (Ordered as unknown as (...args: unknown[]) => unknown)(),
+            TypeError
+        );
     });
 });
 
@@ -356,7 +342,7 @@ describe('data() [satisfies] unconditional', () => {
     });
 
     it('instance is not instanceof unrelated protocol', () => {
-        const Serializable = protocol(({ Family, fold }) => ({
+        const Serializable = protocol(({ family, fold }) => ({
             serialize: fold({ out: String })
         }));
 
@@ -374,7 +360,7 @@ describe('data() [satisfies] unconditional', () => {
     });
 
     it('primitives return false for instanceof protocol without throwing', () => {
-        const P = protocol(({ Family, fold }) => ({
+        const P = protocol(({ family, fold }) => ({
             doIt: fold({ out: Number })
         }));
         const cls = asClass(P);
@@ -385,24 +371,24 @@ describe('data() [satisfies] unconditional', () => {
     });
 
     it('satisfying Monoid also satisfies parent Semigroup via instanceof', () => {
-        const Semigroup = protocol(({ Family, fold }) => ({
-            combine: fold({ in: Family, out: Family })
+        const Semigroup = protocol(({ family, fold }) => ({
+            combine: fold({ in: family, out: family })
         }));
 
-        const Monoid = protocol(({ Family, fold, unfold }) => ({
+        const Monoid = protocol(({ family, fold, unfold }) => ({
             [extend]: Semigroup,
-            Identity: unfold({ out: Family })
+            Identity: unfold({ out: family })
         }));
 
         const Num = data(() => ({
             [satisfies]: [Monoid],
             Num: { value: Number }
-        })).ops(({ fold, unfold, Family }) => ({
-            Identity: unfold({ out: Family })({
+        })).ops(({ fold, unfold, family }) => ({
+            Identity: unfold({ out: family })({
                 Num: () => ({ value: 0 })
             }),
-            combine: fold({ in: Family, out: Family })({
-                Num({ value }) { return Family.Num({ value }); }
+            combine: fold({ in: family, out: family })({
+                Num({ value }) { return family.Num({ value }); }
             })
         }));
 
@@ -428,8 +414,24 @@ describe('data() [satisfies] unconditional', () => {
         );
     });
 
+    it('throws when required operation kind mismatches protocol', () => {
+        assert.throws(
+            () => {
+                data(() => ({
+                    [satisfies]: [Functor],
+                    Box: { value: Object }
+                })).ops(({ fold, family }) => ({
+                    fmap: fold({ in: Function, out: family })({
+                        Box() { return this; }
+                    })
+                }));
+            },
+            /kind 'fold'.*requires kind 'map'/
+        );
+    });
+
     it('satisfies a single protocol (not in array)', () => {
-        const Displayable = protocol(({ Family, fold }) => ({
+        const Displayable = protocol(({ family, fold }) => ({
             display: fold({ out: String })
         }));
 
@@ -447,82 +449,48 @@ describe('data() [satisfies] unconditional', () => {
 });
 
 // =============================================================================
-// 6. Conditional conformance — data() [satisfies] with constraints
+// 6. Explicit subtype conformance (replaces conditional conformance)
 // =============================================================================
 
-describe('data() [satisfies] conditional', () => {
-    // Shared fixtures for negative tests (T does not satisfy Ordered)
-    const Unordered = data(() => ({
-        Item: { label: String }
-    })).ops(({ fold }) => ({
-        display: fold({ out: String })({
-            Item({ label }) { return label; }
-        })
-    }));
-
-    const UnorderedList = data(({ Family, T }) => ({
-        [satisfies]: [Ordered({ T: Ordered })],
-        Nil: {},
-        Cons: { head: T, tail: Family(T) }
-    })).ops(({ fold, Family }) => ({
-        compare: fold({ in: Family, out: Number })({
-            Nil() { return 0; },
-            Cons() { return 0; }
-        })
-    }));
-
-    it('conditional conformance is registered when constraint is met', () => {
-        const Num = data(() => ({
-            [satisfies]: [Ordered],  // Num unconditionally satisfies Ordered
+describe('data() [satisfies] explicit subtype conformance', () => {
+    it('instance of explicit subtype with [satisfies] satisfies protocol', () => {
+        const Num = data(family => ({
+            [satisfies]: [Ordered],
             Num: { value: Number }
-        })).ops(({ fold, Family }) => ({
-            compare: fold({ in: Family, out: Number })({
+        })).ops(({ fold, family }) => ({
+            compare: fold({ in: family, out: Number })({
                 Num({ value }) { return value; }
             })
         }));
 
-        const List = data(({ Family, T }) => ({
-            [satisfies]: [Ordered({ T: Ordered })],
+        const List = data(family => ({
             Nil: {},
-            Cons: { head: T, tail: Family(T) }
-        })).ops(({ fold, Family, T }) => ({
-            compare: fold({ in: Family, out: Number })({
+            Cons: { head: Object, tail: family }
+        }));
+
+        const NumList = data(family => ({
+            [extend]: List,
+            [satisfies]: [Ordered],
+            Cons: { head: Number, tail: family }
+        })).ops(({ fold, family }) => ({
+            compare: fold({ in: family, out: Number })({
                 Nil() { return 0; },
-                Cons({ head }) { return (head as { compare: () => number }).compare(); }
+                Cons({ head }) { return head as number; }
             })
         }));
 
-        const ListOfNum = List({ T: Num });
-
-        const a = (ListOfNum as unknown as { Cons: (x: object) => unknown; Nil: unknown }).Cons({
-            head: Num.Num({ value: 1 }),
-            tail: (ListOfNum as unknown as { Nil: unknown }).Nil
-        });
-
+        const a = NumList.Cons({ head: 1, tail: NumList.Nil });
         assert.ok(a instanceof asClass(Ordered));
     });
 
-    it('conditional conformance is NOT registered when constraint is not met', () => {
-        const ListOfUnordered = UnorderedList({ T: Unordered });
+    it('instance of base type without [satisfies] does NOT satisfy protocol', () => {
+        const List = data(family => ({
+            Nil: {},
+            Cons: { head: Object, tail: family }
+        }));
 
-        const a = (ListOfUnordered as unknown as { Cons: (x: object) => unknown; Nil: unknown }).Cons({
-            head: Unordered.Item({ label: 'x' }),
-            tail: (ListOfUnordered as unknown as { Nil: unknown }).Nil
-        });
-
+        const a = List.Nil;
         assert.ok(!(a instanceof asClass(Ordered)));
-    });
-
-    it('throws TypeError with clear message when calling a constrained op on non-conforming parameterization', () => {
-        const ListOfUnordered = UnorderedList({ T: Unordered });
-        const a = (ListOfUnordered as unknown as { Nil: unknown }).Nil as unknown as { compare: (x: unknown) => number };
-
-        assert.throws(
-            () => a.compare(a),
-            (err: unknown) => err instanceof TypeError &&
-                (err as TypeError).message.includes("'compare'") &&
-                (err as TypeError).message.includes("'T'")
-        );
     });
 });
 
@@ -532,10 +500,10 @@ describe('data() [satisfies] conditional', () => {
 
 describe('data() [satisfies] multiple protocols', () => {
     it('satisfies two independent protocols simultaneously', () => {
-        const Printable = protocol(({ Family, fold }) => ({
+        const Printable = protocol(({ family, fold }) => ({
             print: fold({ out: String })
         }));
-        const Sizeable = protocol(({ Family, fold }) => ({
+        const Sizeable = protocol(({ family, fold }) => ({
             size: fold({ out: Number })
         }));
 
@@ -563,15 +531,15 @@ describe('data() [satisfies] multiple protocols', () => {
 
 describe('behavior() [satisfies]', () => {
     it('behavior instance is instanceof protocol after .ops()', () => {
-        const Steppable = protocol(({ Family, fold }) => ({
+        const Steppable = protocol(({ family, fold }) => ({
             step: fold({ out: Number })
         }));
 
-        const Counter = behavior(({ Self }) => ({
+        const Counter = behavior(self => ({
             [satisfies]: [Steppable],
             value: Number
-        })).ops(({ fold, unfold, Self }) => ({
-            Counting: unfold({ in: Number, out: Self })({
+        })).ops(({ fold, unfold, self }) => ({
+            Counting: unfold({ in: Number, out: self })({
                 value: (n) => n
             }),
             step: fold({ out: Number })({
@@ -584,17 +552,17 @@ describe('behavior() [satisfies]', () => {
     });
 
     it('behavior does not satisfy protocol if ops missing', () => {
-        const Steppable = protocol(({ Family, fold }) => ({
+        const Steppable = protocol(({ family, fold }) => ({
             step: fold({ out: Number })
         }));
 
         assert.throws(
             () => {
-                behavior(({ Self }) => ({
+                behavior(self => ({
                     [satisfies]: [Steppable],
                     value: Number
-                })).ops(({ unfold, Self }) => ({
-                    Counting: unfold({ in: Number, out: Self })({
+                })).ops(({ unfold, self }) => ({
+                    Counting: unfold({ in: Number, out: self })({
                         value: (n) => n
                     })
                     // 'step' fold intentionally omitted
@@ -611,14 +579,14 @@ describe('behavior() [satisfies]', () => {
 
 describe('protocol [extend] transitive instanceof', () => {
     it('satisfying C also satisfies B and A when C extends B extends A', () => {
-        const A = protocol(({ Family, fold }) => ({
+        const A = protocol(({ family, fold }) => ({
             opA: fold({ out: Number })
         }));
-        const B = protocol(({ Family, fold }) => ({
+        const B = protocol(({ family, fold }) => ({
             [extend]: A,
             opB: fold({ out: Number })
         }));
-        const C = protocol(({ Family, fold }) => ({
+        const C = protocol(({ family, fold }) => ({
             [extend]: B,
             opC: fold({ out: Number })
         }));
@@ -645,7 +613,7 @@ describe('protocol [extend] transitive instanceof', () => {
 
 describe('protocol contract composition — data() fold', () => {
     // A protocol whose fold requires a non-negative input argument.
-    const NonNeg = protocol(({ Family, fold }) => ({
+    const NonNeg = protocol(({ family, fold }) => ({
         doubled: fold({
             in: Number,
             out: Number,
@@ -697,7 +665,7 @@ describe('protocol contract composition — data() fold', () => {
     it('protocol ensures (AND) are enforced in addition to op ensures', () => {
         // Protocol requires result > 0; op requires result < 1000.
         // Both must hold (AND).
-        const Bounded = protocol(({ Family, fold }) => ({
+        const Bounded = protocol(({ family, fold }) => ({
             compute: fold({
                 out: Number,
                 ensures: (_self, _old, result) => (result as number) > 0
@@ -734,10 +702,10 @@ describe('protocol contract composition — data() fold', () => {
 
 describe('protocol contract composition — data() unfold', () => {
     it('protocol unfold demands are enforced when op has no own demands', () => {
-        const PositiveSeed = protocol(({ Family, unfold }) => ({
+        const PositiveSeed = protocol(({ family, unfold }) => ({
             FromNum: unfold({
                 in: Number,
-                out: Family,
+                out: family,
                 demands: (_self, n) => (n as number) > 0
             })
         }));
@@ -759,7 +727,7 @@ describe('protocol contract composition — data() unfold', () => {
 
 describe('protocol contract composition — behavior() fold', () => {
     it('protocol fold demands are enforced on behavior folds', () => {
-        const ValidStep = protocol(({ Family, fold }) => ({
+        const ValidStep = protocol(({ family, fold }) => ({
             stepped: fold({
                 in: Number,
                 out: Number,
@@ -767,12 +735,12 @@ describe('protocol contract composition — behavior() fold', () => {
             })
         }));
 
-        const Counter = behavior(({ Self }) => ({
+        const Counter = behavior(self => ({
             [satisfies]: [ValidStep],
             value: Number,
-            next: Self
-        })).ops(({ fold, unfold, Self }) => ({
-            Start: unfold({ in: Number, out: Self })({
+            next: self
+        })).ops(({ fold, unfold, self }) => ({
+            Start: unfold({ in: Number, out: self })({
                 value: (n) => n as number,
                 next: (n) => n as number
             }),
@@ -789,20 +757,20 @@ describe('protocol contract composition — behavior() fold', () => {
 
 describe('protocol contract composition — behavior() unfold', () => {
     it('protocol unfold demands are enforced on behavior unfolds', () => {
-        const PositiveSeed = protocol(({ Family, unfold }) => ({
+        const PositiveSeed = protocol(({ family, unfold }) => ({
             Start: unfold({
                 in: Number,
-                out: Family,
+                out: family,
                 demands: (_self, n) => (n as number) >= 0
             })
         }));
 
-        const Counter = behavior(({ Self }) => ({
+        const Counter = behavior(self => ({
             [satisfies]: [PositiveSeed],
             value: Number,
-            next: Self
-        })).ops(({ fold, unfold, Self }) => ({
-            Start: unfold({ in: Number, out: Self })({
+            next: self
+        })).ops(({ fold, unfold, self }) => ({
+            Start: unfold({ in: Number, out: self })({
                 value: (n) => n as number,
                 next: (n) => n as number
             }),
@@ -815,66 +783,57 @@ describe('protocol contract composition — behavior() unfold', () => {
 });
 
 // ==========================================================================
-// Conditional protocol contract composition (data parameterized type)
+// Explicit subtype protocol contract composition (data subtype)
 // ==========================================================================
 
-describe('conditional protocol contract composition — data() getter fold', () => {
+describe('explicit subtype protocol contract composition — data() getter fold', () => {
     // Measurable protocol: size must be non-negative (ensures law).
-    const Measurable = protocol(({ Family, fold }) => ({
+    const Measurable = protocol(({ family, fold }) => ({
         size: fold({
             out: Number,
             ensures: (_self, _old, result) => (result as number) >= 0
         })
     }));
 
-    // Element unconditionally satisfies Measurable.
-    const Element = data(() => ({
-        [satisfies]: [Measurable],
-        El: { x: Number }
-    })).ops(({ fold }) => ({
-        size: fold({ out: Number })({ El({ x }) { return x; } })
+    const Pair = data(family => ({
+        Pair: { a: Object, b: Object }
     }));
 
-    // Pair(T) conditionally satisfies Measurable when T satisfies Measurable.
-    // The 'size' implementation intentionally returns -1 to exercise the ensures check.
-    const Pair = data(({ T }) => ({
-        [satisfies]: [Measurable({ T: Measurable })],
-        Pair: { a: T, b: T }
+    // PairOfPair explicitly satisfies Measurable — ensures enforced.
+    const PairOfPair = data(family => ({
+        [extend]: Pair,
+        [satisfies]: [Measurable]
     })).ops(({ fold }) => ({
         size: fold({ out: Number })({
             Pair() { return -1; }  // intentionally violates ensures (< 0)
         })
     }));
 
-    it('conditional protocol ensures is enforced when constraint is met', () => {
-        const PairOfEl = Pair({ T: Element });
-        const p = PairOfEl.Pair({ a: Element.El({ x: 1 }), b: Element.El({ x: 2 }) });
+    it('protocol ensures is enforced on explicit subtype with [satisfies]', () => {
+        const p = PairOfPair.Pair({ a: {}, b: {} });
         // size returns -1 → violates Measurable.ensures ≥ 0 → must throw EnsuresError
         assert.throws(() => p.size, EnsuresError);
     });
 
-    it('conditional protocol ensures is NOT enforced when constraint is not met', () => {
-        // Plain object does not satisfy Measurable.
-        const PlainVal = data(() => ({
-            Val: { n: Number }
+    it('base type without [satisfies] does NOT have ensures enforced', () => {
+        const BasePair = data(family => ({
+            Pair: { a: Object, b: Object }
         })).ops(({ fold }) => ({
-            weight: fold({ out: Number })({ Val({ n }) { return n; } })
-            // no 'size' — does not satisfy Measurable
+            size: fold({ out: Number })({
+                Pair() { return -1; }  // returns -1, but no protocol ensures
+            })
         }));
 
-        const PairOfPlain = Pair({ T: PlainVal });
-        const p = PairOfPlain.Pair({ a: PlainVal.Val({ n: 1 }), b: PlainVal.Val({ n: 2 }) });
-        // Constraint NOT met — 'size' is a stub, NOT wrapped with Measurable.ensures.
-        // The stub should throw TypeError ("not available"), not EnsuresError.
-        assert.throws(() => p.size, TypeError);
-        assert.throws(() => p.size, (e) => !(e instanceof EnsuresError));
+        const p = BasePair.Pair({ a: {}, b: {} });
+        // No [satisfies]: [Measurable] → no ensures check → -1 is allowed
+        assert.strictEqual(p.size, -1);
     });
 });
 
-describe('conditional protocol contract composition — data() method fold', () => {
+describe('explicit subtype protocol contract composition — data() method fold', () => {
     // Comparable protocol: compare(n) must return -1, 0, or 1 (ensures law).
     // demands: the argument must not be null.
-    const Comparable = protocol(({ Family, fold }) => ({
+    const Comparable = protocol(({ family, fold }) => ({
         compare: fold({
             in: Number,
             out: Number,
@@ -884,113 +843,93 @@ describe('conditional protocol contract composition — data() method fold', () 
         })
     }));
 
-    const Scalar = data(() => ({
+    // BoxedVal explicitly satisfies Comparable; returns 99 — violates ensures.
+    const BoxedVal = data(family => ({
         [satisfies]: [Comparable],
-        Scalar: { value: Number }
+        Boxed: { item: Number }
     })).ops(({ fold }) => ({
         compare: fold({ in: Number, out: Number })({
-            Scalar({ value }, n) { return value < (n as number) ? -1 : value > (n as number) ? 1 : 0; }
+            Boxed() { return 99; }  // intentionally violates ensures
         })
     }));
 
-    // Boxed(T) conditionally satisfies Comparable when T does.
-    const Boxed = data(({ T }) => ({
-        [satisfies]: [Comparable({ T: Comparable })],
-        Boxed: { item: T }
-    })).ops(({ fold }) => ({
-        // Returns 99 — intentionally violates ensures (not -1/0/1) so an EnsuresError fires.
-        compare: fold({ in: Number, out: Number })({
-            Boxed() { return 99; }
-        })
-    }));
-
-    it('conditional protocol ensures is enforced on method fold when constraint is met', () => {
-        const BoxedScalar = Boxed({ T: Scalar });
-        const b = BoxedScalar.Boxed({ item: Scalar.Scalar({ value: 1 }) });
-        // compare returns 99 → violates Comparable.ensures → must throw EnsuresError
+    it('protocol ensures is enforced on method fold for explicit subtype', () => {
+        const b = BoxedVal.Boxed({ item: 1 });
+        // compare returns 99 → violates Comparable.ensures → EnsuresError
         assert.throws(() => b.compare(5), EnsuresError);
     });
 
-    it('conditional protocol demands are enforced on method fold when there are no prior demands', () => {
-        // NoDemandType has no own demands on compare.
-        const NoDemandType = data(() => ({
+    it('protocol demands are enforced on method fold for explicit subtype', () => {
+        // Comparable demands: argument must not be null/undefined
+        const Conforming = data(family => ({
             [satisfies]: [Comparable],
             Val: { n: Number }
         })).ops(({ fold }) => ({
-            // No demands — conditional protocol demands are the sole source.
             compare: fold({ in: Number, out: Number })({
                 Val({ n }, x) { return n < (x as number) ? -1 : n > (x as number) ? 1 : 0; }
             })
         }));
 
-        const v = NoDemandType.Val({ n: 5 });
+        const v = Conforming.Val({ n: 5 });
         assert.strictEqual(v.compare(5), 0);
         assert.throws(() => v.compare(null as unknown as number), DemandsError);
         assert.throws(() => v.compare(undefined as unknown as number), DemandsError);
     });
 });
 
-describe('conditional protocol contract composition — data() unfold', () => {
+describe('explicit subtype protocol contract composition — data() unfold', () => {
     // Protocol: From unfold must produce a result whose 'n' field is positive.
-    const Positive = protocol(({ Family, unfold }) => ({
+    const Positive = protocol(({ family, unfold }) => ({
         From: unfold({
             in: Number,
-            out: Family,
+            out: family,
             ensures: (_self, _old, result) =>
                 ((result as Record<string, unknown>)['n'] as number) > 0
         })
     }));
 
-    // Satisfies Positive unconditionally.
-    const AtomP = data(() => ({
+    // BrokenP explicitly satisfies Positive but returns n=-1 — violates ensures.
+    const BrokenP = data(family => ({
         [satisfies]: [Positive],
-        AtomP: { n: Number }
-    })).ops(({ unfold, Family }) => ({
-        From: unfold({ in: Number, out: Family })({
-            AtomP: (n) => ({ n: Math.abs(n as number) || 1 })
-        })
-    }));
-
-    // Wrapper(T) satisfies Positive conditionally when T does.
-    // Its unfold always returns { n: -1 } — intentionally violates Positive.ensures.
-    const Wrapper = data(({ T }) => ({
-        [satisfies]: [Positive({ T: Positive })],
         WP: { n: Number }
-    })).ops(({ unfold, Family }) => ({
-        From: unfold({ in: Number, out: Family })({
-            WP: (_n) => ({ n: -1 })
+    })).ops(({ unfold, family }) => ({
+        From: unfold({ in: Number, out: family })({
+            WP: (_n) => ({ n: -1 })  // intentionally violates ensures
         })
     }));
 
-    it('conditional protocol unfold ensures is enforced when constraint is met', () => {
-        // T = AtomP satisfies Positive → contract wrapping active → n=-1 violates ensures.
-        const WrappedAtomP = Wrapper({ T: AtomP });
-        assert.throws(() => WrappedAtomP.From(42), EnsuresError);
+    it('protocol unfold ensures is enforced when type explicitly satisfies protocol', () => {
+        assert.throws(() => BrokenP.From(42), EnsuresError);
     });
 
-    it('conditional protocol unfold ensures NOT enforced when constraint is NOT met', () => {
-        // T = Plain does not satisfy Positive → no contract wrapping → n=-1 is allowed.
-        const Plain = data(() => ({ Plain: { v: Number } }));
-        const WrappedPlain = Wrapper({ T: Plain });
-        const result = WrappedPlain.From(7);
+    it('protocol unfold ensures not enforced on type that does not satisfy protocol', () => {
+        // Plain does not declare Positive — no contract wrapping.
+        const Plain = data(family => ({
+            WP: { n: Number }
+        })).ops(({ unfold, family }) => ({
+            From: unfold({ in: Number, out: family })({
+                WP: (_n) => ({ n: -1 })
+            })
+        }));
+        const result = Plain.From(7);
         assert.strictEqual((result as Record<string, unknown>)['n'], -1);
     });
 });
 
 describe('protocol conformance — behavior merge ops are recognized', () => {
     it('behavior satisfying a protocol with a merge op passes conformance', () => {
-        const Summable = protocol(({ Family, fold, unfold, merge }) => ({
-            From: unfold({ in: Number, out: Family }),
+        const Summable = protocol(({ family, fold, unfold, merge }) => ({
+            From: unfold({ in: Number, out: family }),
             take: fold({ in: Number, out: Array }),
             TakeFrom: merge('From', 'take')
         }));
 
-        const Stream = behavior(({ Self }) => ({
+        const Stream = behavior(self => ({
             [satisfies]: [Summable],
             head: Number,
-            tail: Self
-        })).ops(({ fold, unfold, merge, Self }) => ({
-            From: unfold({ in: Number, out: Self })({
+            tail: self
+        })).ops(({ fold, unfold, merge, self }) => ({
+            From: unfold({ in: Number, out: self })({
                 head: (n) => n,
                 tail: (n) => n + 1
             }),
@@ -1006,81 +945,3 @@ describe('protocol conformance — behavior merge ops are recognized', () => {
     });
 });
 
-// ---- Defaults auto-installed for satisfied conditional protocols ----
-
-describe('conditional protocol defaults — installed when constraints are satisfied', () => {
-    it('default op is installed on parameterized ADT when constraint is met', () => {
-        // HasSize protocol: size() returns a number; equals() has a default
-        // derived from size: two instances are equal when both have the same size.
-        const HasSize = protocol(({ Family, fold: f }) => ({
-            size: f({ out: Number }),
-            equals: f({
-                in: Family,
-                out: Boolean
-            })({
-                _: (ctx: any, other: any) => ctx.size === other.size
-            })
-        }));
-
-        const Element = data(() => ({
-            [satisfies]: [HasSize],
-            El: { value: Number }
-        })).ops(({ fold }) => ({
-            size: fold({ out: Number })({ El: ({ value }) => value })
-            // 'equals' intentionally omitted — should come from the default
-        }));
-
-        // Wrapper(T) conditionally satisfies HasSize when T satisfies HasSize.
-        const Wrapper = data(({ T }) => ({
-            [satisfies]: [HasSize({ T: HasSize })],
-            Wrap: { inner: T }
-        })).ops(({ fold }) => ({
-            size: fold({ out: Number })({
-                Wrap: ({ inner }) => (inner as { size: number }).size
-            })
-            // 'equals' omitted — should be installed via default when T: HasSize
-        }));
-
-        const WrapEl = Wrapper({ T: Element });
-        const a = WrapEl.Wrap({ inner: Element.El({ value: 3 }) });
-        const b = WrapEl.Wrap({ inner: Element.El({ value: 3 }) });
-        const c = WrapEl.Wrap({ inner: Element.El({ value: 7 }) });
-
-        // Default 'equals' compares size — should be callable via the installed default.
-        const aTyped = a as unknown as { equals: (other: unknown) => boolean };
-        assert.strictEqual(aTyped.equals(b), true);  // size 3 === size 3
-        assert.strictEqual(aTyped.equals(c), false); // size 3 !== size 7
-    });
-
-    it('default op is NOT installed when constraint is not met (stub throws)', () => {
-        const HasSize = protocol(({ Family, fold: f }) => ({
-            size: f({ out: Number }),
-            equals: f({ in: Family, out: Boolean })({
-                _: (ctx: any, other: any) => ctx.size === other.size
-            })
-        }));
-
-        const Plain = data(() => ({
-            Val: { n: Number }
-        })).ops(({ fold }) => ({
-            weight: fold({ out: Number })({ Val: ({ n }) => n })
-            // does NOT satisfy HasSize
-        }));
-
-        const Wrapper = data(({ T }) => ({
-            [satisfies]: [HasSize({ T: HasSize })],
-            Wrap: { inner: T }
-        })).ops(({ fold }) => ({
-            size: fold({ out: Number })({
-                Wrap: ({ inner }) => (inner as { weight: number }).weight
-            })
-        }));
-
-        // Constraint NOT satisfied (Plain doesn't satisfy HasSize).
-        const WrapPlain = Wrapper({ T: Plain });
-        const w = WrapPlain.Wrap({ inner: Plain.Val({ n: 1 }) });
-        const wTyped = w as unknown as { equals: (other: unknown) => boolean };
-        // 'equals' should be the error-throwing stub, not the default.
-        assert.throws(() => wTyped.equals(w), TypeError);
-    });
-});

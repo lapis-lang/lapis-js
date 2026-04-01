@@ -10,7 +10,7 @@ const SearchState = data(() => ({
     Active:    { target: String, adj: Object, workList: Array },
     Found:     { target: String, adj: Object, foundPath: Array, workList: Array },
     Exhausted: {}
-})).ops(({ fold, Family }) => ({
+})).ops(({ fold, family }) => ({
     path: fold({ out: Array })({
         Active()             { return []; },
         Found({ foundPath }) { return foundPath as string[]; },
@@ -33,24 +33,24 @@ const SearchState = data(() => ({
     step: fold({ out: Object })({
         Active({ target, adj, workList }) {
             const wl = [...(workList as { node: string; path: string[] }[])];
-            if (wl.length === 0) return Family.Exhausted;
+            if (wl.length === 0) return family.Exhausted;
             const item = wl.pop()!;
             if (item.node === (target as string))
-                return Family.Found({ target, adj, foundPath: item.path, workList: wl });
+                return family.Found({ target, adj, foundPath: item.path, workList: wl });
             const visited = new Set(item.path as string[]);
             const adjMap = adj as Record<string, string[]>;
             for (const n of (adjMap[item.node] ?? []).filter((x: string) => !visited.has(x)))
                 wl.push({ node: n, path: [...(item.path as string[]), n] });
-            return Family.Active({ target, adj, workList: wl });
+            return family.Active({ target, adj, workList: wl });
         },
         Found({ target, adj, workList }) {
             const wl = workList as { node: string; path: string[] }[];
             return wl.length === 0
-                ? Family.Exhausted
-                : Family.Active({ target, adj, workList: wl });
+                ? family.Exhausted
+                : family.Active({ target, adj, workList: wl });
         },
         Exhausted() {
-            return Family.Exhausted;
+            return family.Exhausted;
         }
     })
 }));
@@ -81,11 +81,11 @@ const Query = data(() => ({
 
 // PathFinder — query (cospan: Query →input— PathFinder ←output— Path[])
 
-const PathFinder = query(({ Self }) => ({
+const PathFinder = query(self => ({
     path: Array,
     found: Boolean,
     exhausted: Boolean,
-    next: Self
+    next: self
 })).ops(({ unfold, output, done, accept, Self }) => ({
     [output]: 'path',
     [done]:   'exhausted',

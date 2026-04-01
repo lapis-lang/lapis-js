@@ -15,14 +15,14 @@ import { Foldable, type Monoid } from '../protocols/index.mjs';
 type LazySetSelf = { has: (e: unknown) => boolean; size: number };
 type FoldMapOpts = { monoid: InstanceOf<typeof Monoid>; f: (v: unknown) => unknown; elements: unknown[] };
 
-const LazySet = behavior(({ T }) => ({
+const LazySet = behavior(_ => ({
     [satisfies]: [Foldable],
-    has: { in: T, out: Boolean },
+    has: { in: Object, out: Boolean },
     size: Number
-})).ops(({ unfold, fold, Self }) => ({
+})).ops(({ unfold, fold, self }) => ({
     // ── Constructors ─────────────────────────────────────────────────────
     // FromArray(elements): build from an array of elements
-    FromArray: unfold({ in: Array, out: Self })({
+    FromArray: unfold({ in: Array, out: self })({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         has: (elems: any) => (elem: unknown) =>
             (elems as unknown[]).includes(elem),
@@ -30,12 +30,12 @@ const LazySet = behavior(({ T }) => ({
         size: (elems: any) => new Set(elems as unknown[]).size
     }),
     // Empty: the empty set
-    Empty: unfold({ in: Object, out: Self })({
+    Empty: unfold({ in: Object, out: self })({
         has: () => () => false,
         size: () => 0
     }),
     // Singleton({ value }): set containing exactly one element
-    Singleton: unfold({ in: Object, out: Self })({
+    Singleton: unfold({ in: Object, out: self })({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         has: (seed: any) => (elem: unknown) => elem === seed.value,
         size: () => 1

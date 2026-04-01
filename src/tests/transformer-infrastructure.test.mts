@@ -262,9 +262,9 @@ describe('Transformer Infrastructure', () => {
 
     describe('Transformer with Recursive ADTs', () => {
         test('can register transformer on recursive ADT', () => {
-            const Peano = data(({ Family }) => ({
+            const Peano = data(family => ({
                 Zero: {},
-                Succ: { pred: Family }
+                Succ: { pred: family }
             }));
 
             const toValue = createTransformer({
@@ -285,9 +285,9 @@ describe('Transformer Infrastructure', () => {
         });
 
         test('can register transformer on parameterized ADT', () => {
-            const List = data(({ Family, T }) => ({
+            const List = data(family => ({
                 Nil: {},
-                Cons: { head: T, tail: Family }
+                Cons: { head: Object, tail: family }
             }));
 
             const length = createTransformer({

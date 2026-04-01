@@ -11,14 +11,14 @@ import { behavior } from '../src/index.mjs';
 // Example 1: Stream with Random Access (nth)
 // =============================================================================
 
-const Stream = behavior(({ Self, T }) => ({
-        head: T,
-        tail: Self(T),
-        nth: { in: Number, out: T },
+const Stream = behavior(self => ({
+        head: Object,
+        tail: self,
+        nth: { in: Number, out: Object },
         take: { in: Number, out: Array },
-        drop: { in: Number, out: Self(T) }
-    })).ops(({ unfold, Self, T }) => ({
-        From: unfold({ in: Number, out: Self })({
+        drop: { in: Number, out: self }
+    })).ops(({ unfold, self }) => ({
+        From: unfold({ in: Number, out: self })({
             head: (n) => n,
             tail: (n) => n + 1,
             nth: (n) => (index) => n + index,
@@ -27,7 +27,7 @@ const Stream = behavior(({ Self, T }) => ({
         })
     })),
 
-    StreamNum = Stream({ T: Number });
+    StreamNum = Stream;
 
 console.log('\n=== Stream with Parametric Observers ===');
 
@@ -40,7 +40,7 @@ console.log('nums.nth(100):', nums.nth(100));  // 100
 
 // take - get first n elements
 console.log('nums.take(5):', nums.take(5));    // [0, 1, 2, 3, 4]
-console.log('nums.tail.take(3):', nums.tail.take(3)); // [1, 2, 3]
+console.log('nums.tail.take(3):', (nums.tail as any).take(3)); // [1, 2, 3]
 
 // drop - skip n elements (returns new stream)
 const dropped = nums.drop(10);
@@ -51,17 +51,17 @@ console.log('nums.drop(10).take(3):', dropped.take(3));     // [10, 11, 12]
 // Example 2: Infinite Grid/Matrix
 // =============================================================================
 
-const Grid = behavior(({ Self }) => ({
+const Grid = behavior(self => ({
     at: { in: { x: Number, y: Number }, out: Number },
     row: { in: Number, out: Array },
     col: { in: Number, out: Array }
-})).ops(({ unfold, Self }) => ({
-    MultTable: unfold({ out: Self })({
+})).ops(({ unfold, self }) => ({
+    MultTable: unfold({ out: self })({
         at:  () => ({ x, y }: { x: number; y: number }) => x * y,
         row: () => (y: number) => Array.from({ length: 10 }, (_, x) => x * y),
         col: () => (x: number) => Array.from({ length: 10 }, (_, y) => x * y)
     }),
-    AddTable: unfold({ out: Self })({
+    AddTable: unfold({ out: self })({
         at:  () => ({ x, y }: { x: number; y: number }) => x + y,
         row: () => (y: number) => Array.from({ length: 10 }, (_, x) => x + y),
         col: () => (x: number) => Array.from({ length: 10 }, (_, y) => x + y)
@@ -85,13 +85,13 @@ console.log('\naddTable.at({x:10, y:20}):', addTable.at({ x: 10, y: 20 })); // 3
 // Example 3: Lazy Sequence with Window/Sliding Operations
 // =============================================================================
 
-const Sequence = behavior(({ Self }) => ({
+const Sequence = behavior(self => ({
     current: Number,
-    next: Self,
+    next: self,
     window: { in: Number, out: Array },
-    skip: { in: Number, out: Self }
-})).ops(({ unfold, Self }) => ({
-    From: unfold({ in: Number, out: Self })({
+    skip: { in: Number, out: self }
+})).ops(({ unfold, self }) => ({
+    From: unfold({ in: Number, out: self })({
         current: (n) => n,
         next: (n) => n + 1,
         window: (n) => (size) => Array.from({ length: size }, (_, i) => n + i),
@@ -112,13 +112,13 @@ console.log('seq.skip(10).current:', seq.skip(10).current); // 11
 // Example 4: Dictionary/Map as Behavior
 // =============================================================================
 
-const Dictionary = behavior(({ Self }) => ({
+const Dictionary = behavior(self => ({
     get: { in: String, out: String },
     has: { in: String, out: Boolean },
     keys: Array,
     size: Number
-})).ops(({ unfold, Self }) => ({
-    Create: unfold({ in: Object, out: Self })({
+})).ops(({ unfold, self }) => ({
+    Create: unfold({ in: Object, out: self })({
         get: (obj) => (key) => (obj as any)[key] || 'undefined',
         has: (obj) => (key) => key in obj,
         keys: (obj) => Object.keys(obj),
@@ -145,18 +145,18 @@ console.log('dict.size:', dict.size);                      // 3
 // Example 5: Time Series with Interpolation
 // =============================================================================
 
-const TimeSeries = behavior(({ Self }) => ({
+const TimeSeries = behavior(self => ({
     valueAt: { in: Number, out: Number },
     range: { in: { from: Number, to: Number, step: Number }, out: Array },
-    derivative: Self
-})).ops(({ unfold, Self }) => ({
-    Linear: unfold({ in: { slope: Number, intercept: Number }, out: Self })({
+    derivative: self
+})).ops(({ unfold, self }) => ({
+    Linear: unfold({ in: { slope: Number, intercept: Number }, out: self })({
         valueAt: ({ slope, intercept }) => (t) => slope * t + intercept,
         range: ({ slope, intercept }) => ({ from, to, step }) =>
             Array.from({ length: Math.ceil((to - from) / step) + 1 }, (_, i) => slope * (from + i * step) + intercept),
         derivative: ({ slope }) => ({ slope: 0, intercept: slope })
     }),
-    Quadratic: unfold({ in: { a: Number, b: Number, c: Number }, out: Self })({
+    Quadratic: unfold({ in: { a: Number, b: Number, c: Number }, out: self })({
         valueAt: ({ a, b, c }) => (t) => a * t * t + b * t + c,
         range: ({ a, b, c }) => ({ from, to, step }) =>
             Array.from({ length: Math.ceil((to - from) / step) + 1 }, (_, i) => { const t = from + i * step; return a * t * t + b * t + c; }),
@@ -184,12 +184,12 @@ console.log('quadratic.range({from:0, to:3, step:1}):',
 // Example 6: Graph as Behavior
 // =============================================================================
 
-const Graph = behavior(({ Self }) => ({
+const Graph = behavior(self => ({
     neighbors: { in: Number, out: Array },
     hasEdge: { in: { from: Number, to: Number }, out: Boolean },
     degree: { in: Number, out: Number }
-})).ops(({ unfold, Self }) => ({
-    FromAdjacencyList: unfold({ in: Object, out: Self })({
+})).ops(({ unfold, self }) => ({
+    FromAdjacencyList: unfold({ in: Object, out: self })({
         neighbors: (adj: any) => (node) => adj[node] || [],
         hasEdge: (adj: any) => ({ from, to }) => {
             const nodeNeighbors = adj[from] || [];
@@ -222,12 +222,12 @@ console.log('\n=== Parametric Observer Memoization ===');
 
 let nthCallCount = 0;
 
-const MemoStream = behavior(({ Self }) => ({
+const MemoStream = behavior(self => ({
         head: Number,
-        tail: Self,
+        tail: self,
         nth: { in: Number, out: Number }
-    })).ops(({ unfold, Self }) => ({
-        From: unfold({ in: Number, out: Self })({
+    })).ops(({ unfold, self }) => ({
+        From: unfold({ in: Number, out: self })({
             head: (n) => n,
             tail: (n) => n + 1,
             nth: (n) => {

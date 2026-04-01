@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import { relation, data } from '../index.mjs';
 
 describe('Closure — Cyclic Parent Relationships', () => {
-    const Ancestor = relation(({ Family }) => ({
+    const Ancestor = relation(family => ({
         Direct: { from: String, to: String },
-        Transitive: { hop: Family, rest: Family }
-    })).ops(({ fold, unfold, map, merge, origin, destination, Family }) => ({
+        Transitive: { hop: family, rest: family }
+    })).ops(({ fold, unfold, map, merge, origin, destination, family }) => ({
         [origin]: fold({ out: String })({
             Direct: ({ from }) => from,
             Transitive: ({ hop }) => hop
@@ -54,11 +54,11 @@ describe('Closure — Cyclic Parent Relationships', () => {
         // SelfRef is not a relation — no relational structure.
         // With closure removed from data(), this test verifies that
         // only relation types have closure.
-        const SelfRef = data(({ Family }) => ({
+        const SelfRef = data(family => ({
             Base: { label: String },
             Link: {
-                item: Family,
-                next: Family
+                item: family,
+                next: family
             }
         }));
 

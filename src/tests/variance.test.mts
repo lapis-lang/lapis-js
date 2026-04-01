@@ -12,10 +12,10 @@ describe('Variance Investigation', () => {
                 speak() { return 'woof'; }
             }
 
-            const AnimalList = data(({ Family }) => ({
+            const AnimalList = data(family => ({
                 Nil: {},
-                Cons: { head: Animal, tail: Family }
-            })).ops(({ fold, unfold, map, merge, Family }) => ({
+                Cons: { head: Animal, tail: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
                 first: fold({ out: Animal })({
                     Nil() { return new Animal(); },
                     Cons({ head }) {
@@ -118,10 +118,10 @@ describe('Variance Investigation', () => {
                 }
             }
 
-            const Option = data(({ Family }) => ({
+            const Option = data(family => ({
                 Nil: {},
-                Cons: { head: Dog, tail: Family }
-            })).ops(({ fold, unfold, map, merge, Family }) => ({
+                Cons: { head: Dog, tail: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
                 describe: fold({ out: String })({
                     Nil() { return 'empty'; },
                     Cons({ head }) {
@@ -144,10 +144,10 @@ describe('Variance Investigation', () => {
 
     describe('Type Inference with Primitive Constructors', () => {
         test('spec.out: Number infers number (primitive), not Number (wrapper)', () => {
-            const List = data(({ Family }) => ({
+            const List = data(family => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family }
-            })).ops(({ fold, unfold, map, merge, Family }) => ({
+                Cons: { head: Number, tail: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
                 sum: fold({ out: Number })({
                     Nil() { return 0; },
                     Cons({ head, tail }) { return head + tail; }
@@ -168,10 +168,10 @@ describe('Variance Investigation', () => {
         });
 
         test('handlers returning primitives work with primitive constructors', () => {
-            const List = data(({ Family }) => ({
+            const List = data(family => ({
                 Nil: {},
-                Cons: { head: String, tail: Family }
-            })).ops(({ fold, unfold, map, merge, Family }) => ({
+                Cons: { head: String, tail: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
                 concat: fold({ out: String })({
                     Nil() { return ''; },
                     Cons({ head, tail }) { return head + tail; }
@@ -217,10 +217,10 @@ describe('Variance Investigation', () => {
             class Animal { type = 'animal'; }
             class Dog extends Animal { type = 'dog'; }
 
-            const List = data(({ Family }) => ({
+            const List = data(family => ({
                 Nil: {},
-                Cons: { head: Dog, tail: Family }
-            })).ops(({ fold, unfold, map, merge, Family }) => ({
+                Cons: { head: Dog, tail: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
                 getFirst: fold({ out: Dog })({
                     Nil() {
                         // What if we return Animal instead of Dog?
@@ -360,10 +360,10 @@ describe('Variance Investigation', () => {
 
     describe('Actual Variance in Type System', () => {
         test('assigning to wider type variable', () => {
-            const List = data(({ Family }) => ({
+            const List = data(family => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family }
-            })).ops(({ fold, unfold, map, merge, Family }) => ({
+                Cons: { head: Number, tail: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
                 sum: fold({ out: Number })({
                     Nil() { return 0; },
                     Cons({ head, tail }) { return head + tail; }

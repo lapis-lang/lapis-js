@@ -18,7 +18,7 @@ const Traversable = protocol(({ fold }) => ({
     // and reassembles the structure inside the applicative F.
     // `in: { applicative, f }` — the options bundle with typed fields.
     // `out: Object` — the result is F(Structure(B)), an applicative-wrapped value,
-    //                 not a bare Family instance.
+    //                 not a bare family instance.
     traverse: fold({ in: { applicative: Object, f: Function }, out: Object })
 }));
 

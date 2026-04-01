@@ -4,9 +4,9 @@ import assert from 'node:assert/strict';
 
 describe('Recursive ADTs', () => {
     test('supports recursive Peano numbers', () => {
-        const Peano = data(({ Family }) => ({ 
+        const Peano = data(family => ({ 
             Zero: {}, 
-            Succ: { pred: Family } 
+            Succ: { pred: family } 
         }));
 
         // Zero
@@ -32,9 +32,9 @@ describe('Recursive ADTs', () => {
     });
 
     test('validates recursive Peano structure', () => {
-        const Peano = data(({ Family }) => ({ 
+        const Peano = data(family => ({ 
             Zero: {}, 
-            Succ: { pred: Family } 
+            Succ: { pred: family } 
         }));
 
         // Should reject non-Peano values
@@ -52,9 +52,9 @@ describe('Recursive ADTs', () => {
     test('supports recursive List with type parameter concept', () => {
         // Note: TypeScript can't enforce the type parameter at runtime,
         // but the structure supports it conceptually
-        const List = data(({ Family }) => ({ 
+        const List = data(family => ({ 
             Nil: {}, 
-            Cons: { head: Number, tail: Family } 
+            Cons: { head: Number, tail: family } 
         }));
 
         // Empty list
@@ -82,9 +82,9 @@ describe('Recursive ADTs', () => {
     });
 
     test('validates recursive List structure', () => {
-        const List = data(({ Family }) => ({ 
+        const List = data(family => ({ 
             Nil: {}, 
-            Cons: { head: Number, tail: Family } 
+            Cons: { head: Number, tail: family } 
         }));
 
         // Should reject non-List tails
@@ -100,9 +100,9 @@ describe('Recursive ADTs', () => {
     });
 
     test('supports binary tree structure', () => {
-        const Tree = data(({ Family }) => ({
+        const Tree = data(family => ({
             Leaf: { value: Number },
-            Node: { left: Family, right: Family, value: Number }
+            Node: { left: family, right: family, value: Number }
         }));
 
         const leaf1 = Tree.Leaf({ value: 1 });
@@ -123,9 +123,9 @@ describe('Recursive ADTs', () => {
     });
 
     test('validates binary tree structure', () => {
-        const Tree = data(({ Family }) => ({
+        const Tree = data(family => ({
             Leaf: { value: Number },
-            Node: { left: Family, right: Family, value: Number }
+            Node: { left: family, right: family, value: Number }
         }));
 
         const leaf = Tree.Leaf({ value: 1 });
@@ -137,10 +137,10 @@ describe('Recursive ADTs', () => {
     });
 
     test('supports mixed recursive and non-recursive fields', () => {
-        const Expr = data(({ Family }) => ({
+        const Expr = data(family => ({
             Num: { value: Number },
-            Add: { left: Family, right: Family },
-            Mul: { left: Family, right: Family },
+            Add: { left: family, right: family },
+            Mul: { left: family, right: family },
             Var: { name: String }
         }));
 
@@ -161,9 +161,9 @@ describe('Recursive ADTs', () => {
 
     test('comprehensive demo: Peano, List, and Tree', () => {
         // Peano numbers
-        const Peano = data(({ Family }) => ({ 
+        const Peano = data(family => ({ 
             Zero: {}, 
-            Succ: { pred: Family } 
+            Succ: { pred: family } 
         }));
 
         const zero = Peano.Zero;
@@ -175,9 +175,9 @@ describe('Recursive ADTs', () => {
         assert.ok(Object.isFrozen(one));
 
         // Recursive list
-        const List = data(({ Family }) => ({ 
+        const List = data(family => ({ 
             Nil: {}, 
-            Cons: { head: Number, tail: Family } 
+            Cons: { head: Number, tail: family } 
         }));
 
         const empty = List.Nil;
@@ -193,9 +193,9 @@ describe('Recursive ADTs', () => {
         assert.strictEqual(list.tail.tail.tail, empty);
 
         // Binary tree
-        const Tree = data(({ Family }) => ({
+        const Tree = data(family => ({
             Leaf: { value: Number },
-            Node: { left: Family, right: Family, value: Number }
+            Node: { left: family, right: family, value: Number }
         }));
 
         const leaf1 = Tree.Leaf({ value: 1 });

@@ -32,26 +32,26 @@ describe('LSP Enforcement', () => {
     });
 
     test('should prevent changing parameterized to parameterless', () => {
-        const List = data(({ Family }) => ({
+        const List = data(family => ({
             Nil: {},
-            Cons: { head: Number, tail: Family }
-        })).ops(({ fold, unfold, map, merge, Family }) => ({
+            Cons: { head: Number, tail: family }
+        })).ops(({ fold, unfold, map, merge, family }) => ({
             append: fold({ in: Number })({
-                Nil({}, val) { return List.Cons({ head: val, tail: List.Nil }); },
-                Cons({ head, tail }, val) { return List.Cons({ head, tail: tail(val) }); }
+                Nil({}, val) { return family.Cons({ head: val, tail: family.Nil }); },
+                Cons({ head, tail }, val) { return family.Cons({ head, tail: tail(val) }); }
             })
         }));
 
         // Try to override ALL handlers with parameterless versions
         assert.throws(
             () => {
-                data(({ Family }) => ({
+                data(family => ({
                     [extend]: List
-                })).ops(({ fold, unfold, map, merge, Family }) => ({
-                    append: fold({ out: Family })({
+                })).ops(({ fold, unfold, map, merge, family }) => ({
+                    append: fold({ out: family })({
                         // @ts-expect-error -- [extend] target is any; negative test
-                        Nil({}) { return List.Nil; },
-                        Cons({ head, tail }) { return List.Cons({ head, tail }); }
+                        Nil({}) { return family.Nil; },
+                        Cons({ head, tail }) { return family.Cons({ head, tail }); }
                     })
                 }));
             },
@@ -88,27 +88,27 @@ describe('LSP Enforcement', () => {
     });
 
     test('should allow extending with same parameterization (parameterized)', () => {
-        const List = data(({ Family }) => ({
+        const List = data(family => ({
             Nil: {},
-            Cons: { head: Number, tail: Family }
-        })).ops(({ fold, unfold, map, merge, Family }) => ({
+            Cons: { head: Number, tail: family }
+        })).ops(({ fold, unfold, map, merge, family }) => ({
             append: fold({ in: Number })({
-                Nil({}, val) { return List.Cons({ head: val, tail: List.Nil }); },
-                Cons({ head, tail }, val) { return List.Cons({ head, tail: tail(val) }); }
+                Nil({}, val) { return family.Cons({ head: val, tail: family.Nil }); },
+                Cons({ head, tail }, val) { return family.Cons({ head, tail: tail(val) }); }
             })
         }));
 
         // This should work - same parameterization (all handlers take 2 params)
-        const ExtendedList = data(({ Family }) => ({
+        const ExtendedList = data(family => ({
             [extend]: List,
             Special: { value: Number }
-        })).ops(({ fold, unfold, map, merge, Family }) => ({
+        })).ops(({ fold, unfold, map, merge, family }) => ({
             append: fold({})({
                 // @ts-expect-error -- intentional type violation for test
                 Special({ value }, val) {
                     // Just return a simple list with the Special's value and appended val
-                    const tailList = List.Cons({ head: val, tail: List.Nil });
-                    return List.Cons({ head: value, tail: tailList });
+                    const tailList = family.Cons({ head: val, tail: family.Nil });
+                    return family.Cons({ head: value, tail: tailList });
                 }
             })
         }));
@@ -122,26 +122,26 @@ describe('LSP Enforcement', () => {
     });
 
     test('should prevent changing input spec when extending', () => {
-        const List = data(({ Family }) => ({
+        const List = data(family => ({
             Nil: {},
-            Cons: { head: Number, tail: Family }
-        })).ops(({ fold, unfold, map, merge, Family }) => ({
+            Cons: { head: Number, tail: family }
+        })).ops(({ fold, unfold, map, merge, family }) => ({
             append: fold({ in: Number })({
-                Nil({}, val) { return List.Cons({ head: val, tail: List.Nil }); },
-                Cons({ head, tail }, val) { return List.Cons({ head, tail: tail(val) }); }
+                Nil({}, val) { return family.Cons({ head: val, tail: family.Nil }); },
+                Cons({ head, tail }, val) { return family.Cons({ head, tail: tail(val) }); }
             })
         }));
 
         // Try to change the input spec
         assert.throws(
             () => {
-                data(({ Family }) => ({
+                data(family => ({
                     [extend]: List,
                     Special: { value: Number }
-                })).ops(({ fold, unfold, map, merge, Family }) => ({
+                })).ops(({ fold, unfold, map, merge, family }) => ({
                     append: fold({ in: String })({
                         Special({ value }, val) {
-                            return List.Cons({ head: value, tail: List.Nil });
+                            return family.Cons({ head: value, tail: family.Nil });
                         }
                     })
                 }));
@@ -186,10 +186,10 @@ describe('LSP Enforcement', () => {
     });
 
     test('should allow extending without changing specs', () => {
-        const List = data(({ Family }) => ({
+        const List = data(family => ({
             Nil: {},
-            Cons: { head: Number, tail: Family }
-        })).ops(({ fold, unfold, map, merge, Family }) => ({
+            Cons: { head: Number, tail: family }
+        })).ops(({ fold, unfold, map, merge, family }) => ({
             sum: fold({ out: Number })({
                 Nil() { return 0; },
                 Cons({ head, tail }) { return head + tail; }
@@ -197,10 +197,10 @@ describe('LSP Enforcement', () => {
         }));
 
         // This should work - same output spec
-        const ExtendedList = data(({ Family }) => ({
+        const ExtendedList = data(family => ({
             [extend]: List,
             Special: { value: Number }
-        })).ops(({ fold, unfold, map, merge, Family }) => ({
+        })).ops(({ fold, unfold, map, merge, family }) => ({
             sum: fold({ out: Number })({
                 Special({ value }) { return value; }
             })

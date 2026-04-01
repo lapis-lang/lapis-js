@@ -20,11 +20,11 @@ import { behavior } from '../index.mjs';
 // ---------------------------------------------------------------------------
 
 function makeStream() {
-    return behavior(({ Self, T }) => ({
-        head: T,
-        tail: Self(T)
-    })).ops(({ fold, unfold, map, merge, Self, T }) => ({
-        From: unfold({ in: Number, out: Self })({
+    return behavior(self => ({
+        head: Object,
+        tail: self
+    })).ops(({ fold, unfold, map, merge, self }) => ({
+        From: unfold({ in: Number, out: self })({
             head: (n) => n,
             tail: (n) => n + 1
         }),
@@ -35,10 +35,10 @@ function makeStream() {
             _: ({ head, tail }, n) => n > 0 ? head + tail(n - 1) : 0
         }),
         doubled: map({})({
-            T: (x) => x * 2
+            head: (x) => x * 2
         }),
         negated: map({})({
-            T: (x) => -x
+            head: (x) => -x
         }),
         TakeFrom: merge('From', 'take'),
         TakeDoubled: merge('From', 'doubled', 'take'),
@@ -84,26 +84,26 @@ describe('Behavior Merge - Static (PascalCase, includes unfold)', () => {
 describe('Behavior Merge - Instance (camelCase, no unfold)', () => {
     it('doubledSum(n) on instance = sum of doubled elements', () => {
         const Stream = makeStream();
-        const s = Stream.From(0);
+        const s: any = Stream.From(0);
         assert.equal(s.doubledSum(5), 20);   // 0+2+4+6+8
     });
 
     it('doubledTake(n) on instance = doubled stream taken n times', () => {
         const Stream = makeStream();
-        const s = Stream.From(0);
+        const s: any = Stream.From(0);
         assert.deepEqual(s.doubledTake(5), [0, 2, 4, 6, 8]);
     });
 
     it('doubledNegatedTake(n) = negated(doubled) taken n times', () => {
         const Stream = makeStream();
-        const s = Stream.From(1);
+        const s: any = Stream.From(1);
         // doubled: 2,4,6,8  then negated: -2,-4,-6,-8
         assert.deepEqual(s.doubledNegatedTake(4), [-2, -4, -6, -8]);
     });
 
     it('instance merge does not mutate the original stream', () => {
         const Stream = makeStream();
-        const s = Stream.From(0);
+        const s: any = Stream.From(0);
         s.doubledTake(5);
         assert.deepEqual(s.take(5), [0, 1, 2, 3, 4]);   // unchanged
     });
@@ -129,7 +129,7 @@ describe('Behavior Merge - Equivalence with manual composition', () => {
 
     it('instance.doubledSum(n) ≡ instance.doubled.sum(n)', () => {
         const Stream = makeStream();
-        const s = Stream.From(0);
+        const s: any = Stream.From(0);
         for (const n of [0, 1, 5])
             assert.equal(s.doubledSum(n), s.doubled.sum(n), `n=${n}`);
 
@@ -143,11 +143,11 @@ describe('Behavior Merge - Equivalence with manual composition', () => {
 describe('Behavior Merge - Validation', () => {
     it('static merge (includes unfold) must be PascalCase', () => {
         assert.throws(() => {
-            behavior(({ Self, T }) => ({
-                head: T,
-                tail: Self(T)
-            })).ops(({ fold, unfold, map, merge, Self, T }) => ({
-                From: unfold({ in: Number, out: Self })({
+            behavior(self => ({
+                head: Object,
+                tail: self
+            })).ops(({ fold, unfold, map, merge, self }) => ({
+                From: unfold({ in: Number, out: self })({
                     head: (n) => n,
                     tail: (n) => n + 1
                 }),
@@ -161,11 +161,11 @@ describe('Behavior Merge - Validation', () => {
 
     it('instance merge (no unfold) must be camelCase', () => {
         assert.throws(() => {
-            behavior(({ Self, T }) => ({
-                head: T,
-                tail: Self(T)
-            })).ops(({ fold, unfold, map, merge, Self, T }) => ({
-                From: unfold({ in: Number, out: Self })({
+            behavior(self => ({
+                head: Object,
+                tail: self
+            })).ops(({ fold, unfold, map, merge, self }) => ({
+                From: unfold({ in: Number, out: self })({
                     head: (n) => n,
                     tail: (n) => n + 1
                 }),
@@ -173,7 +173,7 @@ describe('Behavior Merge - Validation', () => {
                     _: ({ head, tail }, n) => n > 0 ? [head, ...tail(n - 1)] : []
                 }),
                 doubled: map({})({
-                    T: (x) => x * 2
+                    head: (x) => x * 2
                 }),
                 DoubledTake: merge('doubled', 'take')
             }));
@@ -182,11 +182,11 @@ describe('Behavior Merge - Validation', () => {
 
     it('throws if a referenced operation does not exist', () => {
         assert.throws(() => {
-            behavior(({ Self, T }) => ({
-                head: T,
-                tail: Self(T)
-            })).ops(({ fold, unfold, map, merge, Self, T }) => ({
-                From: unfold({ in: Number, out: Self })({
+            behavior(self => ({
+                head: Object,
+                tail: self
+            })).ops(({ fold, unfold, map, merge, self }) => ({
+                From: unfold({ in: Number, out: self })({
                     head: (n) => n,
                     tail: (n) => n + 1
                 }),
@@ -229,7 +229,7 @@ describe('Behavior Merge - Deforestation', () => {
 
     it('instance-level multi-map merge equivalence (doubledNegatedTake)', () => {
         const Stream = makeStream();
-        const s = Stream.From(1);
+        const s: any = Stream.From(1);
         for (const n of [0, 1, 4, 6]) {
             assert.deepEqual(
                 s.doubledNegatedTake(n),
@@ -241,7 +241,7 @@ describe('Behavior Merge - Deforestation', () => {
 
     it('instance merge does not affect original instance observations', () => {
         const Stream = makeStream();
-        const s = Stream.From(0);
+        const s: any = Stream.From(0);
         // Access the merged operation
         s.doubledSum(5);
         // Original observations unaffected
@@ -255,11 +255,11 @@ describe('Behavior Merge - Deforestation', () => {
 // ---------------------------------------------------------------------------
 
 function makeMetaStream() {
-    return behavior(({ Self, T }) => ({
-        head: T,
-        tail: Self(T)
-    })).ops(({ fold, unfold, map, merge, Self, T }) => ({
-        From: unfold({ in: Number, out: Self })({
+    return behavior(self => ({
+        head: Object,
+        tail: self
+    })).ops(({ fold, unfold, map, merge, self }) => ({
+        From: unfold({ in: Number, out: self })({
             head: (n) => n,
             tail: (n) => n + 1
         }),
@@ -270,10 +270,10 @@ function makeMetaStream() {
             _: ({ head }) => head
         }),
         doubled: map({})({
-            T: (x) => x * 2
+            head: (x) => x * 2
         }),
         negated: map({})({
-            T: (x) => -x
+            head: (x) => -x
         }),
         restart: merge('first', 'From'),
         doubledRestart: merge('doubled', 'first', 'From'),
@@ -285,7 +285,7 @@ function makeMetaStream() {
 describe('Behavior Merge - Metamorphism (fold → unfold)', () => {
     it('basic fold→unfold produces a new behavior instance', () => {
         const Stream = makeMetaStream();
-        const s = Stream.From(5);
+        const s: any = Stream.From(5);
         const restarted: any = s.restart;
         // first folds to head (5), From(5) unfolds: 5,6,7,8,...
         assert.deepEqual(restarted.take(4), [5, 6, 7, 8]);
@@ -293,14 +293,14 @@ describe('Behavior Merge - Metamorphism (fold → unfold)', () => {
 
     it('metamorphism on a tail shifts the restart point', () => {
         const Stream = makeMetaStream();
-        const s = Stream.From(5).tail; // head=6
+        const s: any = Stream.From(5).tail; // head=6
         const restarted: any = s.restart;
         assert.deepEqual(restarted.take(4), [6, 7, 8, 9]);
     });
 
     it('metamorphism result is a valid behavior instance', () => {
         const Stream = makeMetaStream();
-        const s = Stream.From(3);
+        const s: any = Stream.From(3);
         const restarted: any = s.restart;
         assert.equal(restarted.head, 3);
         assert.equal(restarted.tail.head, 4);
@@ -309,7 +309,7 @@ describe('Behavior Merge - Metamorphism (fold → unfold)', () => {
 
     it('metamorphism does not mutate the original instance', () => {
         const Stream = makeMetaStream();
-        const s = Stream.From(10);
+        const s: any = Stream.From(10);
         s.restart;
         assert.equal(s.head, 10);
         assert.equal(s.tail.head, 11);
@@ -320,7 +320,7 @@ describe('Behavior Merge - Metamorphism equivalence', () => {
     it('stream.restart ≡ Stream.From(stream.first)', () => {
         const Stream = makeMetaStream();
         for (const seed of [0, 5, 10]) {
-            const s = Stream.From(seed);
+            const s: any = Stream.From(seed);
             assert.deepEqual(
                 (s.restart as any).take(5),
                 Stream.From(s.first).take(5),
@@ -332,7 +332,7 @@ describe('Behavior Merge - Metamorphism equivalence', () => {
     it('stream.doubledRestart ≡ Stream.From(stream.doubled.first)', () => {
         const Stream = makeMetaStream();
         for (const seed of [0, 3, 7]) {
-            const s = Stream.From(seed);
+            const s: any = Stream.From(seed);
             assert.deepEqual(
                 (s.doubledRestart as any).take(4),
                 Stream.From(s.doubled.first).take(4),
@@ -344,7 +344,7 @@ describe('Behavior Merge - Metamorphism equivalence', () => {
     it('stream.restartDoubled ≡ Stream.From(stream.first).doubled', () => {
         const Stream = makeMetaStream();
         for (const seed of [1, 5, 10]) {
-            const s = Stream.From(seed);
+            const s: any = Stream.From(seed);
             assert.deepEqual(
                 (s.restartDoubled as any).take(4),
                 Stream.From(s.first).doubled.take(4),
@@ -356,7 +356,7 @@ describe('Behavior Merge - Metamorphism equivalence', () => {
     it('stream.doubledRestartNegated ≡ Stream.From(stream.doubled.first).negated', () => {
         const Stream = makeMetaStream();
         for (const seed of [1, 4, 8]) {
-            const s = Stream.From(seed);
+            const s: any = Stream.From(seed);
             assert.deepEqual(
                 (s.doubledRestartNegated as any).take(4),
                 Stream.From(s.doubled.first).negated.take(4),
@@ -369,11 +369,11 @@ describe('Behavior Merge - Metamorphism equivalence', () => {
 describe('Behavior Merge - Metamorphism validation', () => {
     it('metamorphism must be camelCase (fold→unfold is instance getter)', () => {
         assert.throws(() => {
-            behavior(({ Self, T }) => ({
-                head: T,
-                tail: Self(T)
-            })).ops(({ fold, unfold, map, merge, Self, T }) => ({
-                From: unfold({ in: Number, out: Self })({
+            behavior(self => ({
+                head: Object,
+                tail: self
+            })).ops(({ fold, unfold, map, merge, self }) => ({
+                From: unfold({ in: Number, out: self })({
                     head: (n) => n,
                     tail: (n) => n + 1
                 }),

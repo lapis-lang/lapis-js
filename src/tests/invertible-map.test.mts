@@ -16,21 +16,21 @@ import { data } from '../index.mjs';
 
 // Helper: a simple parameterized list used by most tests
 function makeList() {
-    return data(({ Family, T }) => ({
+    return data(family => ({
         Nil: {},
-        Cons: { head: T, tail: Family(T) }
-    })).ops(({ fold, unfold, map, merge, Family, T }) => ({
-        double:    map({ out: Family })({ T: (x: number) => x * 2 }),
-        halve:     map({ out: Family, inverse: 'double' })({ T: (x: number) => x / 2 }),
-        increment: map({ out: Family })({ T: (x: number) => x + 1 }),
-        decrement: map({ out: Family, inverse: 'increment' })({ T: (x: number) => x - 1 }),
+        Cons: { head: Object, tail: family }
+    })).ops(({ fold, unfold, map, merge, family }) => ({
+        double:    map({ out: family })({ head: (x: number) => x * 2 }),
+        halve:     map({ out: family, inverse: 'double' })({ head: (x: number) => x / 2 }),
+        increment: map({ out: family })({ head: (x: number) => x + 1 }),
+        decrement: map({ out: family, inverse: 'increment' })({ head: (x: number) => x - 1 }),
         sum: fold({ out: Number })({
             Nil() { return 0; },
-            Cons({ head, tail }) { return head + tail; }
+            Cons({ head, tail }: any) { return head + tail; }
         }),
         toArray: fold({ out: Array })({
             Nil() { return []; },
-            Cons({ head, tail }) { return [head, ...tail]; }
+            Cons({ head, tail }: any) { return [head, ...tail]; }
         })
     }));
 }
@@ -39,7 +39,7 @@ describe('Invertible Maps', () => {
     describe('Basic inverse declaration', () => {
         it('forward and inverse are independent named operations', () => {
             const List = makeList();
-            const NumList = List({ T: Number });
+            const NumList = List;
             const list = NumList.Cons(2, NumList.Cons(4, NumList.Cons(6, NumList.Nil)));
 
             // Forward: double
@@ -53,7 +53,7 @@ describe('Invertible Maps', () => {
 
         it('round-trip f⁻¹ ∘ f = id via chaining', () => {
             const List = makeList();
-            const NumList = List({ T: Number });
+            const NumList = List;
             const list = NumList.Cons(1, NumList.Cons(2, NumList.Cons(3, NumList.Nil)));
 
             // double then halve = identity
@@ -67,7 +67,7 @@ describe('Invertible Maps', () => {
 
         it('round-trip for increment/decrement', () => {
             const List = makeList();
-            const NumList = List({ T: Number });
+            const NumList = List;
             const list = NumList.Cons(10, NumList.Cons(20, NumList.Nil));
 
             assert.deepStrictEqual(list.increment.decrement.toArray, [10, 20]);
@@ -78,13 +78,13 @@ describe('Invertible Maps', () => {
     describe('1:1 enforcement', () => {
         it('rejects a second inverse declaration for the same operation', () => {
             assert.throws(
-                () => data(({ Family, T }) => ({
+                () => data(family => ({
                     Nil: {},
-                    Cons: { head: T, tail: Family(T) }
-                })).ops(({ fold, unfold, map, merge, Family, T }) => ({
-                    double:    map({ out: Family })({ T: (x: number) => x * 2 }),
-                    halve:     map({ out: Family, inverse: 'double' })({ T: (x: number) => x / 2 }),
-                    divByTwo:  map({ out: Family, inverse: 'double' })({ T: (x: number) => x / 2 })
+                    Cons: { head: Object, tail: family }
+                })).ops(({ fold, unfold, map, merge, family }) => ({
+                    double:    map({ out: family })({ head: (x: number) => x * 2 }),
+                    halve:     map({ out: family, inverse: 'double' })({ head: (x: number) => x / 2 }),
+                    divByTwo:  map({ out: family, inverse: 'double' })({ head: (x: number) => x / 2 })
                 })),
                 /already has inverse 'halve'.*1:1/
             );
@@ -92,11 +92,11 @@ describe('Invertible Maps', () => {
 
         it('rejects inverse pointing to non-existent operation', () => {
             assert.throws(
-                () => data(({ Family, T }) => ({
+                () => data(family => ({
                     Nil: {},
-                    Cons: { head: T, tail: Family(T) }
-                })).ops(({ fold, unfold, map, merge, Family, T }) => ({
-                    halve: map({ out: Family, inverse: 'nonexistent' })({ T: (x: number) => x / 2 })
+                    Cons: { head: Object, tail: family }
+                })).ops(({ fold, unfold, map, merge, family }) => ({
+                    halve: map({ out: family, inverse: 'nonexistent' })({ head: (x: number) => x / 2 })
                 })),
                 /operation 'nonexistent' not found/
             );
@@ -106,7 +106,7 @@ describe('Invertible Maps', () => {
     describe('Round-trip contract verification', () => {
         it('passes silently when inverse is correct', () => {
             const List = makeList();
-            const NumList = List({ T: Number });
+            const NumList = List;
             const list = NumList.Cons(4, NumList.Cons(8, NumList.Nil));
 
             // double and halve are exact inverses — no error
@@ -117,15 +117,15 @@ describe('Invertible Maps', () => {
         });
 
         it('throws EnsuresError when inverse is inconsistent', () => {
-            const List = data(({ Family, T }) => ({
+            const List = data(family => ({
                 Nil: {},
-                Cons: { head: T, tail: Family(T) }
-            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
-                encode: map({ out: Family })({ T: (x: number) => Math.round(x * 100) / 100 }),
-                decode: map({ out: Family, inverse: 'encode' })({ T: (x: number) => x + 1 })
+                Cons: { head: Object, tail: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
+                encode: map({ out: family })({ head: (x: number) => Math.round(x * 100) / 100 }),
+                decode: map({ out: family, inverse: 'encode' })({ head: (x: number) => x + 1 })
             }));
 
-            const NumList = List({ T: Number });
+            const NumList = List;
             const list = NumList.Cons(3, NumList.Nil);
 
             // encode(3) = 3, then decode(3) = 4 ≠ 3 → round-trip fails
@@ -136,15 +136,15 @@ describe('Invertible Maps', () => {
         });
 
         it('throws EnsuresError on the inverse direction too', () => {
-            const List = data(({ Family, T }) => ({
+            const List = data(family => ({
                 Nil: {},
-                Cons: { head: T, tail: Family(T) }
-            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
-                forward: map({ out: Family })({ T: (x: number) => x * 3 }),
-                backward: map({ out: Family, inverse: 'forward' })({ T: (x: number) => x / 2 })
+                Cons: { head: Object, tail: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
+                forward: map({ out: family })({ head: (x: number) => x * 3 }),
+                backward: map({ out: family, inverse: 'forward' })({ head: (x: number) => x / 2 })
             }));
 
-            const NumList = List({ T: Number });
+            const NumList = List;
             const list = NumList.Cons(6, NumList.Nil);
 
             // backward(6) = 3, forward(3) = 9 ≠ 6 → round-trip fails
@@ -155,15 +155,15 @@ describe('Invertible Maps', () => {
         });
 
         it('verifies round-trip recursively through nested structures', () => {
-            const List = data(({ Family, T }) => ({
+            const List = data(family => ({
                 Nil: {},
-                Cons: { head: T, tail: Family(T) }
-            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
-                triple: map({ out: Family })({ T: (x: number) => x * 3 }),
-                third:  map({ out: Family, inverse: 'triple' })({ T: (x: number) => x / 3 })
+                Cons: { head: Object, tail: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
+                triple: map({ out: family })({ head: (x: number) => x * 3 }),
+                third:  map({ out: family, inverse: 'triple' })({ head: (x: number) => x / 3 })
             }));
 
-            const NumList = List({ T: Number });
+            const NumList = List;
             const list = NumList.Cons(1, NumList.Cons(2, NumList.Cons(3, NumList.Nil)));
 
             // Each level verifies its own round-trip
@@ -176,61 +176,61 @@ describe('Invertible Maps', () => {
 
     describe('Merge fusion — inverse pair elimination', () => {
         it('eliminates consecutive inverse pair in merge', () => {
-            const List = data(({ Family, T }) => ({
+            const List = data(family => ({
                 Nil: {},
-                Cons: { head: T, tail: Family(T) }
-            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
-                double:    map({ out: Family })({ T: (x: number) => x * 2 }),
-                halve:     map({ out: Family, inverse: 'double' })({ T: (x: number) => x / 2 }),
-                increment: map({ out: Family })({ T: (x: number) => x + 1 }),
+                Cons: { head: Object, tail: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
+                double:    map({ out: family })({ head: (x: number) => x * 2 }),
+                halve:     map({ out: family, inverse: 'double' })({ head: (x: number) => x / 2 }),
+                increment: map({ out: family })({ head: (x: number) => x + 1 }),
                 pipeline: merge('double', 'halve', 'increment')
             }));
 
-            const NumList = List({ T: Number });
+            const NumList = List;
             const list = NumList.Cons(1, NumList.Cons(2, NumList.Cons(3, NumList.Nil)));
 
             // Should be equivalent to just increment
-            const result = list.pipeline;
+            const result: any = list.pipeline;
             assert.strictEqual(result.head, 2);
             assert.strictEqual(result.tail.head, 3);
             assert.strictEqual(result.tail.tail.head, 4);
         });
 
         it('eliminates trailing inverse pair', () => {
-            const List = data(({ Family, T }) => ({
+            const List = data(family => ({
                 Nil: {},
-                Cons: { head: T, tail: Family(T) }
-            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
-                double:    map({ out: Family })({ T: (x: number) => x * 2 }),
-                halve:     map({ out: Family, inverse: 'double' })({ T: (x: number) => x / 2 }),
-                increment: map({ out: Family })({ T: (x: number) => x + 1 }),
+                Cons: { head: Object, tail: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
+                double:    map({ out: family })({ head: (x: number) => x * 2 }),
+                halve:     map({ out: family, inverse: 'double' })({ head: (x: number) => x / 2 }),
+                increment: map({ out: family })({ head: (x: number) => x + 1 }),
                 pipeline: merge('increment', 'double', 'halve')
             }));
 
-            const NumList = List({ T: Number });
+            const NumList = List;
             const list = NumList.Cons(1, NumList.Cons(2, NumList.Nil));
 
             // Should be equivalent to just increment
-            const result = list.pipeline;
+            const result: any = list.pipeline;
             assert.strictEqual(result.head, 2);
             assert.strictEqual(result.tail.head, 3);
         });
 
         it('collapses entire pipeline to identity when all pairs cancel', () => {
-            const List = data(({ Family, T }) => ({
+            const List = data(family => ({
                 Nil: {},
-                Cons: { head: T, tail: Family(T) }
-            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
-                double:  map({ out: Family })({ T: (x: number) => x * 2 }),
-                halve:   map({ out: Family, inverse: 'double' })({ T: (x: number) => x / 2 }),
+                Cons: { head: Object, tail: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
+                double:  map({ out: family })({ head: (x: number) => x * 2 }),
+                halve:   map({ out: family, inverse: 'double' })({ head: (x: number) => x / 2 }),
                 roundTrip: merge('double', 'halve'),
                 toArray: fold({ out: Array })({
                     Nil() { return []; },
-                    Cons({ head, tail }) { return [head, ...tail]; }
+                    Cons({ head, tail }: any) { return [head, ...tail]; }
                 })
             }));
 
-            const NumList = List({ T: Number });
+            const NumList = List;
             const list = NumList.Cons(1, NumList.Cons(2, NumList.Cons(3, NumList.Nil)));
 
             // roundTrip should be identity
@@ -241,22 +241,22 @@ describe('Invertible Maps', () => {
         });
 
         it('eliminates nested inverse pairs after first pass', () => {
-            const List = data(({ Family, T }) => ({
+            const List = data(family => ({
                 Nil: {},
-                Cons: { head: T, tail: Family(T) }
-            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
-                double:    map({ out: Family })({ T: (x: number) => x * 2 }),
-                halve:     map({ out: Family, inverse: 'double' })({ T: (x: number) => x / 2 }),
-                increment: map({ out: Family })({ T: (x: number) => x + 1 }),
-                decrement: map({ out: Family, inverse: 'increment' })({ T: (x: number) => x - 1 }),
+                Cons: { head: Object, tail: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
+                double:    map({ out: family })({ head: (x: number) => x * 2 }),
+                halve:     map({ out: family, inverse: 'double' })({ head: (x: number) => x / 2 }),
+                increment: map({ out: family })({ head: (x: number) => x + 1 }),
+                decrement: map({ out: family, inverse: 'increment' })({ head: (x: number) => x - 1 }),
                 pipeline: merge('double', 'increment', 'decrement', 'halve'),
                 toArray: fold({ out: Array })({
                     Nil() { return []; },
-                    Cons({ head, tail }) { return [head, ...tail]; }
+                    Cons({ head, tail }: any) { return [head, ...tail]; }
                 })
             }));
 
-            const NumList = List({ T: Number });
+            const NumList = List;
             const list = NumList.Cons(5, NumList.Cons(10, NumList.Nil));
 
             const result = list.pipeline;
@@ -265,22 +265,22 @@ describe('Invertible Maps', () => {
         });
 
         it('preserves non-inverse operations in pipeline', () => {
-            const List = data(({ Family, T }) => ({
+            const List = data(family => ({
                 Nil: {},
-                Cons: { head: T, tail: Family(T) }
-            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
-                double:    map({ out: Family })({ T: (x: number) => x * 2 }),
-                halve:     map({ out: Family, inverse: 'double' })({ T: (x: number) => x / 2 }),
-                increment: map({ out: Family })({ T: (x: number) => x + 1 }),
-                square:    map({ out: Family })({ T: (x: number) => x * x }),
+                Cons: { head: Object, tail: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
+                double:    map({ out: family })({ head: (x: number) => x * 2 }),
+                halve:     map({ out: family, inverse: 'double' })({ head: (x: number) => x / 2 }),
+                increment: map({ out: family })({ head: (x: number) => x + 1 }),
+                square:    map({ out: family })({ head: (x: number) => x * x }),
                 sum: fold({ out: Number })({
                     Nil() { return 0; },
-                    Cons({ head, tail }) { return head + tail; }
+                    Cons({ head, tail }: any) { return head + tail; }
                 }),
                 pipeline: merge('double', 'halve', 'increment', 'square', 'sum')
             }));
 
-            const NumList = List({ T: Number });
+            const NumList = List;
             const list = NumList.Cons(1, NumList.Cons(2, NumList.Cons(3, NumList.Nil)));
 
             // After fusion: increment then square then sum

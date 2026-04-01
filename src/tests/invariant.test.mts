@@ -149,15 +149,15 @@ describe('Invariant Support', () => {
 
     describe('Invariants with Special ADT Types', () => {
         it('should work with parameterized ADTs', () => {
-            const Pair = data(({ T, U }) => ({
+            const Pair = data(_ => ({
                 MakePair: {
                     [invariant]: ({ first, second }) => first !== second,
-                    first: T,
-                    second: U
+                    first: Object,
+                    second: Object
                 }
             }));
 
-            const NumPair = Pair({ T: Number, U: Number });
+            const NumPair = Pair;
             const pair = NumPair.MakePair({ first: 1, second: 2 });
             assert.equal(pair.first, 1);
 
@@ -168,12 +168,12 @@ describe('Invariant Support', () => {
         });
 
         it('should work with recursive ADTs', () => {
-            const BoundedList = data(({ Family }) => ({
+            const BoundedList = data(family => ({
                 Nil: {},
                 Cons: {
                     [invariant]: ({ head }) => head >= 0 && head <= 100,
                     head: Number,
-                    tail: Family
+                    tail: family
                 }
             }));
 
@@ -364,7 +364,7 @@ describe('Invariant Support', () => {
             assert.throws(
                 () => data(() => ({
                     Empty: { [invariant]: () => true }
-                })),
+                })).ops(() => ({})),
                 /Invariant on singleton variant 'Empty' is meaningless/
             );
         });

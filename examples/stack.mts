@@ -1,13 +1,13 @@
 import { data } from '@lapis-lang/lapis-js';
 
-// Parameterized Stack ADT with all operations defined inline
-const Stack = data(({ Family, T }) => ({
+// Stack ADT with all operations defined inline
+const Stack = data(family => ({
         Empty: {},
-        Push: { value: T, rest: Family(T) }
-    })).ops(({ fold, unfold, map, merge, Family, T }) => ({
+        Push: { value: Object, rest: family }
+    })).ops(({ fold, unfold, map, merge, family }) => ({
         size: fold({ out: Number })({
             Empty() { return 0; },
-            Push({ rest }) { return 1 + rest; }
+            Push({ rest }: any) { return 1 + rest; }
         }),
         peek: fold({})({
             Empty() { return null; },
@@ -19,27 +19,27 @@ const Stack = data(({ Family, T }) => ({
         }),
         toArray: fold({ out: Array })({
             Empty() { return []; },
-            Push({ value, rest }) { return [value, ...rest]; }
+            Push({ value, rest }: any) { return [value, ...rest]; }
         }),
         show: fold({ out: String })({
             Empty() { return 'Stack[]'; },
-            Push({ value, rest }) {
+            Push({ value, rest }: any) {
                 const arr = rest === 'Stack[]' ? [] : rest.slice(6, -1).split(', ');
                 return `Stack[${[value, ...arr].join(', ')}]`;
             }
         }),
-        contains: fold({ in: T, out: Boolean })({
+        contains: fold({ in: Object, out: Boolean })({
             Empty() { return false; },
-            Push({ value, rest }, searchValue) { return value === searchValue || rest(searchValue); }
+            Push({ value, rest }: any, searchValue) { return value === searchValue || rest(searchValue); }
         }),
-        FromArray: unfold({ in: Array, out: Family(T) })({
+        FromArray: unfold({ in: Array, out: family })({
             Empty: (arr) => (arr.length === 0 ? {} : null),
             Push: (arr) => (arr.length > 0 ? { value: arr[0], rest: arr.slice(1) } : null)
         })
     })),
 
-    // Instantiate for numbers
-    NumStack = Stack({ T: Number });
+    // Use directly
+    NumStack = Stack;
 
 console.log('=== Stack ADT Example ===\n');
 
@@ -92,12 +92,12 @@ console.log(`stack3.contains(5) = ${stack3.contains(5)}`);   // false
 
 // Type checking
 console.log('\nType checking:');
-console.log(`stack3 instanceof Stack({ T: Number }): ${stack3 instanceof NumStack}`);
-console.log(`Empty instanceof Stack({ T: Number }): ${Empty instanceof NumStack}`);
+console.log(`stack3 instanceof Stack: ${stack3 instanceof NumStack}`);
+console.log(`Empty instanceof Stack: ${Empty instanceof NumStack}`);
 
 // String stack
 console.log('\n=== String Stack ===');
-const StrStack = Stack({ T: String }),
+const StrStack = Stack,
     strStack = StrStack.FromArray(['first', 'second', 'third']);
 
 console.log(`strStack = ${strStack.show}`);

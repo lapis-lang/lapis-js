@@ -12,9 +12,9 @@
 import { protocol, extend } from '../../index.mjs';
 import { Applicative } from './Applicative.mjs';
 
-const Monad = protocol(({ Family, fold }) => ({
+const Monad = protocol(({ family, fold }) => ({
     [extend]: Applicative,
-    flatMap: fold({ in: Object, out: Family })
+    flatMap: fold({ in: Object, out: family })
 }));
 
 export { Monad };

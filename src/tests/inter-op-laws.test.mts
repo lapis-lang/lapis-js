@@ -48,9 +48,9 @@ describe('INTER_OP_PREFIXES', () => {
 describe('parseProperties — namespaced string validation', () => {
     it('accepts valid identity:E namespaced property without throwing', () => {
         assert.doesNotThrow(() =>
-            data(() => ({ A: {} })).ops(({ fold, unfold, Family }) => ({
-                E: unfold({ out: Family })({ A: () => ({}) }),
-                op: fold({ in: Family, out: Family, properties: ['identity:E'] })({
+            data(() => ({ A: {} })).ops(({ fold, unfold, family }) => ({
+                E: unfold({ out: family })({ A: () => ({}) }),
+                op: fold({ in: family, out: family, properties: ['identity:E'] })({
                     // @ts-expect-error -- binary fold handler receives 2nd arg at runtime; TS fold signature only models single-arg
                     A({}: Record<string, never>, other: unknown): unknown { return other; }
                 })
@@ -60,11 +60,11 @@ describe('parseProperties — namespaced string validation', () => {
 
     it('accepts valid absorbing:Z namespaced property without throwing', () => {
         assert.doesNotThrow(() =>
-            data(() => ({ A: {} })).ops(({ fold, unfold, Family }) => ({
-                Z: unfold({ out: Family })({ A: () => ({}) }),
-                op: fold({ in: Family, out: Family, properties: ['absorbing:Z'] })({
+            data(() => ({ A: {} })).ops(({ fold, unfold, family }) => ({
+                Z: unfold({ out: family })({ A: () => ({}) }),
+                op: fold({ in: family, out: family, properties: ['absorbing:Z'] })({
                     // @ts-expect-error -- binary fold handler receives 2nd arg at runtime; TS fold signature only models single-arg
-                    A({}: Record<string, never>, _other: unknown): any { return (Family as any).A; }
+                    A({}: Record<string, never>, _other: unknown): any { return (family as any).A; }
                 })
             }))
         );
@@ -72,16 +72,16 @@ describe('parseProperties — namespaced string validation', () => {
 
     it('accepts valid absorption:g namespaced property without throwing', () => {
         assert.doesNotThrow(() =>
-            data(() => ({ A: {} })).ops(({ fold, Family }) => ({
-                g: fold({ in: Family, out: Family })({
+            data(() => ({ A: {} })).ops(({ fold, family }) => ({
+                g: fold({ in: family, out: family })({
                     // @ts-expect-error -- binary fold handler receives 2nd arg at runtime; TS fold signature only models single-arg
                     A({}: Record<string, never>, other: unknown): unknown { return other; }
                 }),
-                op: fold({ in: Family, out: Family, properties: ['absorption:g'] })({
+                op: fold({ in: family, out: family, properties: ['absorption:g'] })({
                     // @ts-expect-error -- binary fold handler receives 2nd arg at runtime; TS fold signature only models single-arg
                     A({}: Record<string, never>, _other: unknown): unknown {
 
-                        return (Family as any).A;
+                        return (family as any).A;
                     }
                 })
             }))
@@ -90,12 +90,12 @@ describe('parseProperties — namespaced string validation', () => {
 
     it('accepts valid distributive:g namespaced property without throwing', () => {
         assert.doesNotThrow(() =>
-            data(() => ({ A: {} })).ops(({ fold, Family }) => ({
-                g: fold({ in: Family, out: Family })({
+            data(() => ({ A: {} })).ops(({ fold, family }) => ({
+                g: fold({ in: family, out: family })({
                     // @ts-expect-error -- binary fold handler receives 2nd arg at runtime; TS fold signature only models single-arg
                     A({}: Record<string, never>, other: unknown): unknown { return other; }
                 }),
-                op: fold({ in: Family, out: Family, properties: ['distributive:g'] })({
+                op: fold({ in: family, out: family, properties: ['distributive:g'] })({
                     // @ts-expect-error -- binary fold handler receives 2nd arg at runtime; TS fold signature only models single-arg
                     A({}: Record<string, never>, other: unknown): unknown { return other; }
                 })
@@ -105,11 +105,11 @@ describe('parseProperties — namespaced string validation', () => {
 
     it('accepts valid inverse:via:E namespaced property without throwing', () => {
         assert.doesNotThrow(() =>
-            data(() => ({ A: {} })).ops(({ fold, unfold, map, Family }) => ({
-                E: unfold({ out: Family })({ A: () => ({}) }),
+            data(() => ({ A: {} })).ops(({ fold, unfold, map, family }) => ({
+                E: unfold({ out: family })({ A: () => ({}) }),
 
-                via: map({ out: Family })({ A: (_: unknown) => (Family as any).A }),
-                op: fold({ in: Family, out: Family, properties: ['inverse:via:E'] })({
+                via: map({ out: family })({ A: (_: unknown) => (family as any).A }),
+                op: fold({ in: family, out: family, properties: ['inverse:via:E'] })({
                     // @ts-expect-error -- binary fold handler receives 2nd arg at runtime; TS fold signature only models single-arg
                     A({}: Record<string, never>, other: unknown): unknown { return other; }
                 })
@@ -119,10 +119,10 @@ describe('parseProperties — namespaced string validation', () => {
 
     it('throws TypeError for unknown inter-op prefix', () => {
         assert.throws(
-            () => data(() => ({ A: {} })).ops(({ fold, Family }) => ({
+            () => data(() => ({ A: {} })).ops(({ fold, family }) => ({
                 op: fold({
-                    in: Family,
-                    out: Family,
+                    in: family,
+                    out: family,
                     properties: ['badPrefix:X' as never]
                 })({
                     // @ts-expect-error -- binary fold handler receives 2nd arg at runtime; TS fold signature only models single-arg
@@ -135,10 +135,10 @@ describe('parseProperties — namespaced string validation', () => {
 
     it('throws TypeError for too many parts on identity (identity:X:Y)', () => {
         assert.throws(
-            () => data(() => ({ A: {} })).ops(({ fold, Family }) => ({
+            () => data(() => ({ A: {} })).ops(({ fold, family }) => ({
                 op: fold({
-                    in: Family,
-                    out: Family,
+                    in: family,
+                    out: family,
                     properties: ['identity:X:Y' as never]
                 })({
                     // @ts-expect-error -- binary fold handler receives 2nd arg at runtime; TS fold signature only models single-arg
@@ -151,10 +151,10 @@ describe('parseProperties — namespaced string validation', () => {
 
     it('throws TypeError for too few parts on inverse (inverse:via)', () => {
         assert.throws(
-            () => data(() => ({ A: {} })).ops(({ fold, Family }) => ({
+            () => data(() => ({ A: {} })).ops(({ fold, family }) => ({
                 op: fold({
-                    in: Family,
-                    out: Family,
+                    in: family,
+                    out: family,
                     properties: ['inverse:via' as never]
                 })({
                     // @ts-expect-error -- binary fold handler receives 2nd arg at runtime; TS fold signature only models single-arg
@@ -174,8 +174,8 @@ describe('parseProperties — predicate-function validation', () => {
     it('accepts a named function in properties', () => {
         function alwaysTrue(_v: unknown, _adt: unknown): boolean { return true; }
         assert.doesNotThrow(() =>
-            data(() => ({ A: {} })).ops(({ fold, Family }) => ({
-                op: fold({ in: Family, out: Family, properties: [alwaysTrue] })({
+            data(() => ({ A: {} })).ops(({ fold, family }) => ({
+                op: fold({ in: family, out: family, properties: [alwaysTrue] })({
                     // @ts-expect-error -- binary fold handler receives 2nd arg at runtime; TS fold signature only models single-arg
                     A({}: Record<string, never>, other: unknown): unknown { return other; }
                 })
@@ -185,10 +185,10 @@ describe('parseProperties — predicate-function validation', () => {
 
     it('throws TypeError for an anonymous arrow function in properties', () => {
         assert.throws(
-            () => data(() => ({ A: {} })).ops(({ fold, Family }) => ({
+            () => data(() => ({ A: {} })).ops(({ fold, family }) => ({
                 op: fold({
-                    in: Family,
-                    out: Family,
+                    in: family,
+                    out: family,
 
                     properties: [(_v: unknown, _adt: unknown) => true as any]
                 })({
@@ -203,8 +203,8 @@ describe('parseProperties — predicate-function validation', () => {
     it('throws LawError when named predicate returns false', () => {
         function alwaysFalse(_v: unknown, _adt: unknown): boolean { return false; }
         assert.throws(
-            () => data(() => ({ A: {} })).ops(({ fold, Family }) => ({
-                op: fold({ in: Family, out: Family, properties: [alwaysFalse] })({
+            () => data(() => ({ A: {} })).ops(({ fold, family }) => ({
+                op: fold({ in: family, out: family, properties: [alwaysFalse] })({
                     // @ts-expect-error -- binary fold handler receives 2nd arg at runtime; TS fold signature only models single-arg
                     A({}: Record<string, never>, other: unknown): unknown { return other; }
                 })
@@ -216,8 +216,8 @@ describe('parseProperties — predicate-function validation', () => {
     it('law name in LawError matches predicate function name', () => {
         function myCustomLaw(_v: unknown, _adt: unknown): boolean { return false; }
         try {
-            data(() => ({ A: {} })).ops(({ fold, Family }) => ({
-                op: fold({ in: Family, out: Family, properties: [myCustomLaw] })({
+            data(() => ({ A: {} })).ops(({ fold, family }) => ({
+                op: fold({ in: family, out: family, properties: [myCustomLaw] })({
                     // @ts-expect-error -- binary fold handler receives 2nd arg at runtime; TS fold signature only models single-arg
                     A({}: Record<string, never>, other: unknown): unknown { return other; }
                 })
@@ -245,19 +245,19 @@ describe('Z2 field — inter-op laws (all passing)', () => {
     const Z2 = data(() => ({
         Zero: {},
         One:  {}
-    })).ops(({ fold, map, Family }) => ({
+    })).ops(({ fold, map, family }) => ({
         // negate: in Z/2Z, every element is its own additive inverse (x + x = 0)
         negate: map({
-            out: Family,
+            out: family,
             properties: ['involutory']
         })({
-            Zero: (_: unknown) => (Family as any).Zero,
-            One:  (_: unknown) => (Family as any).One
+            Zero: (_: unknown) => (family as any).Zero,
+            One:  (_: unknown) => (family as any).One
         }),
         // add: XOR - commutative group with additive identity Zero
         add: fold({
-            in: Family,
-            out: Family,
+            in: family,
+            out: family,
             properties: [
                 'associative', 'commutative',
                 'identity:Zero',
@@ -268,15 +268,15 @@ describe('Z2 field — inter-op laws (all passing)', () => {
             Zero({}: Record<string, never>, other: unknown): unknown { return other; },
             // @ts-expect-error -- binary fold handler receives 2nd arg at runtime; TS fold signature only models single-arg
             One({}: Record<string, never>, other: unknown): unknown {
-                const F = Family as any;
+                const F = family as any;
                 if (other === F.One) return F.Zero;  // 1 XOR 1 = 0
                 return F.One;                         // 1 XOR 0 = 1
             }
         }),
         // multiply: AND - commutative monoid with multiplicative identity One
         multiply: fold({
-            in: Family,
-            out: Family,
+            in: family,
+            out: family,
             properties: [
                 'associative', 'commutative',
                 'identity:One',
@@ -286,7 +286,7 @@ describe('Z2 field — inter-op laws (all passing)', () => {
         })({
             // @ts-expect-error -- binary fold handler receives 2nd arg at runtime; TS fold signature only models single-arg
             Zero({}: Record<string, never>, _other: unknown): unknown {
-                return (Family as any).Zero;   // 0 AND anything = 0
+                return (family as any).Zero;   // 0 AND anything = 0
             },
             // @ts-expect-error -- binary fold handler receives 2nd arg at runtime; TS fold signature only models single-arg
             One({}: Record<string, never>, other: unknown): unknown { return other; } // 1 AND x = x
@@ -345,24 +345,24 @@ describe('Bool lattice — absorption law (passing)', () => {
     const Bool = data(() => ({
         False: {},
         True:  {}
-    })).ops(({ fold, Family }) => ({
+    })).ops(({ fold, family }) => ({
         join: fold({
-            in: Family,
-            out: Family,
+            in: family,
+            out: family,
             properties: ['associative', 'commutative', 'idempotent', 'absorption:meet']
         })({
             // @ts-expect-error -- binary fold handler receives 2nd arg at runtime; TS fold signature only models single-arg
             False({}: Record<string, never>, other: unknown): unknown { return other; },
             // @ts-expect-error -- binary fold handler receives 2nd arg at runtime; TS fold signature only models single-arg
-            True({}: Record<string, never>, _other: unknown): unknown { return (Family as any).True; }
+            True({}: Record<string, never>, _other: unknown): unknown { return (family as any).True; }
         }),
         meet: fold({
-            in: Family,
-            out: Family,
+            in: family,
+            out: family,
             properties: ['associative', 'commutative', 'idempotent', 'absorption:join']
         })({
             // @ts-expect-error -- binary fold handler receives 2nd arg at runtime; TS fold signature only models single-arg
-            False({}: Record<string, never>, _other: unknown): unknown { return (Family as any).False; },
+            False({}: Record<string, never>, _other: unknown): unknown { return (family as any).False; },
             // @ts-expect-error -- binary fold handler receives 2nd arg at runtime; TS fold signature only models single-arg
             True({}: Record<string, never>, other: unknown): unknown { return other; }
         })
@@ -393,17 +393,17 @@ describe('Bool lattice — absorption law (passing)', () => {
 describe('Law violations — LawError thrown at .ops() time', () => {
     it('throws LawError when identity:Zero law is violated', () => {
         assert.throws(
-            () => data(() => ({ Zero: {}, Elem: {} })).ops(({ fold, Family }) => ({
+            () => data(() => ({ Zero: {}, Elem: {} })).ops(({ fold, family }) => ({
                 // combine(a, Zero) incorrectly returns Zero instead of a
                 op: fold({
-                    in: Family,
-                    out: Family,
+                    in: family,
+                    out: family,
                     properties: ['identity:Zero']
                 })({
                     // @ts-expect-error -- binary fold handler receives 2nd arg at runtime; TS fold signature only models single-arg
-                    Zero({}: Record<string, never>, _other: unknown): any { return (Family as any).Zero; },
+                    Zero({}: Record<string, never>, _other: unknown): any { return (family as any).Zero; },
                     // @ts-expect-error -- binary fold handler receives 2nd arg at runtime; TS fold signature only models single-arg
-                    Elem({}: Record<string, never>, _other: unknown): any { return (Family as any).Zero; } // wrong
+                    Elem({}: Record<string, never>, _other: unknown): any { return (family as any).Zero; } // wrong
                 })
             })),
             LawError
@@ -412,11 +412,11 @@ describe('Law violations — LawError thrown at .ops() time', () => {
 
     it('throws LawError when absorbing:Zero law is violated', () => {
         assert.throws(
-            () => data(() => ({ Zero: {}, Elem: {} })).ops(({ fold, Family }) => ({
+            () => data(() => ({ Zero: {}, Elem: {} })).ops(({ fold, family }) => ({
                 // multiply(a, Zero) incorrectly returns Elem
                 op: fold({
-                    in: Family,
-                    out: Family,
+                    in: family,
+                    out: family,
                     properties: ['absorbing:Zero']
                 })({
                     // @ts-expect-error -- binary fold handler receives 2nd arg at runtime; TS fold signature only models single-arg
@@ -431,21 +431,21 @@ describe('Law violations — LawError thrown at .ops() time', () => {
 
     it('throws LawError when absorption:meet law is violated', () => {
         assert.throws(
-            () => data(() => ({ True: {}, False: {} })).ops(({ fold, Family }) => ({
-                meet: fold({ in: Family, out: Family })({
+            () => data(() => ({ True: {}, False: {} })).ops(({ fold, family }) => ({
+                meet: fold({ in: family, out: family })({
                     // @ts-expect-error -- binary fold handler receives 2nd arg at runtime; TS fold signature only models single-arg
                     True({}: Record<string, never>, other: unknown): any { return other; },
                     // @ts-expect-error -- binary fold handler receives 2nd arg at runtime; TS fold signature only models single-arg
                     False(_: Record<string, never>, other: unknown): any { return other; } // wrong (should return False)
                 }),
                 join: fold({
-                    in: Family,
-                    out: Family,
+                    in: family,
+                    out: family,
                     properties: ['absorption:meet']
                 })({
                     // join(a, meet(a,b)) should equal a but won't because meet is wrong
                     // @ts-expect-error -- binary fold handler receives 2nd arg at runtime; TS fold signature only models single-arg
-                    True({}: Record<string, never>, _other: unknown): any { return (Family as any).True; },
+                    True({}: Record<string, never>, _other: unknown): any { return (family as any).True; },
                     // @ts-expect-error -- binary fold handler receives 2nd arg at runtime; TS fold signature only models single-arg
                     False({}: Record<string, never>, other: unknown): any { return other; }
                 })
@@ -456,15 +456,15 @@ describe('Law violations — LawError thrown at .ops() time', () => {
 
     it('throws LawError when inverse:negate:Zero law is violated', () => {
         assert.throws(
-            () => data(() => ({ Zero: {}, Pos: {} })).ops(({ fold, map, Family }) => ({
+            () => data(() => ({ Zero: {}, Pos: {} })).ops(({ fold, map, family }) => ({
                 // negate does NOT return the correct inverse
-                negate: map({ out: Family })({
-                    Zero: (_: unknown) => (Family as any).Zero,
-                    Pos:  (_: unknown) => (Family as any).Pos  // wrong: should return Zero or something that combines to Zero
+                negate: map({ out: family })({
+                    Zero: (_: unknown) => (family as any).Zero,
+                    Pos:  (_: unknown) => (family as any).Pos  // wrong: should return Zero or something that combines to Zero
                 }),
                 add: fold({
-                    in: Family,
-                    out: Family,
+                    in: family,
+                    out: family,
                     properties: ['inverse:negate:Zero']
                 })({
                     // add(a, b) = b (wrong identity — but we only care about inverse here)
@@ -488,10 +488,10 @@ describe('TypeError when companion element or operation is not found on ADT', ()
         // 'identity:Missing' references a companion 'Missing' that does not exist.
         // A missing companion is a declaration error and must throw TypeError.
         assert.throws(
-            () => data(() => ({ A: {} })).ops(({ fold, Family }) => ({
+            () => data(() => ({ A: {} })).ops(({ fold, family }) => ({
                 op: fold({
-                    in: Family,
-                    out: Family,
+                    in: family,
+                    out: family,
                     properties: ['identity:Missing']
                 })({
                     // @ts-expect-error -- binary fold handler receives 2nd arg at runtime; TS fold signature only models single-arg
@@ -510,8 +510,8 @@ describe('TypeError when companion element or operation is not found on ADT', ()
 describe('parseProperties rejects empty inter-op argument segments', () => {
     it('throws TypeError for identity with empty companion name (identity:)', () => {
         assert.throws(
-            () => data(() => ({ A: {} })).ops(({ fold, Family }) => ({
-                op: fold({ in: Family, out: Family, properties: ['identity:'] })({
+            () => data(() => ({ A: {} })).ops(({ fold, family }) => ({
+                op: fold({ in: family, out: family, properties: ['identity:'] })({
                     // @ts-expect-error -- binary fold handler receives 2nd arg at runtime
                     A({}: Record<string, never>, other: unknown): unknown { return other; }
                 })
@@ -522,8 +522,8 @@ describe('parseProperties rejects empty inter-op argument segments', () => {
 
     it('throws TypeError for inverse with empty via segment (inverse::Zero)', () => {
         assert.throws(
-            () => data(() => ({ A: {} })).ops(({ fold, Family }) => ({
-                op: fold({ in: Family, out: Family, properties: ['inverse::Zero'] })({
+            () => data(() => ({ A: {} })).ops(({ fold, family }) => ({
+                op: fold({ in: family, out: family, properties: ['inverse::Zero'] })({
                     // @ts-expect-error -- binary fold handler receives 2nd arg at runtime
                     A({}: Record<string, never>, other: unknown): unknown { return other; }
                 })
@@ -534,8 +534,8 @@ describe('parseProperties rejects empty inter-op argument segments', () => {
 
     it('throws TypeError for inverse with empty element segment (inverse:negate:)', () => {
         assert.throws(
-            () => data(() => ({ A: {} })).ops(({ fold, Family }) => ({
-                op: fold({ in: Family, out: Family, properties: ['inverse:negate:'] })({
+            () => data(() => ({ A: {} })).ops(({ fold, family }) => ({
+                op: fold({ in: family, out: family, properties: ['inverse:negate:'] })({
                     // @ts-expect-error -- binary fold handler receives 2nd arg at runtime
                     A({}: Record<string, never>, other: unknown): unknown { return other; }
                 })

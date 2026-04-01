@@ -3,14 +3,14 @@ import assert from 'node:assert/strict';
 import { data } from '../index.mjs';
 
 // Define ADTs once and share across all tests
-const Pair = data(({ T, U }) => ({
-    MakePair: { first: T, second: U }
+const Pair = data(_ => ({
+    MakePair: { first: Object, second: Object }
 }));
 
-const List = data(({ Family, T }) => ({
+const List = data(family => ({
     Nil: {},
-    Cons: { head: T, tail: Family(T) }
-})).ops(({ fold, unfold, map, merge, Family, T }) => ({
+    Cons: { head: Object, tail: family }
+})).ops(({ fold, unfold, map, merge, family }) => ({
     zip: fold({})({
         Nil() { return []; },
         // @ts-expect-error -- binary fold handler receives 2nd arg at runtime; TS fold signature only models single-arg
@@ -18,23 +18,16 @@ const List = data(({ Family, T }) => ({
             if (!ys || ys.constructor.name === 'Nil')
                 return [];
 
-            const PairType = Pair({
-                T: typeof head === 'number' ? Number
-                    : typeof head === 'string' ? String : Object,
-                U: typeof ys.head === 'number' ? Number
-                    : typeof ys.head === 'string' ? String : Object
-            });
-
             return [
-                PairType.MakePair({ first: head, second: ys.head }),
+                Pair.MakePair({ first: head, second: ys.head }),
                 ...tail(ys.tail)
             ];
         }
     })
 }));
 
-const NumList = List({ T: Number }),
-    StrList = List({ T: String });
+const NumList = List,
+    StrList = List;
 
 describe('Binary Operations with Fold', () => {
     describe('Zip Operation', () => {

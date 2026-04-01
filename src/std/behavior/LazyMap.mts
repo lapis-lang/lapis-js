@@ -15,29 +15,30 @@ import { Functor, Foldable, type Monoid } from '../protocols/index.mjs';
 type LazyMapSelf = { lookup: (k: unknown) => unknown; has: (k: unknown) => boolean; size: number };
 type FoldMapOpts = { monoid: InstanceOf<typeof Monoid>; f: (v: unknown) => unknown; keys: unknown[] };
 
-const LazyMap = behavior(({ T, U }) => ({
+const LazyMap = behavior(_ => ({
     [satisfies]: [Functor, Foldable],
     // lookup is parametric: in K → out V|undefined
-    lookup: { in: T, out: U },
-    has: { in: T, out: Boolean },
+    lookup: { in: Object, out: Object },
+    has: { in: Object, out: Boolean },
     size: Number
-})).ops(({ unfold, fold, map, Self }) => ({
+})).ops(({ unfold, fold, map, self }) => ({
     // ── Constructors ─────────────────────────────────────────────────────
     // FromEntries(entries): build from array of [key, value] pairs
-    FromEntries: unfold({ in: Array, out: Self })({
+    FromEntries: unfold({ in: Array, out: self })({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        lookup: (entries: any) => (key: unknown) => {
+        lookup: (entries: any): ((key: object) => object) => (key: unknown): object => {
             const pair = (entries as [unknown, unknown][]).find(([k]) => k === key);
-            return pair ? pair[1] : undefined;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            return (pair ? pair[1] : undefined) as any;
         },
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        has: (entries: any) => (key: unknown) =>
+        has: (entries: any): ((key: object) => boolean) => (key: unknown): boolean =>
             (entries as [unknown, unknown][]).some(([k]) => k === key),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         size: (entries: any) => (entries as unknown[]).length
     }),
     // FromObject(obj): build from a plain object
-    FromObject: unfold({ in: Object, out: Self })({
+    FromObject: unfold({ in: Object, out: self })({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         lookup: (obj: any) => (key: unknown) =>
             Object.prototype.hasOwnProperty.call(obj, key as string) ? obj[key as string] : undefined,
@@ -51,7 +52,7 @@ const LazyMap = behavior(({ T, U }) => ({
     // map with 2-arg transform → method: myMap.fmap(f)
     fmap: map({})({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        U: (v: unknown, f: any) => f(v)
+        lookup: (v: unknown, f: any) => f(v)
     }),
     // ── Foldable: foldMap ────────────────────────────────────────────────
     // Fold over all values with a monoid

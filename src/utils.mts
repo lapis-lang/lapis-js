@@ -34,24 +34,8 @@ export function hasSymbolProp(obj: unknown, sym: symbol): boolean {
     return obj != null && (typeof obj === 'object' || typeof obj === 'function') && sym in obj;
 }
 
-// Symbols for parameterized ADT/Behavior instances
-export const IsParameterizedInstance: unique symbol = Symbol('IsParameterizedInstance');
-export type IsParameterizedInstance = typeof IsParameterizedInstance;
-
-export const ParentADTSymbol: unique symbol = Symbol('ParentADT');
-export type ParentADTSymbol = typeof ParentADTSymbol;
-
-export const TypeArgsSymbol: unique symbol = Symbol('TypeArgs');
-export type TypeArgsSymbol = typeof TypeArgsSymbol;
-
 export const VariantDeclSymbol: unique symbol = Symbol('VariantDecl');
 export type VariantDeclSymbol = typeof VariantDeclSymbol;
-
-export const TypeParamSymbol: unique symbol = Symbol('TypeParam');
-export type TypeParamSymbol = typeof TypeParamSymbol;
-
-export const SortNameSymbol: unique symbol = Symbol('SortName');
-export type SortNameSymbol = typeof SortNameSymbol;
 
 /**
  * Symbol for storing handler maps on transformers and observers.

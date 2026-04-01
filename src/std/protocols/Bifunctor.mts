@@ -10,9 +10,9 @@
 
 import { protocol } from '../../index.mjs';
 
-const Bifunctor = protocol(({ Family, map }) => ({
+const Bifunctor = protocol(({ family, map }) => ({
     bimap: map({
-        out: Family,
+        out: family,
         properties: ['identity', 'composition']
     })
 }));

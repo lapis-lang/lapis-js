@@ -13,15 +13,15 @@
 import { behavior, satisfies } from '../../index.mjs';
 import { Functor } from '../protocols/index.mjs';
 
-const Stream = behavior(({ Self, T }) => ({
+const Stream = behavior(self => ({
     [satisfies]: [Functor],
-    head: T,
-    tail: Self(T)
-})).ops(({ unfold, fold, map, Self }) => ({
+    head: Object,
+    tail: self
+})).ops(({ unfold, fold, map, self }) => ({
 
     // ── Constructors ─────────────────────────────────────────────────────
     // From({ value, next }): where next(v) produces the next value
-    From: unfold({ in: Object, out: Self })({
+    From: unfold({ in: Object, out: self })({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         head: (seed: any) => seed.value,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -29,7 +29,7 @@ const Stream = behavior(({ Self, T }) => ({
     }),
 
     // Constant({ value }): infinite stream of value
-    Constant: unfold({ in: Object, out: Self })({
+    Constant: unfold({ in: Object, out: self })({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         head: (seed: any) => seed.value,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -37,9 +37,11 @@ const Stream = behavior(({ Self, T }) => ({
     }),
 
     // Nats: natural numbers starting from n
-    Nats: unfold({ in: Number, out: Self })({
-        head: (n: unknown) => n,
-        tail: (n: unknown) => (n as number) + 1
+    Nats: unfold({ in: Number, out: self })({
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        head: (n: any) => n,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        tail: (n: any) => (n as number) + 1
     }),
 
     // take(n): collect n elements into an Array
@@ -52,12 +54,12 @@ const Stream = behavior(({ Self, T }) => ({
     // map with 2-arg transform → installed as method: stream.fmap(f)
     fmap: map({})({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        T: (x: unknown, f: any) => f(x)
+        head: (x: unknown, f: any) => f(x)
     }),
 
     // ── Applicative: Pure lifts a value into a constant stream ────────────
     // Pure({ value }): same as Constant
-    Pure: unfold({ in: Object, out: Self })({
+    Pure: unfold({ in: Object, out: self })({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         head: (seed: any) => seed.value,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -66,7 +68,7 @@ const Stream = behavior(({ Self, T }) => ({
 
     // apply: Applicative ap — given a Stream<fn> and Stream<val>, zip element-wise
     // Called as: Stream.Apply({ fns: streamOfFns, vals: streamOfVals })
-    Apply: unfold({ in: Object, out: Self })({
+    Apply: unfold({ in: Object, out: self })({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         head: (seed: any) => seed.fns.head(seed.vals.head),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any

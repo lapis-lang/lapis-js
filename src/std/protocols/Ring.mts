@@ -12,16 +12,16 @@
 import { protocol, extend } from '../../index.mjs';
 import { Semiring } from './Semiring.mjs';
 
-const Ring = protocol(({ Family, fold, map }) => ({
+const Ring = protocol(({ family, fold, map }) => ({
     [extend]: Semiring,
     negate: map({
-        out: Family,
+        out: family,
         properties: ['involutory']
     }),
     // Re-declare add to attach the inverse law (negate is the via-operation).
     add: fold({
-        in: Family,
-        out: Family,
+        in: family,
+        out: family,
         properties: ['inverse:negate:Zero']
     })
 }));

@@ -8,10 +8,10 @@
 
 import { protocol } from '../../index.mjs';
 
-const Semigroup = protocol(({ Family, fold }) => ({
+const Semigroup = protocol(({ family, fold }) => ({
     combine: fold({
-        in: Family,
-        out: Family,
+        in: family,
+        out: family,
         properties: ['associative']
     })
 }));

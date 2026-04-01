@@ -15,10 +15,10 @@ describe('Contracts: Fault-Tolerant Fold', () => {
         it('should recover per-node during list traversal', () => {
             const rescueLog: string[] = [];
 
-            const List = data(({ Family }) => ({
+            const List = data(family => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family }
-            })).ops(({ fold, unfold, map, merge, Family }) => ({
+                Cons: { head: Number, tail: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
                 safeSum: fold({
                     out: Number,
                     rescue: (_self, error, _args) => {
@@ -59,11 +59,11 @@ describe('Contracts: Fault-Tolerant Fold', () => {
         it('should recover from errors in tree sub-nodes', () => {
             let rescueCount = 0;
 
-            const Expr = data(({ Family }) => ({
+            const Expr = data(family => ({
                 Lit: { value: Number },
-                Add: { left: Family, right: Family },
-                Div: { left: Family, right: Family }
-            })).ops(({ fold, unfold, map, merge, Family }) => ({
+                Add: { left: family, right: family },
+                Div: { left: family, right: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
                 eval: fold({
                     out: Number,
                     rescue: (_self, _error, _args) => {
@@ -97,11 +97,11 @@ describe('Contracts: Fault-Tolerant Fold', () => {
         it('should handle nested rescue in a complex tree', () => {
             let rescueCount = 0;
 
-            const Expr = data(({ Family }) => ({
+            const Expr = data(family => ({
                 Lit: { value: Number },
-                Add: { left: Family, right: Family },
-                Div: { left: Family, right: Family }
-            })).ops(({ fold, unfold, map, merge, Family }) => ({
+                Add: { left: family, right: family },
+                Div: { left: family, right: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
                 eval: fold({
                     out: Number,
                     rescue: (_self, error) => {
@@ -135,10 +135,10 @@ describe('Contracts: Fault-Tolerant Fold', () => {
 
     describe('Rescue with partial results', () => {
         it('should produce partial result when some nodes fail', () => {
-            const List = data(({ Family }) => ({
+            const List = data(family => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family }
-            })).ops(({ fold, unfold, map, merge, Family }) => ({
+                Cons: { head: Number, tail: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
                 safeToArray: fold({
                     out: Array,
                     rescue: () => [] // on failure, return empty array as fallback

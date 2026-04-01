@@ -5,10 +5,10 @@ import { data, invariant, DemandsError } from '../index.mjs';
 describe('Contracts: Demands (Preconditions)', () => {
     describe('Fold demands', () => {
         it('should pass when demand is satisfied', () => {
-            const List = data(({ Family }) => ({
+            const List = data(family => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family }
-            })).ops(({ fold, unfold, map, merge, Family }) => ({
+                Cons: { head: Number, tail: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
                 sum: fold({
                     out: Number,
                     demands: (self) => self !== null && self !== undefined
@@ -23,10 +23,10 @@ describe('Contracts: Demands (Preconditions)', () => {
         });
 
         it('should throw DemandsError when demand fails', () => {
-            const Stack = data(({ Family }) => ({
+            const Stack = data(family => ({
                 Empty: {},
-                Push: { value: Number, rest: Family }
-            })).ops(({ fold, unfold, map, merge, Family }) => ({
+                Push: { value: Number, rest: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
                 size: fold({ out: Number })({
                     Empty() { return 0; },
                     Push({ rest }) { return 1 + rest; }
@@ -90,13 +90,13 @@ describe('Contracts: Demands (Preconditions)', () => {
 
     describe('Unfold demands', () => {
         it('should check demands on unfold seed', () => {
-            const List = data(({ Family }) => ({
+            const List = data(family => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family }
-            })).ops(({ fold, unfold, map, merge, Family }) => ({
+                Cons: { head: Number, tail: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
                 Range: unfold({
                     in: Number,
-                    out: Family,
+                    out: family,
                     demands: (_self, n) => typeof n === 'number' && n >= 0
                 })({
                     Nil: (n) => n <= 0 ? {} : null,

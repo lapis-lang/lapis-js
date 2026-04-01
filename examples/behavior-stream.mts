@@ -11,43 +11,43 @@ import { behavior } from '../src/index.mjs';
 // Example 1: Basic Stream with Simple Observers and Continuations
 // =============================================================================
 
-const Stream = behavior(({ Self, T }) => ({
-        head: T,
-        tail: Self(T)
-    })).ops(({ unfold, Self, T }) => ({
-        From: unfold({ in: Number, out: Self })({
+const Stream = behavior(self => ({
+        head: Object,
+        tail: self
+    })).ops(({ unfold, self }) => ({
+        From: unfold({ in: Number, out: self })({
             head: (n) => n,
             tail: (n) => n + 1
         }),
-        Constant: unfold({ in: Number, out: Self })({
+        Constant: unfold({ in: Number, out: self })({
             head: (n) => n,
             tail: (n) => n
         }),
-        Range: unfold({ in: { start: Number, end: Number }, out: Self })({
+        Range: unfold({ in: { start: Number, end: Number }, out: self })({
             head: ({ start }) => start,
             tail: ({ start, end }) => start < end ? { start: start + 1, end } : { start: end, end }
         })
     })),
 
-    // Instantiate for numbers
-    StreamNum = Stream({ T: Number });
+    // Use directly
+    StreamNum = Stream;
 
 console.log('\n=== Basic Stream Examples ===');
 
 // Natural numbers starting from 0
-const nums = StreamNum.From(0);
+const nums: any = StreamNum.From(0);
 console.log('nums.head:', nums.head);              // 0
 console.log('nums.tail.head:', nums.tail.head);    // 1
 console.log('nums.tail.tail.head:', nums.tail.tail.head); // 2
 
 // Constant stream of ones
-const ones = StreamNum.Constant(1);
+const ones: any = StreamNum.Constant(1);
 console.log('ones.head:', ones.head);              // 1
 console.log('ones.tail.head:', ones.tail.head);    // 1
 console.log('ones.tail.tail.head:', ones.tail.tail.head); // 1
 
 // Range stream
-const range = StreamNum.Range({ start: 5, end: 10 });
+const range: any = StreamNum.Range({ start: 5, end: 10 });
 console.log('range.head:', range.head);            // 5
 console.log('range.tail.head:', range.tail.head);  // 6
 
@@ -55,19 +55,19 @@ console.log('range.tail.head:', range.tail.head);  // 6
 // Example 2: Stream with Parametric Observers
 // =============================================================================
 
-const StreamWithNth = behavior(({ Self, T }) => ({
-        head: T,
-        tail: Self(T),
-        nth: { in: Number, out: T }
-    })).ops(({ unfold, Self }) => ({
-        From: unfold({ in: Number, out: Self })({
+const StreamWithNth = behavior(self => ({
+        head: Object,
+        tail: self,
+        nth: { in: Number, out: Object }
+    })).ops(({ unfold, self }) => ({
+        From: unfold({ in: Number, out: self })({
             head: (n) => n,
             tail: (n) => n + 1,
             nth: (n) => (index) => n + index
         })
     })),
 
-    StreamNumNth = StreamWithNth({ T: Number });
+    StreamNumNth = StreamWithNth;
 
 console.log('\n=== Parametric Observer Example ===');
 
@@ -80,11 +80,11 @@ console.log('numsWithNth.nth(100):', numsWithNth.nth(100)); // 100
 // Example 3: Fibonacci Stream
 // =============================================================================
 
-const FibStream = behavior(({ Self }) => ({
+const FibStream = behavior(self => ({
     head: Number,
-    tail: Self
-})).ops(({ unfold, Self }) => ({
-    Create: unfold({ in: { a: Number, b: Number }, out: Self })({
+    tail: self
+})).ops(({ unfold, self }) => ({
+    Create: unfold({ in: { a: Number, b: Number }, out: self })({
         head: ({ a }) => a,
         tail: ({ a, b }) => ({ a: b, b: a + b })
     })
@@ -92,7 +92,7 @@ const FibStream = behavior(({ Self }) => ({
 
 console.log('\n=== Fibonacci Stream ===');
 
-const fib = FibStream.Create({ a: 0, b: 1 });
+const fib: any = FibStream.Create({ a: 0, b: 1 });
 console.log('fib[0]:', fib.head);                    // 0
 console.log('fib[1]:', fib.tail.head);               // 1
 console.log('fib[2]:', fib.tail.tail.head);          // 1
@@ -103,12 +103,12 @@ console.log('fib[4]:', fib.tail.tail.tail.tail.head); // 3
 // Example 4: Infinite Binary Tree
 // =============================================================================
 
-const Tree = behavior(({ Self }) => ({
+const Tree = behavior(self => ({
     value: Number,
-    left: Self,
-    right: Self
-})).ops(({ unfold, Self }) => ({
-    Create: unfold({ in: Number, out: Self })({
+    left: self,
+    right: self
+})).ops(({ unfold, self }) => ({
+    Create: unfold({ in: Number, out: self })({
         value: (n) => n,
         left: (n) => n * 2,
         right: (n) => n * 2 + 1
@@ -117,7 +117,7 @@ const Tree = behavior(({ Self }) => ({
 
 console.log('\n=== Infinite Binary Tree ===');
 
-const tree = Tree.Create(1);
+const tree: any = Tree.Create(1);
 console.log('tree.value:', tree.value);                    // 1
 console.log('tree.left.value:', tree.left.value);          // 2
 console.log('tree.right.value:', tree.right.value);        // 3
@@ -132,11 +132,11 @@ console.log('tree.right.right.value:', tree.right.right.value); // 7
 
 console.log('\n=== Lazy Evaluation and Memoization ===');
 
-const LazyStream = behavior(({ Self }) => ({
+const LazyStream = behavior(self => ({
         head: Number,
-        tail: Self
-    })).ops(({ unfold, Self }) => ({
-        Create: unfold({ in: Number, out: Self })({
+        tail: self
+    })).ops(({ unfold, self }) => ({
+        Create: unfold({ in: Number, out: self })({
             head: (n) => {
                 console.log(`  Computing head for seed ${n}`);
                 return n;
@@ -158,11 +158,11 @@ console.log('  lazy.head =', lazy.head);
 
 // Continuations are memoized — log line appears only once despite two accesses:
 console.log('\nFirst access to tail:');
-const tail1 = lazy.tail;
+const tail1: any = lazy.tail;
 console.log('  lazy.tail.head =', tail1.head);
 
 console.log('Second access to tail (memoized — no log line above):');
-const tail2 = lazy.tail;
+const tail2: any = lazy.tail;
 console.log('  tail1 === tail2:', tail1 === tail2);  // true (memoized)
 
 // =============================================================================
@@ -191,11 +191,11 @@ console.log(`  [Console.read] Got: "${input}"`);
 // Example 7: Multiple Seed Transformations
 // =============================================================================
 
-const PowerStream = behavior(({ Self }) => ({
+const PowerStream = behavior(self => ({
     head: Number,
-    tail: Self
-})).ops(({ unfold, Self }) => ({
-    Create: unfold({ in: { base: Number, exp: Number }, out: Self })({
+    tail: self
+})).ops(({ unfold, self }) => ({
+    Create: unfold({ in: { base: Number, exp: Number }, out: self })({
         head: ({ base, exp }) => Math.pow(base, exp),
         tail: ({ base, exp }) => ({ base, exp: exp + 1 })
     })

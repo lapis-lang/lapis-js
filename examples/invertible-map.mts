@@ -12,32 +12,32 @@
 
 import { data } from '@lapis-lang/lapis-js';
 
-const TempList = data(({ Family, T }) => ({
+const TempList = data(family => ({
     Nil: {},
-    Cons: { head: T, tail: Family(T) }
-})).ops(({ fold, map, merge, Family, T }) => ({
-    toFahrenheit: map({ out: Family(Number) })({
-        T: (c: number) => c * 9 / 5 + 32
+    Cons: { head: Number, tail: family }
+})).ops(({ fold, map, merge, family }) => ({
+    toFahrenheit: map({ out: family })({
+        head: (c: number) => c * 9 / 5 + 32
     }),
-    toCelsius: map({ out: Family(Number), inverse: 'toFahrenheit' })({
-        T: (f: number) => (f - 32) * 5 / 9
+    toCelsius: map({ out: family, inverse: 'toFahrenheit' })({
+        head: (f: number) => (f - 32) * 5 / 9
     }),
-    double: map({ out: Family(Number) })({
-        T: (x: number) => x * 2
+    double: map({ out: family })({
+        head: (x: number) => x * 2
     }),
-    halve: map({ out: Family(Number), inverse: 'double' })({
-        T: (x: number) => x / 2
+    halve: map({ out: family, inverse: 'double' })({
+        head: (x: number) => x / 2
     }),
-    increment: map({ out: Family(Number) })({
-        T: (x: number) => x + 1
+    increment: map({ out: family })({
+        head: (x: number) => x + 1
     }),
     toArray: fold({ out: Array })({
         Nil() { return []; },
-        Cons({ head, tail }) { return [head, ...tail]; }
+        Cons({ head, tail }: any) { return [head, ...tail]; }
     }),
     sum: fold({ out: Number })({
         Nil() { return 0; },
-        Cons({ head, tail }) { return (head as number) + tail; }
+        Cons({ head, tail }: any) { return (head as number) + tail; }
     }),
     convertAndScale: merge('toFahrenheit', 'toCelsius', 'double'),
     roundTrip: merge('double', 'halve'),
@@ -46,7 +46,7 @@ const TempList = data(({ Family, T }) => ({
     combined: merge('double', 'halve', 'increment', 'double', 'sum')
 }));
 
-const Temps = TempList({ T: Number });
+const Temps = TempList;
 const readings = Temps.Cons(0, Temps.Cons(20, Temps.Cons(37, Temps.Cons(100, Temps.Nil))));
 
 console.log('=== Constructor-Time Fusion ===\n');

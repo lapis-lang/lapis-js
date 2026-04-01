@@ -8,35 +8,33 @@
  */
 
 import { data, satisfies } from '../../index.mjs';
-import { Functor, Applicative, Monad, Foldable, Monoid, Eq, Ord } from '../protocols/index.mjs';
+import { Functor, Applicative, Monad, Foldable, Monoid } from '../protocols/index.mjs';
 
-const Maybe = data(({ Family: _Family, T }) => ({
+const Maybe = data(_ => ({
     [satisfies]: [
         Functor, Applicative, Monad, Foldable,
-        Monoid,
-        Eq({ T: Eq }),
-        Ord({ T: Ord })
+        Monoid
     ],
     Nothing: {},
-    Just: { value: T }
-})).ops(({ fold, unfold, map, Family, T }) => ({
+    Just: { value: Object }
+})).ops(({ fold, unfold, map, family }) => ({
 
     // ── Functor ──────────────────────────────────────────────────────────────
     // T handler has 2 params → hasExtraParams=true → fmap installed as method
-    fmap: map({ out: Family })({
-        T: (x: unknown, f: (a: unknown) => unknown) => f(x)
+    fmap: map({ out: family })({
+        value: (x: unknown, f: (a: unknown) => unknown) => f(x)
     }),
 
     // ── Monoid (first non-Nothing) ────────────────────────────────────────
-    Identity: unfold({ out: Family })({
+    Identity: unfold({ out: family })({
         Nothing: () => ({}),
         Just:    () => null
     }),
     combine: fold({
-        in: Family,
-        out: Family
+        in: family,
+        out: family
     })({
-        // @ts-expect-error — binary fold handler (extra arg from in: Family)
+        // @ts-expect-error — binary fold handler (extra arg from in: family)
         Nothing(_ctx: unknown, other: unknown) { return other; },
         Just()                                 { return this; }
     }),
@@ -52,39 +50,39 @@ const Maybe = data(({ Family: _Family, T }) => ({
 
     // ── Applicative ───────────────────────────────────────────────────────
     // Pure(x) → Just(x)
-    Pure: unfold({ in: Object, out: Family })({
+    Pure: unfold({ in: Object, out: family })({
         Nothing: () => null,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         Just: (value: any) => ({ value })
     }),
     // this.apply(mf): apply wrapped function mf to this wrapped value
-    apply: fold({ in: Family, out: Family })({
+    apply: fold({ in: family, out: family })({
         // @ts-expect-error — binary fold handler
         Nothing(_ctx: unknown, _mf: unknown) {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            return (Family(T) as any).Nothing;
+            return (family as any).Nothing;
         },
         // @ts-expect-error — binary fold handler
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         Just({ value }: any, mf: any) {
             if (mf !== null && mf !== undefined && 'value' in mf && typeof mf.value === 'function')
                 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                return (Family(T) as any).Just({ value: mf.value(value) });
+                return (family as any).Just({ value: mf.value(value) });
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            return (Family(T) as any).Nothing;
+            return (family as any).Nothing;
         }
     }),
 
     // ── Monad ────────────────────────────────────────────────────────────
-    flatMap: fold({ in: Object, out: Family })({
+    flatMap: fold({ in: Object, out: family })({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        Nothing(_ctx: unknown, _f: unknown) { return (Family(T) as any).Nothing; },
+        Nothing(_ctx: unknown, _f: unknown) { return (family as any).Nothing; },
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         Just({ value }: any, f: any)        { return f(value); }
     }),
 
     // ── Eq (conditional: T must satisfy Eq) ──────────────────────────────
-    equals: fold({ in: Family, out: Boolean })({
+    equals: fold({ in: family, out: Boolean })({
         // @ts-expect-error — binary fold handler
         Nothing(_ctx: unknown, other: unknown) {
             return other !== null && other !== undefined &&
@@ -103,7 +101,7 @@ const Maybe = data(({ Family: _Family, T }) => ({
 
     // ── Ord (conditional: T must satisfy Ord) ─────────────────────────────
     // Nothing < Just for any T; Just compares by value.
-    compare: fold({ in: Family, out: Number })({
+    compare: fold({ in: family, out: Number })({
         // @ts-expect-error — binary fold handler
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         Nothing(_ctx: unknown, other: any) {

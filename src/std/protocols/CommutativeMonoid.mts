@@ -10,11 +10,11 @@
 import { protocol, extend } from '../../index.mjs';
 import { Monoid } from './Monoid.mjs';
 
-const CommutativeMonoid = protocol(({ Family, fold, unfold: _unfold }) => ({
+const CommutativeMonoid = protocol(({ family, fold, unfold: _unfold }) => ({
     [extend]: Monoid,
     combine: fold({
-        in: Family,
-        out: Family,
+        in: family,
+        out: family,
         properties: ['commutative']
     })
 }));

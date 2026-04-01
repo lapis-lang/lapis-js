@@ -15,7 +15,8 @@ import { Maybe } from '../std/data/Maybe.mjs';
 // ── List foldMap ──────────────────────────────────────────────────────────────
 
 describe('structured fold input (foldMap)', () => {
-    const NumList = List({ T: Number });
+    // List accepts any head value (head: Object), so use it directly
+    const NumList = List;
 
     // A monoid that collects values into an array — arrays are Objects,
     // so they pass the `out: Object` return-type guard.
@@ -79,7 +80,8 @@ describe('structured fold input (foldMap)', () => {
 // ── Maybe foldMap ─────────────────────────────────────────────────────────────
 
 describe('structured fold input (Maybe.foldMap)', () => {
-    const NumMaybe = Maybe({ T: Number });
+    // Maybe accepts any value (value: Object), so use it directly
+    const NumMaybe = Maybe;
 
     // Array monoid: Identity is [] (an Object), combine concatenates arrays.
     const ArrayM = {

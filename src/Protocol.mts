@@ -26,7 +26,7 @@ import {
     type PropertyEntry
 } from './operations.mjs';
 
-import { TypeParamSymbol, installOperation, extractParamNames } from './utils.mjs';
+import { installOperation } from './utils.mjs';
 import {
     type ContractSpec,
     resolveContracts,
@@ -35,12 +35,6 @@ import {
     checkEnsures,
     tryRescue
 } from './contracts.mjs';
-
-// ---- Symbols ----------------------------------------------------------------
-
-/** Brands values returned by a callable protocol (conditional conformance). */
-export const ConditionalConformanceSymbol: unique symbol = Symbol('ConditionalConformance');
-export type ConditionalConformanceSymbol = typeof ConditionalConformanceSymbol;
 
 // ---- Conformance registry ---------------------------------------------------
 
@@ -97,7 +91,7 @@ export interface ProtocolOpSpec {
     defaultBody: ((...args: unknown[]) => unknown) | null;
 }
 
-/** A protocol object — callable to produce a conditional conformance spec. */
+/** A protocol object. */
 export interface ProtocolLike<Ops = unknown> {
     [ProtocolSymbol]: true;
     [LapisTypeSymbol]: true;
@@ -112,8 +106,6 @@ export interface ProtocolLike<Ops = unknown> {
     readonly _type: Ops;
     /** All required operation names → their specs. Includes inherited ops. */
     requiredOps: Map<string, ProtocolOpSpec>;
-    /** Type parameter names declared by the protocol (e.g. "T", "U"). */
-    requiredTypeParams: Set<string>;
     /**
      * All parent protocols declared via `[extend]` (may be an array for
      * multi-parent protocol inheritance). Empty array when no parents.
@@ -126,27 +118,15 @@ export interface ProtocolLike<Ops = unknown> {
     parentProtocol: ProtocolLike | null;
     /** Protocol-level invariant predicate, or null. */
     invariantFn: ((type: unknown) => boolean) | null;
-    /** When called with a constraint map, produces a ConditionalConformance. */
-    (constraints?: Record<string, ProtocolLike>): ConditionalConformance;
     /** ADT instanceof Protocol checks via the conformance registry. */
     [Symbol.hasInstance](instance: unknown): boolean;
 }
 
-/** Returned by calling a protocol: `Ordered({ T: Ordered })`. */
-export interface ConditionalConformance {
-    [ConditionalConformanceSymbol]: true;
-    protocol: ProtocolLike;
-    constraints: Record<string, ProtocolLike>;
-}
-
 /**
  * An entry in the `protocols` list on a parsed declaration.
- * Either unconditional (`[satisfies]: [Monoid]`) or conditional
- * (`[satisfies]: [Ordered({ T: Ordered })]`).
+ * Unconditional only: `[satisfies]: [Monoid]`.
  */
-export type ProtocolEntry =
-    | { protocol: ProtocolLike; conditional: false }
-    | { protocol: ProtocolLike; conditional: true; constraints: Record<string, ProtocolLike> };
+export type ProtocolEntry = { protocol: ProtocolLike; conditional: false };
 
 // ---- Type guards ------------------------------------------------------------
 
@@ -155,15 +135,6 @@ export function isProtocol(value: unknown): value is ProtocolLike {
     return (
         typeof value === 'function' &&
         (value as unknown as Record<symbol, unknown>)[ProtocolSymbol] === true
-    );
-}
-
-/** Returns true if `value` is a conditional conformance spec from calling a protocol. */
-export function isConditionalConformance(value: unknown): value is ConditionalConformance {
-    return (
-        value !== null &&
-        typeof value === 'object' &&
-        (value as Record<symbol, unknown>)[ConditionalConformanceSymbol] === true
     );
 }
 
@@ -276,18 +247,10 @@ function protocolMerge(...names: string[]): Record<string | symbol, unknown> {
  * Reference equality suffices for concrete types (Boolean, Number, …).
  * Each `protocol()` call creates its own `Family` marker, so any two
  * FamilyRef objects are treated as semantically identical.
- * Type-parameter markers `{ [TypeParamSymbol]: name }` are equal when their
- * names match, so two parent protocols that both use `T` in an op spec
- * are not falsely flagged as incompatible during diamond resolution.
  */
 function typeRefEqual(a: unknown, b: unknown): boolean {
     if (a === b) return true;
     if (isFamilyRefSpec(a) && isFamilyRefSpec(b)) return true;
-    if (a !== null && b !== null && typeof a === 'object' && typeof b === 'object' &&
-            TypeParamSymbol in a && TypeParamSymbol in b) {
-        return (a as Record<symbol, unknown>)[TypeParamSymbol] ===
-               (b as Record<symbol, unknown>)[TypeParamSymbol];
-    }
     return false;
 }
 
@@ -345,7 +308,7 @@ function extractWildcard(entry: Record<string | symbol, unknown>): ((...args: un
  */
 /** Context passed to the `protocol()` declaration callback. */
 export interface ProtocolDeclContext {
-    readonly Family: FamilyRefCallable;
+    readonly family: FamilyRefCallable;
     /** `fold` with `in` → method fold; `fold` without `in` → getter fold. */
     readonly fold: <S extends Record<string | symbol, unknown>>(specObj: S) =>
     S extends { in: unknown } ? MethodFoldSpecEntry : GetterFoldSpecEntry;
@@ -366,22 +329,15 @@ export function protocol<R extends Record<string | symbol, unknown>>(
 ): ProtocolLike<ProtocolOps<R>>;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function protocol(callback: (ctx: ProtocolDeclContext) => Record<string | symbol, unknown>): ProtocolLike<any> {
-    // Extract type param names from the callback signature
-    const typeParamNames = extractParamNames(callback as (...args: unknown[]) => unknown, s => /^[A-Z]$/.test(s));
-
-    // Build the Family marker and type-param objects for the callback context
+    // Build the Family marker for the callback context
     const Family = createFamily() as unknown as FamilyRefCallable;
-    const typeParamObjects: Record<string, object> = {};
-    for (const name of typeParamNames)
-        typeParamObjects[name] = { [TypeParamSymbol]: name };
 
     const ctx: Record<string, unknown> = {
-        Family,
+        family: Family,
         fold: protocolFold as unknown as (specObj: Record<string | symbol, unknown>) => FoldSpecEntry,
         unfold: protocolUnfold as unknown as (specObj: Record<string | symbol, unknown>) => UnfoldSpecEntry,
         map: protocolMap as unknown as (specObj: Record<string | symbol, unknown>) => MapSpecEntry,
-        merge: protocolMerge as SpecOnlyMergeFn,
-        ...typeParamObjects
+        merge: protocolMerge as SpecOnlyMergeFn
     };
 
     const result = callback(ctx as ProtocolDeclContext);
@@ -522,38 +478,22 @@ export function protocol(callback: (ctx: ProtocolDeclContext) => Record<string |
 
     // ---- Build the protocol object ------------------------------------------
 
-    // The protocol is itself callable: Ordered({ T: Ordered }) returns a
-    // ConditionalConformance value.
-    function protocolFn(
-        constraints?: Record<string, ProtocolLike>
-    ): ConditionalConformance {
-        return {
-            [ConditionalConformanceSymbol]: true,
-            protocol: thisProtocol,
-            constraints: constraints ?? {}
-        };
+    // The protocol is a callable function so that isProtocol() (typeof check)
+    // continues to work. Calling it throws — protocols are no longer callable
+    // for conditional conformance.
+    function protocolFn(): never {
+        throw new TypeError(
+            'Protocols are not callable. Use [satisfies]: [Protocol] to declare conformance directly.'
+        );
     }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const thisProtocol = protocolFn as unknown as ProtocolLike<any>;
 
-    // Union type param names from all parents with the child's own.
-    const allTypeParams = new Set(typeParamNames);
-    for (const parent of parentProtocols) {
-        for (const tp of parent.requiredTypeParams)
-            allTypeParams.add(tp);
-    }
-
     Object.defineProperties(thisProtocol, {
         [ProtocolSymbol]: { value: true, writable: false, enumerable: false, configurable: false },
         [LapisTypeSymbol]: { value: true, writable: false, enumerable: false, configurable: false },
         requiredOps: { value: requiredOps, writable: false, enumerable: true, configurable: false },
-        requiredTypeParams: {
-            value: allTypeParams,
-            writable: false,
-            enumerable: true,
-            configurable: false
-        },
         parentProtocols: {
             value: Object.freeze([...parentProtocols]),
             writable: false,
@@ -612,7 +552,6 @@ export function gatherProtocolContracts(
 ): ContractSpec | null {
     let combined: ContractSpec | null = null;
     for (const entry of protocols) {
-        if (entry.conditional) continue;
         const opContracts = entry.protocol.requiredOps.get(opName)?.contracts ?? null;
         if (!opContracts) continue;
         combined = combined !== null ? composeContracts(combined, opContracts) : opContracts;
@@ -657,7 +596,6 @@ export function gatherProtocolSpec(
 ): Record<string, unknown> | null {
     let merged: Record<string, unknown> | null = null;
     for (const entry of protocols) {
-        if (entry.conditional) continue;
         const opEntry = entry.protocol.requiredOps.get(opName);
         if (!opEntry) continue;
         const opSpec: Record<string, unknown> = opEntry.spec;
@@ -777,9 +715,17 @@ export function validateProtocolConformance(
     proto: ProtocolLike,
     adtLabel: string,
     type?: unknown,
-    prototype?: object
+    prototype?: object,
+    opKinds?: ReadonlyMap<string, string>
 ): void {
     for (const [opName, opSpec] of proto.requiredOps) {
+        const localKind = opKinds?.get(opName);
+        if (localKind !== undefined && localKind !== opSpec.kind) {
+            throw new TypeError(
+                `${adtLabel} operation '${opName}' has kind '${localKind}' but protocol requires kind '${opSpec.kind}'`
+            );
+        }
+
         if (!adtOpNames.has(opName)) {
             if (prototype !== undefined && opName in prototype) {
                 // Op exists on the prototype chain (inherited from a parent ADT/behavior).
@@ -849,12 +795,12 @@ export function applyUnconditionalProtocols(
     opNames: Set<string>,
     protocols: ProtocolEntry[],
     label: string,
-    type?: unknown
+    type?: unknown,
+    opKinds?: ReadonlyMap<string, string>
 ): void {
     for (const entry of protocols) {
-        if (entry.conditional) continue;
         // Pass `prototype` so that missing ops with defaultBody are auto-installed.
-        validateProtocolConformance(opNames, entry.protocol, label, type, prototype);
+        validateProtocolConformance(opNames, entry.protocol, label, type, prototype, opKinds);
         registerConformance(prototype, entry.protocol);
     }
 }
@@ -865,27 +811,18 @@ export function applyUnconditionalProtocols(
  *
  * Accepts:
  * - A single ProtocolLike
- * - A single ConditionalConformance
- * - An array mixing both
+ * - An array of ProtocolLike values
  */
 export function parseProtocolEntries(raw: unknown): ProtocolEntry[] {
     if (!raw) return [];
 
     const items = Array.isArray(raw) ? raw : [raw];
     return items.map((item): ProtocolEntry => {
-        if (isConditionalConformance(item)) {
-            return {
-                protocol: item.protocol,
-                conditional: true,
-                constraints: item.constraints
-            };
-        }
         if (isProtocol(item))
             return { protocol: item, conditional: false };
 
         throw new TypeError(
-            `[satisfies] entries must be protocols or conditional conformances, ` +
-            `got ${typeof item}`
+            `[satisfies] entries must be protocols, got ${typeof item}`
         );
     });
 }

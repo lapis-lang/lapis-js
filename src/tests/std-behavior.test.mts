@@ -6,6 +6,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { behavior, extend } from '../index.mjs';
 
 import { Stream } from '../std/behavior/Stream.mjs';
 import { LazyMap } from '../std/behavior/LazyMap.mjs';
@@ -50,9 +51,19 @@ describe('Stream', () => {
     });
 
     it('Apply zips a function stream with a value stream', () => {
-        const fns = Stream.From({ value: (x: number) => x * 2, next: () => (x: number) => x + 100 });
-        const vals = Stream.Nats(1);
-        const result = Stream.Apply({ fns, vals });
+        const NumStream = behavior(_ => ({
+            [extend]: Stream,
+            head: Number
+        }));
+
+        const FnStream = behavior(_ => ({
+            [extend]: Stream,
+            head: Function
+        }));
+
+        const fns = FnStream.From({ value: (x: number) => x * 2, next: () => (x: number) => x + 100 });
+        const vals = NumStream.Nats(1);
+        const result = NumStream.Apply({ fns, vals });
         // head: (x => x*2)(1) = 2
         // next fn: x => x+100, next val: 2 → head: (x => x+100)(2) = 102
         assert.strictEqual(result.head, 2);

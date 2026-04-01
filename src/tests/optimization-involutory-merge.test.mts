@@ -1,5 +1,5 @@
 /**
- * Involutory Self-Cancellation in Merge
+ * Involutory self-cancellation in Merge
  *
  * Tests that `fuseInversePairs` eliminates adjacent identical involutory
  * operations from a merge pipeline at ADT definition time.
@@ -43,13 +43,13 @@ function makeFlag(onFlip: () => void) {
     return data(() => ({
         Off: {},
         On: {}
-    })).ops(({ fold, merge, Family }) => ({
+    })).ops(({ fold, merge, family }) => ({
         flip: fold({
-            out: Family,
+            out: family,
             properties: ['involutory']
         })({
-            Off() { onFlip(); return Family.On; },
-            On()  { onFlip(); return Family.Off; }
+            Off() { onFlip(); return family.On; },
+            On()  { onFlip(); return family.Off; }
         }),
         isOn: fold({ out: Boolean })({
             Off() { return false; },
@@ -183,22 +183,22 @@ describe('Involutory: cascaded / partial cancellation runs', () => {
  *   tripleNegateSum  — merge('negate','negate','negate','sum') → after cancel: ['negate','sum']
  */
 function makeNegateList(onNegate: () => void) {
-    return data(({ Family, T }) => ({
+    return data(family => ({
         Nil:  {},
-        Cons: { head: T, tail: Family(T) }
-    })).ops(({ fold, map, merge, Family, T }) => ({
-        negate: map({ out: Family, properties: ['involutory'] })({
-            T: (x: unknown) => { onNegate(); return -(x as number) as unknown; }
+        Cons: { head: Object, tail: family }
+    })).ops(({ fold, map, merge, family }) => ({
+        negate: map({ out: family, properties: ['involutory'] })({
+            head: (x: unknown) => { onNegate(); return -(x as number) as unknown; }
         }),
         sum: fold({ out: Number })({
             Nil() { return 0; },
-            Cons({ head, tail }: { head: number; tail: number }) {
+            Cons({ head, tail }: any) {
                 return head + tail;
             }
         }),
         doubleNegateSum: merge('negate', 'negate', 'sum'),
         tripleNegateSum: merge('negate', 'negate', 'negate', 'sum')
-    }))({ T: Number });
+    }));
 }
 
 // =============================================================================
@@ -249,23 +249,23 @@ describe('Involutory: non-involutory ops are not cancelled', () => {
 
     it('merge(double,double,sum) — double has no involutory, NOT cancelled', () => {
         let doubleCalls = 0;
-        const List = data(({ Family, T }) => ({
+        const List = data(family => ({
             Nil: {},
-            Cons: { head: T, tail: Family(T) }
-        })).ops(({ fold, map, merge, Family, T }) => ({
-            double: map({ out: Family })({
-                T: (x: unknown) => { doubleCalls++; return (x as number) * 2 as unknown; }
+            Cons: { head: Object, tail: family }
+        })).ops(({ fold, map, merge, family }) => ({
+            double: map({ out: family })({
+                head: (x: unknown) => { doubleCalls++; return (x as number) * 2 as unknown; }
             }),
             sum: fold({ out: Number })({
                 Nil() { return 0; },
-                Cons({ head, tail }: { head: number; tail: number }) {
+                Cons({ head, tail }: any) {
                     return head + tail;
                 }
             }),
             // no involutory property → pair NOT eliminated → double is called
             doubleDoubleSum: merge('double', 'double', 'sum')
         }));
-        const NumList = List({ T: Number });
+        const NumList = List;
         const list = NumList.Cons({ head: 1, tail: NumList.Nil });
 
         doubleCalls = 0;
@@ -283,16 +283,16 @@ describe('Involutory: non-involutory ops are not cancelled', () => {
 describe('Involutory: ordinary inverse pair is still eliminated by existing mechanism', () => {
 
     it('merge(inc, dec) — explicit inverse pair collapses to identity', () => {
-        const Counter = data(({ Family }) => ({
+        const Counter = data(family => ({
             Zero: {},
-            Succ: { pred: Family }
-        })).ops(({ fold, map, merge, Family }) => ({
-            inc: map({ out: Family, inverse: 'dec' })({
-                Family: (x: unknown) => Family.Succ({ pred: x })
+            Succ: { pred: family }
+        })).ops(({ fold, map, merge, family }) => ({
+            inc: map({ out: family, inverse: 'dec' })({
+                family: (x: unknown) => family.Succ({ pred: x })
             }),
-            dec: map({ out: Family })({
-                Family: (x: unknown) =>
-                    (x as Record<string, unknown>)['pred'] as unknown ?? Family.Zero
+            dec: map({ out: family })({
+                family: (x: unknown) =>
+                    (x as Record<string, unknown>)['pred'] as unknown ?? family.Zero
             }),
             // inc then dec = identity (explicit inverse, not involutory)
             incDec: merge('inc', 'dec'),

@@ -5,17 +5,17 @@ import { data } from '../index.mjs';
 describe('Merge Operation (Deforestation)', () => {
     describe('Hylomorphism (unfold + fold)', () => {
         test('should merge unfold and fold into factorial without intermediate list', () => {
-            const List = data(({ Family }) => ({
+            const List = data(family => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family }
-            })).ops(({ fold, unfold, map, merge, Family }) => ({
-                Counter: unfold({ in: Number, out: Family })({
+                Cons: { head: Number, tail: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
+                Counter: unfold({ in: Number, out: family })({
                     Nil: (n) => (n <= 0 ? {} : null),
                     Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
                 }),
                 product: fold({ out: Number })({
                     Nil() { return 1; },
-                    Cons({ head, tail }) { return head * tail; }
+                    Cons({ head, tail }: any) { return head * tail; }
                 }),
                 Factorial: merge('Counter', 'product')
             }));
@@ -29,17 +29,17 @@ describe('Merge Operation (Deforestation)', () => {
 
         test('should validate PascalCase name for merged unfold operations', () => {
             assert.throws(
-                () => data(({ Family }) => ({
+                () => data(family => ({
                     Nil: {},
-                    Cons: { head: Number, tail: Family }
-                })).ops(({ fold, unfold, map, merge, Family }) => ({
-                    Counter: unfold({ in: Number, out: Family })({
+                    Cons: { head: Number, tail: family }
+                })).ops(({ fold, unfold, map, merge, family }) => ({
+                    Counter: unfold({ in: Number, out: family })({
                         Nil: (n) => (n <= 0 ? {} : null),
                         Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
                     }),
                     sum: fold({ out: Number })({
                         Nil() { return 0; },
-                        Cons({ head, tail }) { return head + tail; }
+                        Cons({ head, tail }: any) { return head + tail; }
                     }),
                     triangular: merge('Counter', 'sum')
                 })),
@@ -48,17 +48,17 @@ describe('Merge Operation (Deforestation)', () => {
         });
 
         test('should compute sum using hylomorphism', () => {
-            const List = data(({ Family }) => ({
+            const List = data(family => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family }
-            })).ops(({ fold, unfold, map, merge, Family }) => ({
-                CountUp: unfold({ in: Number, out: Family })({
+                Cons: { head: Number, tail: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
+                CountUp: unfold({ in: Number, out: family })({
                     Nil: (n) => (n <= 0 ? {} : null),
                     Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
                 }),
                 sum: fold({ out: Number })({
                     Nil() { return 0; },
-                    Cons({ head, tail }) { return head + tail; }
+                    Cons({ head, tail }: any) { return head + tail; }
                 }),
                 Triangular: merge('CountUp', 'sum')
             }));
@@ -73,21 +73,21 @@ describe('Merge Operation (Deforestation)', () => {
 
     describe('Paramorphism (map + fold)', () => {
         test('should merge map and fold operations', () => {
-            const List = data(({ Family, T }) => ({
+            const List = data(family => ({
                 Nil: {},
-                Cons: { head: T, tail: Family }
-            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
-                double: map({ out: Family })({
-                    T: (x) => x * 2
+                Cons: { head: Object, tail: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
+                double: map({ out: family })({
+                    head: (x) => x * 2
                 }),
                 sum: fold({ out: Number })({
                     Nil() { return 0; },
-                    Cons({ head, tail }) { return head + tail; }
+                    Cons({ head, tail }: any) { return head + tail; }
                 }),
                 doubleSum: merge('double', 'sum')
             }));
 
-            const NumList = List({ T: Number });
+            const NumList = List;
 
             const list = NumList.Cons(1, NumList.Cons(2, NumList.Cons(3, NumList.Nil)));
 
@@ -98,21 +98,21 @@ describe('Merge Operation (Deforestation)', () => {
 
     describe('Apomorphism (unfold + map)', () => {
         test('should merge unfold and map operations', () => {
-            const List = data(({ Family, T }) => ({
+            const List = data(family => ({
                 Nil: {},
-                Cons: { head: T, tail: Family }
-            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
-                CountDown: unfold({ in: Number, out: Family })({
+                Cons: { head: Object, tail: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
+                CountDown: unfold({ in: Number, out: family })({
                     Nil: (n) => (n <= 0 ? {} : null),
                     Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
                 }),
-                square: map({ out: Family })({
-                    T: (x) => x * x
+                square: map({ out: family })({
+                    head: (x) => x * x
                 }),
                 SquareCountDown: merge('CountDown', 'square')
             }));
 
-            const NumList = List({ T: Number });
+            const NumList = List;
             const result: any = NumList.SquareCountDown(5);
 
             // Should generate [5, 4, 3, 2, 1] then square each: [25, 16, 9, 4, 1]
@@ -126,24 +126,24 @@ describe('Merge Operation (Deforestation)', () => {
 
     describe('Multiple Maps Pipeline (map + map + fold)', () => {
         test('should merge multiple map operations with fold', () => {
-            const List = data(({ Family, T }) => ({
+            const List = data(family => ({
                 Nil: {},
-                Cons: { head: T, tail: Family }
-            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
-                double: map({ out: Family })({
-                    T: (x) => x * 2
+                Cons: { head: Object, tail: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
+                double: map({ out: family })({
+                    head: (x) => x * 2
                 }),
-                increment: map({ out: Family })({
-                    T: (x) => x + 1
+                increment: map({ out: family })({
+                    head: (x) => x + 1
                 }),
                 product: fold({ out: Number })({
                     Nil() { return 1; },
-                    Cons({ head, tail }) { return head * tail; }
+                    Cons({ head, tail }: any) { return head * tail; }
                 }),
                 transformProduct: merge('double', 'increment', 'product')
             }));
 
-            const NumList = List({ T: Number });
+            const NumList = List;
             const list = NumList.Cons(1, NumList.Cons(2, NumList.Cons(3, NumList.Nil)));
 
             // Transform each: (1*2)+1=3, (2*2)+1=5, (3*2)+1=7
@@ -154,25 +154,25 @@ describe('Merge Operation (Deforestation)', () => {
 
     describe('Full Pipeline (unfold + map + fold)', () => {
         test('should merge unfold, map, and fold operations', () => {
-            const List = data(({ Family, T }) => ({
+            const List = data(family => ({
                 Nil: {},
-                Cons: { head: T, tail: Family }
-            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
-                Range: unfold({ in: Number, out: Family })({
+                Cons: { head: Object, tail: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
+                Range: unfold({ in: Number, out: family })({
                     Nil: (n) => (n <= 0 ? {} : null),
                     Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
                 }),
-                square: map({ out: Family })({
-                    T: (x) => x * x
+                square: map({ out: family })({
+                    head: (x) => x * x
                 }),
                 sum: fold({ out: Number })({
                     Nil() { return 0; },
-                    Cons({ head, tail }) { return head + tail; }
+                    Cons({ head, tail }: any) { return head + tail; }
                 }),
                 SumOfSquares: merge('Range', 'square', 'sum')
             }));
 
-            const NumList = List({ T: Number });
+            const NumList = List;
 
             // Sum of squares: 1^2 + 2^2 + 3^2 + 4^2 + 5^2 = 1 + 4 + 9 + 16 + 25 = 55
             assert.strictEqual(NumList.SumOfSquares(5), 55);
@@ -181,28 +181,28 @@ describe('Merge Operation (Deforestation)', () => {
         });
 
         test('should merge unfold with multiple maps and fold', () => {
-            const List = data(({ Family, T }) => ({
+            const List = data(family => ({
                 Nil: {},
-                Cons: { head: T, tail: Family }
-            })).ops(({ fold, unfold, map, merge, Family, T }) => ({
-                Range: unfold({ in: Number, out: Family })({
+                Cons: { head: Object, tail: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
+                Range: unfold({ in: Number, out: family })({
                     Nil: (n) => (n <= 0 ? {} : null),
                     Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
                 }),
-                double: map({ out: Family })({
-                    T: (x) => x * 2
+                double: map({ out: family })({
+                    head: (x) => x * 2
                 }),
-                increment: map({ out: Family })({
-                    T: (x) => x + 1
+                increment: map({ out: family })({
+                    head: (x) => x + 1
                 }),
                 sum: fold({ out: Number })({
                     Nil() { return 0; },
-                    Cons({ head, tail }) { return head + tail; }
+                    Cons({ head, tail }: any) { return head + tail; }
                 }),
                 ComplexPipeline: merge('Range', 'double', 'increment', 'sum')
             }));
 
-            const NumList = List({ T: Number });
+            const NumList = List;
 
             // For n=3: [3,2,1] -> double -> [6,4,2] -> increment -> [7,5,3] -> sum = 15
             assert.strictEqual(NumList.ComplexPipeline(3), 15);
@@ -212,15 +212,15 @@ describe('Merge Operation (Deforestation)', () => {
     describe('Validation', () => {
         test('should reject merging multiple unfolds', () => {
             assert.throws(
-                () => data(({ Family }) => ({
+                () => data(family => ({
                     Nil: {},
-                    Cons: { head: Number, tail: Family }
-                })).ops(({ fold, unfold, map, merge, Family }) => ({
-                    Counter1: unfold({ in: Number, out: Family })({
+                    Cons: { head: Number, tail: family }
+                })).ops(({ fold, unfold, map, merge, family }) => ({
+                    Counter1: unfold({ in: Number, out: family })({
                         Nil: (n) => (n <= 0 ? {} : null),
                         Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
                     }),
-                    Counter2: unfold({ in: Number, out: Family })({
+                    Counter2: unfold({ in: Number, out: family })({
                         Nil: (n) => (n <= 0 ? {} : null),
                         Cons: (n) => (n > 0 ? { head: n * 2, tail: n - 1 } : null)
                     }),
@@ -232,10 +232,10 @@ describe('Merge Operation (Deforestation)', () => {
 
         test('should reject merging multiple folds', () => {
             assert.throws(
-                () => data(({ Family }) => ({
+                () => data(family => ({
                     Nil: {},
-                    Cons: { head: Number, tail: Family }
-                })).ops(({ fold, unfold, map, merge, Family }) => ({
+                    Cons: { head: Number, tail: family }
+                })).ops(({ fold, unfold, map, merge, family }) => ({
                     sum: fold({ out: Number })({
                         Nil() { return 0; },
                         Cons({ head, tail }) { return head + tail; }
@@ -252,10 +252,10 @@ describe('Merge Operation (Deforestation)', () => {
 
         test('should reject unknown operation names', () => {
             assert.throws(
-                () => data(({ Family }) => ({
+                () => data(family => ({
                     Nil: {},
-                    Cons: { head: Number, tail: Family }
-                })).ops(({ fold, unfold, map, merge, Family }) => ({
+                    Cons: { head: Number, tail: family }
+                })).ops(({ fold, unfold, map, merge, family }) => ({
                     sum: fold({ out: Number })({
                         Nil() { return 0; },
                         Cons({ head, tail }) { return head + tail; }
@@ -268,10 +268,10 @@ describe('Merge Operation (Deforestation)', () => {
 
         test('should reject empty operation names array', () => {
             assert.throws(
-                () => data(({ Family }) => ({
+                () => data(family => ({
                     Nil: {},
-                    Cons: { head: Number, tail: Family }
-                })).ops(({ fold, unfold, map, merge, Family }) => ({
+                    Cons: { head: Number, tail: family }
+                })).ops(({ fold, unfold, map, merge, family }) => ({
                     invalid: merge()
                 })),
                 /requires a non-empty array of operation names/
@@ -280,10 +280,10 @@ describe('Merge Operation (Deforestation)', () => {
 
         test('should reject single operation merge', () => {
             assert.throws(
-                () => data(({ Family }) => ({
+                () => data(family => ({
                     Nil: {},
-                    Cons: { head: Number, tail: Family }
-                })).ops(({ fold, unfold, map, merge, Family }) => ({
+                    Cons: { head: Number, tail: family }
+                })).ops(({ fold, unfold, map, merge, family }) => ({
                     sum: fold({ out: Number })({
                         Nil() { return 0; },
                         Cons({ head, tail }) { return head + tail; }
@@ -297,11 +297,11 @@ describe('Merge Operation (Deforestation)', () => {
 
     describe('Performance (Deforestation)', () => {
         test('merged operation should be faster than sequential calls', () => {
-            const List = data(({ Family }) => ({
+            const List = data(family => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family }
-            })).ops(({ fold, unfold, map, merge, Family }) => ({
-                Counter: unfold({ in: Number, out: Family })({
+                Cons: { head: Number, tail: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
+                Counter: unfold({ in: Number, out: family })({
                     Nil: (n) => (n <= 0 ? {} : null),
                     Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
                 }),
@@ -344,11 +344,11 @@ describe('Merge Operation (Deforestation)', () => {
             // This test demonstrates deforestation conceptually
             // In a real-world scenario, we'd measure heap allocation
 
-            const List = data(({ Family }) => ({
+            const List = data(family => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family }
-            })).ops(({ fold, unfold, map, merge, Family }) => ({
-                Range: unfold({ in: Number, out: Family })({
+                Cons: { head: Number, tail: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
+                Range: unfold({ in: Number, out: family })({
                     Nil: (n) => (n <= 0 ? {} : null),
                     Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
                 }),
@@ -377,11 +377,11 @@ describe('Merge Operation (Deforestation)', () => {
 
     describe('Fluent API', () => {
         test('should return ADT for chaining after merge', () => {
-            const List = data(({ Family }) => ({
+            const List = data(family => ({
                 Nil: {},
-                Cons: { head: Number, tail: Family }
-            })).ops(({ fold, unfold, map, merge, Family }) => ({
-                Counter: unfold({ in: Number, out: Family })({
+                Cons: { head: Number, tail: family }
+            })).ops(({ fold, unfold, map, merge, family }) => ({
+                Counter: unfold({ in: Number, out: family })({
                     Nil: (n) => (n <= 0 ? {} : null),
                     Cons: (n) => (n > 0 ? { head: n, tail: n - 1 } : null)
                 }),

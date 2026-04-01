@@ -1,7 +1,7 @@
 /**
- * Tests for Family(T) resolution in fold handlers.
+ * Tests for family resolution in fold handlers.
  *
- * Verifies that fold handlers on parameterized ADTs can use Family(T) from
+ * Verifies that fold handlers on parameterized ADTs can use family from
  * the closure to construct instances of the current parameterized ADT without
  * hardcoding type arguments (e.g. Stack({ T: Number })).
  *
@@ -16,88 +16,88 @@ import { data, behavior } from '../index.mjs';
 // Data fold — parameterized ADT
 // =============================================================================
 
-describe('Family(T) in data fold handlers', () => {
-    test('parameterized fold handlers can construct instances via Family(T)', () => {
-        const Stack = data(({ Family, T }) => ({
+describe('family in data fold handlers', () => {
+    test('parameterized fold handlers can construct instances via family', () => {
+        const Stack = data(family => ({
             Empty: {},
-            Push: { value: T, rest: Family(T) }
-        })).ops(({ fold, unfold, map, merge, Family, T }) => ({
+            Push: { value: Object, rest: family }
+        })).ops(({ fold, unfold, map, merge, family }) => ({
             size: fold({ out: Number })({
                 Empty() { return 0; },
-                Push({ rest }: { rest: number }) { return 1 + rest; }
+                Push({ rest }: any) { return 1 + rest; }
             }),
-            append: fold({ in: T, out: Family })({
+            append: fold({ in: Object, out: family })({
                 Empty({}, val: unknown) {
-                    return (Family(T) as any).Push({ value: val, rest: (Family(T) as any).Empty });
+                    return (family as any).Push({ value: val, rest: (family as any).Empty });
                 },
-                Push({ rest }: { rest: (v: unknown) => unknown }, val: unknown) {
-                    return (Family(T) as any).Push({ value: this.value, rest: rest(val) });
+                Push({ rest }: any, val: unknown) {
+                    return (family as any).Push({ value: this.value, rest: rest(val) });
                 }
             }),
             toArray: fold({ out: Array })({
                 Empty() { return []; },
-                Push({ value, rest }: { value: unknown; rest: unknown[] }) {
+                Push({ value, rest }: any) {
                     return [value, ...rest];
                 }
             })
         }));
 
-        const NumStack = Stack({ T: Number });
+        const NumStack = Stack;
         const s = NumStack.Push({ value: 1, rest: NumStack.Push({ value: 2, rest: NumStack.Empty }) });
 
-        // append uses Family(T) — should work without hardcoding Stack(Number)
+        // append uses family — should work without hardcoding Stack(Number)
         const s2 = s.append(3);
         assert.deepStrictEqual(s2.toArray, [1, 2, 3]);
         assert.strictEqual(s2.size, 3);
     });
 
-    test('Family(T) works across different parameterizations', () => {
-        const Stack = data(({ Family, T }) => ({
+    test('family works across different parameterizations', () => {
+        const Stack = data(family => ({
             Empty: {},
-            Push: { value: T, rest: Family(T) }
-        })).ops(({ fold, unfold, map, merge, Family, T }) => ({
-            append: fold({ in: T, out: Family })({
+            Push: { value: Object, rest: family }
+        })).ops(({ fold, unfold, map, merge, family }) => ({
+            append: fold({ in: Object, out: family })({
                 Empty({}, val: unknown) {
-                    return (Family(T) as any).Push({ value: val, rest: (Family(T) as any).Empty });
+                    return (family as any).Push({ value: val, rest: (family as any).Empty });
                 },
-                Push({ rest }: { rest: (v: unknown) => unknown }, val: unknown) {
-                    return (Family(T) as any).Push({ value: this.value, rest: rest(val) });
+                Push({ rest }: any, val: unknown) {
+                    return (family as any).Push({ value: this.value, rest: rest(val) });
                 }
             }),
             toArray: fold({ out: Array })({
                 Empty() { return []; },
-                Push({ value, rest }: { value: unknown; rest: unknown[] }) {
+                Push({ value, rest }: any) {
                     return [value, ...rest];
                 }
             })
         }));
 
         // Number stack
-        const NumStack = Stack({ T: Number });
+        const NumStack = Stack;
         const ns = NumStack.Push({ value: 10, rest: NumStack.Empty });
         const ns2 = ns.append(20);
         assert.deepStrictEqual(ns2.toArray, [10, 20]);
 
         // String stack — same fold logic, different parameterization
-        const StrStack = Stack({ T: String });
+        const StrStack = Stack;
         const ss = StrStack.Push({ value: 'a', rest: StrStack.Empty });
         const ss2 = ss.append('b');
         assert.deepStrictEqual(ss2.toArray, ['a', 'b']);
     });
 
-    test('non-parameterized ADT fold handlers use Family variable in operation bodies', () => {
-        // For non-parameterized ADTs, handlers reference the Family variable
+    test('non-parameterized ADT fold handlers use family variable in operation bodies', () => {
+        // For non-parameterized ADTs, handlers reference the family variable
         // from the ops context to construct instances — same as parameterized ADTs.
-        const List = data(({ Family }) => ({
+        const List = data(family => ({
             Nil: {},
-            Cons: { head: Number, tail: Family }
-        })).ops(({ fold, unfold, map, merge, Family }) => ({
-            append: fold({ in: Number, out: Family })({
+            Cons: { head: Number, tail: family }
+        })).ops(({ fold, unfold, map, merge, family }) => ({
+            append: fold({ in: Number, out: family })({
                 Nil({}, val: number) {
-                    return Family.Cons({ head: val, tail: Family.Nil });
+                    return family.Cons({ head: val, tail: family.Nil });
                 },
                 Cons({ tail }: { tail: (v: number) => unknown }, val: number) {
-                    return Family.Cons({ head: this.head, tail: tail(val) });
+                    return family.Cons({ head: this.head, tail: tail(val) });
                 }
             }),
             toArray: fold({ out: Array })({
@@ -113,64 +113,64 @@ describe('Family(T) in data fold handlers', () => {
         assert.deepStrictEqual(list2.toArray, [1, 2, 3]);
     });
 
-    test('Family(T) in getter fold (no input params)', () => {
-        const Stack = data(({ Family, T }) => ({
+    test('family in getter fold (no input params)', () => {
+        const Stack = data(family => ({
             Empty: {},
-            Push: { value: T, rest: Family(T) }
-        })).ops(({ fold, unfold, map, merge, Family, T }) => ({
-            reversed: fold({ out: Family })({
-                // @ts-expect-error -- Family(T) resolves at runtime; TS cannot model variant properties on FamilyRefCallable
-                Empty() { return Family(T).Empty; },
+            Push: { value: Object, rest: family }
+        })).ops(({ fold, unfold, map, merge, family }) => ({
+            reversed: fold({ out: family })({
+                // @ts-expect-error -- family resolves at runtime; TS cannot model variant properties on FamilyRefCallable
+                Empty() { return family.Empty; },
                 // @ts-expect-error -- InstanceOf<FamilyRef> = never; runtime resolves correctly
                 Push({ rest }: { rest: unknown }) {
-                    // Simplified: just check Family(T) resolves correctly
+                    // Simplified: just check family resolves correctly
                     return rest;
                 }
             })
         }));
 
-        const NumStack = Stack({ T: Number });
+        const NumStack = Stack;
         const s = NumStack.Push({ value: 1, rest: NumStack.Empty });
-        // Should not throw — Family(T) resolves even in getter folds
+        // Should not throw — family resolves even in getter folds
         const r = s.reversed;
         assert.ok(r !== undefined);
     });
 
-    test('Family(T) does not interfere outside fold handlers', () => {
-        // Calling Family(T) outside a fold handler should still behave normally
-        // (Family(T) during declaration uses the marker as-is for field specs)
-        const Stack = data(({ Family, T }) => ({
+    test('family does not interfere outside fold handlers', () => {
+        // Calling family outside a fold handler should still behave normally
+        // (family during declaration uses the marker as-is for field specs)
+        const Stack = data(family => ({
             Empty: {},
-            Push: { value: T, rest: Family(T) }
-        })).ops(({ fold, unfold, map, merge, Family, T }) => ({
+            Push: { value: Object, rest: family }
+        })).ops(({ fold, unfold, map, merge, family }) => ({
             size: fold({ out: Number })({
                 Empty() { return 0; },
-                Push({ rest }: { rest: number }) { return 1 + rest; }
+                Push({ rest }: any) { return 1 + rest; }
             })
         }));
 
-        const NumStack = Stack({ T: Number });
+        const NumStack = Stack;
         const s = NumStack.Push({ value: 42, rest: NumStack.Empty });
         assert.strictEqual(s.size, 1);
         assert.strictEqual(s.value, 42);
     });
 
-    test('instances from Family(T) are instanceof the base ADT', () => {
-        const Stack = data(({ Family, T }) => ({
+    test('instances from family are instanceof the base ADT', () => {
+        const Stack = data(family => ({
             Empty: {},
-            Push: { value: T, rest: Family(T) }
-        })).ops(({ fold, unfold, map, merge, Family, T }) => ({
-            append: fold({ in: T, out: Family })({
+            Push: { value: Object, rest: family }
+        })).ops(({ fold, unfold, map, merge, family }) => ({
+            append: fold({ in: Object, out: family })({
                 Empty({}, val: unknown) {
-                    return (Family(T) as any).Push({ value: val, rest: (Family(T) as any).Empty });
+                    return (family as any).Push({ value: val, rest: (family as any).Empty });
                 },
-                Push({ rest }: { rest: (v: unknown) => unknown }, val: unknown) {
-                    return (Family(T) as any).Push({ value: this.value, rest: rest(val) });
+                Push({ rest }: any, val: unknown) {
+                    return (family as any).Push({ value: this.value, rest: rest(val) });
                 }
             })
         }));
 
-        const NumStack = Stack({ T: Number });
+        const NumStack = Stack;
         const s = NumStack.Push({ value: 1, rest: NumStack.Empty });
         const s2 = s.append(2);
 
@@ -180,16 +180,16 @@ describe('Family(T) in data fold handlers', () => {
 });
 
 // =============================================================================
-// Behavior fold — no Family(T) needed (included for completeness)
+// Behavior fold — no family needed (included for completeness)
 // =============================================================================
 
-describe('Behavior fold (no Family(T) needed)', () => {
+describe('Behavior fold (no family needed)', () => {
     test('behavior fold works normally (folds reduce, do not construct)', () => {
-        const Stream = behavior(({ Self, T }) => ({
-            head: T,
-            tail: Self(T)
-        })).ops(({ fold, unfold, map, merge, Self, T }) => ({
-            From: unfold({ in: Number, out: Self })({
+        const Stream = behavior(self => ({
+            head: Object,
+            tail: self
+        })).ops(({ fold, unfold, map, merge, self }) => ({
+            From: unfold({ in: Number, out: self })({
                 head: (n: number) => n,
                 tail: (n: number) => n + 1
             }),

@@ -4,10 +4,10 @@ import { relation, origin, destination } from '../index.mjs';
 
 // ---- Shared Ancestor relation for most tests ----
 
-const Ancestor = relation(({ Family }) => ({
+const Ancestor = relation(family => ({
     Direct: { from: String, to: String },
-    Transitive: { hop: Family, rest: Family }
-})).ops(({ fold, unfold, map, merge, origin, destination, Family }) => ({
+    Transitive: { hop: family, rest: family }
+})).ops(({ fold, unfold, map, merge, origin, destination, family }) => ({
     [origin]: fold({ out: String })({
         Direct: ({ from }) => from,
         Transitive: ({ hop }) => hop
@@ -204,11 +204,11 @@ describe('Relation — direct construction of leaf instances', () => {
 
 describe('Relation — multiple leaf variant construction', () => {
     // Relation with two leaf variants (e.g. different edge types)
-    const Graph = relation(({ Family }) => ({
+    const Graph = relation(family => ({
         Edge: { src: String, dst: String },
         BiEdge: { a: String, b: String },
-        Path: { first: Family, second: Family }
-    })).ops(({ fold, unfold, map, merge, origin, destination, Family }) => ({
+        Path: { first: family, second: family }
+    })).ops(({ fold, unfold, map, merge, origin, destination, family }) => ({
         [origin]: fold({ out: String })({
             Edge: ({ src }) => src,
             BiEdge: ({ a }) => a,
@@ -321,10 +321,10 @@ describe('Relation — runtime type validation', () => {
     test('relation() rejects redefinition of reserved operation names', () => {
         for (const name of ['closure', 'reachableFrom', 'reachingTo']) {
             assert.throws(
-                () => relation(({ Family }) => ({
+                () => relation(family => ({
                     Direct: { from: String, to: String },
-                    Transitive: { hop: Family, rest: Family }
-                })).ops(({ fold, unfold, map, merge, origin, destination, Family }) => ({
+                    Transitive: { hop: family, rest: family }
+                })).ops(({ fold, unfold, map, merge, origin, destination, family }) => ({
                     [origin]: fold({ out: String })({
                         Direct: ({ from }: any) => from,
                         Transitive: ({ hop }: any) => hop

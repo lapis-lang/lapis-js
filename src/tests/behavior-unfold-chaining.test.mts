@@ -10,19 +10,19 @@ import { behavior } from '../index.mjs';
 
 describe('Behavior - Unfold Chaining', () => {
     it('should support chaining multiple unfold operations', () => {
-        const Stream = behavior(({ Self, T }) => ({
-            head: T,
-            tail: Self(T)
-        })).ops(({ fold, unfold, map, merge, Self, T }) => ({
-            From: unfold({ in: Number, out: Self })({
+        const Stream = behavior(self => ({
+            head: Object,
+            tail: self
+        })).ops(({ fold, unfold, map, merge, self }) => ({
+            From: unfold({ in: Number, out: self })({
                 head: (n) => n,
                 tail: (n) => n + 1
             }),
-            Constant: unfold({ in: Number, out: Self })({
+            Constant: unfold({ in: Number, out: self })({
                 head: (n) => n,
                 tail: (n) => n
             }),
-            Range: unfold({ in: { start: Number, end: Number }, out: Self })({
+            Range: unfold({ in: { start: Number, end: Number }, out: self })({
                 head: ({ start }) => start,
                 tail: ({ start, end }) => ({ start: start + 1, end })
             })
@@ -48,12 +48,12 @@ describe('Behavior - Unfold Chaining', () => {
     });
 
     it('should support parametric observers in unfold', () => {
-        const Stream = behavior(({ Self, T }) => ({
-            head: T,
-            nth: { in: Number, out: T },
-            tail: Self(T)
-        })).ops(({ fold, unfold, map, merge, Self, T }) => ({
-            From: unfold({ in: Number, out: Self })({
+        const Stream = behavior(self => ({
+            head: Object,
+            nth: { in: Number, out: Object },
+            tail: self
+        })).ops(({ fold, unfold, map, merge, self }) => ({
+            From: unfold({ in: Number, out: self })({
                 head: (n) => n,
                 nth: (n) => (index) => n + index,
                 tail: (n) => n + 1
@@ -79,12 +79,12 @@ describe('Behavior - Unfold Chaining', () => {
 
     it('should support multiple parametric observers', () => {
         // Sensor: a getter + two parametric observers with different input shapes
-        const Sensor = behavior(({ Self }) => ({
+        const Sensor = behavior(self => ({
             value: Number,
             scale: { in: Number, out: Number },
             inRange: { in: { lo: Number, hi: Number }, out: Boolean }
-        })).ops(({ fold, unfold, map, merge, Self }) => ({
-            Create: unfold({ in: Number, out: Self })({
+        })).ops(({ fold, unfold, map, merge, self }) => ({
+            Create: unfold({ in: Number, out: self })({
                 value: (n) => n,
                 scale: (n) => (factor) => n * factor,
                 inRange: (n) => ({ lo, hi }) => n >= lo && n <= hi
@@ -109,15 +109,15 @@ describe('Behavior - Unfold Chaining', () => {
     });
 
     it('should maintain separate instances for different unfold operations', () => {
-        const Stream = behavior(({ Self }) => ({
+        const Stream = behavior(self => ({
             head: Number,
-            tail: Self
-        })).ops(({ fold, unfold, map, merge, Self }) => ({
-            From: unfold({ in: Number, out: Self })({
+            tail: self
+        })).ops(({ fold, unfold, map, merge, self }) => ({
+            From: unfold({ in: Number, out: self })({
                 head: (n) => n,
                 tail: (n) => n + 1
             }),
-            Constant: unfold({ in: Number, out: Self })({
+            Constant: unfold({ in: Number, out: self })({
                 head: (n) => n,
                 tail: (n) => n
             })
@@ -138,11 +138,11 @@ describe('Behavior - Unfold Chaining', () => {
     });
 
     it('should support unfold with complex seed transformations', () => {
-        const Fibonacci = behavior(({ Self }) => ({
+        const Fibonacci = behavior(self => ({
             current: Number,
-            next: Self
-        })).ops(({ fold, unfold, map, merge, Self }) => ({
-            From: unfold({ in: { a: Number, b: Number }, out: Self })({
+            next: self
+        })).ops(({ fold, unfold, map, merge, self }) => ({
+            From: unfold({ in: { a: Number, b: Number }, out: self })({
                 current: ({ a }) => a,
                 next: ({ a, b }) => ({ a: b, b: a + b })
             })
@@ -159,15 +159,15 @@ describe('Behavior - Unfold Chaining', () => {
     });
 
     it('should return behavior type for chaining after unfold', () => {
-        const Stream = behavior(({ Self }) => ({
+        const Stream = behavior(self => ({
             head: Number,
-            tail: Self
-        })).ops(({ fold, unfold, map, merge, Self }) => ({
-            From: unfold({ in: Number, out: Self })({
+            tail: self
+        })).ops(({ fold, unfold, map, merge, self }) => ({
+            From: unfold({ in: Number, out: self })({
                 head: (n) => n,
                 tail: (n) => n + 1
             }),
-            Zeros: unfold({ out: Self })({
+            Zeros: unfold({ out: self })({
                 head: () => 0,
                 tail: () => 0
             })

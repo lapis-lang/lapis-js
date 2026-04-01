@@ -7,17 +7,17 @@
  */
 import { data, invariant } from '@lapis-lang/lapis-js';
 
-const Stack = data(({ Family, T }) => ({
+const Stack = data(family => ({
     Empty: {},
     Push: {
         [invariant]: (self: { size: number }) => self.size >= 0,
-        value: T,
-        rest: Family(T)
+        value: Object,
+        rest: family
     }
-})).ops(({ fold, unfold, Family, T }) => ({
+})).ops(({ fold, unfold, family }) => ({
     size: fold({ out: Number })({
         Empty() { return 0; },
-        Push({ rest }) { return 1 + rest; }
+        Push({ rest }: any) { return 1 + rest; }
     }),
     pop: fold({
         out: Array,
@@ -35,8 +35,8 @@ const Stack = data(({ Family, T }) => ({
         Push({ value }) { return value; }
     }),
     append: fold({
-        in: T,
-        out: Family,
+        in: Object,
+        out: family,
         demands: (_self: unknown, val: unknown) => val !== undefined && val !== null,
         ensures: (_self: { size: number }, old: { size: number }, result: { size: number }) =>
             result.size === old.size + 1,
@@ -46,13 +46,9 @@ const Stack = data(({ Family, T }) => ({
             return retry(0);
         }
     })({
-        // Fold handlers use Family(T) to construct instances of the current
-        // parameterized ADT without hardcoding type arguments.
-        // @ts-expect-error -- Family(T) resolves at runtime via Proxy; TS cannot model variant properties on FamilyRefCallable
-        Empty({}, val) { return Family(T).Push({ value: val, rest: Family(T).Empty }); },
-        Push({ rest }: { rest: (val: unknown) => unknown }, val: unknown) {
-            // @ts-expect-error -- Family(T) resolves at runtime via Proxy
-            return Family(T).Push({ value: this.value, rest: rest(val) });
+        Empty({}, val) { return (family as any).Push({ value: val, rest: (family as any).Empty }); },
+        Push({ rest }: any, val: unknown) {
+            return (family as any).Push({ value: this.value, rest: rest(val) });
         }
     }),
     toArray: fold({
@@ -60,11 +56,11 @@ const Stack = data(({ Family, T }) => ({
         ensures: (_self: unknown, _old: unknown, result: unknown[]) => Array.isArray(result)
     })({
         Empty() { return []; },
-        Push({ value, rest }) { return [value, ...rest]; }
+        Push({ value, rest }: any) { return [value, ...rest]; }
     }),
     FromArray: unfold({
         in: Array,
-        out: Family(T),
+        out: family,
         demands: (_self: unknown, arr: unknown) => Array.isArray(arr)
     })({
         Empty: (arr) => (arr.length === 0 ? {} : null),
@@ -72,7 +68,7 @@ const Stack = data(({ Family, T }) => ({
     })
 }));
 
-const NumStack = Stack({ T: Number });
+const NumStack = Stack;
 
 console.log('=== Contracts: Stack Example ===\n');
 

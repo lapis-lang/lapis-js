@@ -33,10 +33,10 @@ import {
 /**
  * Ord-like protocol: declare `compare`, default `equals` from `compare`.
  */
-const Orderable = protocol(({ Family, fold: f }) => ({
-    compare: f({ in: Family, out: Number }),
+const Orderable = protocol(({ family, fold: f }) => ({
+    compare: f({ in: family, out: Number }),
     // Default: equals derived from compare (law theorem)
-    equals: f({ in: Family, out: Boolean })({
+    equals: f({ in: family, out: Boolean })({
         _: (ctx: any, other: unknown) => ctx.compare(other) === 0
     })
 }));
@@ -57,7 +57,7 @@ describe('ProtocolOpSpec defaultBody storage', () => {
     });
 
     it('spec-only form (no handler call) stores null defaultBody', () => {
-        const P = protocol(({ Family, fold: f }) => ({
+        const P = protocol(({ family, fold: f }) => ({
             size: f({ out: Number })
         }));
 
@@ -71,12 +71,12 @@ describe('ProtocolOpSpec defaultBody storage', () => {
 
 describe('default auto-installation', () => {
     it('equals is installed from default when not declared in .ops()', () => {
-        const Point = data(({ Family }) => ({
+        const Point = data(family => ({
             [satisfies]: Orderable,
             Point2D: { x: Number, y: Number }
-        })).ops(({ fold: f, Family }) => ({
+        })).ops(({ fold: f, family }) => ({
             // NOTE: only compare provided, equals should come from the default
-            compare: f({ in: Family, out: Number })({
+            compare: f({ in: family, out: Number })({
                 Point2D({ x, y }: any, other?: any) {
                     const o = other as { x: number; y: number };
                     const d = Math.hypot(x, y) - Math.hypot(o.x, o.y);
@@ -95,14 +95,14 @@ describe('default auto-installation', () => {
     });
 
     it('installed default is callable as a method', () => {
-        const P = protocol(({ Family, fold: f }) => ({
+        const P = protocol(({ family, fold: f }) => ({
             base: f({ out: Number }),
             derived: f({ in: Number, out: Number })({
                 _: (ctx: any, factor: any) => ctx.base * factor
             })
         }));
 
-        const MyData = data(({ Family }) => ({
+        const MyData = data(family => ({
             [satisfies]: P,
             Val: { n: Number }
         })).ops(({ fold: f }) => ({
@@ -121,22 +121,22 @@ describe('default auto-installation', () => {
 
 describe('user implementation shadows default', () => {
     it('user-provided equals takes precedence over default', () => {
-        const Eq = protocol(({ Family, fold: f }) => ({
-            compare: f({ in: Family, out: Number }),
-            equals: f({ in: Family, out: Boolean })({
+        const Eq = protocol(({ family, fold: f }) => ({
+            compare: f({ in: family, out: Number }),
+            equals: f({ in: family, out: Boolean })({
                 _: () => false // default always returns false
             })
         }));
 
-        const MyData = data(({ Family }) => ({
+        const MyData = data(family => ({
             [satisfies]: Eq,
             Item: { id: Number }
-        })).ops(({ fold: f, Family }) => ({
-            compare: f({ in: Family, out: Number })({
+        })).ops(({ fold: f, family }) => ({
+            compare: f({ in: family, out: Number })({
                 Item({ id }: any, other?: any) { return id - (other as { id: number }).id; }
             }),
             // User provides their own equals — must override the default
-            equals: f({ in: Family, out: Boolean })({
+            equals: f({ in: family, out: Boolean })({
                 Item({ id }: any, other?: any) { return id === (other as { id: number }).id; }
             })
         }));
@@ -155,7 +155,7 @@ describe('user implementation shadows default', () => {
 
 describe('getter default', () => {
     it('zero-arg fold default installed as a getter', () => {
-        const Describable = protocol(({ Family, fold: f }) => ({
+        const Describable = protocol(({ family, fold: f }) => ({
             label: f({ out: String }),
             // labelUpper defaults from label getter
             labelUpper: f({ out: String })({
@@ -163,7 +163,7 @@ describe('getter default', () => {
             })
         }));
 
-        const Tag = data(({ Family }) => ({
+        const Tag = data(family => ({
             [satisfies]: Describable,
             Tag: { name: String }
         })).ops(({ fold: f }) => ({
@@ -182,19 +182,19 @@ describe('getter default', () => {
 
 describe('default inherited through protocol extension', () => {
     it('grandchild protocol inherits defaults from grandparent', () => {
-        const Base = protocol(({ Family, fold: f }) => ({
+        const Base = protocol(({ family, fold: f }) => ({
             base: f({ out: Number }),
             derived: f({ out: Number })({
                 _: (ctx: any) => ctx.base + 1
             })
         }));
 
-        const Mid = protocol(({ Family, fold: f }) => ({
+        const Mid = protocol(({ family, fold: f }) => ({
             [extend]: Base,
             extra: f({ out: Boolean })
         }));
 
-        const Child = protocol(({ Family, fold: f }) => ({
+        const Child = protocol(({ family, fold: f }) => ({
             [extend]: Mid,
             childOp: f({ out: String })
         }));
@@ -204,19 +204,19 @@ describe('default inherited through protocol extension', () => {
     });
 
     it('conforming type gets default from grandparent protocol', () => {
-        const Base = protocol(({ Family, fold: f }) => ({
+        const Base = protocol(({ family, fold: f }) => ({
             base: f({ out: Number }),
             derived: f({ out: Number })({
                 _: (ctx: any) => ctx.base + 100
             })
         }));
 
-        const Mid = protocol(({ Family, fold: f }) => ({
+        const Mid = protocol(({ family, fold: f }) => ({
             [extend]: Base,
             extra: f({ out: Boolean })
         }));
 
-        const MyData = data(({ Family }) => ({
+        const MyData = data(family => ({
             [satisfies]: Mid,
             X: { v: Number }
         })).ops(({ fold: f }) => ({
@@ -236,7 +236,7 @@ describe('default inherited through protocol extension', () => {
 
 describe('map default', () => {
     it('map default (no `in`) is installed as a getter', () => {
-        const Scalable = protocol(({ Family, fold: f, map: m }) => ({
+        const Scalable = protocol(({ family, fold: f, map: m }) => ({
             raw: f({ out: Number }),
             // doubled: a no-arg map that doubles the raw value
             doubled: m({ out: Number })({
@@ -244,7 +244,7 @@ describe('map default', () => {
             })
         }));
 
-        const Box = data(({ Family }) => ({
+        const Box = data(family => ({
             [satisfies]: Scalable,
             Box: { n: Number }
         })).ops(({ fold: f }) => ({
@@ -263,7 +263,7 @@ describe('map default', () => {
 
 describe('multiple defaults on a single protocol', () => {
     it('all defaulted ops are installed for a conforming type', () => {
-        const MultiDefault = protocol(({ Family, fold: f }) => ({
+        const MultiDefault = protocol(({ family, fold: f }) => ({
             raw: f({ out: Number }),
             plus1: f({ out: Number })({
                 _: (ctx: any) => ctx.raw + 1
@@ -273,7 +273,7 @@ describe('multiple defaults on a single protocol', () => {
             })
         }));
 
-        const Num = data(({ Family }) => ({
+        const Num = data(family => ({
             [satisfies]: MultiDefault,
             Num: { n: Number }
         })).ops(({ fold: f }) => ({
@@ -292,22 +292,22 @@ describe('multiple defaults on a single protocol', () => {
 
 describe('default via multi-parent protocol', () => {
     it('default inherited from one parent is installed via multi-parent child protocol', () => {
-        const PA = protocol(({ Family, fold: f }) => ({
+        const PA = protocol(({ family, fold: f }) => ({
             base: f({ out: Number }),
             derived: f({ out: Number })({
                 _: (ctx: any) => ctx.base * 3
             })
         }));
 
-        const PB = protocol(({ Family, fold: f }) => ({
+        const PB = protocol(({ family, fold: f }) => ({
             extra: f({ out: Boolean })
         }));
 
-        const PAB = protocol(({ Family, fold: f }) => ({
+        const PAB = protocol(({ family, fold: f }) => ({
             [extend]: [PA, PB]
         }));
 
-        const MyData = data(({ Family }) => ({
+        const MyData = data(family => ({
             [satisfies]: PAB,
             X: { v: Number }
         })).ops(({ fold: f }) => ({
@@ -327,7 +327,7 @@ describe('default via multi-parent protocol', () => {
 
 describe('contract enforcement on protocol defaults', () => {
     it('demands predicate on default is checked before execution', () => {
-        const P = protocol(({ Family, fold: f }) => ({
+        const P = protocol(({ family, fold: f }) => ({
             base: f({ out: Number }),
             safe: f({
                 in: Number,
@@ -338,7 +338,7 @@ describe('contract enforcement on protocol defaults', () => {
             })
         }));
 
-        const T = data(({ Family }) => ({
+        const T = data(family => ({
             [satisfies]: P,
             Box: { n: Number }
         })).ops(({ fold: f }) => ({
@@ -351,7 +351,7 @@ describe('contract enforcement on protocol defaults', () => {
     });
 
     it('ensures predicate on default is checked after execution', () => {
-        const P = protocol(({ Family, fold: f }) => ({
+        const P = protocol(({ family, fold: f }) => ({
             base: f({ out: Number }),
             bounded: f({
                 in: Number,
@@ -363,7 +363,7 @@ describe('contract enforcement on protocol defaults', () => {
             })
         }));
 
-        const T = data(({ Family }) => ({
+        const T = data(family => ({
             [satisfies]: P,
             Box: { n: Number }
         })).ops(({ fold: f }) => ({
@@ -376,13 +376,13 @@ describe('contract enforcement on protocol defaults', () => {
     });
 
     it('input type mismatch on a default method throws TypeError', () => {
-        const P = protocol(({ Family, fold: f }) => ({
+        const P = protocol(({ family, fold: f }) => ({
             double: f({ in: Number, out: Number })({
                 _: (_ctx: any, n: any) => n * 2
             })
         }));
 
-        const T = data(({ Family }) => ({
+        const T = data(family => ({
             [satisfies]: P,
             Box: { n: Number }
         })).ops(({ fold: f }) => ({}));
@@ -399,8 +399,8 @@ describe('contract enforcement on protocol defaults', () => {
 describe('unfold default body rejection', () => {
     it('throws TypeError when a _ handler is provided for an unfold op', () => {
         assert.throws(
-            () => protocol(({ Family, unfold: u }) => ({
-                From: u({ out: Family })({ _: (ctx: any) => ctx })
+            () => protocol(({ family, unfold: u }) => ({
+                From: u({ out: family })({ _: (ctx: any) => ctx })
             })),
             (e: Error) =>
                 e instanceof TypeError &&
@@ -410,8 +410,8 @@ describe('unfold default body rejection', () => {
     });
 
     it('unfold op without _ handler stores null defaultBody', () => {
-        const P = protocol(({ Family, unfold: u }) => ({
-            From: u({ out: Family })
+        const P = protocol(({ family, unfold: u }) => ({
+            From: u({ out: family })
         }));
         assert.strictEqual(P.requiredOps.get('From')?.defaultBody, null);
     });
@@ -423,12 +423,12 @@ describe('unfold default body rejection', () => {
 
 describe('inherited operations satisfy protocol conformance', () => {
     it('child ADT does not throw when an inherited op satisfies a required op (no default)', () => {
-        const P = protocol(({ Family, fold: f }) => ({
+        const P = protocol(({ family, fold: f }) => ({
             eval: f({ out: Number }),
             size: f({ out: Number })  // required, no default
         }));
 
-        const Parent = data(({ Family }) => ({
+        const Parent = data(family => ({
             [satisfies]: P,
             Lit: { value: Number }
         })).ops(({ fold: f }) => ({
@@ -439,10 +439,10 @@ describe('inherited operations satisfy protocol conformance', () => {
         // Child re-declares eval for new variants but NOT size.
         // size is inherited from Parent — should satisfy protocol without throwing.
         assert.doesNotThrow(() =>
-            data(({ Family }) => ({
+            data(family => ({
                 [extend]: Parent,
                 [satisfies]: P,
-                Add: { left: Family, right: Family }
+                Add: { left: family, right: family }
             })).ops(({ fold: f }) => ({
                 eval: f({ out: Number })({ Add: ({ left, right }: any) => left + right })
                 // size intentionally omitted — inherited from Parent
@@ -455,12 +455,12 @@ describe('inherited operations satisfy protocol conformance', () => {
         // The parent ADT provides a real implementation that returns 99.
         // The child inherits that real implementation and must NOT have it replaced
         // by the protocol default.
-        const P = protocol(({ Family, fold: f }) => ({
+        const P = protocol(({ family, fold: f }) => ({
             eval: f({ out: Number }),
             size: f({ out: Number })({ _: () => -1 })  // default: -1
         }));
 
-        const Parent = data(({ Family }) => ({
+        const Parent = data(family => ({
             [satisfies]: P,
             Lit: { value: Number }
         })).ops(({ fold: f }) => ({
@@ -468,10 +468,10 @@ describe('inherited operations satisfy protocol conformance', () => {
             size: f({ out: Number })({ Lit: () => 99 })  // real impl: 99
         }));
 
-        const Child = data(({ Family }) => ({
+        const Child = data(family => ({
             [extend]: Parent,
             [satisfies]: P,
-            Add: { left: Family, right: Family }
+            Add: { left: family, right: family }
         })).ops(({ fold: f }) => ({
             eval: f({ out: Number })({ Add: ({ left, right }: any) => left + right })
             // size not re-declared — inherited from Parent

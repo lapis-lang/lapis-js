@@ -5,9 +5,9 @@ import { behaviorObservers } from '../BehaviorOps.mjs';
 
 describe('Behavior Stream', () => {
     it('should define Stream behavior type with head and tail observers', () => {
-        const Stream = behavior(({ Self, T }) => ({
-            head: T,
-            tail: Self
+        const Stream = behavior(self => ({
+            head: Object,
+            tail: self
         }));
 
         // Verify the behavior type was created
@@ -35,27 +35,24 @@ describe('Behavior Stream', () => {
         assert.strictEqual(tailObserver.isContinuation, true);
     });
 
-    it('should support parameterized Stream with type argument', () => {
-        const Stream = behavior(({ Self, T }) => ({
-            head: T,
-            tail: Self
+    it('should support Stream used as a subtype element type', () => {
+        const Stream = behavior(self => ({
+            head: Object,
+            tail: self
         }));
 
-        // Create parameterized Stream({ T: Number })
-        const NumberStream = Stream({ T: Number });
+        // Stream can be used directly — no parameterization needed
+        const NumberStream = Stream;
 
-        // Verify parameterized type exists
+        // Verify behavior type exists
         assert.ok(NumberStream);
-
-        // Note: Observer registry is not copied for parameterized instances yet
-        // This would be part of the full unfold implementation
     });
 
     it('should validate observer names are camelCase', () => {
         assert.throws(() => {
-            behavior(({ Self, T }) => ({
-                Head: T,  // PascalCase - should fail
-                tail: Self
+            behavior(self => ({
+                Head: Object,  // PascalCase - should fail
+                tail: self
             }));
         }, {
             name: 'TypeError',
@@ -63,9 +60,9 @@ describe('Behavior Stream', () => {
         });
 
         assert.throws(() => {
-            behavior(({ Self, T }) => ({
-                head: T,
-                _tail: Self  // Underscore prefix - should fail
+            behavior(self => ({
+                head: Object,
+                _tail: self  // Underscore prefix - should fail
             }));
         }, {
             name: 'TypeError',
@@ -74,10 +71,10 @@ describe('Behavior Stream', () => {
     });
 
     it('should distinguish simple, parametric, and continuation observers', () => {
-        const ComplexBehavior = behavior(({ Self, T }) => ({
-            simple: T,                              // Simple observer
-            parametric: { in: Number, out: T },    // Parametric observer
-            continuation: Self                      // Continuation
+        const ComplexBehavior = behavior(self => ({
+            simple: Object,                              // Simple observer
+            parametric: { in: Number, out: Object },    // Parametric observer
+            continuation: self                           // Continuation
         }));
 
         const observers = behaviorObservers.get(ComplexBehavior)!;
@@ -98,11 +95,11 @@ describe('Behavior Stream', () => {
         assert.strictEqual(continuation.isContinuation, true);
     });
 
-    it('should extract multiple type parameters', () => {
-        const BiStream = behavior(({ Self, T, U }) => ({
-            headT: T,
-            headU: U,
-            tail: Self
+    it('should have multiple simple observers', () => {
+        const BiStream = behavior(self => ({
+            headT: Object,
+            headU: Object,
+            tail: self
         }));
 
         const observers = behaviorObservers.get(BiStream)!;
@@ -123,14 +120,14 @@ describe('Behavior Stream', () => {
 
     it('should reject declaration that does not return object', () => {
         assert.throws(() => {
-            behavior(({ Self, T }) => null as unknown as Record<string, unknown>);
+            behavior(self => null as unknown as Record<string, unknown>);
         }, {
             name: 'TypeError',
             message: /behavior\(\) callback must return an object/
         });
 
         assert.throws(() => {
-            behavior(({ Self, T }) => "not an object" as unknown as Record<string, unknown>);
+            behavior(self => "not an object" as unknown as Record<string, unknown>);
         }, {
             name: 'TypeError',
             message: /behavior\(\) callback must return an object/

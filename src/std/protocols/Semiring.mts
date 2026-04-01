@@ -17,19 +17,19 @@
 
 import { protocol } from '../../index.mjs';
 
-const Semiring = protocol(({ Family, fold, unfold }) => ({
+const Semiring = protocol(({ family, fold, unfold }) => ({
     add: fold({
-        in: Family,
-        out: Family,
+        in: family,
+        out: family,
         properties: ['associative', 'commutative', 'identity', 'identity:Zero']
     }),
-    Zero: unfold({ out: Family }),
+    Zero: unfold({ out: family }),
     multiply: fold({
-        in: Family,
-        out: Family,
+        in: family,
+        out: family,
         properties: ['associative', 'identity', 'identity:One', 'absorbing:Zero', 'distributive:add']
     }),
-    One: unfold({ out: Family })
+    One: unfold({ out: family })
 }));
 
 export { Semiring };

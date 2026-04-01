@@ -4,10 +4,10 @@ import { relation, data, invariant } from '../index.mjs';
 
 describe('Closure — Invariant Enforcement', () => {
     test('invariant rejects invalid compositions during closure', () => {
-        const Ancestor = relation(({ Family }) => ({
+        const Ancestor = relation(family => ({
             Direct: { from: String, to: String },
-            Transitive: { hop: Family, rest: Family }
-        })).ops(({ fold, unfold, map, merge, origin, destination, Family }) => ({
+            Transitive: { hop: family, rest: family }
+        })).ops(({ fold, unfold, map, merge, origin, destination, family }) => ({
             [origin]: fold({ out: String })({
                 Direct: ({ from }) => from,
                 Transitive: ({ hop }) => hop
@@ -41,7 +41,7 @@ describe('Closure — Invariant Enforcement', () => {
             }
         }));
 
-        // Self-loop violates invariant
+        // self-loop violates invariant
         assert.throws(() => Edge.Edge('a', 'a'), /Invariant violation/);
 
         // Valid edge
@@ -51,10 +51,10 @@ describe('Closure — Invariant Enforcement', () => {
     });
 
     test('closure with mixed valid/invalid compositions', () => {
-        const Reach = relation(({ Family }) => ({
+        const Reach = relation(family => ({
             Step: { from: String, to: String },
-            Chain: { first: Family, rest: Family }
-        })).ops(({ fold, unfold, map, merge, origin, destination, Family }) => ({
+            Chain: { first: family, rest: family }
+        })).ops(({ fold, unfold, map, merge, origin, destination, family }) => ({
             [origin]: fold({ out: String })({
                 Step: ({ from }) => from,
                 Chain: ({ first }) => first

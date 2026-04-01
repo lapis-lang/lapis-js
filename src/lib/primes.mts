@@ -10,10 +10,10 @@ import { data } from '../index.mjs';
 //   hasFactor fold   → true if any element divides n
 //   firstFactor fold → smallest divisor found, or 0 if none
 
-const Divisors = data(({ Family }) => ({
+const Divisors = data(family => ({
         Nil: {},
-        Cons: { head: Number, tail: Family }
-    })).ops(({ fold, unfold, Family }) => ({
+        Cons: { head: Number, tail: family }
+    })).ops(({ fold, unfold, family }) => ({
         hasFactor: fold({ in: Number, out: Boolean })({
             Nil() { return false; },
             Cons({ head, tail }: { head: number; tail: (n: number) => boolean }, n: number) {
@@ -26,7 +26,7 @@ const Divisors = data(({ Family }) => ({
                 return n % head === 0 ? head : tail(n);
             }
         }),
-        OddRange: unfold({ in: { start: Number, limit: Number }, out: Family })({
+        OddRange: unfold({ in: { start: Number, limit: Number }, out: family })({
             Nil: ({ start, limit }: { start: number; limit: number }) =>
                 start > limit ? {} : null,
             Cons: ({ start, limit }: { start: number; limit: number }) =>
@@ -52,15 +52,15 @@ const Divisors = data(({ Family }) => ({
 
     // nthPrime search: anamorphism over { candidate, count }
     // Done fires when candidate is prime and the countdown reaches 0
-    NthPrimeFinder = data(({ Family }) => ({
+    NthPrimeFinder = data(family => ({
         Done: { value: Number },
-        Step: { next: Family }
-    })).ops(({ fold, unfold, Family }) => ({
+        Step: { next: family }
+    })).ops(({ fold, unfold, family }) => ({
         result: fold({ out: Number })({
             Done({ value }: { value: number }) { return value; },
             Step({ next }: { next: number }) { return next; }
         }),
-        Search: unfold({ in: { candidate: Number, count: Number }, out: Family })({
+        Search: unfold({ in: { candidate: Number, count: Number }, out: family })({
             Done: ({ candidate, count }: { candidate: number; count: number }) =>
                 isPrime(candidate) && count === 0 ? { value: candidate } : null,
             Step: ({ candidate, count }: { candidate: number; count: number }) => {

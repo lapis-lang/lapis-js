@@ -17,14 +17,14 @@ import { aliasesSymbol } from '../ops.mjs';
 
 describe('ops aliasing — data fold .as()', () => {
     const Bool = data(() => ({ False: {}, True: {} }))
-        .ops(({ fold, Family }) => ({
-            meet: fold({ in: Family, out: Family })({
+        .ops(({ fold, family }) => ({
+            meet: fold({ in: family, out: family })({
                 // @ts-expect-error -- arity
                 False({}, _other: any) { return this; },
                 // @ts-expect-error -- arity
                 True({},  other: any)  { return other; }
             }).as('and'),
-            join: fold({ in: Family, out: Family })({
+            join: fold({ in: family, out: family })({
                 // @ts-expect-error -- arity
                 False({}, other: any)  { return other; },
                 // @ts-expect-error -- arity
@@ -73,8 +73,8 @@ describe('ops aliasing — data fold .as()', () => {
 
 describe('ops aliasing — data unfold .as()', () => {
     const Nat = data(() => ({ Zero: {}, Succ: { pred: Object } }))
-        .ops(({ unfold, Family }) => ({
-            FromNumber: unfold({ in: Number, out: Family })({
+        .ops(({ unfold, family }) => ({
+            FromNumber: unfold({ in: Number, out: family })({
                 Zero: (n: number) => n <= 0 ? {} : null,
                 Succ: (n: number) => n >  0 ? { pred: n - 1 } : null
             }).as('Of', 'From')
@@ -106,8 +106,8 @@ describe('ops aliasing — data unfold .as()', () => {
 
 describe('ops aliasing — data map .as()', () => {
     const Container = data(() => ({ Box: { value: Number } }))
-        .ops(({ map, Family }) => ({
-            fmap: map({ in: Number, out: Number, self: Family })({
+        .ops(({ map, family }) => ({
+            fmap: map({ in: Number, out: Number, self: family })({
                 Box: (n: number) => n * 2
             }).as('double')
         }));
@@ -135,11 +135,11 @@ describe('ops aliasing — data map .as()', () => {
 // ---------------------------------------------------------------------------
 
 describe('ops aliasing — behavior unfold .as()', () => {
-    const Stream = behavior(({ Self }) => ({
+    const Stream = behavior(self => ({
         head: Number,
-        tail: Self
-    })).ops(({ unfold, Self }) => ({
-        From: unfold({ in: Number, out: Self })({
+        tail: self
+    })).ops(({ unfold, self }) => ({
+        From: unfold({ in: Number, out: self })({
             head: (n: number) => n,
             tail: (n: number) => n + 1
         }).as('Of')
@@ -176,7 +176,7 @@ describe('ops aliasing — behavior unfold .as()', () => {
     it('alias is inherited by a sub-behavior (UnfoldAliasMapSymbol entry copied)', () => {
         // Verifies that the internal UnfoldAliasMapSymbol map carries the alias so
         // that behavior extension correctly re-installs it on the child type.
-        const ChildStream = behavior(({ Self }) => ({
+        const ChildStream = behavior(self => ({
             [extend]: Stream
         }));
         assert.ok(typeof ChildStream.From === 'function', 'child should inherit canonical From');

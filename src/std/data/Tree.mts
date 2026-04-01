@@ -11,22 +11,21 @@
  */
 
 import { data, satisfies } from '../../index.mjs';
-import { Functor, Foldable, Eq } from '../protocols/index.mjs';
+import { Functor, Foldable } from '../protocols/index.mjs';
 
 
-const Tree = data(({ T }) => ({
+const Tree = data(_ => ({
     [satisfies]: [
         Functor,
-        Foldable,
-        Eq({ T: Eq })
+        Foldable
     ],
-    Leaf:   { value: T },
-    Branch: { value: T, children: Array }
-})).ops(({ fold, map, Family }) => ({
+    Leaf:   { value: Object },
+    Branch: { value: Object, children: Array }
+})).ops(({ fold, map, family }) => ({
 
     // ── Functor ──────────────────────────────────────────────────────────
-    fmap: map({ out: Family })({
-        T: (x: unknown, f: (a: unknown) => unknown) => f(x)
+    fmap: map({ out: family })({
+        value: (x: unknown, f: (a: unknown) => unknown) => f(x)
     }),
 
     // ── Foldable ─────────────────────────────────────────────────────────

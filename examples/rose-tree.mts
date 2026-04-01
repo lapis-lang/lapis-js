@@ -12,18 +12,18 @@ import { isPrime, smallestFactor } from '../src/lib/primes.mjs';
 // Example 1: Basic Rose Tree with Lazy Children
 // =============================================================================
 
-const RoseTree = behavior(({ Self }) => ({
+const RoseTree = behavior(self => ({
     value: Number,
     children: Array
-})).ops(({ unfold, Self }) => ({
-    Node: unfold({ in: { value: Number, childGen: Function }, out: Self })({
+})).ops(({ unfold, self }) => ({
+    Node: unfold({ in: { value: Number, childGen: Function }, out: self })({
         value: ({ value }) => value,
         children: ({ value, childGen }) => {
             const childValues = childGen(value);
-            return childValues.map((v: any) => Self.Node({ value: v, childGen }));
+            return childValues.map((v: any) => self.Node({ value: v, childGen }));
         }
     }),
-    Leaf: unfold({ in: Number, out: Self })({
+    Leaf: unfold({ in: Number, out: self })({
         value: (n) => n,
         children: () => []
     })
@@ -53,14 +53,14 @@ console.log('leaf.children.length:', leaf.children.length);    // 0
 // Example 2: N-ary Tree (Variable Number of Children)
 // =============================================================================
 
-const NaryTree = behavior(({ Self }) => ({
+const NaryTree = behavior(self => ({
     value: Number,
     children: Array
-})).ops(({ unfold, Self }) => ({
-    Create: unfold({ in: { value: Number, arity: Number }, out: Self })({
+})).ops(({ unfold, self }) => ({
+    Create: unfold({ in: { value: Number, arity: Number }, out: self })({
         value: ({ value }) => value,
         children: ({ value, arity }) =>
-            Array.from({ length: arity }, (_, i) => Self.Create({ value: value * 10 + i, arity }))
+            Array.from({ length: arity }, (_, i) => self.Create({ value: value * 10 + i, arity }))
     })
 }));
 
@@ -77,13 +77,13 @@ console.log('Grandchildren of first child:',
 // Example 3: Directory Tree (File System)
 // =============================================================================
 
-const FileTree = behavior(({ Self }) => ({
+const FileTree = behavior(self => ({
     name: String,
     isDirectory: Boolean,
     children: Array,
     size: Number
-})).ops(({ unfold, Self }) => ({
-    Directory: unfold({ in: { name: String, contents: Array }, out: Self })({
+})).ops(({ unfold, self }) => ({
+    Directory: unfold({ in: { name: String, contents: Array }, out: self })({
         name: ({ name }) => name,
         isDirectory: () => true,
         children: ({ contents }) => contents,
@@ -91,7 +91,7 @@ const FileTree = behavior(({ Self }) => ({
             return contents.reduce((sum: number, child: any) => sum + child.size, 0);
         }
     }),
-    File: unfold({ in: { name: String, size: Number }, out: Self })({
+    File: unfold({ in: { name: String, size: Number }, out: self })({
         name: ({ name }) => name,
         isDirectory: () => false,
         children: () => [],
@@ -130,12 +130,12 @@ root.children.forEach((child: any) => {
 // Example 4: Game Tree (Tic-Tac-Toe Moves)
 // =============================================================================
 
-const GameTree = behavior(({ Self }) => ({
+const GameTree = behavior(self => ({
     state: String,
     isTerminal: Boolean,
     moves: Array
-})).ops(({ unfold, Self }) => ({
-    Create: unfold({ in: { state: String, moveGen: Function }, out: Self })({
+})).ops(({ unfold, self }) => ({
+    Create: unfold({ in: { state: String, moveGen: Function }, out: self })({
         state: ({ state }) => state,
         isTerminal: ({ state, moveGen }) => {
             const nextStates = moveGen(state);
@@ -143,7 +143,7 @@ const GameTree = behavior(({ Self }) => ({
         },
         moves: ({ state, moveGen }) => {
             const nextStates = moveGen(state);
-            return nextStates.map((s: any) => Self.Create({ state: s, moveGen }));
+            return nextStates.map((s: any) => self.Create({ state: s, moveGen }));
         }
     })
 }));
@@ -173,18 +173,18 @@ console.log('Possible moves from 5:', gameState.moves.map((m: any) => m.state));
 // Example 5: Factor Tree (Prime Factorization)
 // =============================================================================
 
-const FactorTree = behavior(({ Self }) => ({
+const FactorTree = behavior(self => ({
     value: Number,
     isPrime: Boolean,
     factors: Array
-})).ops(({ unfold, Self }) => ({
-    Create: unfold({ in: Number, out: Self })({
+})).ops(({ unfold, self }) => ({
+    Create: unfold({ in: Number, out: self })({
         value: (n) => n,
         isPrime: (n) => isPrime(n),
         factors: (n) => {
             if (n < 2 || isPrime(n)) return [];
             const f = smallestFactor(n);
-            return [Self.Create(f), Self.Create(n / f)];
+            return [self.Create(f), self.Create(n / f)];
         }
     })
 }));
@@ -204,30 +204,30 @@ console.log('17 factors:', factor17.factors);                  // []
 // Example 6: Expression Tree with Lazy Evaluation
 // =============================================================================
 
-const ExprTree = behavior(({ Self }) => ({
+const ExprTree = behavior(self => ({
     type: String,
     value: Number,
     children: Array
-})).ops(({ unfold, Self }) => ({
-    Constant: unfold({ in: Number, out: Self })({
+})).ops(({ unfold, self }) => ({
+    Constant: unfold({ in: Number, out: self })({
         type: () => 'const',
         value: (n) => n,
         children: () => []
     }),
-    Add: unfold({ in: { left: Number, right: Number }, out: Self })({
+    Add: unfold({ in: { left: Number, right: Number }, out: self })({
         type: () => 'add',
         value: ({ left, right }) => left + right,
         children: ({ left, right }) => [
-            Self.Constant(left),
-            Self.Constant(right)
+            self.Constant(left),
+            self.Constant(right)
         ]
     }),
-    Multiply: unfold({ in: { left: Number, right: Number }, out: Self })({
+    Multiply: unfold({ in: { left: Number, right: Number }, out: self })({
         type: () => 'mul',
         value: ({ left, right }) => left * right,
         children: ({ left, right }) => [
-            Self.Constant(left),
-            Self.Constant(right)
+            self.Constant(left),
+            self.Constant(right)
         ]
     })
 }));

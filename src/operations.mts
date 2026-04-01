@@ -11,8 +11,7 @@ import {
     isCamelCase,
     isPascalCase,
     isObjectLiteral,
-    callable,
-    TypeParamSymbol
+    callable
 } from './utils.mjs';
 import type { CallableClass } from './utils.mjs';
 
@@ -25,17 +24,6 @@ export type FamilyRefSymbol = typeof FamilyRefSymbol;
 /** Marks Self references for recursive behavior */
 export const SelfRefSymbol: unique symbol = Symbol('SelfRef');
 export type SelfRefSymbol = typeof SelfRefSymbol;
-
-/** Marks type parameters — re-exported from utils.mts (single canonical symbol) */
-export { TypeParamSymbol };
-
-/** Marks sort parameters for multi-sorted algebras */
-export const SortRefSymbol: unique symbol = Symbol('SortRef');
-export type SortRefSymbol = typeof SortRefSymbol;
-
-/** Declares the sort annotation on a variant spec */
-export const sort: unique symbol = Symbol('sort');
-export type sort = typeof sort;
 
 /** Marks parent ADT for declarative extension */
 export const extend: unique symbol = Symbol('extend');
@@ -127,20 +115,10 @@ export interface SelfRefCallable extends SelfRef {
     (typeParam?: unknown): SelfRefCallable;
 }
 
-/** A type parameter reference marker, branded with the parameter name. */
-export interface TypeParamRef<Name extends string = string> {
-    readonly [TypeParamSymbol]: Name;
-}
-
-/** A sort parameter reference marker, branded with the sort name (e.g. '$E'). */
-export interface SortRef<Name extends string = string> {
-    readonly [SortRefSymbol]: Name;
-}
-
 /**
  * Valid type specifications for field declarations and operation specs.
  * Covers primitive constructors, ADT constructors, Family/Self references,
- * type parameter markers, and predicate functions.
+ * and predicate functions.
  */
 export type TypeSpec =
     | NumberConstructor
@@ -149,30 +127,35 @@ export type TypeSpec =
     | SymbolConstructor
     | BigIntConstructor
     | FamilyRef
-    | TypeParamRef
-    | SortRef
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     | (abstract new (...args: any[]) => unknown)
     | ((value: unknown) => unknown);
 
 // ---- Type guards -------------------------------------------------------------
 
+// Registry-based identity — replaces symbol-brand stamping on objects.
+// Parameterized instances (e.g., List(Number)) are never registered, so
+// isFamilyRef/isFamilyRefSpec correctly returns false for them.
+const familyRefRegistry = new WeakSet<object>();
+const selfRefRegistry = new WeakSet<object>();
+
+/** Register a newly-created family sentinel in the identity registry. */
+export function registerFamilyRef(marker: object): void {
+    familyRefRegistry.add(marker);
+}
+
+/** Register a newly-created self sentinel in the identity registry. */
+export function registerSelfRef(marker: object): void {
+    selfRefRegistry.add(marker);
+}
+
 /**
  * Checks if a value is a FamilyRef
  */
 export function isFamilyRef(value: unknown): value is FamilyRef {
-    if ((typeof value !== 'object' && typeof value !== 'function') || value === null)
-        return false;
-
-
-    // Parameterized instances (e.g., List(Number)) should NOT be treated as FamilyRef
-    // Only the base generic ADT (e.g., List) should be a FamilyRef
-    // Check for the symbol directly on the object, not in the prototype chain
-    if (!Object.prototype.hasOwnProperty.call(value, FamilyRefSymbol))
-        return false;
-
-
-    return true;
+    return (typeof value === 'object' || typeof value === 'function') &&
+        value !== null &&
+        familyRefRegistry.has(value as object);
 }
 
 /**
@@ -181,31 +164,7 @@ export function isFamilyRef(value: unknown): value is FamilyRef {
 export function isSelfRef(value: unknown): value is SelfRef {
     return (typeof value === 'object' || typeof value === 'function') &&
         value !== null &&
-        SelfRefSymbol in (value as object);
-}
-
-/**
- * Checks if a value is a TypeParam
- */
-export function isTypeParam(value: unknown): value is TypeParamRef {
-    return typeof value === 'object' && value !== null && TypeParamSymbol in value;
-}
-
-/**
- * Checks if a value is a SortRef
- */
-export function isSortRef(value: unknown): value is SortRef {
-    return typeof value === 'object' && value !== null && SortRefSymbol in value;
-}
-
-/**
- * Checks whether a field spec references a sort parameter.
- * Uses `in` (prototype-chain walk) to detect the SortRefSymbol brand.
- */
-export function isSortRefSpec(fieldSpec: unknown): boolean {
-    return !!fieldSpec &&
-        (typeof fieldSpec === 'object' || typeof fieldSpec === 'function') &&
-        SortRefSymbol in (fieldSpec as object);
+        selfRefRegistry.has(value as object);
 }
 
 // ---- Operation definition predicates ----------------------------------------
@@ -242,8 +201,6 @@ export function createFamily(): FamilyRefCallable {
             return callableFamily;
         };
 
-    // Add the FamilyRef symbol marker so it can still be identified
-    (Family as unknown as Record<typeof FamilyRefSymbol, boolean>)[FamilyRefSymbol] = true;
     (Family as unknown as { _adt: null })._adt = null;
 
     // Wrap with callable() so Family(T) works during declaration parsing
@@ -251,6 +208,9 @@ export function createFamily(): FamilyRefCallable {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         Family as unknown as abstract new (...args: any[]) => unknown
     ) as unknown as FamilyRefCallable;
+
+    // Register via identity (replaces symbol-brand stamping)
+    familyRefRegistry.add(callableFamily as unknown as object);
 
     return callableFamily;
 }
@@ -265,8 +225,8 @@ export function createSelf(): SelfRefCallable {
         return fn as unknown as SelfRefCallable;
     };
 
-    // Add the SelfRef symbol marker
-    (fn as unknown as Record<typeof SelfRefSymbol, boolean>)[SelfRefSymbol] = true;
+    // Register via identity (replaces symbol-brand stamping)
+    selfRefRegistry.add(fn);
 
     return fn as unknown as SelfRefCallable;
 }
@@ -293,9 +253,6 @@ export function validateTypeSpec(
     opName: string,
     context: string
 ): void {
-    // TypeParam markers (e.g. T, U) are erased at runtime — skip validation.
-    if (isTypeParam(spec)) return;
-
     // Handle structured object-literal guards: { key1: Guard1, key2: Guard2, ... }
     // This is distinct from the ObjectConstructor guard (Object) which is a function.
     if (isObjectLiteral(spec)) {
@@ -372,15 +329,23 @@ export function validateTypeSpec(
     }
 
     // Handle custom class/constructor - use instanceof
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if (typeof spec === 'function' && !(value instanceof (spec as new (...args: any[]) => unknown))) {
-        const typePhrase = context === 'to return'
-            ? `${context} instance of ${(spec as { name?: string }).name || 'specified type'}`
-            : `${context} ${(spec as { name?: string }).name || 'specified type'}`;
 
-        throw new TypeError(
-            `Operation '${opName}' expected ${typePhrase}, but got ${(value as { constructor?: { name?: string } } | null)?.constructor?.name || typeof value}`
-        );
+    if (typeof spec === 'function') {
+        // Object (global Object constructor) means "accept any value" — skip validation.
+        if (spec === Object) return;
+        // Family/Self sentinels are callable marker functions, not class constructors.
+        // They are handled by dedicated branches (Family) or as direct recursive refs.
+        if (isFamilyRef(spec) || isSelfRef(spec)) return;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        if (!(value instanceof (spec as new (...args: any[]) => unknown))) {
+            const typePhrase = context === 'to return'
+                ? `${context} instance of ${(spec as { name?: string }).name || 'specified type'}`
+                : `${context} ${(spec as { name?: string }).name || 'specified type'}`;
+
+            throw new TypeError(
+                `Operation '${opName}' expected ${typePhrase}, but got ${(value as { constructor?: { name?: string } } | null)?.constructor?.name || typeof value}`
+            );
+        }
     }
 }
 
@@ -432,7 +397,7 @@ export function validateSpecGuard(spec: unknown, specType: string, opName: strin
 export function isFamilyRefSpec(fieldSpec: unknown): boolean {
     return !!fieldSpec &&
         (typeof fieldSpec === 'object' || typeof fieldSpec === 'function') &&
-        FamilyRefSymbol in (fieldSpec as object);
+        familyRefRegistry.has(fieldSpec as object);
 }
 
 // ---- Casing assertion helpers -----------------------------------------------

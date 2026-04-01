@@ -16,11 +16,11 @@ import { behavior } from '../index.mjs';
 
 // Shared Stream fixture
 function makeStream() {
-    return behavior(({ Self, T }) => ({
-        head: T,
-        tail: Self(T)
-    })).ops(({ fold, unfold, map, merge, Self, T }) => ({
-        From: unfold({ in: Number, out: Self })({
+    return behavior(self => ({
+        head: Object,
+        tail: self
+    })).ops(({ fold, unfold, map, merge, self }) => ({
+        From: unfold({ in: Number, out: self })({
             head: (n) => n,
             tail: (n) => n + 1
         }),
@@ -28,31 +28,42 @@ function makeStream() {
             _: ({ head, tail }, n) => n > 0 ? [head, ...tail(n - 1)] : []
         }),
         doubled: map({})({
-            T: (x) => x * 2
+            head: (x) => x * 2
         }),
         negated: map({})({
-            T: (x) => -x
+            head: (x) => -x
         }),
         apply: map({})({
-            T: (x, f) => f(x)
+            head: (x, f) => f(x)
         })
     }));
 }
 
 describe('Behavior Map - Getter (no extra args)', () => {
-    it('should double all stream elements via map getter', () => {
-        const Stream = makeStream();
-        const nums = Stream.From(0);
+    const cases = [
+        {
+            name: 'doubled getter transforms stream elements',
+            getMapped: (nums: any) => nums.doubled,
+            start: 0,
+            take: 5,
+            expected: [0, 2, 4, 6, 8]
+        },
+        {
+            name: 'negated getter transforms stream elements',
+            getMapped: (nums: any) => nums.negated,
+            start: 1,
+            take: 4,
+            expected: [-1, -2, -3, -4]
+        }
+    ];
 
-        assert.deepEqual(nums.doubled.take(5), [0, 2, 4, 6, 8]);
-    });
-
-    it('should negate all stream elements', () => {
-        const Stream = makeStream();
-        const nums = Stream.From(1);
-
-        assert.deepEqual(nums.negated.take(4), [-1, -2, -3, -4]);
-    });
+    for (const c of cases) {
+        it(c.name, () => {
+            const Stream = makeStream();
+            const nums = Stream.From(c.start);
+            assert.deepEqual(c.getMapped(nums).take(c.take), c.expected);
+        });
+    }
 
     it('original stream is unaffected by map', () => {
         const Stream = makeStream();
@@ -94,16 +105,16 @@ describe('Behavior Map - Chain Composition', () => {
         const nums = Stream.From(0);
 
         // sum(5) of doubled stream = 0+2+4+6+8 = 20
-        const Stream2 = behavior(({ Self, T }) => ({
-            head: T,
-            tail: Self(T)
-        })).ops(({ fold, unfold, map, merge, Self, T }) => ({
-            From: unfold({ in: Number, out: Self })({
+        const Stream2 = behavior(self => ({
+            head: Object,
+            tail: self
+        })).ops(({ fold, unfold, map, merge, self }) => ({
+            From: unfold({ in: Number, out: self })({
                 head: (n) => n,
                 tail: (n) => n + 1
             }),
             doubled: map({})({
-                T: (x) => x * 2
+                head: (x) => x * 2
             }),
             sum: fold({ in: Number, out: Number })({
                 _: ({ head, tail }, n) => n > 0 ? head + tail(n - 1) : 0
@@ -141,16 +152,16 @@ describe('Behavior Map - Lazy (transformed only on access)', () => {
     it('map creation is O(1) — no observation happens at map time', () => {
         let accessCount = 0;
 
-        const Stream = behavior(({ Self }) => ({
+        const Stream = behavior(self => ({
             head: Number,
-            tail: Self
-        })).ops(({ fold, unfold, map, merge, Self }) => ({
-            From: unfold({ in: Number, out: Self })({
+            tail: self
+        })).ops(({ fold, unfold, map, merge, self }) => ({
+            From: unfold({ in: Number, out: self })({
                 head: (n) => { accessCount++; return n; },
                 tail: (n) => n + 1
             }),
             doubled: map({})({
-                T: (x) => x * 2
+                head: (x) => x * 2
             })
         }));
 
@@ -170,12 +181,12 @@ describe('Behavior Map - Lazy (transformed only on access)', () => {
 describe('Behavior Map - Validation', () => {
     it('throws if map name is PascalCase', () => {
         assert.throws(() => {
-            behavior(({ Self, T }) => ({
-                head: T,
-                tail: Self(T)
-            })).ops(({ fold, unfold, map, merge, Self, T }) => ({
+            behavior(self => ({
+                head: Object,
+                tail: self
+            })).ops(({ fold, unfold, map, merge, self }) => ({
                 Doubled: map({})({
-                    T: (x) => x * 2
+                    head: (x) => x * 2
                 })
             }));
         }, /camelCase/);
@@ -183,12 +194,12 @@ describe('Behavior Map - Validation', () => {
 
     it('throws if transform is not a function', () => {
         assert.throws(() => {
-            behavior(({ Self, T }) => ({
-                head: T,
-                tail: Self(T)
-            })).ops(({ fold, unfold, map, merge, Self, T }) => ({
+            behavior(self => ({
+                head: Object,
+                tail: self
+            })).ops(({ fold, unfold, map, merge, self }) => ({
                 // @ts-expect-error -- intentional non-function for negative test
-                doubled: map({})({ T: 42 })
+                doubled: map({})({ head: 42 })
             }));
         }, /function/);
     });

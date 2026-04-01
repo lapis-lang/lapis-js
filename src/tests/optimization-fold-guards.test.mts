@@ -23,18 +23,18 @@ import { data } from '../index.mjs';
 
 
 function makeNat() {
-    const adt = data(({ Family }) => ({
+    const adt = data(family => ({
         Zero: {},
-        Succ: { pred: Family }
-    })).ops(({ fold, Family }) => ({
+        Succ: { pred: family }
+    })).ops(({ fold, family }) => ({
         add: fold({
-            in: Family,
-            out: Family,
+            in: family,
+            out: family,
             properties: ['associative', 'identity:Zero']
         })({
             Zero(_ctx: any, other?: any) { return other; },
             Succ({ pred }: any, other?: any) {
-                return Family.Succ({ pred: pred(other) });
+                return family.Succ({ pred: pred(other) });
             }
         })
     }));
@@ -50,13 +50,13 @@ function makeBoolAnd() {
     const adt = data(() => ({
         False: {},
         True: {}
-    })).ops(({ fold, Family }) => ({
+    })).ops(({ fold, family }) => ({
         and: fold({
-            in: Family,
-            out: Family,
+            in: family,
+            out: family,
             properties: ['absorbing:False']
         })({
-            False(_ctx: any, _other?: any) { return Family.False; },
+            False(_ctx: any, _other?: any) { return family.False; },
             True(_ctx: any, other?: any) { return other; }
         })
     }));
@@ -72,14 +72,14 @@ function makeBoolOr() {
     const adt = data(() => ({
         False: {},
         True: {}
-    })).ops(({ fold, Family }) => ({
+    })).ops(({ fold, family }) => ({
         or: fold({
-            in: Family,
-            out: Family,
+            in: family,
+            out: family,
             properties: ['idempotent']
         })({
             False(_ctx: any, other?: any) { return other; },
-            True(_ctx: any, _other?: any) { return Family.True; }
+            True(_ctx: any, _other?: any) { return family.True; }
         })
     }));
     return { f: (adt as any).False as object, t: (adt as any).True as object };
@@ -248,18 +248,18 @@ describe('Combined guards: identity + absorbing on a single op', () => {
             Bot: {},
             Mid: {},
             Top: {}
-        })).ops(({ fold, Family }) => ({
+        })).ops(({ fold, family }) => ({
             join: fold({
-                in: Family,
-                out: Family,
+                in: family,
+                out: family,
                 properties: ['associative', 'commutative', 'idempotent', 'identity:Bot', 'absorbing:Top']
             })({
                 Bot(_ctx: any, other?: any) { return other; },   // Bot ⊔ x = x
                 Mid(_ctx: any, other?: any) {
                     // Mid ⊔ Top = Top, Mid ⊔ anything-else = Mid
-                    return other === Family.Top ? Family.Top : Family.Mid;
+                    return other === family.Top ? family.Top : family.Mid;
                 },
-                Top(_ctx: any, _other?: any) { return Family.Top; }
+                Top(_ctx: any, _other?: any) { return family.Top; }
             })
         }));
 
