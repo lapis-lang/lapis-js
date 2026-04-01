@@ -42,7 +42,8 @@ export { LazyMap } from './behavior/LazyMap.mjs';
 export { LazySet } from './behavior/LazySet.mjs';
 
 // ── Primitives ───────────────────────────────────────────────────────────────
-export { Num }  from './primitive/Num.mjs';
-export { Str }  from './primitive/Str.mjs';
-export { Bool } from './primitive/Bool.mjs';
+export { Num }         from './primitive/Num.mjs';
+export { Str }         from './primitive/Str.mjs';
+export { Bool }        from './primitive/Bool.mjs';
+export { TropicalNum } from './primitive/TropicalNum.mjs';
 

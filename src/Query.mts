@@ -31,7 +31,7 @@
 import { behavior } from './Behavior.mjs';
 import { isOperationDef, isSelfRef, op, spec as specSym, LapisTypeSymbol, SelfRefSymbol } from './operations.mjs';
 import type { BehaviorDeclParams, QueryADT, SpecValue } from './types.mjs';
-import type { fold, unfold, map, merge } from './ops.mjs';
+import type { fold, unfold, map, merge } from './operations.mjs';
 
 // ---- Symbols ----------------------------------------------------------------
 

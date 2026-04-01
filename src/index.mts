@@ -11,14 +11,14 @@ export { op, spec, operations, history } from './operations.mjs';
 export type { OperationProperty, NamespacedProperty, PredicateFn, PropertyEntry } from './operations.mjs';
 export { KNOWN_PROPERTIES, INTER_OP_PREFIXES } from './operations.mjs';
 export { DeclBrand } from './types.mjs';
-export { unfold, fold, map, merge } from './ops.mjs';
-export type { UnfoldDef, UnfoldDefBase, FoldDef, FoldDefBase, MapDef, MapDefBase, MergeDef, ExpandAliases, HasAliases } from './ops.mjs';
+export { unfold, fold, map, merge, scan } from './operations.mjs';
+export type { UnfoldDef, UnfoldDefBase, FoldDef, FoldDefBase, MapDef, MapDefBase, MergeDef, ScanDef, ExpandAliases, HasAliases } from './operations.mjs';
 export { behavior } from './Behavior.mjs';
 
 // ---- InstanceOf -------------------------------------------------------------
 
 import type { ProtocolLike } from './Protocol.mjs';
-import type { InstanceOf as DataInstanceOf } from './ops.mjs';
+import type { InstanceOf as DataInstanceOf } from './operations.mjs';
 
 /**
  * Extracts the TypeScript type associated with a Lapis value declarator.

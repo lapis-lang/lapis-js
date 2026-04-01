@@ -9,7 +9,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { data, behavior, extend, fold, unfold, map } from '../index.mjs';
-import { aliasesSymbol } from '../ops.mjs';
+import { aliasesSymbol } from '../operations.mjs';
 
 // ---------------------------------------------------------------------------
 // Data — fold aliases

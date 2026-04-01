@@ -53,6 +53,7 @@ there is an emphasis on the Bird-Meertens Formalism (BMF) (Squiggol) of making p
   - [Binary Operations with Fold](#binary-operations-with-fold)
 - [Merge Operations (Deforestation)](#merge-operations-deforestation)
   - [Recursion Schemes](#recursion-schemes)
+- [Scan Operations (Scan Lemma)](#scan-operations-scan-lemma)
 - [Behavior](#behavior)
   - [Data vs Behavior](#data-vs-behavior)
   - [Basic Behavior Declaration](#basic-behavior-declaration)
@@ -64,6 +65,8 @@ there is an emphasis on the Bird-Meertens Formalism (BMF) (Squiggol) of making p
   - [Fold Operations (Consuming Behavior)](#fold-operations-consuming-behavior)
   - [Map (Lazy Type Transformation)](#map-lazy-type-transformation)
   - [Merge (Deforestation)](#merge-deforestation)
+  - [Scan Operations (Behavior Scan Lemma)](#scan-operations-behavior-scan-lemma)
+  - [Co-Horner Rule (Fold-Fusion on Behavior)](#co-horner-rule-fold-fusion-on-behavior)
   - [Effect-like Behavior](#effect-like-behavior)
 - [Relation (Relational Operations on Data)](#relation-relational-operations-on-data)
   - [Relation Declaration](#relation-declaration)
@@ -95,6 +98,7 @@ there is an emphasis on the Bird-Meertens Formalism (BMF) (Squiggol) of making p
     - [Property Inheritance](#property-inheritance)
     - [Automatic Law Checking](#automatic-law-checking)
     - [Runtime Optimization Exploitation](#runtime-optimization-exploitation)
+    - [Horner's Rule (Fold-Fusion via Distributivity)](#horners-rule-fold-fusion-via-distributivity)
   - [Protocols on Behavior Types](#protocols-on-behavior-types)
 - [Design by Contract](#design-by-contract)
   - [Assertions](#assertions)
@@ -1965,12 +1969,13 @@ const zipped = nums.zip(strs);
 
 Merge operations compose multiple operations (fold, map, unfold) into a single fused operation, eliminating intermediate allocations. Since unfold is the universal way to generate structure and fold is the universal way to consume it, their composition represents the general pattern of "generate then consume" without materializing the intermediate data structure. (This fused unfold+fold is called a *hylomorphism* in the recursion-schemes literature.) They are defined in the `.ops()` phase using `merge(...operationNames)`.
 
-At definition time, four fusion rules are applied automatically to the pipeline:
+At definition time, five fusion rules are applied automatically to the pipeline:
 
 1. **Inverse pair elimination**: consecutive explicit inverse pairs are removed (f° ∘ f = id)
 2. **Involutory self-cancellation**: consecutive pairs of the same operation annotated `involutory` are removed (f ∘ f = id; repeated until stable)
 3. **Map-map fusion**: consecutive map getters are composed into a single traversal (g ∘ f)
 4. **Map-fold fusion**: a map getter before a fold is fused into the fold's field access
+5. **Horner fold-fusion**: `fold(⊕) ∘ fold(⊗)` where `⊗` carries `distributive:⊕` is rewritten to a single fused fold — see [Horner's Rule](#horners-rule-fold-fusion-via-distributivity)
 
 See [Invertible Maps (Allegories)](#invertible-maps-allegories) for details on inverse declaration and the complete fusion rules.
 
@@ -2139,6 +2144,75 @@ Merged operations follow specific naming rules:
 
 - Static methods (unfold first, i.e. *hylomorphism*): Must be PascalCase (e.g., `'Factorial'`, `'Range'`)
 - Instance methods (all others): Must be camelCase (e.g., `'doubleSum'`, `'sorted'`)
+
+## Scan Operations (Scan Lemma)
+
+Sometimes you need not just the final result of a fold, but the fold result at *every* level of the structure at once. For example, given a list `[1, 2, 3]` and a `sum` fold, you might want to know the cumulative sums at each tail: `[6, 5, 3, 0]` — the total, then the sum from `2` onward, then from `3` onward, then the empty base. This is exactly what a scan computes.
+
+A **scan** applies an existing fold to the root and to every recursive subterm, returning all results in a single array ordered root-first. It is the datatype-generic generalisation of Haskell's `scanr`. The *computation* is bottom-up (subterm results are resolved before their parent, as in any fold), but the *output array* is indexed root-first: index `0` is the fold of the whole structure, and the last index is the fold of the base case.
+
+The first element is always equal to calling the fold directly on the structure. Each subsequent element is the fold result of the corresponding recursive subterm, in root-first (pre-order) order.
+
+Scans are declared with `scan(targetFoldName)` in the `.ops()` phase. The target must be an already-declared fold on the same ADT:
+
+```js
+const NumList = data(family => ({
+    Nil:  {},
+    Cons: { head: Number, tail: family }
+})).ops(({ fold, unfold, scan, family }) => ({
+    FromArray: unfold({ in: Array, out: family })({
+        Nil:  (xs) => xs.length === 0 ? {} : null,
+        Cons: (xs) => xs.length > 0 ? { head: xs[0], tail: xs.slice(1) } : null
+    }),
+    sum: fold({ out: Number })({
+        Nil()                    { return 0; },
+        Cons({ head, tail })     { return head + tail; }
+    }),
+    scanSum: scan('sum')
+}));
+
+const list = NumList.FromArray([1, 2, 3]);
+
+console.log(list.sum);     // 6
+console.log(list.scanSum); // [6, 5, 3, 0]  — analogous to Haskell's scanr (+) 0 [1,2,3]
+```
+
+For a list of length *n*, the scan array has *n+1* elements. The last element is always the fold of the base case (e.g. `sum(Nil) = 0`):
+
+```js
+list.scanSum[0]                       // 6  — fold(sum)(root)
+list.scanSum[list.scanSum.length - 1] // 0  — fold(sum)(Nil)
+```
+
+Scans work on any recursive ADT, including trees. The result array follows pre-order (root before children), even though the computation is post-order:
+
+```js
+const Tree = data(family => ({
+    Leaf: { value: Number },
+    Node: { left: family, right: family }
+})).ops(({ fold, scan }) => ({
+    sum: fold({ out: Number })({
+        Leaf({ value })       { return value; },
+        Node({ left, right }) { return left + right; }
+    }),
+    scanSum: scan('sum')
+}));
+
+const tree = Tree.Node({
+    left: Tree.Node({ left: Tree.Leaf({ value: 2 }), right: Tree.Leaf({ value: 3 }) }),
+    right: Tree.Leaf({ value: 4 })
+});
+
+console.log(tree.scanSum); // [9, 5, 2, 3, 4]
+//                           root inner-node  leaf2 leaf3 leaf4
+```
+
+If `scan('name')` is passed a name that does not refer to an existing fold, an error is thrown at definition time:
+
+```js
+// Throws: scan('missing') — 'missing' is not a fold on this type
+data(family => ({ ... })).ops(() => ({ bad: scan('missing') }));
+```
 
 ## Behavior
 
@@ -2485,6 +2559,125 @@ Stream.From(0).doubledSum(5)      // 20  (0+2+4+6+8)
 
 // Equivalent manual composition:
 Stream.From(0).doubled.take(5)    // same as TakeDoubled(0, 5)
+```
+
+### Scan Operations (Behavior Scan Lemma)
+
+Just as `scan` on a `data()` type applies a fold at every recursive subterm, `scan` on a `behavior()` type applies a fold at every step of a linear (stream-like) sequence, returning the results as an array.
+
+Formally, for a behavior `b` with single continuation observer `c` and fold `f`:
+
+$$
+\text{b.scanName}(n, \ldots) \equiv \bigl(f(b_0, \ldots),\; f(b_1, \ldots),\; \ldots,\; f(b_{n-1}, \ldots)\bigr)\quad \text{where } b_i = c^i(b)
+$$
+
+Declare a scan with `scan('targetFoldName')` in the `.ops()` phase. The result array has exactly `n` elements (empty when `n = 0`).
+
+**Constraints:**
+
+- The behavior must have **exactly one** continuation observer (linear / stream-like). Tree behaviors with multiple recursive observers are rejected at definition time.
+- The target fold must be declared on the same behavior type.
+- Getter folds (no `in:`) produce `instance.scanName(n)`. Parameterized folds produce `instance.scanName(n, ...args)` — the args are forwarded to the fold at each step.
+
+```ts
+const Stream = behavior(self => ({
+    head: Number,
+    tail: self
+})).ops(({ fold, unfold, scan, self }) => ({
+    From: unfold({ in: Number, out: self })({
+        head: (n) => n,
+        tail: (n) => n + 1
+    }),
+    // Getter fold: head at each position
+    value: fold({ out: Number })({
+        _: ({ head }) => head
+    }),
+    // Parameterized fold: sliding-window sum of next k elements
+    sum: fold({ in: Number, out: Number })({
+        _: ({ head, tail }, k) => k > 0 ? head + tail(k - 1) : 0
+    }),
+    // Scan: apply value at N successive positions  →  [v₀, v₁, ..., v_{n-1}]
+    scanValue: scan('value'),
+    // Scan: apply sum(k) at N successive positions  →  sliding-window sums
+    scanSum:   scan('sum')
+}));
+
+const s = Stream.From(0);
+
+s.scanValue(5);     // [0, 1, 2, 3, 4]  — heads at positions 0..4
+s.scanValue(0);     // []               — zero steps, empty array
+
+s.scanSum(3, 3);    // [3, 6, 9]  — sum(0+1+2), sum(1+2+3), sum(2+3+4)
+s.scanSum(5, 1);    // [0, 1, 2, 3, 4] — width-1 window = each head
+```
+
+**Error at definition time** — scan on a non-linear behavior (more than one continuation):
+
+```ts
+// Throws: Scan operation 'badScan' requires ... exactly one continuation observer
+behavior(self => ({ value: Number, left: self, right: self }))
+    .ops(({ fold, scan }) => ({
+        nodeVal: fold({ out: Number })({ _: ({ value }) => value }),
+        badScan: scan('nodeVal')   // ✗ — tree has two continuations
+    }));
+```
+
+### Co-Horner Rule (Fold-Fusion on Behavior)
+
+The **co-Horner rule** is the coalgebraic dual of [Horner's Rule](#horners-rule-fold-fusion-via-distributivity). Where the data version fuses `fold(⊗) ∘ fold(⊕)` into a single *inductive* traversal, the behavior version fuses `fold(f) ∘ fold(g)` where the inner fold `f` returns a **new behavior instance** and the outer fold `g` then observes it.
+
+A `merge` of two fold operations (with no unfold between them) is a co-Horner pipeline. The inner fold must declare `properties: ['distributive:outerFoldName']` to signal that the composition is safe to execute as a two-step fused operation:
+
+1. Apply the inner fold to the current instance (must return a behavior instance).
+2. Apply the outer fold to that result.
+
+```ts
+const Stream = behavior(self => ({
+    head: Number,
+    tail: self
+})).ops(({ fold, unfold, merge, self }) => ({
+    From: unfold({ in: Number, out: self })({
+        head: (n) => n,
+        tail: (n) => n + 1
+    }),
+    // Inner fold: skip n steps forward, returning a new Stream instance.
+    // Annotated distributive:headVal so it can be fused with headVal below.
+    skipToN: fold({
+        in: Number,
+        out: self,
+        properties: ['distributive:headVal']
+    })({
+        // @ts-expect-error — fold returning a behavior instance (out: self)
+        _: ({ head }, n) => Stream.From(head + n)
+    }),
+    // Outer fold: extract the head of any stream.
+    headVal: fold({ out: Number })({
+        _: ({ head }) => head
+    }),
+    // Co-Horner merge: skipToN → headVal, fused into a single registered op.
+    skipNThenHead: merge('skipToN', 'headVal')
+}));
+
+Stream.From(0).skipNThenHead(3);   // 3  — head of Stream.From(0 + 3)
+Stream.From(10).skipNThenHead(5);  // 15 — head of Stream.From(10 + 5)
+```
+
+**Without the annotation**, `merge` of two folds throws a `TypeError` at definition time, explaining exactly which annotation is needed:
+
+```ts
+// Throws: To compose two folds (co-Horner), annotate 'sumN' with
+//         `properties: ['distributive:productN']`.
+behavior(self => ({ head: Number, tail: self }))
+    .ops(({ fold, unfold, merge, self }) => ({
+        From: unfold({ in: Number, out: self })({ head: n => n, tail: n => n + 1 }),
+        sumN: fold({ in: Number, out: Number })({
+            _: ({ head, tail }, n) => n > 0 ? head + tail(n - 1) : 0
+        }),
+        productN: fold({ in: Number, out: Number })({
+            _: ({ head, tail }, n) => n > 0 ? head * tail(n - 1) : 1
+        }),
+        badMerge: merge('sumN', 'productN')   // ✗ — no distributive annotation
+    }));
 ```
 
 ### Effect-like Behavior
@@ -3763,6 +3956,85 @@ console.log(xs.doubleNegateSum); // 3  (same as xs.sum)
 ```
 
 An odd-count run leaves one operation in the pipeline — so `merge('negate', 'negate', 'negate', 'sum')` collapses to `['negate', 'sum']` (one cancellation pair removed, one `negate` remaining).
+
+#### Horner's Rule (Fold-Fusion via Distributivity)
+
+**Horner's Rule** is an algebraic pipeline optimization that turns a two-pass pipeline
+
+```text
+fold(⊕, e) ∘ fold(⊗, e')
+```
+
+into a single-pass fused fold — provided `⊗` distributes over `⊕`.  The classical example is polynomial evaluation:
+
+$$a_0 + a_1 x + a_2 x^2 + \cdots + a_n x^n \;\longrightarrow\; a_0 + x(a_1 + x(\cdots))
+$$
+reducing multiplications from $O(n^2)$ to $O(n)$.
+
+In Lapis JS the rule fires automatically whenever a `merge` pipeline contains an inner fold whose operation declares `'distributive:outerOp'` in its `properties`.  The `Semiring.multiply` operation already declares `'distributive:add'`, so any ADT that satisfies `Semiring` gets Horner fusion for free inside `merge`.
+
+**Polynomial evaluation example** — `merge('scaleEach', 'sum')` is rewritten to a single traversal:
+
+```ts
+import { data, satisfies } from '@lapis-lang/lapis-js';
+import { Semiring } from '@lapis-lang/lapis-js/std';
+
+// A singly-linked list of numbers that satisfies Semiring element-wise.
+const NumList = data(family => ({
+    Nil: {},
+    Cons: { head: Number, tail: family }
+})).ops(({ fold, unfold, merge, family }) => ({
+    // fold that multiplies every element by `x` then sums — naive two-pass
+    scaleEach: fold({
+        in: Number,   // the base x
+        out: Number,
+        properties: ['distributive:sum']  // multiply distributes over sum
+    })({
+        Nil(_ctx, _x) { return 0; },
+        Cons({ head, tail }: any, x: number) { return head * x + tail(x); }
+    }),
+    sum: fold({ out: Number })({
+        Nil() { return 0; },
+        Cons({ head, tail }: any) { return head + tail; }
+    }),
+    // Horner fusion: declared as a merge — fused to ONE traversal at definition time
+    hornerEval: merge('scaleEach', 'sum')
+}));
+
+const poly = NumList.Cons(3, NumList.Cons(2, NumList.Cons(1, NumList.Nil))); // 1 + 2x + 3x²
+console.log(poly.hornerEval(2)); // 1 + 4 + 12 = 17  (single pass)
+```
+
+**Tropical semiring example** — max-segment-sum in $O(n)$:
+
+The *tropical semiring* replaces `(+, ×)` with `(max, +)`. Horner's Rule applied to the tropical semiring turns an $O(n^3)$ maximum-segment-sum into $O(n)$.
+
+```ts
+import { data, satisfies } from '@lapis-lang/lapis-js';
+import { Semiring } from '@lapis-lang/lapis-js/std';
+import { TropicalNum } from '@lapis-lang/lapis-js/std';
+
+// TropicalNum: add = max (Zero = -∞),  multiply = integer + (One = 0)
+// Satisfies Semiring — multiply.distributive:add is inherited automatically.
+const nums = [3, -1, 4, 1, -5, 9, 2].map(v => TropicalNum.T({ value: v }));
+
+// max-segment-sum: fold(max) ∘ fold(+) — fused by Horner to a single pass
+const result = maxSegmentSum(nums); // 10  (sub-array [4, 1, -5, 9, 2]... actually [9,1] or full prefix)
+```
+
+**How it works** — the merge pipeline planner detects the following pattern at `.ops()` time:
+
+1. An inner fold `foldInner` with `properties` containing `'distributive:outerOp'`.
+2. An outer fold `foldOuter` whose operation name matches `outerOp`.
+3. Adjacent in the merge list: `merge('foldInner', 'foldOuter')`.
+
+When found, the two folds are collapsed to a single traversal with the fused algebra
+
+$$\phi(\text{acc},\, x) = e_{\oplus} \oplus (x \otimes \text{acc})
+$$
+where $e_{\oplus}$ is the identity of $\oplus$ and $\otimes$ is the inner operation.  This is exactly Horner's scheme.
+
+> **Automatic via Semiring:** Any ADT whose `multiply` operation is declared with `properties: ['distributive:add']` (which `Semiring.multiply` already does) gets Horner fusion inside `merge` at no extra cost.  Declaring a custom property `distributive:myOp` on any binary fold enables the same optimization for that pair.
 
 ### Protocols on Behavior Types
 

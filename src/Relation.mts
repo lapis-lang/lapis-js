@@ -24,7 +24,7 @@ import { data, invariant } from './Data.mjs';
 import type { DataFoldFn } from './Data.mjs';
 import { op, spec as specSym, isOperationDef, isFamilyRefSpec, LapisTypeSymbol } from './operations.mjs';
 import type { DataDeclParams, DataADTWithParams, DataInstance } from './types.mjs';
-import type { unfold, map, merge } from './ops.mjs';
+import type { unfold, map, merge } from './operations.mjs';
 
 // ---- Symbols ----------------------------------------------------------------
 
