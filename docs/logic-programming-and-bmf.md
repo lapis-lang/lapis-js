@@ -260,12 +260,12 @@ The correspondence is direct:
 
 | Combinator Datalog | Lapis `data()` |
 | --- | --- |
-| `μ a . F(a)` (least fixpoint) | `data(family => F(Self))` |
+| `μ a . F(a)` (least fixpoint) | `data(family => F(family))` |
 | Union of clauses | Union of constructors |
-| Recursive reference `a` | `Self` |
+| Recursive reference `a` | `family` |
 | Relational composition (join) | Shared field types + invariant |
-| Base facts | Leaf constructors (no `Self`) |
-| Derived rules | Recursive constructors (contain `Self`) |
+| Base facts | Leaf constructors (no `family`) |
+| Derived rules | Recursive constructors (contain `family`) |
 
 The ancestor example maps directly:
 
@@ -282,7 +282,7 @@ const Ancestor = data(family => ({
     Direct: { from: String, to: String },
 
     // parent ∘ ancestor — relational composition (recursive constructor)
-    Transitive: { hop: Parent, rest: Self },
+    Transitive: { hop: Parent, rest: family },
     //           hop.to === rest.from is the join condition
 
     [invariant](instance) {
@@ -302,7 +302,7 @@ Since derivations are data, queries are folds:
 ```js
 const Ancestor = data(family => ({
     Direct: { from: String, to: String },
-    Transitive: { hop: Parent, rest: Self },
+    Transitive: { hop: Parent, rest: family },
 
     // Query: extract the endpoints (from, to) of any derivation
     endpoints: fold({ out: Array })({
@@ -367,7 +367,7 @@ This means the relational algebra that underlies Datalog is already expressible 
 
 The combinator perspective suggests two complementary approaches:
 
-1. **Datalog (bottom-up, variable-free):** Express rules as data type definitions. Constructors = rule clauses. `Self` = recursive reference. Invariants enforce join conditions. Closure = fixpoint via hylomorphism. Querying = fold. **No logic variables needed** — the point-free style eliminates them entirely.
+1. **Datalog (bottom-up, variable-free):** Express rules as data type definitions. Constructors = rule clauses. `family` = recursive reference. Invariants enforce join conditions. Closure = fixpoint via hylomorphism. Querying = fold. **No logic variables needed** — the point-free style eliminates them entirely.
 
 2. **Prolog (top-down, variable-free):** Express the *same* rules as behavior type definitions. Observers = goal alternatives. `Self` = coinductive recursion. Querying = unfold from a goal seed, lazily exploring the search tree. **No logic variables needed here either** — structural wiring replaces them.
 

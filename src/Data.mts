@@ -526,6 +526,12 @@ function attachOpsMethod<D extends Record<string, unknown>>(
 
         // Parse and install the operations on the (already-created) ADT.
         const opsDecl = parseDeclarationOps(opsObj);
+        const localOpKinds = new Map<string, string>();
+        for (const [name, def] of Object.entries(opsDecl)) {
+            const kind = (def as Record<symbol, unknown>)[op as unknown as symbol];
+            if (typeof kind === 'string')
+                localOpKinds.set(name, kind);
+        }
         // Use the raw (un-proxied) ADT so parentADTMap / adtTransformers are keyed consistently.
         const rawADT = ((ADT as unknown as { _rawADT?: ADTLike })._rawADT ?? ADT) as unknown as ADTLike;
 
@@ -600,7 +606,8 @@ function attachOpsMethod<D extends Record<string, unknown>>(
             new Set(rawADT._getTransformerNames()),
             decl.protocols,
             'ADT',
-            rawADT
+            rawADT,
+            localOpKinds
         );
 
         return ADT as DataADTWithParams<D & O & ExpandAliases<O>>;

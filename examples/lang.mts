@@ -35,7 +35,7 @@ const Expr = data(family => ({
     Lit:    { value: Number },
     Add:    { left: family, right: family },
     Mul:    { left: family, right: family },
-    IfExpr: { cond: family, then: Stmt, else: Stmt }    // cross-sort ref to Stmt
+    IfExpr: { cond: family, then: family, else: family }
 }));
 
 const Stmt = data(family => ({
@@ -53,7 +53,7 @@ const ExprLang = Expr.ops(({ fold }) => ({
         Lit({ value })            { return value as number; },
         Add({ left, right }: any) { return left + right; },
         Mul({ left, right }: any) { return left * right; },
-        // Non-zero cond is truthy; return cond value for the true branch
+        // Non-zero cond is truthy; branches are Expr, so eval stays numeric.
         IfExpr({ cond, then: t, else: e }: any) { return (cond !== 0 ? t : e) as number; }
     })
 }));
@@ -93,8 +93,8 @@ console.log(`lit3  instanceof Stmt: ${lit3  instanceof StmtLang}`);    // false
 // Stmt sort ───────────────────────────────────────────────────────────────────
 console.log('\n--- Stmt sort ---');
 
-const assign1 = StmtLang.Assign({ name: 'x', expr: lit3 });
-const assign2 = StmtLang.Assign({ name: 'y', expr: sum  });
+const assign1 = StmtLang.Assign({ name: 'x', expr: lit3 as any });
+const assign2 = StmtLang.Assign({ name: 'y', expr: sum as any  });
 const seq     = StmtLang.Seq({ first: assign1, second: assign2 });
 
 console.log(`Assign("x",3).varNames = ${JSON.stringify(assign1.varNames)}`);  // ["x"]
@@ -104,16 +104,16 @@ console.log(`Seq(x,y).varNames      = ${JSON.stringify(seq.varNames)}`);      //
 console.log(`\nassign1 instanceof Stmt: ${assign1 instanceof StmtLang}`);  // true
 console.log(`assign1 instanceof Expr: ${assign1 instanceof ExprLang}`);   // false
 
-// Cross-sort: Stmt referencing Expr via field type ────────────────────────────
-console.log('\n--- Cross-sort: IfExpr uses Stmt branches ---');
+// Expr conditional evaluation (numeric) ───────────────────────────────────────
+console.log('\n--- Expr conditional evaluation ---');
 
-const thenBranch = StmtLang.Assign({ name: 'result', expr: prod });   // result = 12
-const elseBranch = StmtLang.Assign({ name: 'result', expr: lit3  });  // result = 3
-const ifExpr     = ExprLang.IfExpr({ cond: sum, then: thenBranch, else: elseBranch });
+const thenExpr = prod;   // 12
+const elseExpr = lit3;   // 3
+const ifExpr   = ExprLang.IfExpr({ cond: sum as any, then: thenExpr as any, else: elseExpr as any });
 
-console.log(`IfExpr cond=7 (truthy), thenBranch.varNames = ${JSON.stringify(thenBranch.varNames)}`);
-// When cond ≠ 0 the then-branch is taken; eval returns sum.eval = 7
-console.log(`IfExpr(7, thenBranch, elseBranch).eval = ${ifExpr.eval}`);          // 7
+console.log(`IfExpr cond=7 (truthy), thenExpr.eval = ${thenExpr.eval}`);
+// When cond ≠ 0 the then-branch is taken; eval returns thenExpr.eval.
+console.log(`IfExpr(7, thenExpr, elseExpr).eval = ${ifExpr.eval}`);              // 12
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Extension: adding new variants to each sort (the Expression Problem)
@@ -139,7 +139,7 @@ const RichStmt = data(family => ({
 }));
 
 const richSub  = RichExpr.Sub({ left: ExprLang.Lit({ value: 10 }), right: ExprLang.Lit({ value: 4 }) });
-const richPrint = RichStmt.Print({ expr: richSub });
+const richPrint = RichStmt.Print({ expr: richSub as any });
 
 console.log(`Sub(10, 4).eval  = ${richSub.eval}`);       // 6
 

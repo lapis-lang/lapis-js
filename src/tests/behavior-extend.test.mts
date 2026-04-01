@@ -264,7 +264,6 @@ describe('behavior [extend] — parent unfold inheritance', () => {
         }));
 
         // Still a parameterized method (inherited in: Number)
-        // @ts-expect-error -- intentional type violation for test
         const s = Child.Create(5);
         assert.equal(s.value, 10);
     });

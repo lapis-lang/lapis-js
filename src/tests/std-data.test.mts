@@ -107,9 +107,9 @@ describe('Either', () => {
     it('Left and Right construct', () => {
 
         const E = Either as any;
-        const l = E.Left({ value: 'err' });
+        const l = E.Left({ error: 'err' });
         const r = E.Right({ value: 42 });
-        assert.strictEqual(l.value, 'err');
+        assert.strictEqual(l.error, 'err');
         assert.strictEqual(r.value, 42);
     });
 
@@ -120,9 +120,9 @@ describe('Either', () => {
         const mapped = r.fmap((x: number) => x + 1);
         assert.strictEqual(mapped.value, 6);
 
-        const l = E.Left({ value: 'err' });
+        const l = E.Left({ error: 'err' });
         const mappedL = l.fmap((x: number) => x + 1);
-        assert.strictEqual(mappedL.value, 'err');  // unchanged
+        assert.strictEqual(mappedL.error, 'err');  // unchanged
     });
 
     it('satisfies Functor', () => {

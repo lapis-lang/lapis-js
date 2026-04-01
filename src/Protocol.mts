@@ -715,9 +715,17 @@ export function validateProtocolConformance(
     proto: ProtocolLike,
     adtLabel: string,
     type?: unknown,
-    prototype?: object
+    prototype?: object,
+    opKinds?: ReadonlyMap<string, string>
 ): void {
     for (const [opName, opSpec] of proto.requiredOps) {
+        const localKind = opKinds?.get(opName);
+        if (localKind !== undefined && localKind !== opSpec.kind) {
+            throw new TypeError(
+                `${adtLabel} operation '${opName}' has kind '${localKind}' but protocol requires kind '${opSpec.kind}'`
+            );
+        }
+
         if (!adtOpNames.has(opName)) {
             if (prototype !== undefined && opName in prototype) {
                 // Op exists on the prototype chain (inherited from a parent ADT/behavior).
@@ -787,11 +795,12 @@ export function applyUnconditionalProtocols(
     opNames: Set<string>,
     protocols: ProtocolEntry[],
     label: string,
-    type?: unknown
+    type?: unknown,
+    opKinds?: ReadonlyMap<string, string>
 ): void {
     for (const entry of protocols) {
         // Pass `prototype` so that missing ops with defaultBody are auto-installed.
-        validateProtocolConformance(opNames, entry.protocol, label, type, prototype);
+        validateProtocolConformance(opNames, entry.protocol, label, type, prototype, opKinds);
         registerConformance(prototype, entry.protocol);
     }
 }

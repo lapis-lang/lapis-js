@@ -684,6 +684,16 @@ type BehaviorMergeOpKeys<D> = OpKindKeys<keyof D & string, D, 'merge'>;
 
 type BehaviorMergeCtors<D> = MergeCtorsFor<BehaviorMergeOpKeys<D> & keyof D, D, BehaviorObservers<D>>;
 
+// ---- Extended behavior static constructor propagation via [extend] -------
+
+type ExtendedParentBehaviorCtorsImpl<D, Leaf> =
+    ParentDecl<D> extends never ? object
+        : BehaviorUnfoldCtors<ParentDecl<D>, BehaviorObservers<Leaf>>
+          & BehaviorMergeCtors<ParentDecl<D>>
+          & ExtendedParentBehaviorCtorsImpl<ParentDecl<D>, Leaf>;
+
+type ExtendedParentBehaviorCtors<D> = ExtendedParentBehaviorCtorsImpl<D, D>;
+
 // ---- Full behavior type -----------------------------------------------------
 
 /**
@@ -700,6 +710,7 @@ type BehaviorMergeCtors<D> = MergeCtorsFor<BehaviorMergeOpKeys<D> & keyof D, D, 
  * and do not need the same escape hatch as `DataADT`.
  */
 export type BehaviorADT<D = Record<string, unknown>> =
+    ExtendedParentBehaviorCtors<D> &
     BehaviorUnfoldCtors<D, BehaviorObservers<D>> &
     BehaviorMergeCtors<D> & {
         readonly prototype: BehaviorObservers<D>;

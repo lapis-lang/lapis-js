@@ -26,6 +26,7 @@ import {
     DemandsError,
     EnsuresError
 } from '../index.mjs';
+import { Functor } from '../std/protocols/Functor.mjs';
 
 // ---- Shared fixtures (used across multiple sections) -----------------------
 
@@ -410,6 +411,22 @@ describe('data() [satisfies] unconditional', () => {
                 }));
             },
             TypeError
+        );
+    });
+
+    it('throws when required operation kind mismatches protocol', () => {
+        assert.throws(
+            () => {
+                data(() => ({
+                    [satisfies]: [Functor],
+                    Box: { value: Object }
+                })).ops(({ fold, family }) => ({
+                    fmap: fold({ in: Function, out: family })({
+                        Box() { return this; }
+                    })
+                }));
+            },
+            /kind 'fold'.*requires kind 'map'/
         );
     });
 

@@ -865,6 +865,14 @@ function attachBehaviorOpsMethod<D extends Record<string, unknown>>(
         // Validate aux references after all ops from .ops() are registered
         validateAuxFoldReferences(BehaviorType);
 
+        const localOpKinds = new Map<string, string>();
+        for (const [entryName, entrySpec] of Object.entries(opsObj)) {
+            const entryObj = entrySpec as Record<symbol | string, unknown>;
+            const kind = entryObj[op as unknown as symbol];
+            if (typeof kind === 'string')
+                localOpKinds.set(entryName, kind);
+        }
+
         // Record these op names as explicitly registered so future .ops() calls
         // can detect duplicate registrations.
         if (!ownOps) {
@@ -881,7 +889,8 @@ function attachBehaviorOpsMethod<D extends Record<string, unknown>>(
             registeredOpNames,
             protocols,
             'Behavior',
-            BehaviorType
+            BehaviorType,
+            localOpKinds
         );
 
         return BehaviorType as BehaviorADTWithParams<D & O & ExpandAliases<O>>;

@@ -113,8 +113,9 @@ describe('Mutual recursion between data() declarations', () => {
             eval: fold({ out: Number })({
                 Lit({ value })              { return value as number; },
                 Add({ left, right }: any)   { return left + right; },
-                IfExpr({ cond, then, else: el }: any) {
-                    return cond !== 0 ? then : el;
+                // `then`/`else` are Stmt values; eval remains numeric.
+                IfExpr({ cond }: any) {
+                    return cond !== 0 ? 1 : 0;
                 }
             })
         }));
@@ -136,6 +137,7 @@ describe('Mutual recursion between data() declarations', () => {
         const cond = ExprWithOps.Lit({ value: 1 });
         const ifExpr = ExprWithOps.IfExpr({ cond, then: s1, else: s2 });
         assert.strictEqual(ifExpr instanceof Expr, true);
+        assert.strictEqual(ifExpr.eval, 1);
 
         // Fold across Expr
         const sum = ExprWithOps.Add({ left: ExprWithOps.Lit({ value: 3 }), right: ExprWithOps.Lit({ value: 4 }) });

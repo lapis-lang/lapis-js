@@ -981,17 +981,13 @@ const Lattice = data(() => ({ False: {}, True: {} }))
     .ops(({ fold, unfold, family }) => ({
         // Canonical: instance.meet(other)  — Alias: instance.and(other)
         meet: fold({ in: family, out: family })({
-            // @ts-expect-error -- arity
             False({}, _other: any) { return this; },
-            // @ts-expect-error -- arity
             True({},  other: any)  { return other; }
         }).as('and'),
 
         // Canonical: instance.join(other)  — Alias: instance.or(other)
         join: fold({ in: family, out: family })({
-            // @ts-expect-error -- arity
             False({}, other: any)  { return other; },
-            // @ts-expect-error -- arity
             True({},  _other: any) { return this; }
         }).as('or'),
 

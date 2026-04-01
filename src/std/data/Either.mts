@@ -1,5 +1,5 @@
 /**
- * Either — a disjoint union: Left(value) or Right(value).
+ * Either — a disjoint union: Left(error) or Right(value).
  *
  * By convention, Left represents failure/error and Right represents success.
  *
@@ -15,14 +15,14 @@ import { Functor, Applicative, Monad, Foldable } from '../protocols/index.mjs';
 
 const Either = data(() => ({
     [satisfies]: [Functor, Applicative, Monad, Foldable],
-    Left:  { value: Object },
+    Left:  { error: Object },
     Right: { value: Object }
-})).ops(({ fold, unfold, family }) => ({
+})).ops(({ fold, unfold, map, family }) => ({
     // ── Functor (maps over Right; Left propagates unchanged) ──────────────
-    fmap: fold({ in: Function, out: family })({
-        Left() { return this; },
+    fmap: map({ out: family })({
+        // Field-based map transform: only Right has `value`, so Left is unchanged.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        Right({ value }: any, f: any) { return family.Right({ value: f(value) }); }
+        value: (value: any, f: any) => f(value)
     }),
 
     // ── Applicative ──────────────────────────────────────────────────────

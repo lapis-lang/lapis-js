@@ -333,6 +333,9 @@ export function validateTypeSpec(
     if (typeof spec === 'function') {
         // Object (global Object constructor) means "accept any value" — skip validation.
         if (spec === Object) return;
+        // Family/Self sentinels are callable marker functions, not class constructors.
+        // They are handled by dedicated branches (Family) or as direct recursive refs.
+        if (isFamilyRef(spec) || isSelfRef(spec)) return;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         if (!(value instanceof (spec as new (...args: any[]) => unknown))) {
             const typePhrase = context === 'to return'

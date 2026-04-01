@@ -22,14 +22,13 @@ const Validation = data(() => ({
     [satisfies]: [Functor, Applicative],
     Failure: { errors: Object },
     Success: { value: Object }
-})).ops(({ fold, unfold, family }) => ({
+})).ops(({ fold, unfold, map, family }) => ({
 
     // ── Functor (maps over Success; Failure propagates unchanged) ─────────
-    fmap: fold({ in: Function, out: family })({
-        Failure() { return this; },
-        // @ts-expect-error — variant-specific return type is a DataInstance subtype
+    fmap: map({ out: family })({
+        // Field-based map transform: only Success has `value`.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        Success({ value }: any, f: any) { return family.Success({ value: f(value) }); }
+        value: (value: any, f: any) => f(value)
     }),
 
     // ── Applicative (error-accumulating) ──────────────────────────────────

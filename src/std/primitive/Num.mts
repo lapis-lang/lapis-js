@@ -12,7 +12,7 @@ import { Eq, Ord, CommutativeMonoid, Semiring, Ring } from '../protocols/index.m
 const Num = data(() => ({
     [satisfies]: [Eq, Ord, CommutativeMonoid, Semiring, Ring],
     N: { value: Number }
-})).ops(({ fold, unfold, map: _map, family }) => ({
+})).ops(({ fold, unfold, map, family }) => ({
 
     // ── Eq ───────────────────────────────────────────────────────────────
     equals: fold({
@@ -86,12 +86,9 @@ const Num = data(() => ({
     }),
 
     // ── Ring ─────────────────────────────────────────────────────────────
-    negate: fold({ out: family })({
+    negate: map({ out: family })({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        N({ value }: any) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            return new (this.constructor as any)({ value: -value });
-        }
+        value: (value: any) => -value
     })
 
 }));
