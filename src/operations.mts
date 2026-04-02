@@ -106,6 +106,9 @@ export class Any {
     declare readonly [anyBrand]: true;
 }
 
+/** The constructor type of {@link Any}. Exported for use as a type-only import (no dynamic import needed). */
+export type AnyConstructor = typeof Any;
+
 /**
  * The universal bottom type in the Lapis type lattice.
  *
@@ -126,6 +129,65 @@ export class Nothing {
     // Same nominal brand trick as Any — prevents `S extends typeof Nothing`
     // from accidentally matching unrelated constructors via structural typing.
     declare readonly [nothingBrand]: true;
+
+    constructor() {
+        throw new TypeError('Nothing is the bottom type and cannot be instantiated');
+    }
+}
+
+/** The constructor type of {@link Nothing}. Exported for use as a type-only import (no dynamic import needed). */
+export type NothingConstructor = typeof Nothing;
+
+/**
+ * Shared structural subtype check for the type lattice.
+ *
+ * Returns `true` when `child` is the same type as, or a subtype of, `parent`.
+ * Encodes the four lattice axioms before falling back to prototype-chain inspection:
+ *   1. `parent === Any`    → true  (Any is ⊤; everything is ≤ Any)
+ *   2. `child === Nothing` → true  (Nothing is ⊥; Nothing is ≤ everything)
+ *   3. `child === Any`     → false (Any has no proper supertypes except itself)
+ *   4. `parent === Nothing`→ false (only Nothing ≤ Nothing)
+ *
+ * `isSelfLike` is an optional predicate to treat self-recursive sentinels
+ * (FamilyRef in data or SelfRef in behavior) as mutually compatible.
+ */
+export function isSpecSubtype(
+    child: unknown,
+    parent: unknown,
+    isSelfLike: (v: unknown) => boolean = () => false
+): boolean {
+    if (child === parent) return true;
+    if (isSelfLike(child) && isSelfLike(parent)) return true;
+    if (parent === Any) return true;
+    if (child === Nothing) return true;
+    if (child === Any) return false;
+    if (parent === Nothing) return false;
+    if (typeof child === 'function' && typeof parent === 'function') {
+        const pProto = (parent as { prototype?: object }).prototype;
+        const cProto = (child as { prototype?: object }).prototype;
+        if (pProto != null && cProto != null)
+            return pProto === cProto || Object.prototype.isPrototypeOf.call(pProto, cProto);
+    }
+    return false;
+}
+
+/**
+ * Throws a `TypeError` if `spec` is `Nothing`.
+ *
+ * Used to guard endpoints (relation origin/destination folds, query cospan fields)
+ * that require a reachable type — Nothing, being the bottom type, can never be satisfied.
+ *
+ * @param spec - The type spec to check.
+ * @param context - Description of the location, e.g. `"relation() [origin] fold"`.
+ * @param fieldLabel - Short label for the field, e.g. `"out"` or `"'value'"`.
+ */
+export function assertNotNothing(spec: unknown, context: string, fieldLabel: string): void {
+    if (spec === Nothing) {
+        throw new TypeError(
+            `${context} cannot have ${fieldLabel}: Nothing — ` +
+            `Nothing is the bottom type and no value can satisfy it`
+        );
+    }
 }
 
 /** Parsed auxiliary-fold configuration from a fold spec's `aux` key. */

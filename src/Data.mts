@@ -20,6 +20,7 @@ import {
     parseProperties,
     Any,
     Nothing,
+    isSpecSubtype,
     type TypeSpec,
     type PropertyEntry
 } from './operations.mjs';
@@ -743,26 +744,15 @@ function parseDeclarationOps(
  * for the purposes of field narrowing in an `[extend]` declaration:
  *  - Identical spec references: always ok.
  *  - Both FamilyRef markers: ok (recursive self-reference).
+ *  - `Any` as parentFieldSpec (top type): every spec is a subtype of Any.
+ *  - `Nothing` as childFieldSpec (bottom type): Nothing is a subtype of every spec.
+ *  - `Any` as childFieldSpec (and parent ≠ Any): Any has no proper supertypes — rejected.
+ *  - `Nothing` as parentFieldSpec (and child ≠ Nothing): only Nothing ≤ Nothing — rejected.
  *  - Constructor subtyping: every instance of `childFieldSpec` is also an
  *    instance of `parentFieldSpec` (parentSpec.prototype in child's chain).
  */
 function isFieldCovariant(childFieldSpec: unknown, parentFieldSpec: unknown): boolean {
-    if (childFieldSpec === parentFieldSpec) return true;
-    if (isFamilyRefSpec(childFieldSpec) && isFamilyRefSpec(parentFieldSpec)) return true;
-    if (
-        typeof childFieldSpec === 'function' &&
-        typeof parentFieldSpec === 'function'
-    ) {
-        const pProto = (parentFieldSpec as { prototype?: object }).prototype;
-        const cProto = (childFieldSpec as { prototype?: object }).prototype;
-        // Exclude arrow functions (no .prototype); note Object.prototype instanceof Object
-        // is false (Object.prototype is the chain root), so we cannot use instanceof here.
-        if (pProto != null && cProto != null) {
-            return pProto === cProto ||
-                Object.prototype.isPrototypeOf.call(pProto, cProto);
-        }
-    }
-    return false;
+    return isSpecSubtype(childFieldSpec, parentFieldSpec, isFamilyRefSpec);
 }
 
 function parseDeclaration(

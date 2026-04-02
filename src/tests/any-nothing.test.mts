@@ -311,3 +311,116 @@ describe('query() — Nothing guards', () => {
         );
     });
 });
+
+// ---- 8. Observer variance with Any / Nothing --------------------------------
+
+describe('behavior observer variance — Any/Nothing as lattice bounds', () => {
+    test('parent observer Any, child observer Number (covariant narrowing) — allowed', () => {
+        const Base = behavior(self => ({ value: Any, next: self }));
+        assert.doesNotThrow(() =>
+            behavior(self => ({ [extend]: Base, value: Number, next: self }))
+        );
+    });
+
+    test('parent observer Number, child observer Any (covariant widening) — rejected', () => {
+        const Base = behavior(self => ({ value: Number, next: self }));
+        assert.throws(
+            () => behavior(self => ({ [extend]: Base, value: Any, next: self })),
+            /Cannot narrow observer 'value'/
+        );
+    });
+
+    test('parent observer Any, child observer Nothing (covariant narrowing to bottom) — allowed', () => {
+        const Base = behavior(self => ({ value: Any, next: self }));
+        assert.doesNotThrow(() =>
+            behavior(self => ({ [extend]: Base, value: Nothing, next: self }))
+        );
+    });
+
+    test('parent observer Nothing, child observer Number (only Nothing ≤ Nothing) — rejected', () => {
+        const Base = behavior(self => ({ value: Nothing, next: self }));
+        assert.throws(
+            () => behavior(self => ({ [extend]: Base, value: Number, next: self })),
+            /Cannot narrow observer 'value'/
+        );
+    });
+
+    test('parent parametric out: Any, child out: Number — allowed', () => {
+        const Base = behavior(self => ({ value: { out: Any }, next: self }));
+        assert.doesNotThrow(() =>
+            behavior(self => ({ [extend]: Base, value: { out: Number }, next: self }))
+        );
+    });
+
+    test('parent parametric out: Number, child out: Any — rejected', () => {
+        const Base = behavior(self => ({ value: { out: Number }, next: self }));
+        assert.throws(
+            () => behavior(self => ({ [extend]: Base, value: { out: Any }, next: self })),
+            /Cannot narrow 'out' of observer 'value'/
+        );
+    });
+
+    test('parent parametric in: Number, child in: Any (contravariant widening) — allowed', () => {
+        const Base = behavior(self => ({ value: { in: Number, out: Number }, next: self }));
+        assert.doesNotThrow(() =>
+            behavior(self => ({ [extend]: Base, value: { in: Any, out: Number }, next: self }))
+        );
+    });
+
+    test('parent parametric in: Any, child in: Number (contravariant narrowing) — rejected', () => {
+        const Base = behavior(self => ({ value: { in: Any, out: Number }, next: self }));
+        assert.throws(
+            () => behavior(self => ({ [extend]: Base, value: { in: Number, out: Number }, next: self })),
+            /Cannot narrow 'in' of observer 'value'/
+        );
+    });
+});
+
+// ---- 9. data field narrowing — Any/Nothing as lattice bounds ------------------
+
+describe('data field narrowing — Any/Nothing as lattice bounds', () => {
+
+    test('parent field Any, child field Number — allowed (Number ≤ Any)', () => {
+        const Base = data(() => ({ Box: { value: Any } }));
+        assert.doesNotThrow(() =>
+            data(() => ({ [extend]: Base, Box: { value: Number } })).ops(() => ({}))
+        );
+    });
+
+    test('parent field Number, child field Any — rejected (Any ⊄ Number)', () => {
+        const Base = data(() => ({ Box: { value: Number } }));
+        assert.throws(
+            () => data(() => ({ [extend]: Base, Box: { value: Any } })).ops(() => ({})),
+            /Cannot narrow field 'value'/
+        );
+    });
+
+    test('parent field Any, child field Nothing — allowed (Nothing ≤ Any)', () => {
+        const Base = data(() => ({ Box: { value: Any } }));
+        assert.doesNotThrow(() =>
+            data(() => ({ [extend]: Base, Box: { value: Nothing } })).ops(() => ({}))
+        );
+    });
+
+    test('parent field Nothing, child field Number — rejected (Number ⊄ Nothing)', () => {
+        const Base = data(() => ({ Box: { value: Nothing } }));
+        assert.throws(
+            () => data(() => ({ [extend]: Base, Box: { value: Number } })).ops(() => ({})),
+            /Cannot narrow field 'value'/
+        );
+    });
+
+    test('parent field Any, child field Any — allowed (identity)', () => {
+        const Base = data(() => ({ Box: { value: Any } }));
+        assert.doesNotThrow(() =>
+            data(() => ({ [extend]: Base, Box: { value: Any } })).ops(() => ({}))
+        );
+    });
+
+    test('parent field Nothing, child field Nothing — allowed (identity)', () => {
+        const Base = data(() => ({ Box: { value: Nothing } }));
+        assert.doesNotThrow(() =>
+            data(() => ({ [extend]: Base, Box: { value: Nothing } })).ops(() => ({}))
+        );
+    });
+});

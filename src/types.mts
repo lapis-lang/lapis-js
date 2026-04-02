@@ -21,10 +21,10 @@ import type {
     FamilyRef,
     FamilyRefCallable,
     SelfRef,
-    Any,
-    Nothing,
     SelfRefCallable,
-    TypeSpec
+    TypeSpec,
+    AnyConstructor,
+    NothingConstructor
 } from './operations.mjs';
 
 /** Phantom brand symbol: carries the declaration shape D on DataADTWithParams/BehaviorADTWithParams */
@@ -71,8 +71,8 @@ interface BuiltinSpecMap {
  * Returns `never` for non-builtin constructors (handled by fallback).
  */
 type BuiltinTag<S> =
-    S extends typeof Any ? 'any' :
-        S extends typeof Nothing ? 'nothing' :
+    S extends AnyConstructor ? 'any' :
+        S extends NothingConstructor ? 'nothing' :
             S extends NumberConstructor ? 'number' :
                 S extends StringConstructor ? 'string' :
                     S extends BooleanConstructor ? 'boolean' :

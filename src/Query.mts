@@ -29,7 +29,7 @@
  */
 
 import { behavior } from './Behavior.mjs';
-import { isOperationDef, isSelfRef, op, spec as specSym, LapisTypeSymbol, SelfRefSymbol, Nothing } from './operations.mjs';
+import { isOperationDef, isSelfRef, op, spec as specSym, LapisTypeSymbol, SelfRefSymbol, assertNotNothing } from './operations.mjs';
 import type { BehaviorDeclParams, QueryADT, SpecValue } from './types.mjs';
 import type { fold, unfold, map, merge } from './operations.mjs';
 
@@ -282,12 +282,7 @@ export function query<D extends Record<string, unknown>>(
                             `query(): [${name}]: "${fieldName}" references unknown field '${fieldName}'`
                         );
                     }
-                    if (fieldSpec === Nothing) {
-                        throw new TypeError(
-                            `query(): [${name}]: field '${fieldName}' has type Nothing — ` +
-                            `Nothing is the bottom type and no value can satisfy it`
-                        );
-                    }
+                    assertNotNothing(fieldSpec, `query(): [${name}]:`, `field '${fieldName}'`);
                     const outType = isSelfRef(fieldSpec) ? Object : fieldSpec;
                     result[name] = {
                         [op]: 'fold' as const,

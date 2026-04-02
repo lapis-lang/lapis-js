@@ -22,7 +22,7 @@
 
 import { data, invariant } from './Data.mjs';
 import type { DataFoldFn } from './Data.mjs';
-import { op, spec as specSym, isOperationDef, isFamilyRefSpec, LapisTypeSymbol, Nothing } from './operations.mjs';
+import { op, spec as specSym, isOperationDef, isFamilyRefSpec, LapisTypeSymbol, assertNotNothing } from './operations.mjs';
 import type { DataDeclParams, DataADTWithParams, DataInstance } from './types.mjs';
 import type { unfold, map, merge } from './operations.mjs';
 
@@ -254,20 +254,10 @@ export function relation<D extends Record<string, unknown>>(
                 const destSpec = (destDef as Record<symbol, unknown>)[specSym] as Record<string, unknown> | undefined;
                 if (!originSpec || !originSpec['out'])
                     throw new Error("relation() origin fold must have an 'out' type, e.g. fold({ out: String })");
-                if (originSpec['out'] === Nothing) {
-                    throw new TypeError(
-                        'relation() [origin] fold cannot have out: Nothing — ' +
-                        'Nothing is the bottom type and no value can satisfy it'
-                    );
-                }
+                assertNotNothing(originSpec['out'], 'relation() [origin] fold', 'out');
                 if (!destSpec || !destSpec['out'])
                     throw new Error("relation() destination fold must have an 'out' type, e.g. fold({ out: String })");
-                if (destSpec['out'] === Nothing) {
-                    throw new TypeError(
-                        'relation() [destination] fold cannot have out: Nothing — ' +
-                        'Nothing is the bottom type and no value can satisfy it'
-                    );
-                }
+                assertNotNothing(destSpec['out'], 'relation() [destination] fold', 'out');
 
                 // Pass all ops to the base handler with string keys.
                 // The fold pipeline only understands string-keyed opNames,

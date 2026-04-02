@@ -29,6 +29,7 @@ import {
     parseProperties,
     Any,
     Nothing,
+    isSpecSubtype,
     type PropertyEntry
 } from './operations.mjs';
 
@@ -214,15 +215,7 @@ function specsCompatible(a: unknown, b: unknown): boolean {
 
 /** True when `child` is the same type as or a subtype of `parent` (prototype-chain check). */
 function isTypeSubtype(child: unknown, parent: unknown): boolean {
-    if (child === parent) return true;
-    if (isSelfRef(child) && isSelfRef(parent)) return true;
-    if (typeof child === 'function' && typeof parent === 'function') {
-        const pProto = (parent as { prototype?: object }).prototype;
-        const cProto = (child as { prototype?: object }).prototype;
-        if (pProto != null && cProto != null)
-            return pProto === cProto || Object.prototype.isPrototypeOf.call(pProto, cProto);
-    }
-    return false;
+    return isSpecSubtype(child, parent, isSelfRef);
 }
 
 /**
@@ -386,7 +379,6 @@ export function behavior<D extends Record<string, unknown>>(
 
 
         const result = BaseClass,
-
             observerMap = new Map<string, ObserverEntry>(),
             declarations = {
                 unfold: [] as { name: string; spec: Record<string, unknown> }[],
