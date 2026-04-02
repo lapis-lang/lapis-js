@@ -98,7 +98,7 @@ there is an emphasis on the Bird-Meertens Formalism (BMF) (Squiggol) of making p
     - [Property Inheritance](#property-inheritance)
     - [Automatic Law Checking](#automatic-law-checking)
     - [Runtime Optimization Exploitation](#runtime-optimization-exploitation)
-    - [Horner's Rule (Fold-Fusion via Distributivity)](#horners-rule-fold-fusion-via-distributivity)
+    - [Horner's Rule (Sequenced Fold Composition with Distributivity)](#horners-rule-sequenced-fold-composition-with-distributivity)
   - [Protocols on Behavior Types](#protocols-on-behavior-types)
 - [Design by Contract](#design-by-contract)
   - [Assertions](#assertions)
@@ -1975,7 +1975,7 @@ At definition time, five fusion rules are applied automatically to the pipeline:
 2. **Involutory self-cancellation**: consecutive pairs of the same operation annotated `involutory` are removed (f ∘ f = id; repeated until stable)
 3. **Map-map fusion**: consecutive map getters are composed into a single traversal (g ∘ f)
 4. **Map-fold fusion**: a map getter before a fold is fused into the fold's field access
-5. **Horner fold-fusion**: `fold(⊕) ∘ fold(⊗)` where `⊗` carries `distributive:⊕` is rewritten to a single fused fold — see [Horner's Rule](#horners-rule-fold-fusion-via-distributivity)
+5. **Horner fold-fusion**: `fold(⊕) ∘ fold(⊗)` where `⊗` carries `distributive:⊕` is recognised as a Horner-compatible pair and sequenced as a single named operation — see [Horner's Rule](#horners-rule-sequenced-fold-composition-with-distributivity)
 
 See [Invertible Maps (Allegories)](#invertible-maps-allegories) for details on inverse declaration and the complete fusion rules.
 
@@ -2624,7 +2624,7 @@ behavior(self => ({ value: Number, left: self, right: self }))
 
 ### Co-Horner Rule (Fold-Fusion on Behavior)
 
-The **co-Horner rule** is the coalgebraic dual of [Horner's Rule](#horners-rule-fold-fusion-via-distributivity). Where the data version fuses `fold(⊗) ∘ fold(⊕)` into a single *inductive* traversal, the behavior version fuses `fold(f) ∘ fold(g)` where the inner fold `f` returns a **new behavior instance** and the outer fold `g` then observes it.
+The **co-Horner rule** is the coalgebraic dual of [Horner's Rule](#horners-rule-sequenced-fold-composition-with-distributivity). Where the data version sequences `fold(⊗) ∘ fold(⊕)` as a validated pair under a single name, the behavior version does the same for `fold(f) ∘ fold(g)` where the inner fold `f` returns a **new behavior instance** and the outer fold `g` then observes it.
 
 A `merge` of two fold operations (with no unfold between them) is a co-Horner pipeline. The inner fold must declare `properties: ['distributive:outerFoldName']` to signal that the composition is safe to execute as a two-step fused operation:
 
@@ -3957,84 +3957,73 @@ console.log(xs.doubleNegateSum); // 3  (same as xs.sum)
 
 An odd-count run leaves one operation in the pipeline — so `merge('negate', 'negate', 'negate', 'sum')` collapses to `['negate', 'sum']` (one cancellation pair removed, one `negate` remaining).
 
-#### Horner's Rule (Fold-Fusion via Distributivity)
+#### Horner's Rule (Sequenced Fold Composition with Distributivity)
 
-**Horner's Rule** is an algebraic pipeline optimization that turns a two-pass pipeline
+**Horner's Rule** describes a two-fold pipeline
 
 ```text
-fold(⊕, e) ∘ fold(⊗, e')
+fold(⊕) ∘ fold(⊗)
 ```
 
-into a single-pass fused fold — provided `⊗` distributes over `⊕`.  The classical example is polynomial evaluation:
+where the inner fold `⊗` distributes over the outer fold `⊕`.  A canonical example is scaling every element of a list by a factor `x` (inner fold, `out: family`) and then summing the scaled list (outer fold).  The enabling algebraic law is that scalar multiplication distributes over addition:
 
-$$a_0 + a_1 x + a_2 x^2 + \cdots + a_n x^n \;\longrightarrow\; a_0 + x(a_1 + x(\cdots))
-$$
-reducing multiplications from $O(n^2)$ to $O(n)$.
+$$a_0 \cdot x + a_1 \cdot x + \cdots + a_n \cdot x \;=\; x\,(a_0 + a_1 + \cdots + a_n)$$
 
-In Lapis JS the rule fires automatically whenever a `merge` pipeline contains an inner fold whose operation declares `'distributive:outerOp'` in its `properties`.  The `Semiring.multiply` operation already declares `'distributive:add'`, so any ADT that satisfies `Semiring` gets Horner fusion for free inside `merge`.
+In Lapis JS, declaring `'distributive:outerOp'` in a fold's `properties` serves two purposes:
 
-**Polynomial evaluation example** — `merge('scaleEach', 'sum')` is rewritten to a single traversal:
+1. **Validation** — documents and enforces the algebraic precondition that the inner fold distributes over the named outer fold, checked against generated samples at `.ops()` time.
+2. **Pipeline unlocking** — `merge` ordinarily restricts pipelines to at most one fold.  Declaring `distributive:outerOp` on the inner fold (whose `out:` must be a family reference) unlocks pairing it with the matching outer fold in a single `merge`.
+
+At runtime the composition is **sequential**: the inner fold runs first, producing an intermediate structure of the same ADT family, and then the outer fold is applied to that result.  This is algebraically equivalent to calling `instance.innerFold(args).outerFold()`, but grouped under a single named operation.
+
+> **Note:** The current implementation does not perform single-traversal algebra fusion — each fold completes its own full traversal over the structure.  The value of the annotation is semantic (validated distributivity) and structural (unlocking two folds in one merge).  True single-traversal fusion requires first-class inspectable handler expressions; see [issue #192](https://github.com/lapis-lang/lapis-js/issues/192) for the planned work.
+
+**Scaled-sum example** — `merge('scaleEach', 'sum')`:
 
 ```ts
-import { data, satisfies } from '@lapis-lang/lapis-js';
-import { Semiring } from '@lapis-lang/lapis-js/std';
+import { data } from '@lapis-lang/lapis-js';
 
-// A singly-linked list of numbers that satisfies Semiring element-wise.
+// A singly-linked list of numbers.
 const NumList = data(family => ({
     Nil: {},
     Cons: { head: Number, tail: family }
 })).ops(({ fold, unfold, merge, family }) => ({
-    // fold that multiplies every element by `x` then sums — naive two-pass
+    // Inner fold: multiply every element by x and rebuild the list.
+    // out: family — returns a new NumList (intermediate structure).
     scaleEach: fold({
-        in: Number,   // the base x
-        out: Number,
-        properties: ['distributive:sum']  // multiply distributes over sum
+        in: Number,
+        out: family,
+        properties: ['distributive:sum']  // scaleEach distributes over sum
     })({
-        Nil(_ctx, _x) { return 0; },
-        Cons({ head, tail }: any, x: number) { return head * x + tail(x); }
+        Nil(_ctx: any, _x: any) { return family.Nil as any; },
+        Cons({ head, tail }: any, x: number) {
+            return family.Cons({ head: (head as number) * x, tail: tail(x) });
+        }
     }),
+    // Outer fold: sum all elements.
     sum: fold({ out: Number })({
         Nil() { return 0; },
-        Cons({ head, tail }: any) { return head + tail; }
+        Cons({ head, tail }: any) { return (head as number) + tail; }
     }),
-    // Horner fusion: declared as a merge — fused to ONE traversal at definition time
+    // Declared as a merge of two folds, unlocked by the distributive annotation.
+    // Runtime execution: scaleEach(x) runs first → new scaled list → sum applied to result.
+    // Equivalent to: instance.scaleEach(x).sum
     hornerEval: merge('scaleEach', 'sum')
 }));
 
-const poly = NumList.Cons(3, NumList.Cons(2, NumList.Cons(1, NumList.Nil))); // 1 + 2x + 3x²
-console.log(poly.hornerEval(2)); // 1 + 4 + 12 = 17  (single pass)
-```
-
-**Tropical semiring example** — max-segment-sum in $O(n)$:
-
-The *tropical semiring* replaces `(+, ×)` with `(max, +)`. Horner's Rule applied to the tropical semiring turns an $O(n^3)$ maximum-segment-sum into $O(n)$.
-
-```ts
-import { data, satisfies } from '@lapis-lang/lapis-js';
-import { Semiring } from '@lapis-lang/lapis-js/std';
-import { TropicalNum } from '@lapis-lang/lapis-js/std';
-
-// TropicalNum: add = max (Zero = -∞),  multiply = integer + (One = 0)
-// Satisfies Semiring — multiply.distributive:add is inherited automatically.
-const nums = [3, -1, 4, 1, -5, 9, 2].map(v => TropicalNum.T({ value: v }));
-
-// max-segment-sum: fold(max) ∘ fold(+) — fused by Horner to a single pass
-const result = maxSegmentSum(nums); // 10  (sub-array [4, 1, -5, 9, 2]... actually [9,1] or full prefix)
+const list = NumList.Cons(3, NumList.Cons(2, NumList.Cons(1, NumList.Nil))); // values [1, 2, 3]
+console.log(list.hornerEval(2)); // scaleEach: [2,4,6], sum: 12  (= 2*(1+2+3))
 ```
 
 **How it works** — the merge pipeline planner detects the following pattern at `.ops()` time:
 
-1. An inner fold `foldInner` with `properties` containing `'distributive:outerOp'`.
+1. An inner fold `foldInner` with `out: family` and `properties` containing `'distributive:outerOp'`.
 2. An outer fold `foldOuter` whose operation name matches `outerOp`.
 3. Adjacent in the merge list: `merge('foldInner', 'foldOuter')`.
 
-When found, the two folds are collapsed to a single traversal with the fused algebra
+When found, the pair is recorded as a single `hornerFold` plan step.  At call time, `foldInner(args)` runs first (traversing the structure and producing a new intermediate family instance), and `foldOuter()` is immediately applied to that result (a second traversal).
 
-$$\phi(\text{acc},\, x) = e_{\oplus} \oplus (x \otimes \text{acc})
-$$
-where $e_{\oplus}$ is the identity of $\oplus$ and $\otimes$ is the inner operation.  This is exactly Horner's scheme.
-
-> **Automatic via Semiring:** Any ADT whose `multiply` operation is declared with `properties: ['distributive:add']` (which `Semiring.multiply` already does) gets Horner fusion inside `merge` at no extra cost.  Declaring a custom property `distributive:myOp` on any binary fold enables the same optimization for that pair.
+> **Automatic via Semiring:** Any ADT whose `multiply` operation is declared with `properties: ['distributive:add']` (which `Semiring.multiply` already does) can use `merge('multiply', 'add')` without any extra annotation.  Declaring `distributive:myOp` on any binary fold enables the same validated pairing for that pair.
 
 ### Protocols on Behavior Types
 

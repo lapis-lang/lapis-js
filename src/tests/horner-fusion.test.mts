@@ -7,12 +7,12 @@
  * its `properties`, adjacent `[innerFold, outerFold]` pairs in a `merge`
  * pipeline are recognised as Horner-fusible.  The inner fold restructures
  * the family type and the outer fold immediately consumes the result — the
- * pair is executed as a single logical step exploiting the law:
+ * the pair is sequenced: the inner fold runs first (full traversal, producing
+ * an intermediate family instance) and the outer fold is applied to that result
+ * (a second full traversal).
  *
- *   fold(⊕) ∘ fold(⊗)  ≡  fold((e ⊕) ∘ ⊗)   when ⊗ distributes over ⊕
- *
- * Polynomial evaluation is the canonical example; the tropical semiring
- * (max, +) demonstrates max-segment-sum via the same rule.
+ * Scaled-sum (x · sum(values)) is the canonical example; the tropical semiring
+ * (max, +) applies the same annotation pattern.
  */
 
 import { describe, it } from 'node:test';
@@ -27,10 +27,10 @@ function val(t: unknown): number { return (t as { value: number }).value; }
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe('Horner fold-fusion: polynomial evaluation', () => {
-    // Standard polynomial over numbers: evaluate a₀ + a₁x + a₂x² + …
-    // using Horner's scheme merged as two folds.
-    const PolyList = data(family => ({
+describe('Horner fold-fusion: scaled-sum', () => {
+    // Scaled-sum: scale every element by x, then sum — computes x * sum(values).
+    // Two-step composition: scaleEach(x) restructures the list, sum collapses it.
+    const NumList = data(family => ({
         Nil:  {},
         Cons: { head: Number, tail: family }
     })).ops(({ fold, unfold, merge, family }) => ({
@@ -41,8 +41,7 @@ describe('Horner fold-fusion: polynomial evaluation', () => {
             Cons: (xs: any[]) => (xs.length > 0 ? { head: xs[0], tail: xs.slice(1) } : null)
         }),
 
-        // Restructure: multiply each coefficient by x,
-        // returns a new PolyList of the same shape.
+        // Scale each element by x, returning a new NumList of the same shape.
         // Properties: multiply distributes over add (standard ring)
         scaleEach: fold({
             in: Number,
@@ -66,15 +65,15 @@ describe('Horner fold-fusion: polynomial evaluation', () => {
     }));
 
     it('hornerEval([0] at any x) === 0', () => {
-        const list = PolyList.FromArray([0]);
+        const list = NumList.FromArray([0]);
         assert.strictEqual((list as any).hornerEval(7), 0);
     });
 
     it('hornerEval([c] at any x) === c*x  (scale each element)', () => {
         // scaleEach multiplies each element by x, then sum adds them.
-        // For coefficients=[5] at x=3: [5*3] → sum = 15
-        const list = PolyList.FromArray([5]);
-        const r1 = PolyList.FromArray([5]);
+        // For values=[5] at x=3: [5*3] → sum = 15
+        const list = NumList.FromArray([5]);
+        const r1 = NumList.FromArray([5]);
         const scaled = (r1 as any).scaleEach(3);
         const manual = (scaled as any).sum;
         // Verify fused result equals manual two-step
@@ -84,19 +83,19 @@ describe('Horner fold-fusion: polynomial evaluation', () => {
 
     it('hornerEval result matches manual two-step execution', () => {
         // For any input, merge('scaleEach','sum') must equal scaleEach(x).sum
-        const coeffs = [1, 2, 3, 4];
+        const values = [1, 2, 3, 4];
         const x = 2;
-        const list = PolyList.FromArray(coeffs);
+        const list = NumList.FromArray(values);
         const manual = list.scaleEach(x).sum;
         const fused  = (list as any).hornerEval(x);
         assert.strictEqual(fused, manual);
     });
 
     it('hornerEval([1, 2, 3] at x=2) matches manual', () => {
-        // coeffs [1,2,3], x=2:
+        // values [1,2,3], x=2:
         // scaleEach: [1*2, 2*2, 3*2] = [2, 4, 6]
         // sum: 2+4+6 = 12
-        const list = PolyList.FromArray([1, 2, 3]);
+        const list = NumList.FromArray([1, 2, 3]);
         const manual = list.scaleEach(2).sum;
         const fused  = list.hornerEval(2);
         assert.strictEqual(fused, 12);
@@ -104,19 +103,19 @@ describe('Horner fold-fusion: polynomial evaluation', () => {
     });
 
     it('hornerEval of empty list is 0', () => {
-        const list = PolyList.FromArray([]);
+        const list = NumList.FromArray([]);
         assert.strictEqual(list.hornerEval(5), 0);
     });
 
     it('hornerEval is deterministic on repeated calls', () => {
-        const list = PolyList.FromArray([3, 1, 4, 1, 5]);
+        const list = NumList.FromArray([3, 1, 4, 1, 5]);
         const r1 = list.hornerEval(2);
         const r2 = list.hornerEval(2);
         assert.strictEqual(r1, r2);
     });
 
     it('hornerEval with different x values gives different results', () => {
-        const list = PolyList.FromArray([1, 2, 3]);
+        const list = NumList.FromArray([1, 2, 3]);
         const atX1 = list.hornerEval(1);
         const atX2 = list.hornerEval(2);
         const atX3 = list.hornerEval(3);

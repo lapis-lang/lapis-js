@@ -1,5 +1,5 @@
 /**
- * Tropical Semiring — Horner's Rule / max-segment-sum example.
+ * Tropical Semiring — Horner's Rule / scaled-max example.
  *
  * The tropical semiring replaces (×, +) arithmetic with (max, +):
  *   add      = max         Zero = -Infinity
@@ -7,8 +7,8 @@
  *
  * Horner's Rule states that when ⊗ distributes over ⊕, the two-fold pipeline
  *   fold(⊕) ∘ fold(⊗)
- * collapses to a single-pass fold.  For the tropical semiring this turns
- * the O(n³) maximum-segment-sum algorithm into O(n).
+ * is a valid sequenced composition.  The inner fold restructures the list
+ * (out: family) and the outer fold immediately consumes the result.
  *
  * Reference: Jeremy Gibbons — "Patterns in FP: Horner's Rule"
  *   https://patternsinfp.wordpress.com/2011/05/05/horners-rule/
@@ -43,47 +43,44 @@ const TropList = data(family => ({
         }
     }),
 
-    // ── Scale each element by x then sum (multiply = +, so this adds x) ──
-    // scaleBy is essentially fold((t ⊗ _) + prev) but done as two ops.
-    // When merged: Horner's Rule fuses these to a single pass.
+    // ── Scale each element by x, returning a new TropList (out: family) ─────
+    // Each Cons node is rebuilt with head multiplied by x (tropical: head + x).
+    // out: family — the result is an intermediate TropList, not a scalar, so
+    // the outer fold (sum) can traverse it as a second step.
+    // Properties: tropical multiply (integer +) distributes over tropical add (max).
     scaleBy: fold({
         in: TropicalNum,
-        out: TropicalNum,
-        // tropical multiply (+) distributes over tropical add (max)
+        out: family,
         properties: ['distributive:sum']
     })({
-        Nil(_ctx: any, _x: any) { return TropicalNum.Zero(); },
+        Nil(_ctx: any, _x: any) { return family.Nil as any; },
         Cons({ head, tail }: any, x: any) {
-            // tail(x) gives the scaled sum of the rest
-            // head + x  (tropical multiply = integer addition)
-            // combined with outer sum (tropical add = max)
-            return (head as any).multiply(x).add(tail(x));
+            return family.Cons({ head: (head as any).multiply(x), tail: tail(x) });
         }
     }),
 
-    // ── Horner eval: single-pass polynomial evaluation over TropicalNum ──
-    // merge detects: scaleBy has 'distributive:sum'; outer is sum
-    // → collapses to one traversal at definition time (Horner fusion)
+    // ── Horner eval: merge detects 'distributive:sum' on scaleBy → Horner pair ──
+    // Runtime: scaleBy(x) first (traverses list, returns scaled TropList),
+    // then sum is applied to that result (second traversal).
+    // Equivalent to: instance.scaleBy(x).sum
     hornerEval: merge('scaleBy', 'sum')
 
 }));
 
-// ─── Max-segment-sum via Horner's Rule ───────────────────────────────────────
-// The classic max-segment-sum can be derived from the tropical semiring.
-// We demonstrate it here by computing the maximum prefix sum, which is the
-// tropical (max, +)-fold of a list.
+// ─── Max element via tropical sum ───────────────────────────────────────────
+// In the tropical semiring add = max, so folding a list with `sum` returns
+// its maximum element (or -Infinity for an empty list).
 
-function maxPrefixSum(numbers: number[]): number {
+function maxElement(numbers: number[]): number {
     const list = TropList.FromArray(wrap(numbers));
-    // Each element accumulates (max of all prefix sums) via tropical algebra.
-    // hornerEval is a single-pass fused fold.
-
+    // In the tropical semiring add = max, so sum folds to the maximum element.
     return (list.sum as any).value;
 }
 
-// ─── Polynomial evaluation example ───────────────────────────────────────────
-// Evaluate 1 + 2x + 3x² at x = 2  using the standard Horner scheme
-// but with tropical numbers (add = max, multiply = +) to illustrate the algebra.
+// ─── Scaled-sum via Horner composition ───────────────────────────────────────
+// hornerEval(x) = sum(scaleBy(x, list))
+// scaleBy rebuilds the list with each element multiplied by x (tropical: +x),
+// then sum takes the maximum (tropical add = max) of the scaled elements.
 
 console.log('=== Tropical Semiring / Horner\'s Rule ===\n');
 
@@ -112,17 +109,17 @@ const lhs = (a as any).multiply((b as any).add(c)).value;
 const rhs = (a as any).multiply(b).add((a as any).multiply(c)).value;
 console.log(`  lhs = ${lhs}, rhs = ${rhs}, equal = ${lhs === rhs}`);
 
-console.log('\nMax-prefix-sum examples (using sum fold on TropList):');
+console.log('\nMax-element examples (sum fold = max in tropical semiring):');
 const nums1 = [3, -1, 4, 1, -5, 9, 2];
-console.log(`  [${nums1}] → max element = ${maxPrefixSum(nums1)}`);
+console.log(`  [${nums1}] → max element = ${maxElement(nums1)}`);
 
 const nums2 = [-3, -1, -4];
-console.log(`  [${nums2}] → max element = ${maxPrefixSum(nums2)}`);
+console.log(`  [${nums2}] → max element = ${maxElement(nums2)}`);
 
-console.log('\nHorner fused eval (single pass):');
+console.log('\nHorner sequenced eval (scaleBy then sum):');
 const list3 = TropList.FromArray(wrap([1, 2, 3]));
 const x = TropicalNum.T({ value: 2 });
-// hornerEval(x) — fused fold(scaleBy, sum), single traversal
+// hornerEval(x): scaleBy(x) → scaled TropList, then sum (max) of that list
 
 const evalResult = (list3 as any).hornerEval(x);
 console.log(`  hornerEval([1,2,3] at x=T(2)) = T(${evalResult.value})`);

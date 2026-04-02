@@ -162,15 +162,16 @@ describe('TropicalNum Horner fold-fusion', () => {
         assert.strictEqual(val((list as any).sum), -Infinity);
     });
 
-    it('hornerEval and sum agree on single-element list', () => {
+    it('hornerEval differs from sum when x ≠ One', () => {
         const list = makeList([7]);
         const x = T(2);
         const sumResult = val((list as any).sum);
         const hornerResult = val((list as any).hornerEval(x));
         // scaleBy(T(7), T(2)) = T(7+2) = T(9); then sum (max) of [T(9)] = T(9)
         assert.strictEqual(hornerResult, 9);
-        // sum directly: max([T(7)]) = 7
+        // sum directly (no scaling): max([T(7)]) = 7
         assert.strictEqual(sumResult, 7);
+        assert.notStrictEqual(hornerResult, sumResult);
     });
 
     it('hornerEval with One: result equals sum (One=0, multiplicative identity)', () => {

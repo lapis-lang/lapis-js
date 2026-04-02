@@ -1685,7 +1685,15 @@ function addMergeOperation(
         //   (2) apply the outer fold to the result (which must be a behavior instance).
         //
         // This is the coalgebraic dual of Horner fold-fusion from Data.mts.
-        if (foldNames.length >= 2) {
+        if (foldNames.length > 2) {
+            throw new TypeError(
+                `Merge operation '${name}' contains ${foldNames.length} fold operations ` +
+                `(${foldNames.join(', ')}) without an unfold in between. ` +
+                `Co-Horner composition supports exactly two adjacent folds.`
+            );
+        }
+
+        if (foldNames.length === 2) {
             const innerFoldName = foldNames[0];
             const outerFoldName = foldNames[1];
             const innerFoldEntry = foldMap?.get(innerFoldName);
@@ -1717,17 +1725,26 @@ function addMergeOperation(
             ): unknown => {
                 const innerResult = innerFoldEntry.handler(observations, ...params);
                 // The inner fold must return a behavior instance so the outer fold can observe it.
-                if (innerResult !== null && typeof innerResult === 'object') {
-                    return executeFoldEntry(
-                        innerResult as Record<string, unknown>,
-                        observerMap,
-                        outerFoldEntry,
-                        [],
-                        BehaviorType,
-                        outerFoldName
+                // Behavior instances expose BehaviorSymbol (stamped on the raw object, readable
+                // through the proxy's get trap).  We use this rather than behaviorInstanceState
+                // because the WeakMap holds the underlying target object, not the proxy wrapper.
+                if (innerResult === null ||
+                    typeof innerResult !== 'object' ||
+                    !(innerResult as Record<symbol, unknown>)[BehaviorSymbol]) {
+                    throw new TypeError(
+                        `Co-Horner merge '${name}': inner fold '${innerFoldName}' must return a behavior instance, ` +
+                        `but got ${innerResult === null ? 'null' : typeof innerResult}. ` +
+                        `Ensure the inner fold's 'out' type is a behavior family reference.`
                     );
                 }
-                return innerResult;
+                return executeFoldEntry(
+                    innerResult as Record<string, unknown>,
+                    observerMap,
+                    outerFoldEntry,
+                    [],
+                    BehaviorType,
+                    outerFoldName
+                );
             };
 
             ensureOwnMap<string, FoldOpEntry>(
@@ -1798,6 +1815,17 @@ function addScanOperation(
     }
 
     const [continuationName] = continuationEntries[0];
+
+    // Validate the target fold exists at registration time (folds are registered before scans).
+    const foldMap = (BehaviorType as unknown as Record<symbol, unknown>)[FoldOpsSymbol] as
+        Map<string, FoldOpEntry> | undefined;
+    const foldEntry = foldMap?.get(targetFoldName);
+    if (!foldEntry) {
+        throw new TypeError(
+            `scan('${targetFoldName}'): '${targetFoldName}' is not a fold operation on this type`
+        );
+    }
+
     const prototype = (BehaviorType as { prototype?: object }).prototype || BehaviorType;
 
     // Install as an instance method:  instance.scanName(n, ...extraArgs)
@@ -1806,15 +1834,6 @@ function addScanOperation(
     //               Empty for getter folds; non-empty for parameterized folds.
     Object.defineProperty(prototype, name, {
         value: function behaviorScanMethod(n: number, ...extraArgs: unknown[]): unknown[] {
-            const foldMap = (BehaviorType as unknown as Record<symbol, unknown>)[FoldOpsSymbol] as
-                Map<string, FoldOpEntry> | undefined;
-            const foldEntry = foldMap?.get(targetFoldName);
-            if (!foldEntry) {
-                throw new Error(
-                    `Scan operation '${name}': target fold '${targetFoldName}' is not defined`
-                );
-            }
-
             const results: unknown[] = [];
             let instance: unknown = this;
             for (let k = 0; k < n; k++) {

@@ -136,12 +136,13 @@ function isFoldTransformer(t: Transformer): boolean {
 }
 
 /**
- * Collapse adjacent Horner-fusible fold pairs in a transformer list.
+ * Collapse adjacent Horner-pair folds in a transformer list.
  *
- * When fold T[i] carries `distributive:T[i+1].name`, the pair is Horner-fusible
- * (handled at runtime by the hornerFold plan step).  Replace such pairs with a
- * single placeholder fold transformer so `validateMergeComposition` does not
- * reject the merge as having multiple folds.
+ * When fold T[i] carries `distributive:T[i+1].name`, the pair will be
+ * executed sequentially at runtime (inner fold produces an intermediate
+ * family instance; outer fold consumes it).  Replace such pairs with a
+ * single placeholder fold transformer so `validateMergeComposition` does
+ * not reject the merge as having multiple folds.
  */
 function collapseHornerPairs(transformers: Transformer[]): Transformer[] {
     const result: Transformer[] = [];
@@ -154,9 +155,11 @@ function collapseHornerPairs(transformers: Transformer[]): Transformer[] {
             isFoldTransformer(transformers[i + 1]) &&
             getDistributiveTarget(transformers[i]) === transformers[i + 1].name
         ) {
+            const inner = transformers[i];
             const outer = transformers[i + 1];
             result.push(createTransformer({
-                name: `${transformers[i].name}_${outer.name}_horner`,
+                name: `${inner.name}_${outer.name}_horner`,
+                inSpec: inner.inSpec,
                 outSpec: outer.outSpec,
                 getCtorTransform: outer.getCtorTransform ?? (() => () => undefined)
             }));
@@ -2922,19 +2925,19 @@ function createMergeOperation(
         collapseHornerPairs(transformerList), opName);
     ADT._registerTransformer(opName, composedTransformer, false, variants);
 
-    // ---- Map-fold fusion / Horner fold-fusion: execution plan ----
+    // ---- Map-fold fusion / Horner sequenced composition: execution plan ----
     // Build a plan that detects:
     //   (a) map → fold adjacencies (map-fold fusion): a map getter before a fold
     //       is fused so the map's atom transforms are applied during the fold's
     //       field-access phase, eliminating the intermediate mapped structure.
-    //   (b) fold → fold adjacencies with distributivity (Horner fold-fusion):
+    //   (b) fold → fold adjacencies with distributivity (Horner sequenced composition):
     //       when the inner fold declares `distributive:outerOpName` in its
-    //       `properties`, the pair is marked as a Horner-fusible pair.  The
-    //       inner fold runs first (producing an intermediate structure of the
-    //       same family type) and the outer fold is immediately applied to that
-    //       result — both in a single conceptual operation.  This preserves the
-    //       Horner algebraic law: fold(⊕) ∘ fold(⊗) ≡ fold((e ⊕) ∘ ⊗) when
-    //       ⊗ distributes over ⊕.
+    //       `properties`, the pair is validated and grouped as a single named step.
+    //       The inner fold runs first (traversing the structure and producing a new
+    //       intermediate family instance), then the outer fold is applied to that
+    //       result (a second traversal).  No intermediate structure is eliminated;
+    //       the value of the annotation is semantic (validated distributivity) and
+    //       structural (unlocking two folds in one merge).
     type MergeStep =
         | { kind: 'access'; name: string }
         | { kind: 'mapFold'; mapTransformer: Transformer; foldName: string }
@@ -2946,15 +2949,26 @@ function createMergeOperation(
         let k = startIdx;
         while (k < endIndex) {
             const tCur = ADT._getTransformer(ops[k]);
-            // ---- Horner fold-fusion: fold(⊗) ∘ fold(⊕) where ⊗ distributes over ⊕ ----
+            // ---- Horner sequenced composition: fold(⊗) followed by fold(⊕) ----
             // Only triggered when the inner fold (⊗) outputs back into the family
-            // (i.e. its outSpec is a family reference), so the outer fold can
-            // traverse the intermediate structure.
+            // (its outSpec is a family reference) so the outer fold can traverse it,
+            // and the inner fold carries `distributive:outerOpName` in its properties.
+            // The two folds are grouped as one named step; at runtime the inner fold
+            // runs first (full traversal, produces an intermediate family instance)
+            // and the outer fold is applied to that result (second full traversal).
             if (tCur && isFoldTransformer(tCur) && isFamilyRefSpec(tCur.outSpec) && k + 1 < endIndex) {
                 const distributiveTarget = getDistributiveTarget(tCur);
                 if (distributiveTarget && distributiveTarget === ops[k + 1]) {
                     const tNext = ADT._getTransformer(ops[k + 1]);
                     if (tNext && isFoldTransformer(tNext)) {
+                        if (tNext.inSpec !== undefined) {
+                            throw new TypeError(
+                                `Merge operation '${opName}': Horner pair ('${ops[k]}' → '${ops[k + 1]}') ` +
+                                `requires the outer fold '${ops[k + 1]}' to be a getter-fold (no 'in:' parameter), ` +
+                                `but it declares an input type. The outer fold is applied to the intermediate ` +
+                                `structure produced by the inner fold and cannot receive separate arguments.`
+                            );
+                        }
                         steps.push({
                             kind: 'hornerFold',
                             innerFoldName: ops[k],
@@ -3023,12 +3037,12 @@ function createMergeOperation(
             }
         }
         if (step.kind === 'hornerFold') {
-            // Horner fold-fusion: run the inner fold (which restructures the
-            // family) and immediately apply the outer fold to its result.
-            // The inner fold is parameterized (takes `args`); the outer fold
-            // is a getter (no extra args) applied to the inner result.
-            // Together these compute fold(⊕) ∘ fold(⊗) in a single logical
-            // step, exploiting the distributivity of ⊗ over ⊕.
+            // Horner sequenced composition: run the inner fold (which produces
+            // a new intermediate family instance via a full traversal), then
+            // apply the outer fold to that result (a second full traversal).
+            // The inner fold takes `args`; the outer fold is a getter-fold (no args)
+            // validated at plan-build time (tNext.inSpec must be undefined).
+            // Equivalent to: instance.innerFold(args).outerFold()
             const innerResult = invokeOp(result, step.innerFoldName, args);
             return invokeOp(innerResult, step.outerFoldName, []);
         }
@@ -3148,40 +3162,118 @@ function createScanOperation(
     const targetTransformer = ADT._getTransformer(targetFoldOpName);
     if (!targetTransformer || !targetTransformer[HandlerMapSymbol]) {
         throw new Error(
-            `scan('${targetFoldOpName}'): operation '${targetFoldOpName}' is not a fold on this data type`
+            `scan('${targetFoldOpName}'): '${targetFoldOpName}' is not a fold operation on this type`
         );
     }
 
-    // Per-variant spec entries cache — avoids repeated Object.entries calls
+    // Scan is only supported for getter folds (no 'in:' parameter).
+    // A parameterised fold would require scan itself to become a method,
+    // changing the API and making each scan call site ambiguous about
+    // which argument value to use at inner nodes.
+    if (targetTransformer.inSpec !== undefined) {
+        throw new TypeError(
+            `scan('${targetFoldOpName}'): '${targetFoldOpName}' is a parameterised fold (declares 'in:'). ` +
+            `Scan is only supported for getter folds.`
+        );
+    }
+
+    // Per-variant spec entries cache — avoids repeated Object.entries calls.
     const specEntriesCache = new Map<object, [string, unknown][]>();
 
-    const scanImpl = function (this: Record<string | symbol, unknown>): unknown[] {
-        const self = this;
+    // Per-variant handler cache for the target fold.
+    // Resolved once per variant constructor by walking the ADT hierarchy
+    // (same resolution order as createFoldOperation), then reused for every
+    // node of that variant type across all scan calls.
+    const handlerCache = new Map<object, HandlerFn>();
+
+    function resolveHandler(variantCtor: VariantLike): HandlerFn {
+        const cached = handlerCache.get(variantCtor as object);
+        if (cached) return cached;
+
+        const variantName = (variantCtor as { name: string }).name;
+        let searchADT: ADTLike | null = ADT;
+
+        while (searchADT) {
+            const registry = adtTransformers.get(searchADT as unknown as object);
+            const t = registry?.get(targetFoldOpName);
+            if (t?.getCtorTransform) {
+                const handlerMap = t[HandlerMapSymbol] as Record<string, HandlerFn> | undefined;
+                if (handlerMap && (handlerMap[variantName] || handlerMap['_'])) {
+                    const handler = t.getCtorTransform(variantCtor as unknown as VariantConstructorLike);
+                    handlerCache.set(variantCtor as object, handler);
+                    return handler;
+                }
+            }
+            searchADT = parentADTMap.get(searchADT as unknown as object) as ADTLike | null ?? null;
+        }
+
+        throw new Error(`scan('${targetFoldOpName}'): no handler for variant '${variantName}'`);
+    }
+
+    // Single-pass bottom-up traversal.
+    // Returns { foldResult, scanArray } together so each node's fold result
+    // is derived from already-computed child fold results — eliminating the
+    // O(n²) cost of calling self[targetFoldOpName] at every node (which would
+    // re-traverse the entire subtree from that node each time).
+    //
+    // The algorithm is a paramorphism over the data structure:
+    //   scanOnce(Nil) = { foldResult: handler({}), scanArray: [foldResult] }
+    //   scanOnce(Cons(h, t)) =
+    //     let { foldResult: tf, scanArray: ts } = scanOnce(t)
+    //     let foldResult = handler({ head: h, tail: tf })
+    //     { foldResult, scanArray: [foldResult, ...ts] }
+    function scanOnce(node: unknown): { foldResult: unknown; scanArray: unknown[] } {
+        const self = node as Record<string | symbol, unknown>;
         const variantCtor = (self as { constructor: VariantLike }).constructor;
 
-        // Cache spec entries for this variant constructor
         let specEntries = specEntriesCache.get(variantCtor as object);
         if (!specEntries) {
-            specEntries = Object.entries(variantCtor.spec ?? {});
+            specEntries = Object.entries((variantCtor as VariantLike).spec ?? {});
             specEntriesCache.set(variantCtor as object, specEntries);
         }
 
-        // φ applied to this node
-        const foldResult = self[targetFoldOpName];
-
-        // Prepend this result, then append each recursive child's scan
-        const result: unknown[] = [foldResult];
+        // 1. Recursively scan each recursive child first (bottom-up).
+        const childResults = new Map<string, { foldResult: unknown; scanArray: unknown[] }>();
         for (const [fieldName, fieldSpec] of specEntries) {
             if (isFamilyRefSpec(fieldSpec)) {
-                const child = self[fieldName];
-                if (child !== null && child !== undefined) {
-                    const childScan = (child as Record<string, unknown>)[opName];
-                    if (Array.isArray(childScan))
-                        result.push(...childScan);
-                }
+                const child = (self as Record<string, unknown>)[fieldName];
+                if (child !== null && child !== undefined)
+                    childResults.set(fieldName, scanOnce(child));
             }
         }
-        return result;
+
+        // 2. Build foldedFields: recursive fields receive the child's fold
+        //    result; non-recursive fields keep their raw values.
+        //    This mirrors how createFoldOperation builds foldedFields for a
+        //    getter fold, except child results come from childResults rather
+        //    than triggering a fresh traversal via child[targetFoldOpName].
+        const foldedFields: Record<string | symbol, unknown> = {};
+        for (const [fieldName, fieldSpec] of specEntries) {
+            foldedFields[fieldName] = isFamilyRefSpec(fieldSpec)
+                ? (childResults.get(fieldName)?.foldResult ?? (self as Record<string, unknown>)[fieldName])
+                : (self as Record<string, unknown>)[fieldName];
+        }
+
+        // 3. Apply the fold handler once to obtain this node's fold result.
+        const handler = resolveHandler(variantCtor as unknown as VariantLike);
+        const thisFoldResult = (handler as HandlerFn).call(self, foldedFields);
+
+        // 4. Build scan array: this node's result first, then each child's
+        //    scan array in field-declaration order (matches the top-down,
+        //    root-first ordering required by the Scan Lemma).
+        const scanArray: unknown[] = [thisFoldResult];
+        for (const [fieldName, fieldSpec] of specEntries) {
+            if (isFamilyRefSpec(fieldSpec)) {
+                const cr = childResults.get(fieldName);
+                if (cr) scanArray.push(...cr.scanArray);
+            }
+        }
+
+        return { foldResult: thisFoldResult, scanArray };
+    }
+
+    const scanImpl = function (this: Record<string | symbol, unknown>): unknown[] {
+        return scanOnce(this).scanArray;
     };
 
     installGetter(ADT.prototype, opName, scanImpl);
