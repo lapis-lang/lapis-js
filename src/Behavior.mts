@@ -27,6 +27,9 @@ import {
     LapisTypeSymbol,
     satisfies,
     parseProperties,
+    Any,
+    Nothing,
+    isSpecSubtype,
     type PropertyEntry
 } from './operations.mjs';
 
@@ -50,6 +53,16 @@ import {
 import type { BehaviorADT, BehaviorADTWithParams, BehaviorDeclParams, ObserverInputValue, SpecValue, SelfRef, SelfRefCallable } from './types.mjs';
 import type { UnfoldDef, ContractCallbacks, ExpandAliases } from './operations.mjs';
 import { fold as foldOp, unfold as unfoldOp, map as mapOp, merge as mergeOp, scan, scanTarget as scanSymbol, getAliases, getDistributiveTargetFromProperties } from './operations.mjs';
+
+/**
+ * The prototype base for all `behavior()` types.
+ * Every root behavior type (those without an explicit `[extend]` parent) uses
+ * `BehaviorAny` as its base class, ensuring that instances are `instanceof Any`.
+ *
+ * Use `Any` (from the public API) to test membership; use `BehaviorAny` only
+ * when you need to distinguish behavior instances from data-ADT instances.
+ */
+export class BehaviorAny extends Any {}
 
 // ---- Internal symbols -------------------------------------------------------
 
@@ -202,15 +215,7 @@ function specsCompatible(a: unknown, b: unknown): boolean {
 
 /** True when `child` is the same type as or a subtype of `parent` (prototype-chain check). */
 function isTypeSubtype(child: unknown, parent: unknown): boolean {
-    if (child === parent) return true;
-    if (isSelfRef(child) && isSelfRef(parent)) return true;
-    if (typeof child === 'function' && typeof parent === 'function') {
-        const pProto = (parent as { prototype?: object }).prototype;
-        const cProto = (child as { prototype?: object }).prototype;
-        if (pProto != null && cProto != null)
-            return pProto === cProto || Object.prototype.isPrototypeOf.call(pProto, cProto);
-    }
-    return false;
+    return isSpecSubtype(child, parent, isSelfRef);
 }
 
 /**
@@ -345,6 +350,17 @@ export function behavior<D extends Record<string, unknown>>(
             (observerDecl[extend as unknown as string] as BehaviorTypeLike | undefined) ?? null;
 
         if (parentBehaviorType !== null) {
+            if ((parentBehaviorType as unknown) === Any || (parentBehaviorType as unknown) === BehaviorAny) {
+                throw new TypeError(
+                    `[extend]: Any is not permitted — all behavior types are already implicit subtypes of Any. ` +
+                    `Use [extend] only to inherit from a parent behavior type created with behavior().`
+                );
+            }
+            if ((parentBehaviorType as unknown) === Nothing) {
+                throw new TypeError(
+                    `[extend]: Nothing is not permitted — Nothing is the bottom type and has no subtypes.`
+                );
+            }
             if (!behaviorObservers.has(parentBehaviorType as object)) {
                 throw new TypeError(
                     `[extend] must reference a behavior type created with behavior(), got ${String(parentBehaviorType)}`
@@ -357,11 +373,12 @@ export function behavior<D extends Record<string, unknown>>(
         if (parentBehaviorType)
             BaseClass = class extends (parentBehaviorType as unknown as new () => object) { };
         else
-            BaseClass = class Behavior { };
+            // Root behavior types inherit from BehaviorAny so every instance
+            // is automatically instanceof Any.
+            BaseClass = class Behavior extends BehaviorAny { };
 
 
         const result = BaseClass,
-
             observerMap = new Map<string, ObserverEntry>(),
             declarations = {
                 unfold: [] as { name: string; spec: Record<string, unknown> }[],

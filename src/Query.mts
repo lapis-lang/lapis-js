@@ -29,7 +29,7 @@
  */
 
 import { behavior } from './Behavior.mjs';
-import { isOperationDef, isSelfRef, op, spec as specSym, LapisTypeSymbol, SelfRefSymbol } from './operations.mjs';
+import { isOperationDef, isSelfRef, op, spec as specSym, LapisTypeSymbol, SelfRefSymbol, assertNotNothing } from './operations.mjs';
 import type { BehaviorDeclParams, QueryADT, SpecValue } from './types.mjs';
 import type { fold, unfold, map, merge } from './operations.mjs';
 
@@ -282,6 +282,7 @@ export function query<D extends Record<string, unknown>>(
                             `query(): [${name}]: "${fieldName}" references unknown field '${fieldName}'`
                         );
                     }
+                    assertNotNothing(fieldSpec, `query(): [${name}]:`, `field '${fieldName}'`);
                     const outType = isSelfRef(fieldSpec) ? Object : fieldSpec;
                     result[name] = {
                         [op]: 'fold' as const,

@@ -20,7 +20,14 @@ export default defineConfig([
             '@stylistic/brace-style': ['error', '1tbs', { allowSingleLine: true }],
             '@stylistic/comma-dangle': ['error', 'never'],
             'one-var': ['error', 'consecutive'],
-            'curly': ['error', 'multi-or-nest']
+            'curly': ['error', 'multi-or-nest'],
+            "no-restricted-syntax": [
+                "error",
+                {
+                    "selector": "ImportExpression",
+                    "message": "Dynamic imports are not allowed."
+                }
+            ]
         }
     },
     ...tseslint.configs.recommended.map(config => ({
@@ -57,7 +64,18 @@ export default defineConfig([
             '@typescript-eslint/no-unsafe-call': 'off',
             '@typescript-eslint/no-unsafe-return': 'off',
             '@typescript-eslint/no-unused-vars': ['error', { 'varsIgnorePattern': '^_', 'argsIgnorePattern': '^_', 'caughtErrorsIgnorePattern': '^_' }],
-            '@typescript-eslint/no-this-alias': 'off'
+            '@typescript-eslint/no-this-alias': 'off',
+            'no-restricted-syntax': [
+                'error',
+                {
+                    selector: 'ImportExpression',
+                    message: 'Dynamic imports are not allowed.'
+                },
+                {
+                    selector: 'TSImportType',
+                    message: 'typeof import(...) type queries are not allowed. Export a named type alias instead.'
+                }
+            ]
         }
     },
     {

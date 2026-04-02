@@ -23,6 +23,7 @@ there is an emphasis on the Bird-Meertens Formalism (BMF) (Squiggol) of making p
   - [Extending recursive ADTs](#extending-recursive-adts)
   - [Field Narrowing (Covariant Re-specification)](#field-narrowing-covariant-re-specification)
   - [Mutual Recursion Between ADTs](#mutual-recursion-between-adts)
+- [Type Lattice Bounds: Any and Nothing](#type-lattice-bounds-any-and-nothing)
 - [Multi-Sorted Algebras](#multi-sorted-algebras)
   - [Sorts as Separate Declarations](#sorts-as-separate-declarations)
   - [Cross-Sort Field Validation](#cross-sort-field-validation)
@@ -491,6 +492,7 @@ console.log(xs instanceof List);         // true
 ```
 
 **Rules:**
+
 - The child type must be a subtype (or equal) of the parent field type — widening (`Number → Object`) throws an error
 - The child may not introduce new fields absent from the parent spec
 - Unmentioned fields are inherited from the parent unchanged
@@ -526,6 +528,90 @@ console.log(block.size); // 2
 
 **When validation errors surface:**
 Validation (naming conventions, field guards, algebraic-law checking) runs during materialisation — when `.ops()` is first called or when a variant is first accessed — not at the `data()` call site.
+
+## Type Lattice Bounds: Any and Nothing
+
+Lapis JS provides two first-class type-lattice bounds, familiar from languages like Scala (`Any`/`Nothing`), Kotlin (`Any`/`Nothing`), or Julia (`Any`/`Union{}`):
+
+| Name      | Role                  | TypeScript analogue |
+|-----------|-----------------------|---------------------|
+| `Any`     | Universal top type    | `unknown`           |
+| `Nothing` | Universal bottom type | `never`             |
+
+### Any
+
+`Any` is the implicit supertype of every Lapis value.  Every instance produced by `data()` and every instance produced by `behavior()` satisfies `instanceof Any` without any explicit declaration — the prototype chain is wired automatically at creation time.
+
+**As a TypeSpec** — `Any` accepts every value without runtime validation:
+
+```ts
+import { data, Any } from '@lapis-lang/lapis-js';
+
+const Box = data(() => ({
+    Wrap: { value: Any }   // accepts strings, numbers, ADTs, anything
+}));
+
+Box.Wrap({ value: 42 });         // ✓
+Box.Wrap({ value: 'hello' });    // ✓
+Box.Wrap({ value: null });       // ✓
+```
+
+**At the TypeScript level** — `SpecValue<typeof Any>` resolves to `unknown`.
+
+**Runtime `instanceof`** — all Lapis instances are instanceof Any:
+
+```ts
+import { data, behavior, Any, DataAny, BehaviorAny } from '@lapis-lang/lapis-js';
+
+const Color = data(() => ({ Red: {} }));
+console.log(Color.Red instanceof Any);    // true
+
+// Subtype classes are also exported for discriminating data from behavior:
+const Counter = behavior(() => ({ count: Number }))
+    .ops(({ unfold, self }) => ({
+        From: unfold({ in: Number, out: self })({
+            count: (n: number) => n
+        })
+    }));
+const c = Counter.From(0);
+
+console.log(Color.Red instanceof DataAny);    // true
+console.log(c instanceof BehaviorAny);        // true
+console.log(Color.Red instanceof BehaviorAny); // false
+console.log(c instanceof DataAny);             // false
+```
+
+### Nothing
+
+`Nothing` is the implicit subtype of every Lapis type — the bottom of the lattice.  It has **no instances**: no value can ever satisfy the `Nothing` type, mirroring `never` in TypeScript.
+
+**As a TypeSpec** — `Nothing` rejects every value at runtime:
+
+```ts
+import { data, fold, Nothing } from '@lapis-lang/lapis-js';
+
+const Box = data(() => ({ Wrap: { value: Number } }))
+    .ops(({ fold }) => ({
+        impossible: fold({ out: Nothing })({
+            Wrap: ({ value }) => value as never   // unreachable — Nothing is never satisfied
+        })
+    }));
+
+// Accessing .impossible throws a TypeError: Nothing is the bottom type
+```
+
+**At the TypeScript level** — `SpecValue<typeof Nothing>` resolves to `never`.
+
+### Lattice guards
+
+Using `[extend]: Any` or `[extend]: Nothing` is a declaration error:
+
+```ts
+data(() => ({ [extend]: Any, X: {} }));     // TypeError: [extend]: Any is not permitted
+data(() => ({ [extend]: Nothing, X: {} })); // TypeError: [extend]: Nothing is not permitted
+```
+
+`[extend]: Any` is rejected because all ADTs are already implicit subtypes of `Any` — the annotation is redundant and misleading. `[extend]: Nothing` is rejected because the bottom type has no subtypes by definition.
 
 ## Multi-Sorted Algebras
 
@@ -1012,6 +1098,7 @@ Lattice.From(true);                 // Lattice.True  (alias)
 ```
 
 **Rules:**
+
 - `fold` / `map` aliases follow the same camelCase requirement as canonical names.
 - `unfold` aliases follow the same PascalCase requirement as canonical names.
 - Multiple aliases can be provided: `.as('a', 'b', 'c')`.
@@ -3242,7 +3329,7 @@ const AbelianGroup = protocol(({ family, fold, unfold }) => ({
 
 **Diamond resolution:** When two parent protocols each declare an operation with the same name, the resolution rule depends on the operation **kind** (`fold`, `unfold`, `map`, `merge`):
 
-- If both parents declare the operation with the **same kind** _and_ identical `in`/`out` type refs and matching contract presence, they merge silently — the first parent's spec is kept, and `[properties]` sets are unioned.
+- If both parents declare the operation with the **same kind** *and* identical `in`/`out` type refs and matching contract presence, they merge silently — the first parent's spec is kept, and `[properties]` sets are unioned.
 - If both parents declare the operation with the **same kind** but with differing `in`/`out` types or contract presence, the child protocol **must explicitly re-declare** the operation. Failing to do so throws a `TypeError` at declaration time.
 - If the parents declare the operation with **different kinds**, the child protocol **must explicitly re-declare** the operation. Failing to do so throws a `TypeError` at declaration time.
 
@@ -3833,6 +3920,7 @@ const Z2 = data(() => ({
 ```
 
 **Skipped cases** — law checking is **not** performed for:
+
 - Behavior operations (`behavior().ops()`) — deferred to a future release.
 - Parametric ADTs where sample generation cannot produce concrete values (e.g. `Cons: { head: T, tail: Family }` where `T` is a type parameter). Only singletons that can be generated concretely are checked.
 - Operations without a `properties` array, or with an empty one.

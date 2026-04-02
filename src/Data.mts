@@ -18,6 +18,9 @@ import {
     invariant,
     satisfies,
     parseProperties,
+    Any,
+    Nothing,
+    isSpecSubtype,
     type TypeSpec,
     type PropertyEntry
 } from './operations.mjs';
@@ -71,6 +74,18 @@ import {
 // internal consumers (e.g. `Relation.mts`) and the public API via `index.mts`
 // can continue to import it from `Data.mjs` without a breaking change.
 export { extend, invariant };
+
+/**
+ * The prototype base for all `data()` ADTs.
+ * Every root data ADT (those without an explicit `[extend]` parent) has
+ * `DataAny.prototype` in its prototype chain, ensuring that instances are
+ * `instanceof Any`.
+ *
+ * Use `Any` (from the public API) to test membership; use `DataAny` only
+ * when you need to distinguish data-ADT instances from behavior instances.
+ */
+export class DataAny extends Any {}
+
 export const parent: unique symbol = Symbol('parent');
 export type parent = typeof parent;
 
@@ -414,7 +429,10 @@ export type DataStructure<D> = DataADTWithParams<D> & {
 function createLazyADT<D extends Record<string, unknown>>(
     declFn: (params: object) => Record<string, unknown>
 ): DataStructure<D> {
-    const preAllocProto: object = Object.create(Object.prototype);
+    // Root data ADTs (no [extend] parent) inherit from DataAny so that every
+    // instance is automatically instanceof Any.  ADTs with an explicit [extend]
+    // parent inherit transitively through their parent chain.
+    const preAllocProto: object = Object.create(DataAny.prototype);
     let materializedADT: ADTLike | null = null;
     // The real .ops() method installed by attachOpsMethod.  Captured immediately
     // after materialisation so that even if an external caller replaces ADT.ops
@@ -726,26 +744,15 @@ function parseDeclarationOps(
  * for the purposes of field narrowing in an `[extend]` declaration:
  *  - Identical spec references: always ok.
  *  - Both FamilyRef markers: ok (recursive self-reference).
+ *  - `Any` as parentFieldSpec (top type): every spec is a subtype of Any.
+ *  - `Nothing` as childFieldSpec (bottom type): Nothing is a subtype of every spec.
+ *  - `Any` as childFieldSpec (and parent ≠ Any): Any has no proper supertypes — rejected.
+ *  - `Nothing` as parentFieldSpec (and child ≠ Nothing): only Nothing ≤ Nothing — rejected.
  *  - Constructor subtyping: every instance of `childFieldSpec` is also an
  *    instance of `parentFieldSpec` (parentSpec.prototype in child's chain).
  */
 function isFieldCovariant(childFieldSpec: unknown, parentFieldSpec: unknown): boolean {
-    if (childFieldSpec === parentFieldSpec) return true;
-    if (isFamilyRefSpec(childFieldSpec) && isFamilyRefSpec(parentFieldSpec)) return true;
-    if (
-        typeof childFieldSpec === 'function' &&
-        typeof parentFieldSpec === 'function'
-    ) {
-        const pProto = (parentFieldSpec as { prototype?: object }).prototype;
-        const cProto = (childFieldSpec as { prototype?: object }).prototype;
-        // Exclude arrow functions (no .prototype); note Object.prototype instanceof Object
-        // is false (Object.prototype is the chain root), so we cannot use instanceof here.
-        if (pProto != null && cProto != null) {
-            return pProto === cProto ||
-                Object.prototype.isPrototypeOf.call(pProto, cProto);
-        }
-    }
-    return false;
+    return isSpecSubtype(childFieldSpec, parentFieldSpec, isFamilyRefSpec);
 }
 
 function parseDeclaration(
@@ -760,6 +767,20 @@ function parseDeclaration(
 
     if (extend in declObj)
         parentADT = declObj[extend as unknown as string] as ADTLike;
+
+    if (parentADT !== null) {
+        if ((parentADT as unknown) === Any || (parentADT as unknown) === DataAny) {
+            throw new TypeError(
+                `[extend]: Any is not permitted — all data ADTs are already implicit subtypes of Any. ` +
+                `Use [extend] only to inherit from a parent ADT created with data().`
+            );
+        }
+        if ((parentADT as unknown) === Nothing) {
+            throw new TypeError(
+                `[extend]: Nothing is not permitted — Nothing is the bottom type and has no subtypes.`
+            );
+        }
+    }
 
     const rawDeclObj = declObj as Record<string | symbol, unknown>;
     const protocols = parseProtocolEntries(rawDeclObj[satisfies]);
@@ -1402,6 +1423,16 @@ function validateField(
     fieldName: string,
     ADT: ADTLike
 ): void {
+    // Any: universal top type — accept every value without inspection.
+    if (fieldSpec === Any) return;
+
+    // Nothing: universal bottom type — no value can satisfy it.
+    if (fieldSpec === Nothing) {
+        throw new TypeError(
+            `Field '${fieldName}' has type Nothing — Nothing is the bottom type and no value can satisfy it`
+        );
+    }
+
     // Family reference - check against root base
     if (isFamilyRefSpec(fieldSpec)) {
         let rootBase: object = ADT as object;

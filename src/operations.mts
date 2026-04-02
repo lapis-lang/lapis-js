@@ -71,6 +71,125 @@ export type scanTarget = typeof scanTarget;
 export const LapisTypeSymbol: unique symbol = Symbol('LapisType');
 export type LapisTypeSymbol = typeof LapisTypeSymbol;
 
+// Nominal brand symbols — not exported as values; only used as unique type keys
+// so that `typeof Any` and `typeof Nothing` are non-structural in conditional
+// type checks (an empty class is structurally `{}`, which matches every object).
+declare const anyBrand: unique symbol;
+declare const nothingBrand: unique symbol;
+
+/**
+ * The universal top type in the Lapis type lattice.
+ *
+ * - Every `data()` ADT instance and every `behavior()` instance is
+ *   `instanceof Any` (guaranteed by the prototype chain wired at creation
+ *   time).
+ * - As a TypeSpec in field/operation specs: accepts **any** value without
+ *   runtime validation.
+ * - At the TypeScript type level: `SpecValue<typeof Any, _>` resolves to
+ *   `unknown`.
+ *
+ * Usage:
+ * ```ts
+ * import { data, behavior, Any, Nothing } from '@lapis-lang/lapis-js';
+ *
+ * const Box = data(() => ({ Wrap: { value: Any } }));
+ * Box.Wrap({ value: 42 }).value;          // ok
+ * Box.Wrap({ value: 'hello' }).value;     // ok
+ * Box.Wrap({ value: Box.Wrap({ value: 0 }) }).value; // ok — nested
+ * ```
+ */
+export class Any {
+    // `declare` adds no runtime property; it exists only in the TypeScript type
+    // so that `S extends typeof Any` in BuiltinTag is nominal, not structural.
+    // Without this, an empty class is `{}` structurally and every constructor
+    // would match, widening all SpecValue resolutions to `unknown`.
+    declare readonly [anyBrand]: true;
+}
+
+/** The constructor type of {@link Any}. Exported for use as a type-only import (no dynamic import needed). */
+export type AnyConstructor = typeof Any;
+
+/**
+ * The universal bottom type in the Lapis type lattice.
+ *
+ * - No value can be an instance of Nothing (it has no constructors).
+ * - As a TypeSpec in field/operation specs: **rejects every value** at
+ *   runtime (throws a TypeError).
+ * - At the TypeScript type level: `SpecValue<typeof Nothing, _>` resolves
+ *   to `never`.
+ *
+ * This is the analogue of `never` in TypeScript or `⊥` (bottom) in type
+ * theory.  It is useful for denoting unreachable cases or operations
+ * that cannot produce or consume values.
+ *
+ * Note: `[extend]: Nothing` is *not* permitted — you cannot derive an ADT
+ * from the bottom type.
+ */
+export class Nothing {
+    // Same nominal brand trick as Any — prevents `S extends typeof Nothing`
+    // from accidentally matching unrelated constructors via structural typing.
+    declare readonly [nothingBrand]: true;
+
+    constructor() {
+        throw new TypeError('Nothing is the bottom type and cannot be instantiated');
+    }
+}
+
+/** The constructor type of {@link Nothing}. Exported for use as a type-only import (no dynamic import needed). */
+export type NothingConstructor = typeof Nothing;
+
+/**
+ * Shared structural subtype check for the type lattice.
+ *
+ * Returns `true` when `child` is the same type as, or a subtype of, `parent`.
+ * Encodes the four lattice axioms before falling back to prototype-chain inspection:
+ *   1. `parent === Any`    → true  (Any is ⊤; everything is ≤ Any)
+ *   2. `child === Nothing` → true  (Nothing is ⊥; Nothing is ≤ everything)
+ *   3. `child === Any`     → false (Any has no proper supertypes except itself)
+ *   4. `parent === Nothing`→ false (only Nothing ≤ Nothing)
+ *
+ * `isSelfLike` is an optional predicate to treat self-recursive sentinels
+ * (FamilyRef in data or SelfRef in behavior) as mutually compatible.
+ */
+export function isSpecSubtype(
+    child: unknown,
+    parent: unknown,
+    isSelfLike: (v: unknown) => boolean = () => false
+): boolean {
+    if (child === parent) return true;
+    if (isSelfLike(child) && isSelfLike(parent)) return true;
+    if (parent === Any) return true;
+    if (child === Nothing) return true;
+    if (child === Any) return false;
+    if (parent === Nothing) return false;
+    if (typeof child === 'function' && typeof parent === 'function') {
+        const pProto = (parent as { prototype?: object }).prototype;
+        const cProto = (child as { prototype?: object }).prototype;
+        if (pProto != null && cProto != null)
+            return pProto === cProto || Object.prototype.isPrototypeOf.call(pProto, cProto);
+    }
+    return false;
+}
+
+/**
+ * Throws a `TypeError` if `spec` is `Nothing`.
+ *
+ * Used to guard endpoints (relation origin/destination folds, query cospan fields)
+ * that require a reachable type — Nothing, being the bottom type, can never be satisfied.
+ *
+ * @param spec - The type spec to check.
+ * @param context - Description of the location, e.g. `"relation() [origin] fold"`.
+ * @param fieldLabel - Short label for the field, e.g. `"out"` or `"'value'"`.
+ */
+export function assertNotNothing(spec: unknown, context: string, fieldLabel: string): void {
+    if (spec === Nothing) {
+        throw new TypeError(
+            `${context} cannot have ${fieldLabel}: Nothing — ` +
+            `Nothing is the bottom type and no value can satisfy it`
+        );
+    }
+}
+
 /** Parsed auxiliary-fold configuration from a fold spec's `aux` key. */
 export interface ParsedAux {
     /** Normalised list of auxiliary fold names, or `null` when absent. */
@@ -136,9 +255,11 @@ export interface SelfRefCallable extends SelfRef {
 /**
  * Valid type specifications for field declarations and operation specs.
  * Covers primitive constructors, ADT constructors, Family/Self references,
- * and predicate functions.
+ * predicate functions, and the lattice bounds Any/Nothing.
  */
 export type TypeSpec =
+    | typeof Any
+    | typeof Nothing
     | NumberConstructor
     | StringConstructor
     | BooleanConstructor
@@ -322,6 +443,17 @@ export function validateTypeSpec(
             );
         }
         return;
+    }
+
+    // Any: universal top type — always passes without inspection.
+    if (spec === Any) return;
+
+    // Nothing: universal bottom type — no value can satisfy it.
+    if (spec === Nothing) {
+        throw new TypeError(
+            `Operation '${opName}' has a field or spec of type Nothing — ` +
+            `Nothing is the bottom type and no value can satisfy it`
+        );
     }
 
     // Handle FamilyRef specs — validate against the resolved ADT constructor.
