@@ -8,9 +8,12 @@
  *
  * Supported optimizations (activated by property annotation):
  *
- *   identity:X  — identity elimination: op(x, identity) ≡ x  and  op(identity, x) ≡ x
- *   absorbing:X — absorbing short-circuit: op(x, zero) ≡ zero  and  op(zero, x) ≡ zero
- *   idempotent  — idempotent guard: op(x, x) ≡ x
+ *   identity:X    — identity elimination: op(x, identity) ≡ x  and  op(identity, x) ≡ x
+ *   absorbing:X   — absorbing short-circuit: op(x, zero) ≡ zero  and  op(zero, x) ≡ zero
+ *   idempotent    — idempotent guard: op(x, x) ≡ x
+ *   distributive:Y — Horner fold-fusion marker: allows the merge pipeline planner in
+ *                   Data.mts to detect `fold(⊗) ∘ fold(⊕)` patterns and rewrite them
+ *                   to a single fused fold when ⊗ carries `distributive:⊕`.
  *
  * Only applies to binary fold operations (fold with `in: Family, out: Family`).
  * All guards short-circuit before the recursive fold traversal, so no
@@ -46,7 +49,7 @@
  * @module optimizations
  */
 
-import { isFamilyRefSpec, validateReturnType } from './operations.mjs';
+import { isFamilyRefSpec, validateReturnType, getDistributiveTargetFromProperties } from './operations.mjs';
 import { checkDemands } from './contracts.mjs';
 import type { Transformer } from './DataOps.mjs';
 import { getCompanionElement } from './laws.mjs';
@@ -62,6 +65,20 @@ export function isBinaryFamilyFold(t: Transformer): boolean {
         isFamilyRefSpec(t.inSpec) &&
         isFamilyRefSpec(t.outSpec)
     );
+}
+
+/**
+ * Returns the operation name that `t` distributes over, if declared via a
+ * `'distributive:opName'` property annotation; otherwise returns `null`.
+ *
+ * Example: if `multiply` declares `properties: ['distributive:add']`, then
+ * `getDistributiveTarget(multiplyTransformer)` returns `'add'`.
+ *
+ * Used by the merge pipeline planner in Data.mts to detect Horner-fusible
+ * `fold(⊗) ∘ fold(⊕)` patterns.
+ */
+export function getDistributiveTarget(t: Transformer): string | null {
+    return getDistributiveTargetFromProperties(t.properties);
 }
 
 // ---- Internal helpers -------------------------------------------------------

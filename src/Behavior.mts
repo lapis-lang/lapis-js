@@ -48,8 +48,8 @@ import {
 } from './contracts.mjs';
 
 import type { BehaviorADT, BehaviorADTWithParams, BehaviorDeclParams, ObserverInputValue, SpecValue, SelfRef, SelfRefCallable } from './types.mjs';
-import type { UnfoldDef, ContractCallbacks, ExpandAliases } from './ops.mjs';
-import { fold as foldOp, unfold as unfoldOp, map as mapOp, merge as mergeOp, getAliases } from './ops.mjs';
+import type { UnfoldDef, ContractCallbacks, ExpandAliases } from './operations.mjs';
+import { fold as foldOp, unfold as unfoldOp, map as mapOp, merge as mergeOp, scan, scanTarget as scanSymbol, getAliases, getDistributiveTargetFromProperties } from './operations.mjs';
 
 // ---- Internal symbols -------------------------------------------------------
 
@@ -328,6 +328,7 @@ export function behavior<D extends Record<string, unknown>>(
             fold: { name: string; spec: Record<string, unknown> }[];
             map: { name: string; spec: Record<string, unknown> }[];
             merge: { name: string; spec: Record<string, unknown> }[];
+            scan: { name: string; spec: Record<string, unknown> }[];
         };
     } {
         const Self = createSelf();
@@ -366,7 +367,8 @@ export function behavior<D extends Record<string, unknown>>(
                 unfold: [] as { name: string; spec: Record<string, unknown> }[],
                 fold: [] as { name: string; spec: Record<string, unknown> }[],
                 map: [] as { name: string; spec: Record<string, unknown> }[],
-                merge: [] as { name: string; spec: Record<string, unknown> }[]
+                merge: [] as { name: string; spec: Record<string, unknown> }[],
+                scan: [] as { name: string; spec: Record<string, unknown> }[]
             };
 
         if (parentBehaviorType) {
@@ -388,7 +390,10 @@ export function behavior<D extends Record<string, unknown>>(
                 declarations.map.push({ name: entryName, spec: entrySpec as Record<string, unknown> });
             } else if (opKind === 'merge')
                 declarations.merge.push({ name: entryName, spec: entrySpec as Record<string, unknown> });
-            else {
+            else if (opKind === 'scan') {
+                assertCamelCase(entryName, 'Scan operation');
+                declarations.scan.push({ name: entryName, spec: entrySpec as Record<string, unknown> });
+            } else {
                 assertCamelCase(entryName, 'Observer');
                 if (parentBehaviorType !== null && observerMap.has(entryName)) {
                     const parentObs = observerMap.get(entryName)!;
@@ -535,6 +540,12 @@ export function behavior<D extends Record<string, unknown>>(
             name,
             operationsList as string[]
         );
+    }
+
+    // Register inline scan operations
+    for (const { name, spec: entrySpec } of declarations.scan) {
+        const targetFoldName = entrySpec[scanSymbol as unknown as string] as string;
+        addScanOperation(callableBehavior, observerMap, name, targetFoldName);
     }
 
     // Inherit parent operations
@@ -698,6 +709,7 @@ type BehaviorOpsContext<D> = {
     unfold: BehaviorUnfoldFn<D>;
     map: typeof mapOp;
     merge: typeof mergeOp;
+    scan: typeof scan;
     self: SelfRefCallable & { [key: string]: (...args: unknown[]) => unknown };
     [key: string]: unknown;
 };
@@ -756,6 +768,7 @@ function attachBehaviorOpsMethod<D extends Record<string, unknown>>(
             unfold: unfoldOp as BehaviorUnfoldFn<D>,
             map: mapOp,
             merge: mergeOp,
+            scan: scan,
             self: createSelf(BehaviorType)
         } as BehaviorOpsContext<D>;
 
@@ -859,6 +872,9 @@ function attachBehaviorOpsMethod<D extends Record<string, unknown>>(
                 addMergeOperation(
                     BehaviorType, observerMap, entryName, operationsList as string[]
                 );
+            } else if (opKind === 'scan') {
+                const targetFoldName = (entrySpec as Record<symbol, string>)[scanSymbol as unknown as symbol];
+                addScanOperation(BehaviorType, observerMap, entryName, targetFoldName);
             }
         }
 
@@ -895,6 +911,27 @@ function attachBehaviorOpsMethod<D extends Record<string, unknown>>(
 
         return BehaviorType as BehaviorADTWithParams<D & O & ExpandAliases<O>>;
     };
+}
+
+// ---- Property resolution helper ---------------------------------------------
+
+/**
+ * Resolve an operation's `properties` set from its spec, falling back to any
+ * protocol-level spec when the spec itself declares none.
+ * Returns `undefined` when no properties are found (omits empty sets).
+ */
+function resolveProperties(
+    spec: Record<string, unknown>,
+    name: string,
+    protocols: ProtocolEntry[]
+): ReadonlySet<PropertyEntry> | undefined {
+    let p = parseProperties(spec.properties, name);
+    if (p.size === 0) {
+        const protoSpec = gatherProtocolSpec(protocols, name);
+        if (protoSpec?.properties)
+            p = parseProperties(protoSpec.properties, name);
+    }
+    return p.size > 0 ? p : undefined;
 }
 
 // ---- Unfold operation -------------------------------------------------------
@@ -1025,17 +1062,7 @@ function addUnfoldOperation(
         spec: parsedSpec,
         handlers,
         contracts: unfoldContracts ?? undefined,
-        properties: (() => {
-            let p = parseProperties(
-                (parsedSpec as Record<string, unknown>).properties, name
-            );
-            if (p.size === 0) {
-                const protoSpec = gatherProtocolSpec(protocols, name);
-                if (protoSpec?.properties)
-                    p = parseProperties(protoSpec.properties, name);
-            }
-            return p.size > 0 ? p : undefined;
-        })()
+        properties: resolveProperties(parsedSpec, name, protocols)
     });
 
     return BehaviorType;
@@ -1351,17 +1378,7 @@ function addFoldOperation(
         auxNames: parsedAux.names,
         auxIsArray: parsedAux.isArray,
         contracts: foldContracts ?? undefined,
-        properties: (() => {
-            let p = parseProperties(
-                (parsedSpec as Record<string, unknown>).properties, name
-            );
-            if (p.size === 0) {
-                const protoSpec = gatherProtocolSpec(protocols, name);
-                if (protoSpec?.properties)
-                    p = parseProperties(protoSpec.properties, name);
-            }
-            return p.size > 0 ? p : undefined;
-        })()
+        properties: resolveProperties(parsedSpec, name, protocols)
     });
 }
 
@@ -1443,16 +1460,39 @@ function maybeFold(
     foldName: string = ''
 ): unknown {
     if (!foldOp) return instance;
-    return executeFold(
+    return executeFoldEntry(
         instance as Record<string, unknown>,
-        observerMap, foldOp.handler,
+        observerMap,
+        foldOp,
         foldOp.hasInput ? params : [],
-        foldOp.isHisto,
-        foldOp.auxNames ?? null,
-        foldOp.auxIsArray ?? false,
         BehaviorType,
-        foldOp.contracts ?? null,
         foldName
+    );
+}
+
+/**
+ * Invoke `executeFold` using the fields of a `FoldOpEntry`, eliminating
+ * the need for callers to manually unpack seven positional arguments.
+ */
+function executeFoldEntry(
+    instance: Record<string, unknown>,
+    observerMap: Map<string, ObserverEntry>,
+    entry: FoldOpEntry,
+    params: unknown[],
+    BehaviorType: BehaviorTypeLike | null = null,
+    opName: string = ''
+): unknown {
+    return executeFold(
+        instance,
+        observerMap,
+        entry.handler,
+        params,
+        entry.isHisto,
+        entry.auxNames ?? null,
+        entry.auxIsArray ?? false,
+        BehaviorType,
+        entry.contracts ?? null,
+        opName
     );
 }
 
@@ -1637,6 +1677,91 @@ function addMergeOperation(
         if (!foldOp)
             throw new TypeError(`Merge operation '${name}' has no fold operation`);
 
+        // ---- Co-Horner fold-fusion: fold(⊗) ∘ fold(⊕) where ⊗ distributes over ⊕ ----
+        // When two fold operations appear in the merge pipeline (no unfold),
+        // the inner fold must declare `properties: ['distributive:outerFoldName']` to
+        // signal that the composition can be executed as a fused two-step operation:
+        //   (1) apply the inner fold to the current behavior instance,
+        //   (2) apply the outer fold to the result (which must be a behavior instance).
+        //
+        // This is the coalgebraic dual of Horner fold-fusion from Data.mts.
+        if (foldNames.length > 2) {
+            throw new TypeError(
+                `Merge operation '${name}' contains ${foldNames.length} fold operations ` +
+                `(${foldNames.join(', ')}) without an unfold in between. ` +
+                `Co-Horner composition supports exactly two adjacent folds.`
+            );
+        }
+
+        if (foldNames.length === 2) {
+            const innerFoldName = foldNames[0];
+            const outerFoldName = foldNames[1];
+            const innerFoldEntry = foldMap?.get(innerFoldName);
+            const outerFoldEntry = foldMap?.get(outerFoldName);
+
+            if (!innerFoldEntry || !outerFoldEntry) {
+                throw new TypeError(
+                    `Merge operation '${name}': fold operations '${innerFoldName}' or '${outerFoldName}' not found`
+                );
+            }
+
+            // Check for co-Horner distributivity annotation on the inner fold
+            const coHornerTarget = getDistributiveTargetFromProperties(innerFoldEntry.properties);
+
+            if (coHornerTarget !== outerFoldName) {
+                throw new TypeError(
+                    `Merge operation '${name}' contains two fold operations ` +
+                    `('${innerFoldName}' followed by '${outerFoldName}') without an unfold in between. ` +
+                    `To compose two folds (co-Horner), annotate '${innerFoldName}' with ` +
+                    `\`properties: ['distributive:${outerFoldName}']\`.`
+                );
+            }
+
+            // Co-Horner fusion: fused handler executes the inner fold over the current
+            // observations, then applies the outer fold to the behavior result.
+            const fusedHandler = (
+                observations: Record<string, unknown>,
+                ...params: unknown[]
+            ): unknown => {
+                const innerResult = innerFoldEntry.handler(observations, ...params);
+                // The inner fold must return a behavior instance so the outer fold can observe it.
+                // Behavior instances expose BehaviorSymbol (stamped on the raw object, readable
+                // through the proxy's get trap).  We use this rather than behaviorInstanceState
+                // because the WeakMap holds the underlying target object, not the proxy wrapper.
+                if (innerResult === null ||
+                    typeof innerResult !== 'object' ||
+                    !(innerResult as Record<symbol, unknown>)[BehaviorSymbol]) {
+                    throw new TypeError(
+                        `Co-Horner merge '${name}': inner fold '${innerFoldName}' must return a behavior instance, ` +
+                        `but got ${innerResult === null ? 'null' : typeof innerResult}. ` +
+                        `Ensure the inner fold's 'out' type is a behavior family reference.`
+                    );
+                }
+                return executeFoldEntry(
+                    innerResult as Record<string, unknown>,
+                    observerMap,
+                    outerFoldEntry,
+                    [],
+                    BehaviorType,
+                    outerFoldName
+                );
+            };
+
+            ensureOwnMap<string, FoldOpEntry>(
+                BehaviorType as unknown as Record<symbol, unknown>,
+                FoldOpsSymbol
+            ).set(name, {
+                spec: outerFoldEntry.spec,
+                handler: fusedHandler,
+                hasInput: innerFoldEntry.hasInput,
+                isHisto: false,
+                auxNames: null,
+                auxIsArray: false,
+                preMapTransforms: mapTransforms && mapTransforms.length > 0 ? mapTransforms : undefined
+            });
+            return;
+        }
+
         ensureOwnMap<string, FoldOpEntry>(
             BehaviorType as unknown as Record<symbol, unknown>,
             FoldOpsSymbol
@@ -1650,6 +1775,84 @@ function addMergeOperation(
             preMapTransforms: mapTransforms && mapTransforms.length > 0 ? mapTransforms : undefined
         });
     }
+}
+
+// ---- Scan operation registration --------------------------------------------
+
+/**
+ * Register a scan operation: the coalgebraic dual of data scan.
+ *
+ * A behavior scan steps through a linear (single-continuation) behavior
+ * sequentially, applying a fold at each position, and returns the collected
+ * fold results as a plain JavaScript array.
+ *
+ * Formally, for a behavior `b` with continuation observer `c` and a fold `f`:
+ *   `b.scanName(n, ...args)` ≡ `[f(b, ...args), f(c(b), ...args), ..., f(c^(n-1)(b), ...args)]`
+ *
+ * The scan lemma (co-variant): scan_F(φ) ≡ fold_F(φ) ∘ steps
+ *
+ * Requires exactly one continuation observer (linear / stream-like behavior).
+ *
+ * @param n - Number of steps to traverse; determines the length of the result array.
+ * @param extraArgs - Forwarded to the target fold at each step (empty for getter folds).
+ */
+function addScanOperation(
+    BehaviorType: BehaviorTypeLike,
+    observerMap: Map<string, ObserverEntry>,
+    name: string,
+    targetFoldName: string
+): void {
+    assertCamelCase(name, 'Scan operation');
+
+    // Require exactly one continuation observer (linear / stream-like behavior).
+    const continuationEntries = Array.from(observerMap.entries())
+        .filter(([_, obs]) => obs.isContinuation);
+    if (continuationEntries.length !== 1) {
+        throw new TypeError(
+            `Scan operation '${name}' requires a behavior with exactly one continuation observer ` +
+            `(found ${continuationEntries.length}). Only linear (stream-like) behaviors support scan.`
+        );
+    }
+
+    const [continuationName] = continuationEntries[0];
+
+    // Validate the target fold exists at registration time (folds are registered before scans).
+    const foldMap = (BehaviorType as unknown as Record<symbol, unknown>)[FoldOpsSymbol] as
+        Map<string, FoldOpEntry> | undefined;
+    const foldEntry = foldMap?.get(targetFoldName);
+    if (!foldEntry) {
+        throw new TypeError(
+            `scan('${targetFoldName}'): '${targetFoldName}' is not a fold operation on this type`
+        );
+    }
+
+    const prototype = (BehaviorType as { prototype?: object }).prototype || BehaviorType;
+
+    // Install as an instance method:  instance.scanName(n, ...extraArgs)
+    //   n         — number of steps to traverse; length of the returned array.
+    //   extraArgs — forwarded as arguments to the fold at each step.
+    //               Empty for getter folds; non-empty for parameterized folds.
+    Object.defineProperty(prototype, name, {
+        value: function behaviorScanMethod(n: number, ...extraArgs: unknown[]): unknown[] {
+            const results: unknown[] = [];
+            let instance: unknown = this;
+            for (let k = 0; k < n; k++) {
+                results.push(executeFoldEntry(
+                    instance as Record<string, unknown>,
+                    observerMap,
+                    foldEntry,
+                    extraArgs,
+                    BehaviorType,
+                    targetFoldName
+                ));
+                instance = (instance as Record<string, unknown>)[continuationName];
+            }
+            return results;
+        },
+        enumerable: true,
+        configurable: true,
+        writable: true
+    });
 }
 
 // ---- Behavior instance creation ---------------------------------------------
@@ -1695,9 +1898,6 @@ function createBehaviorInstance(
                             ? (bt[FoldOpsSymbol] as Map<string, FoldOpEntry>).get(prop)
                             : undefined;
                     if (foldOp) {
-                        const { hasInput, handler, isHisto: foldIsHisto,
-                            auxNames: foldAuxNames, auxIsArray: foldAuxIsArray } = foldOp;
-
                         // Determine the target instance for the fold.
                         // With preMapTransforms, compose maps into current handlers
                         // to create a single mapped instance (deforestation).
@@ -1714,7 +1914,7 @@ function createBehaviorInstance(
                             foldTarget = receiver;
 
 
-                        if (hasInput) {
+                        if (foldOp.hasInput) {
                             const foldInSpec = foldOp.spec['in'];
                             const hasStructuredIn = isObjectLiteral(foldInSpec);
                             return function (...params: unknown[]) {
@@ -1726,19 +1926,15 @@ function createBehaviorInstance(
                                         'input of type'
                                     );
                                 }
-                                return executeFold(
+                                return executeFoldEntry(
                                     foldTarget as Record<string, unknown>,
-                                    observerMap, handler, params, foldIsHisto,
-                                    foldAuxNames, foldAuxIsArray, bt ?? null,
-                                    foldOp.contracts ?? null, prop
+                                    observerMap, foldOp, params, bt ?? null, prop
                                 );
                             };
                         }
-                        return executeFold(
-                            foldTarget as Record<string, unknown>, observerMap, handler, [],
-                            foldIsHisto,
-                            foldAuxNames, foldAuxIsArray, bt ?? null,
-                            foldOp.contracts ?? null, prop
+                        return executeFoldEntry(
+                            foldTarget as Record<string, unknown>,
+                            observerMap, foldOp, [], bt ?? null, prop
                         );
                     }
 
