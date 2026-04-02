@@ -1636,8 +1636,10 @@ function checkResultInvariant(value: unknown, opName: string): void {
 
 /**
  * Resolve algebraic property annotations for an operation:
- * prefers the explicitly declared `properties` key on the local spec; falls
- * back to the same key gathered from the matching protocol spec, if any.
+ * unions the explicitly declared `properties` on the local spec with those
+ * gathered from the matching protocol spec, so that protocol-level laws
+ * (e.g. `inverse:negate:Zero` from Ring) are never silently dropped when
+ * the implementation also declares its own local properties.
  */
 function resolvePropertiesWithFallback(
     spec: Record<string, unknown>,
@@ -1645,8 +1647,10 @@ function resolvePropertiesWithFallback(
     opName: string
 ): ReadonlySet<PropertyEntry> {
     const protoSpec = gatherProtocolSpec(protocols, opName);
-    const source = spec.properties ?? protoSpec?.properties;
-    return parseProperties(source, opName);
+    const local = (spec.properties as unknown[]) ?? [];
+    const proto = (protoSpec?.properties as unknown[]) ?? [];
+    const source = [...local, ...proto];
+    return parseProperties(source.length > 0 ? source : undefined, opName);
 }
 
 function createFoldOperation(

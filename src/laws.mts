@@ -452,7 +452,7 @@ export function checkOperationLaws(
                     const via = parts[1];
                     const e   = getCompanionElement(adt, parts[2]);
                     if (samples.length > 0 &&
-                        (samples[0] as Record<string, unknown>)[via] === undefined) {
+                        !(via in (samples[0] as object))) {
                         throw new TypeError(
                             `[lapis] Inter-op law: companion operation '${via}' not found on ADT`
                         );

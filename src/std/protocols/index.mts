@@ -5,6 +5,8 @@ export { BoundedLattice }     from './BoundedLattice.mjs';
 export { CommutativeMonoid }  from './CommutativeMonoid.mjs';
 export { DistributiveLattice } from './DistributiveLattice.mjs';
 export { Eq }                 from './Eq.mjs';
+export { EuclideanDomain }    from './EuclideanDomain.mjs';
+export { Field }              from './Field.mjs';
 export { Foldable }           from './Foldable.mjs';
 export { Functor }            from './Functor.mjs';
 export { Group }              from './Group.mjs';

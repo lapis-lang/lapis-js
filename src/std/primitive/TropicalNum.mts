@@ -5,7 +5,7 @@
  *   add      = max,                Zero = -Infinity  (max(-∞, x) ≡ x)
  *   multiply = integer addition,   One  = 0          (0 + x ≡ x)
  *
- * Satisfies Semiring with:
+ * Satisfies Eq, Ord, and Semiring with:
  *   left distributivity  — a + max(b,c) ≡ max(a+b, a+c)
  *   right distributivity — max(a,b) + c ≡ max(a+c, b+c)
  *   left annihilation    — (-∞) + a ≡ -∞
@@ -18,12 +18,36 @@
  */
 
 import { data, satisfies } from '../../index.mjs';
-import { Semiring } from '../protocols/index.mjs';
+import { Eq, Ord, Semiring } from '../protocols/index.mjs';
 
 const TropicalNum = data(() => ({
-    [satisfies]: [Semiring],
+    [satisfies]: [Eq, Ord, Semiring],
     T: { value: Number }
 })).ops(({ fold, unfold, family }) => ({
+
+    // ── Eq ───────────────────────────────────────────────────────────────
+    equals: fold({
+        in: family,
+        out: Boolean
+    })({
+        // @ts-expect-error — binary fold handler
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        T({ value }: any, other: any) {
+            return value === other.value;
+        }
+    }),
+
+    // ── Ord ──────────────────────────────────────────────────────────────
+    compare: fold({
+        in: family,
+        out: Number
+    })({
+        // @ts-expect-error — binary fold handler
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        T({ value }: any, other: any) {
+            return value < other.value ? -1 : value > other.value ? 1 : 0;
+        }
+    }),
 
     // ── Semiring — add = max ─────────────────────────────────────────────
     add: fold({
