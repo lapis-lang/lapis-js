@@ -10,7 +10,7 @@
  * @module
  */
 
-import { data, satisfies } from '../../index.mjs';
+import { data, satisfies, DemandsError } from '../../index.mjs';
 import { Eq, Ord, CommutativeMonoid, Semiring, Ring, Field } from '../protocols/index.mjs';
 
 const Num = data(() => ({
@@ -88,7 +88,10 @@ const Num = data(() => ({
     // ── Field ─────────────────────────────────────────────────────────────
     reciprocal: map({ out: family })({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        value: (value: any) => 1 / value
+        value(value: any) {
+            if (value === 0) throw new DemandsError('reciprocal', 'Num', () => 'value must not be zero');
+            return 1 / value;
+        }
     }),
     divide: fold({
         in: family,
@@ -97,6 +100,7 @@ const Num = data(() => ({
         // @ts-expect-error — binary fold handler
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         N({ value }: any, other: any) {
+            if (other.value === 0) throw new DemandsError('divide', 'Num', () => 'divisor must not be zero');
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             return new (this.constructor as any)({ value: value / other.value });
         }

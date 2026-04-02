@@ -13,7 +13,7 @@
  * @module
  */
 
-import { data, satisfies, invariant } from '../../index.mjs';
+import { data, satisfies, invariant, DemandsError } from '../../index.mjs';
 import { Eq, Ord, EuclideanDomain } from '../protocols/index.mjs';
 
 const Int = data(() => ({
@@ -93,6 +93,8 @@ const Int = data(() => ({
         // @ts-expect-error — binary fold handler
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         Z({ value }: any, other: any) {
+            if (other.value === 0)
+                throw new DemandsError('div', 'Int', () => 'divisor must not be zero');
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             return new (this.constructor as any)({ value: Math.trunc(value / other.value) });
         }
@@ -105,6 +107,8 @@ const Int = data(() => ({
         // @ts-expect-error — binary fold handler
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         Z({ value }: any, other: any) {
+            if (other.value === 0)
+                throw new DemandsError('mod', 'Int', () => 'divisor must not be zero');
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             return new (this.constructor as any)({ value: value % other.value });
         }

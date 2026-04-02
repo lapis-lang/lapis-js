@@ -23,6 +23,7 @@ import { Ring }             from '../std/protocols/Ring.mjs';
 import { Field }            from '../std/protocols/Field.mjs';
 import { EuclideanDomain }  from '../std/protocols/EuclideanDomain.mjs';
 import { BoundedLattice }   from '../std/protocols/BoundedLattice.mjs';
+import { DemandsError }     from '../index.mjs';
 
 // ── Num ──────────────────────────────────────────────────────────────────────
 
@@ -88,6 +89,12 @@ describe('Num', () => {
         assert.strictEqual(b.reciprocal.reciprocal.value, 2);
         // definition: a / b ≡ a * (1/b)
         assert.strictEqual(a.divide(b).value, a.multiply(b.reciprocal).value);
+    });
+
+    it('divide — throws DemandsError on divisor zero', () => {
+        const a = Num.N({ value: 4 });
+        const zero = Num.N({ value: 0 });
+        assert.throws(() => a.divide(zero), DemandsError);
     });
 
     it('satisfies Eq, Ord, CommutativeMonoid, Semiring, Ring, Field', () => {
@@ -290,9 +297,17 @@ describe('Int', () => {
         assert.strictEqual(Z(7).div(Z(-3)).value, -2);
     });
 
+    it('div — throws DemandsError on divisor zero', () => {
+        assert.throws(() => Z(7).div(Z(0)), DemandsError);
+    });
+
     it('mod — remainder consistent with dividend sign', () => {
         assert.strictEqual(Z(7).mod(Z(3)).value,   1);
         assert.strictEqual(Z(-7).mod(Z(3)).value, -1);   // sign matches dividend
+    });
+
+    it('mod — throws DemandsError on divisor zero', () => {
+        assert.throws(() => Z(7).mod(Z(0)), DemandsError);
     });
 
     it('div algorithm: a ≡ b * (a div b) + (a mod b)', () => {
