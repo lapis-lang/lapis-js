@@ -1,16 +1,20 @@
 /**
  * Num — numeric wrapper satisfying algebraic protocols.
  *
- * Satisfies: Eq, Ord, CommutativeMonoid (additive), Semiring, Ring
+ * Satisfies: Eq, Ord, CommutativeMonoid (additive), Semiring, Ring, Field
+ *
+ * Note: `add` and `combine` are aliases for the same operation; `Zero` and
+ * `Identity` are likewise aliases. This satisfies both the Semiring naming
+ * convention and the CommutativeMonoid naming convention simultaneously.
  *
  * @module
  */
 
 import { data, satisfies } from '../../index.mjs';
-import { Eq, Ord, CommutativeMonoid, Semiring, Ring } from '../protocols/index.mjs';
+import { Eq, Ord, CommutativeMonoid, Semiring, Ring, Field } from '../protocols/index.mjs';
 
 const Num = data(() => ({
-    [satisfies]: [Eq, Ord, CommutativeMonoid, Semiring, Ring],
+    [satisfies]: [Eq, Ord, CommutativeMonoid, Semiring, Ring, Field],
     N: { value: Number }
 })).ops(({ fold, unfold, map, family }) => ({
 
@@ -38,27 +42,12 @@ const Num = data(() => ({
         }
     }),
 
-    // ── CommutativeMonoid (additive) ─────────────────────────────────────
-    Identity: unfold({ out: family })({
-        N: () => ({ value: 0 })
-    }),
-    combine: fold({
-        in: family,
-        out: family
-    })({
-        // @ts-expect-error — binary fold handler
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        N({ value }: any, other: any) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            return new (this.constructor as any)({ value: value + other.value });
-        }
-    }),
-
-    // ── Semiring ─────────────────────────────────────────────────────────
-    // add = combine (additive monoid)
+    // ── Semiring / CommutativeMonoid ─────────────────────────────────────
+    // add ≡ combine (additive commutative monoid)
     add: fold({
         in: family,
-        out: family
+        out: family,
+        properties: ['associative', 'commutative', 'identity', 'identity:Zero']
     })({
         // @ts-expect-error — binary fold handler
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -66,13 +55,18 @@ const Num = data(() => ({
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             return new (this.constructor as any)({ value: value + other.value });
         }
-    }),
+    }).as('combine'),
+
+    // Zero ≡ Identity (additive identity element)
     Zero: unfold({ out: family })({
         N: () => ({ value: 0 })
-    }),
+    }).as('Identity'),
+
+    // ── Semiring ─────────────────────────────────────────────────────────
     multiply: fold({
         in: family,
-        out: family
+        out: family,
+        properties: ['associative', 'identity', 'identity:One', 'absorbing:Zero', 'distributive:add']
     })({
         // @ts-expect-error — binary fold handler
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -89,6 +83,23 @@ const Num = data(() => ({
     negate: map({ out: family })({
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         value: (value: any) => -value
+    }),
+
+    // ── Field ─────────────────────────────────────────────────────────────
+    reciprocal: map({ out: family })({
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        value: (value: any) => 1 / value
+    }),
+    divide: fold({
+        in: family,
+        out: family
+    })({
+        // @ts-expect-error — binary fold handler
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        N({ value }: any, other: any) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            return new (this.constructor as any)({ value: value / other.value });
+        }
     })
 
 }));
