@@ -21,7 +21,8 @@ import type {
     FamilyRef,
     FamilyRefCallable,
     SelfRef,
-
+    Any,
+    Nothing,
     SelfRefCallable,
     TypeSpec
 } from './operations.mjs';
@@ -46,8 +47,14 @@ export type { TypeSpec, FamilyRef, FamilyRefCallable, SelfRef, SelfRefCallable, 
  * Includes `Array` and `Object` because they are common in data/behavior
  * field specs and unfold `in` specs. Resolving them via the map avoids
  * the expensive fallback conditional chain.
+ *
+ * Also includes the lattice bounds:
+ *   - key `'any'`     (maps `typeof Any`)     → `unknown`  (top type — accepts every value)
+ *   - key `'nothing'` (maps `typeof Nothing`) → `never`    (bottom type — no valid value)
  */
 interface BuiltinSpecMap {
+    any: unknown;
+    nothing: never;
     number: number;
     string: string;
     boolean: boolean;
@@ -64,14 +71,16 @@ interface BuiltinSpecMap {
  * Returns `never` for non-builtin constructors (handled by fallback).
  */
 type BuiltinTag<S> =
-    S extends NumberConstructor ? 'number' :
-        S extends StringConstructor ? 'string' :
-            S extends BooleanConstructor ? 'boolean' :
-                S extends SymbolConstructor ? 'symbol' :
-                    S extends BigIntConstructor ? 'bigint' :
-                        S extends ArrayConstructor ? 'array' :
-                            S extends ObjectConstructor ? 'object' :
-                                never;
+    S extends typeof Any ? 'any' :
+        S extends typeof Nothing ? 'nothing' :
+            S extends NumberConstructor ? 'number' :
+                S extends StringConstructor ? 'string' :
+                    S extends BooleanConstructor ? 'boolean' :
+                        S extends SymbolConstructor ? 'symbol' :
+                            S extends BigIntConstructor ? 'bigint' :
+                                S extends ArrayConstructor ? 'array' :
+                                    S extends ObjectConstructor ? 'object' :
+                                        never;
 
 /**
  * Maps a TypeSpec value (e.g. `NumberConstructor`, `StringConstructor`, an ADT class,
