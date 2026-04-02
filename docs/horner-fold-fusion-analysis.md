@@ -17,7 +17,7 @@ This is algebraically equivalent to `instance.innerFold(args).outerFold()` and c
 
 The `foldr/build` shortcut fusion rule from the BMF/Haskell tradition states:
 
-```
+```haskell
 foldr f z (build g) = g f z
 ```
 
@@ -59,7 +59,7 @@ In the fold machinery, recursive family fields (`tail` in a `Cons`) are wired to
 
 ## The Path to True Fusion: Issue #183
 
-Issue #183 proposes making operation handler bodies **first-class inspectable expression trees** rather than opaque functions. Under that model, a handler body would be a data structure the system can walk, transform, and rewrite at `.ops()` time — not a compiled JS closure. 
+Issue #183 proposes making operation handler bodies **first-class inspectable expression trees** rather than opaque functions. Under that model, a handler body would be a data structure the system can walk, transform, and rewrite at `.ops()` time — not a compiled JS closure.
 
 If that foundation exists, single-traversal Horner fusion becomes tractable:
 
@@ -71,7 +71,7 @@ This is exactly the `foldr/build` shortcut fusion, expressed at the DSL level.
 
 ### Dependency chain
 
-```
+```text
 Issue #183 (inspectable expression trees)
     └── Fold-fold fusion transformation pass (new work, built on #183)
             └── Single-traversal Horner merge (the optimization currently documented as "sequential")
