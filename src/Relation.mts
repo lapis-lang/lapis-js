@@ -22,7 +22,24 @@
 
 import { data, invariant } from './Data.mjs';
 import type { DataFoldFn } from './Data.mjs';
-import { op, spec as specSym, isOperationDef, isFamilyRefSpec, LapisTypeSymbol, assertNotNothing } from './operations.mjs';
+import { op, spec as specSym, isOperationDef, isFamilyRefSpec, LapisTypeSymbol, assertNotNothing, extend as extendSym } from './operations.mjs';
+
+// ---- Internal relation marker -----------------------------------------------
+
+/** Brands each relation() ADT so cross-sort field references can be detected. */
+const RelationSymbol: unique symbol = Symbol('Relation');
+
+/**
+ * Returns true when `fieldSpec` is a Lapis relation ADT produced by `relation()`.
+ * Used to classify fields typed by another relation as "family-like"
+ * (participants in the join invariant), complementing `isFamilyRefSpec`.
+ */
+function isRelationFieldMatch(fieldSpec: unknown): boolean {
+    return !!fieldSpec &&
+        (typeof fieldSpec === 'object' || typeof fieldSpec === 'function') &&
+        !!(fieldSpec as Record<symbol, unknown>)[LapisTypeSymbol] &&
+        !!(fieldSpec as Record<symbol, unknown>)[RelationSymbol];
+}
 import type { DataDeclParams, DataADTWithParams, DataInstance } from './types.mjs';
 import type { unfold, map, merge } from './operations.mjs';
 
@@ -146,6 +163,14 @@ export function relation<D extends Record<string, unknown>>(
         const leafVariants: string[] = [];
         const recursiveVariants: RecursiveVariantInfo[] = [];
 
+        // Cross-sort composition: a field typed by another relation() ADT is
+        // only compositional (family-like) if that ADT is the same as the
+        // [extend] parent or an ancestor of it (i.e. instances of this relation
+        // are also instances of fieldSpec via the prototype chain).  This prevents
+        // unrelated relation ADTs used as metadata fields from being misclassified.
+        const parentRelation = (rawSpec as Record<symbol, unknown>)[extendSym] ?? null;
+
+
         for (const [key, value] of Object.entries(rawSpec)) {
             if (RESERVED.has(key)) {
                 throw new Error(
@@ -170,8 +195,23 @@ export function relation<D extends Record<string, unknown>>(
             const fieldNames = Object.keys(fieldSpec).filter(
                 f => f !== String(invariant) && f !== 'invariant'
             );
-            const familyFields = fieldNames.filter(f => isFamilyRefSpec(fieldSpec[f]));
-            const nonFamilyFields = fieldNames.filter(f => !isFamilyRefSpec(fieldSpec[f]));
+            const isCompositionField = (f: string): boolean => {
+                const fs = fieldSpec[f];
+                if (isFamilyRefSpec(fs)) return true;
+                if (!isRelationFieldMatch(fs)) return false;
+                if (fs === parentRelation) return true;
+                if (!parentRelation) return false;
+                // fieldSpec is an ancestor of parentRelation when
+                // parentRelation.prototype instanceof fieldSpec.
+                try {
+                    return (parentRelation as { prototype: object }).prototype
+                        instanceof (fs as abstract new (...args: unknown[]) => unknown);
+                } catch {
+                    return false;
+                }
+            };
+            const familyFields = fieldNames.filter(isCompositionField);
+            const nonFamilyFields = fieldNames.filter(f => !isCompositionField(f));
 
             if (familyFields.length === 0) {
                 // Leaf constructor — no Self references
@@ -212,6 +252,11 @@ export function relation<D extends Record<string, unknown>>(
                 transformed[key] = value;
             }
         }
+
+        // Pass through symbol-keyed entries (e.g. [extend], [satisfies], [sort], [isSort])
+        // Object.entries() above only iterates string keys; symbols must be copied explicitly.
+        for (const sym of Object.getOwnPropertySymbols(rawSpec))
+            transformed[sym] = (rawSpec as Record<symbol, unknown>)[sym];
 
         // Store classification for closure computation
         classification = { leafVariants, recursiveVariants };
@@ -397,6 +442,7 @@ export function relation<D extends Record<string, unknown>>(
     });
 
     (ADT as unknown as Record<symbol, boolean>)[LapisTypeSymbol] = true;
+    Object.defineProperty(ADT, RelationSymbol, { value: true, writable: false, enumerable: false, configurable: true });
     return ADT as unknown as RelationShape<D> & {
         ops<O extends Record<string, unknown>>(
             opsFn: (ctx: RelationOpsContext<D>) => O
