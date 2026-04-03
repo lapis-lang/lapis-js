@@ -73,6 +73,7 @@ there is an emphasis on the Bird-Meertens Formalism (BMF) (Squiggol) of making p
   - [Relation Declaration](#relation-declaration)
   - [Auto-Generated Operations](#auto-generated-operations)
   - [Join Invariant (Auto-Generated)](#join-invariant-auto-generated)
+    - [Cross-Sort Variant Fields](#cross-sort-variant-fields)
   - [Logic Programming Interpretation (Relation)](#logic-programming-interpretation-relation)
   - [Complete Example: Ancestor Relation](#complete-example-ancestor-relation)
   - [Cycle Handling](#cycle-handling)
@@ -2935,6 +2936,46 @@ This is the definition of **relational composition** in an allegory: two relatio
 The invariant is what makes `closure()` correct: during fixpoint iteration, it silently rejects invalid compositions (they throw `TypeError` at construction time, which `closure()` catches and skips). Only connected chains survive, so every derived fact represents a valid path through the relation.
 
 You never write this invariant yourself: it is derived from the endpoint projections. If you were using plain `data()`, you would need to write `[invariant]: ({ first, second }) => first.destination === second.origin` by hand on every recursive variant. `relation()` generates it for you.
+
+#### Cross-Sort Variant Fields
+
+With the [sorts-as-types](#cross-sort-field-validation) architecture, a variant's composition fields may reference **another `relation()` ADT** instead of the `family` sentinel. `relation()` recognises these as equivalent to `family` fields and generates the same join invariant automatically.
+
+A typical pattern is to extend a base relation with a composition variant in a child relation:
+
+```ts
+// Base relation: a single hop between string endpoints.
+const Step = relation(family => ({
+    Direct: { from: String, to: String }
+})).ops(({ fold, origin, destination }) => ({
+    [origin]:      fold({ out: String })({ Direct: ({ from }) => from }),
+    [destination]: fold({ out: String })({ Direct: ({ to }) => to })
+}));
+
+// Child relation: extends Step and composes two Step instances.
+// The join invariant `first[destination] === second[origin]` is
+// auto-generated for Multi, exactly as if the fields used `family`.
+const Chain = relation(family => ({
+    [extend]: Step,
+    Multi: { first: Step, second: Step }   // cross-sort composition
+})).ops(({ fold, origin, destination }) => ({
+    [origin]: fold({ out: String })({
+        Direct: ({ from }) => from,
+        // Cross-sort fields are not auto-folded — access the endpoint symbol directly.
+        Multi:  ({ first }) => first[origin]
+    }),
+    [destination]: fold({ out: String })({
+        Direct: ({ to }) => to,
+        Multi:  ({ second }) => second[destination]
+    })
+}));
+```
+
+Two differences from the `family` case are worth noting:
+
+1. **No auto-fold on cross-sort fields.** When a variant field is typed by the `family` sentinel, `fold` handlers receive an already-evaluated recursive result. When a field is typed by another `relation()` ADT, it arrives as the raw ADT instance — you must access `[origin]` or `[destination]` on it explicitly in the fold handler.
+
+2. **`closure()` requires `instanceof` the extended relation.** Base facts passed to `Chain.closure()` must be instances of `Chain`, not the base `Step`. Use `Chain.Direct(...)` (inherited via `[extend]`) rather than `Step.Direct(...)`.
 
 ### Logic Programming Interpretation (Relation)
 

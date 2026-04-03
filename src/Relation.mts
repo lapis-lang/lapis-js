@@ -23,6 +23,23 @@
 import { data, invariant } from './Data.mjs';
 import type { DataFoldFn } from './Data.mjs';
 import { op, spec as specSym, isOperationDef, isFamilyRefSpec, LapisTypeSymbol, assertNotNothing } from './operations.mjs';
+
+// ---- Internal relation marker -----------------------------------------------
+
+/** Brands each relation() ADT so cross-sort field references can be detected. */
+const RelationSymbol: unique symbol = Symbol('Relation');
+
+/**
+ * Returns true when `fieldSpec` is a Lapis relation ADT produced by `relation()`.
+ * Used to classify fields typed by another relation as "family-like"
+ * (participants in the join invariant), complementing `isFamilyRefSpec`.
+ */
+function isRelationFieldMatch(fieldSpec: unknown): boolean {
+    return !!fieldSpec &&
+        (typeof fieldSpec === 'object' || typeof fieldSpec === 'function') &&
+        !!(fieldSpec as Record<symbol, unknown>)[LapisTypeSymbol] &&
+        !!(fieldSpec as Record<symbol, unknown>)[RelationSymbol];
+}
 import type { DataDeclParams, DataADTWithParams, DataInstance } from './types.mjs';
 import type { unfold, map, merge } from './operations.mjs';
 
@@ -170,8 +187,10 @@ export function relation<D extends Record<string, unknown>>(
             const fieldNames = Object.keys(fieldSpec).filter(
                 f => f !== String(invariant) && f !== 'invariant'
             );
-            const familyFields = fieldNames.filter(f => isFamilyRefSpec(fieldSpec[f]));
-            const nonFamilyFields = fieldNames.filter(f => !isFamilyRefSpec(fieldSpec[f]));
+            const familyFields = fieldNames.filter(
+                f => isFamilyRefSpec(fieldSpec[f]) || isRelationFieldMatch(fieldSpec[f]));
+            const nonFamilyFields = fieldNames.filter(
+                f => !isFamilyRefSpec(fieldSpec[f]) && !isRelationFieldMatch(fieldSpec[f]));
 
             if (familyFields.length === 0) {
                 // Leaf constructor — no Self references
@@ -212,6 +231,11 @@ export function relation<D extends Record<string, unknown>>(
                 transformed[key] = value;
             }
         }
+
+        // Pass through symbol-keyed entries (e.g. [extend], [satisfies], [sort], [isSort])
+        // Object.entries() above only iterates string keys; symbols must be copied explicitly.
+        for (const sym of Object.getOwnPropertySymbols(rawSpec))
+            transformed[sym] = (rawSpec as Record<symbol, unknown>)[sym];
 
         // Store classification for closure computation
         classification = { leafVariants, recursiveVariants };
@@ -397,6 +421,7 @@ export function relation<D extends Record<string, unknown>>(
     });
 
     (ADT as unknown as Record<symbol, boolean>)[LapisTypeSymbol] = true;
+    (ADT as unknown as Record<symbol, boolean>)[RelationSymbol] = true;
     return ADT as unknown as RelationShape<D> & {
         ops<O extends Record<string, unknown>>(
             opsFn: (ctx: RelationOpsContext<D>) => O
