@@ -22,7 +22,7 @@
 
 import { data, invariant } from './Data.mjs';
 import type { DataFoldFn } from './Data.mjs';
-import { op, spec as specSym, isOperationDef, isFamilyRefSpec, LapisTypeSymbol, assertNotNothing } from './operations.mjs';
+import { op, spec as specSym, isOperationDef, isFamilyRefSpec, LapisTypeSymbol, assertNotNothing, extend as extendSym } from './operations.mjs';
 
 // ---- Internal relation marker -----------------------------------------------
 
@@ -163,6 +163,14 @@ export function relation<D extends Record<string, unknown>>(
         const leafVariants: string[] = [];
         const recursiveVariants: RecursiveVariantInfo[] = [];
 
+        // Cross-sort composition: a field typed by another relation() ADT is
+        // only compositional (family-like) if that ADT is the same as the
+        // [extend] parent or an ancestor of it (i.e. instances of this relation
+        // are also instances of fieldSpec via the prototype chain).  This prevents
+        // unrelated relation ADTs used as metadata fields from being misclassified.
+        const parentRelation = (rawSpec as Record<symbol, unknown>)[extendSym] ?? null;
+
+
         for (const [key, value] of Object.entries(rawSpec)) {
             if (RESERVED.has(key)) {
                 throw new Error(
@@ -187,10 +195,23 @@ export function relation<D extends Record<string, unknown>>(
             const fieldNames = Object.keys(fieldSpec).filter(
                 f => f !== String(invariant) && f !== 'invariant'
             );
-            const familyFields = fieldNames.filter(
-                f => isFamilyRefSpec(fieldSpec[f]) || isRelationFieldMatch(fieldSpec[f]));
-            const nonFamilyFields = fieldNames.filter(
-                f => !isFamilyRefSpec(fieldSpec[f]) && !isRelationFieldMatch(fieldSpec[f]));
+            const isCompositionField = (f: string): boolean => {
+                const fs = fieldSpec[f];
+                if (isFamilyRefSpec(fs)) return true;
+                if (!isRelationFieldMatch(fs)) return false;
+                if (fs === parentRelation) return true;
+                if (!parentRelation) return false;
+                // fieldSpec is an ancestor of parentRelation when
+                // parentRelation.prototype instanceof fieldSpec.
+                try {
+                    return (parentRelation as { prototype: object }).prototype
+                        instanceof (fs as abstract new (...args: unknown[]) => unknown);
+                } catch {
+                    return false;
+                }
+            };
+            const familyFields = fieldNames.filter(isCompositionField);
+            const nonFamilyFields = fieldNames.filter(f => !isCompositionField(f));
 
             if (familyFields.length === 0) {
                 // Leaf constructor — no Self references
@@ -421,7 +442,7 @@ export function relation<D extends Record<string, unknown>>(
     });
 
     (ADT as unknown as Record<symbol, boolean>)[LapisTypeSymbol] = true;
-    (ADT as unknown as Record<symbol, boolean>)[RelationSymbol] = true;
+    Object.defineProperty(ADT, RelationSymbol, { value: true, writable: false, enumerable: false, configurable: true });
     return ADT as unknown as RelationShape<D> & {
         ops<O extends Record<string, unknown>>(
             opsFn: (ctx: RelationOpsContext<D>) => O

@@ -130,3 +130,44 @@ describe('relation cross-sort — AC3c: reachingTo() returns correct origins', (
         assert.deepStrictEqual((result as string[]).sort(), ['a', 'b']);
     });
 });
+
+// ── Regression: unrelated relation ADT as metadata field must not be classified
+// as a composition (family-like) field, and must not trigger join invariant
+// generation or affect closure() behaviour.
+
+describe('relation cross-sort — unrelated relation field treated as leaf metadata', () => {
+    // A completely unrelated relation used only as metadata — e.g. provenance.
+    const Provenance = relation(family => ({
+        Source: { label: String }
+    })).ops(({ fold, origin, destination }) => ({
+        [origin]:      fold({ out: String })({ Source: ({ label }) => label }),
+        [destination]: fold({ out: String })({ Source: ({ label }) => label })
+    }));
+
+    // Annotated: Direct carries a Provenance instance as metadata.
+    // Annotated does NOT extend Provenance, so Provenance must NOT be treated
+    // as a family field — no join invariant should be generated for it.
+    const Annotated = relation(family => ({
+        Direct: { from: String, to: String, prov: Provenance }
+    })).ops(({ fold, origin, destination }) => ({
+        [origin]:      fold({ out: String })({ Direct: ({ from }) => from }),
+        [destination]: fold({ out: String })({ Direct: ({ to }) => to })
+    }));
+
+    test('Direct with prov field constructs without any join invariant restriction', () => {
+        const p = Provenance.Source({ label: 'test' });
+        assert.doesNotThrow(() => Annotated.Direct({ from: 'a', to: 'b', prov: p }));
+    });
+
+    test('Direct is classified as a leaf variant (no composition attempted in closure)', () => {
+        const p = Provenance.Source({ label: 'src' });
+        const baseFacts = [
+            Annotated.Direct({ from: 'a', to: 'b', prov: p }),
+            Annotated.Direct({ from: 'b', to: 'c', prov: p })
+        ];
+        // closure() should return exactly the two base facts — no recursive
+        // variant exists, so no new derivations are attempted.
+        const closed = Annotated.closure(baseFacts);
+        assert.strictEqual(closed.length, 2);
+    });
+});

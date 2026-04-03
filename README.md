@@ -2975,7 +2975,9 @@ Two differences from the `family` case are worth noting:
 
 1. **No auto-fold on cross-sort fields.** When a variant field is typed by the `family` sentinel, `fold` handlers receive an already-evaluated recursive result. When a field is typed by another `relation()` ADT, it arrives as the raw ADT instance — you must access `[origin]` or `[destination]` on it explicitly in the fold handler.
 
-2. **`closure()` requires `instanceof` the extended relation.** Base facts passed to `Chain.closure()` must be instances of `Chain`, not the base `Step`. Use `Chain.Direct(...)` (inherited via `[extend]`) rather than `Step.Direct(...)`.
+2. **`.ops()` must be called before constructing cross-sort values.** `first[origin]` and `second[destination]` work only once the base relation's endpoint symbols have been installed, which happens when `.ops()` is called. If `Step` were used before its `.ops()` chain resolves — for example, as a field spec in a standalone `data()` declaration that constructs instances before `Step.ops(...)` runs — the `[origin]`/`[destination]` getters would be `undefined` on those instances at fold time. In practice this is not an issue when `Step` and `Chain` are declared at module scope in the order shown: `Step` is fully initialised (including `.ops()`) before `Chain` construction begins.
+
+3. **`closure()` requires `instanceof` the extended relation.** Base facts passed to `Chain.closure()` must be instances of `Chain`, not the base `Step`. Use `Chain.Direct(...)` (inherited via `[extend]`) rather than `Step.Direct(...)`.
 
 ### Logic Programming Interpretation (Relation)
 
